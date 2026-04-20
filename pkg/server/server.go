@@ -44,6 +44,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	server := &Server{config: config, queries: queries, router: router, api: api}
 	server.registerOperations()
+	server.registerEndpoints()
 	logx.WithContext(ctx).Info("registered operations")
 
 	return server, nil
@@ -59,6 +60,10 @@ func NewHuma() huma.API {
 func (s *Server) registerOperations() {
 	mgmt := huma.NewGroup(s.api, "/api/picotera")
 	huma.Register(mgmt, contract.OperationGetProvider, s.handleGetProvider)
+}
+
+func (s *Server) registerEndpoints() {
+	s.router.Mount("/", &gatewayHandler{s})
 }
 
 func (s *Server) Serve() error {
