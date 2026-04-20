@@ -1,0 +1,58 @@
+package configx
+
+import (
+	"errors"
+	"reflect"
+	"strings"
+
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	DatabaseURL string `mapstructure:"database_url"`
+	Host        string `mapstructure:"host"`
+	Port        int    `mapstructure:"port"`
+}
+
+func Parse() (*Config, error) {
+	viper.SetEnvPrefix("PICOTERA")
+	viper.AutomaticEnv()
+
+	var config Config
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	if err := viper.ReadInConfig(); err != nil {
+		var fileLookupError viper.ConfigFileNotFoundError
+		if errors.As(err, &fileLookupError) {
+			// do nothing
+		} else {
+			return nil, err
+		}
+	}
+
+	viper.SetDefault("port", 9898)
+
+	bindEnvs(Config{})
+	viper.Unmarshal(&config)
+	return &config, nil
+}
+
+func bindEnvs(iface interface{}, parts ...string) {
+	ifv := reflect.ValueOf(iface)
+	ift := reflect.TypeOf(iface)
+	for i := 0; i < ift.NumField(); i++ {
+		v := ifv.Field(i)
+		t := ift.Field(i)
+		tv, ok := t.Tag.Lookup("mapstructure")
+		if !ok {
+			continue
+		}
+		switch v.Kind() {
+		case reflect.Struct:
+			bindEnvs(v.Interface(), append(parts, tv)...)
+		default:
+			viper.BindEnv(strings.Join(append(parts, tv), "."))
+		}
+	}
+}

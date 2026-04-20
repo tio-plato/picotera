@@ -1,0 +1,17 @@
+services:
+  redis:
+    image: docker.io/eqalpha/keydb:latest
+    ports:
+      - 34051:6379
+
+  postgres:
+    image: docker.io/library/postgres:17.5
+    ports:
+      - 34052:5432
+    environment:
+      POSTGRES_USER: picotera
+      POSTGRES_PASSWORD: picotera
+      POSTGRES_DB: picotera
+      POSTGRES_INITDB_ARGS: '--data-checksums --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8'
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data

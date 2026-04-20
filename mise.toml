@@ -1,0 +1,6 @@
+[tools]
+go = "latest"
+sqlc = "latest"
+
+[env]
+_.file = [".env.default", { path = ".env", optional = true }]
