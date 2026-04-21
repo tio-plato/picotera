@@ -52,3 +52,29 @@ PicoTera is an API gateway that routes LLM inference requests across multiple pr
 ### Database Schema
 
 Six tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request`. Uses JSONB for flexible fields (provider models, annotations). Upsert pattern via `ON CONFLICT DO UPDATE`.
+
+### Dashboard
+
+Vue 3 + PrimeVue 4 (Aura preset, blue primary) + Tailwind CSS v4 + Pinia + Vue Router + TypeScript. Located in `dashboard/`. Uses pnpm. Currently early scaffolding with no real views.
+
+## Design Context
+
+### Users
+ML/AI engineers configuring model providers, testing endpoints, and optimizing inference costs. They're technically fluent, time-constrained, and working in high-stakes environments where misconfiguration means downtime or overspend. They need to quickly understand routing state, diagnose failures, and iterate on provider setups without hand-holding.
+
+### Brand Personality
+**Modern, Smart, Confident** — PicoTera feels like infrastructure that knows what it's doing. It projects competence without arrogance. The interface should feel like talking to a sharp colleague: direct, precise, never wasteful. Not flashy or playful — purposefully understated because the tool speaks through its capability.
+
+### Aesthetic Direction
+Light mode primary with clean, spacious surfaces. Information-dense but not cluttered — think Grafana/Datadog: dashboard-first, data-rich, scannable at a glance. Professional polish over decorative flair. The blue primary palette (PrimeVue Aura) fits well — keep it as the accent against neutral light backgrounds. Typography should be crisp and hierarchical. Avoid minimal-for-minimal's-sake; density is good when it serves scanning.
+
+**References**: Grafana, Datadog — functional density, clear data hierarchy, status-driven UI
+**Anti-references**: Overly minimal landing-page aesthetics, playful micro-interactions that slow down power users, dark-mode-only developer tools
+
+### Design Principles
+
+1. **Signal over decoration** — Every pixel should earn its place. Status colors, data density, and clear hierarchy matter more than visual flourish. If it doesn't help an engineer make a decision, it doesn't belong.
+2. **Scan, don't read** — Optimize for the 3-second glance. Tables, status badges, and metrics should be immediately parseable. Reserve detailed views for drill-down, not the default.
+3. **Confidence through clarity** — The UI should never leave the user guessing about state. Active vs. inactive, healthy vs. failing, configured vs. missing — binary visual signals with no ambiguity.
+4. **Fast over fancy** — ML engineers are iterating quickly. Interactions should be direct and predictable. Prefer instant feedback to animated transitions. CRUD operations should feel like editing a spreadsheet, not navigating a wizard.
+5. **Progressive density** — Start with a clean overview, then reveal detail on demand. Summary cards → expandable rows → detail panels. Never hide critical info behind clicks, but don't overwhelm with everything at once.
