@@ -25,7 +25,15 @@ type GetProviderResponse struct {
 	Body ProviderView
 }
 
-func ToProviderView(provider db.Provider) (*ProviderView, error) {
+type CreateProviderRequest struct {
+	Body ProviderView
+}
+
+type CreateProviderResponse struct {
+	Body ProviderView
+}
+
+func ToProviderView(provider *db.Provider) (*ProviderView, error) {
 	var providerModels []string
 	err := json.Unmarshal(provider.ProviderModels, &providerModels)
 	if err != nil {
@@ -48,9 +56,37 @@ func ToProviderView(provider db.Provider) (*ProviderView, error) {
 	}, nil
 }
 
+func FromProviderView(providerView *ProviderView) (*db.Provider, error) {
+	providerModels, err := json.Marshal(providerView.ProviderModels)
+	if err != nil {
+		return nil, err
+	}
+
+	annotations, err := json.Marshal(providerView.Annotations)
+	if err != nil {
+		return nil, err
+	}
+
+	return &db.Provider{
+		ID:             providerView.ID,
+		Name:           providerView.Name,
+		Credentials:    providerView.Credentials,
+		Priority:       providerView.Priority,
+		ProviderModels: providerModels,
+		Annotations:    annotations,
+	}, nil
+}
+
 var OperationGetProvider = huma.Operation{
 	OperationID: "getProvider",
 	Method:      http.MethodGet,
 	Path:        "/providers/{id}",
 	Summary:     "Get a provider by ID",
+}
+
+var OperationCreateProvider = huma.Operation{
+	OperationID: "createProvider",
+	Method:      http.MethodPost,
+	Path:        "/providers",
+	Summary:     "Create a new provider",
 }

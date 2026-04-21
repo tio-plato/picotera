@@ -60,6 +60,7 @@ func NewHuma() huma.API {
 func (s *Server) registerOperations() {
 	mgmt := huma.NewGroup(s.api, "/api/picotera")
 	huma.Register(mgmt, contract.OperationGetProvider, s.handleGetProvider)
+	huma.Register(mgmt, contract.OperationCreateProvider, s.handleCreateProvider)
 }
 
 func (s *Server) registerEndpoints() {
