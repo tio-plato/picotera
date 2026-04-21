@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, inject, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import api from '@/api'
 import type { ModelView } from '@/api'
 import ModelForm from '@/components/ModelForm.vue'
+import { useOverlay } from '@/composables/useOverlay'
 
-const overlay = inject('overlay') as { open: (c: any, p?: Record<string, any>) => void; close: () => void }
+const overlay = useOverlay()
 
 const models = ref<ModelView[]>([])
 const loading = ref(true)

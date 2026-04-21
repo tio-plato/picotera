@@ -1,23 +1,7 @@
 <script setup lang="ts">
-import { provide, ref, type Component } from 'vue'
+import { useOverlay } from '@/composables/useOverlay'
 
-const visible = ref(false)
-const component = ref<Component | null>(null)
-const props = ref<Record<string, any>>({})
-
-function open(comp: Component, p: Record<string, any> = {}) {
-  component.value = comp
-  props.value = p
-  visible.value = true
-}
-
-function close() {
-  visible.value = false
-  component.value = null
-  props.value = {}
-}
-
-provide('overlay', { open, close })
+const { visible, component, props, close } = useOverlay()
 </script>
 
 <template>

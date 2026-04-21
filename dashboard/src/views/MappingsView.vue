@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, inject, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import api from '@/api'
 import type { ModelProviderEndpointView } from '@/api'
 import MappingForm from '@/components/MappingForm.vue'
+import { useOverlay } from '@/composables/useOverlay'
 
-const overlay = inject('overlay') as { open: (c: any, p?: Record<string, any>) => void; close: () => void }
+const overlay = useOverlay()
 
 const mappings = ref<ModelProviderEndpointView[]>([])
 const loading = ref(true)

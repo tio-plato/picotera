@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, inject, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import api from '@/api'
 import type { EndpointView } from '@/api'
 import EndpointForm from '@/components/EndpointForm.vue'
+import { useOverlay } from '@/composables/useOverlay'
 
-const overlay = inject('overlay') as { open: (c: any, p?: Record<string, any>) => void; close: () => void }
+const overlay = useOverlay()
 
 const endpoints = ref<EndpointView[]>([])
 const loading = ref(true)

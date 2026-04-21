@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, inject, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import api from '@/api'
 import type { ProviderView } from '@/api'
 import ProviderForm from '@/components/ProviderForm.vue'
+import { useOverlay } from '@/composables/useOverlay'
 
-const overlay = inject('overlay') as { open: (c: any, p?: Record<string, any>) => void; close: () => void }
+const overlay = useOverlay()
 
 const providers = ref<ProviderView[]>([])
 const loading = ref(true)
