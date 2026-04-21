@@ -39,13 +39,13 @@ func (s *Server) handleListModelProviderEndpoints(ctx context.Context, input *co
 	}
 
 	var filterProviderID pgtype.Int4
-	if input.ProviderID != nil {
-		filterProviderID = pgtype.Int4{Int32: *input.ProviderID, Valid: true}
+	if input.ProviderID != 0 {
+		filterProviderID = pgtype.Int4{Int32: input.ProviderID, Valid: true}
 	}
 
 	var filterEndpointID pgtype.Int4
-	if input.EndpointID != nil {
-		filterEndpointID = pgtype.Int4{Int32: *input.EndpointID, Valid: true}
+	if input.EndpointID != 0 {
+		filterEndpointID = pgtype.Int4{Int32: input.EndpointID, Valid: true}
 	}
 
 	rows, err := s.queries.ListModelProviderEndpoints(ctx, db.ListModelProviderEndpointsParams{

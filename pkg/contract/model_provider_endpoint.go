@@ -53,8 +53,8 @@ func FromModelProviderEndpointView(view *ModelProviderEndpointView) (*db.UpsertM
 type ListModelProviderEndpointsRequest struct {
 	PaginationRequest
 	ModelName  string `query:"modelName,omitempty"`
-	ProviderID *int32 `query:"providerId,omitempty"`
-	EndpointID *int32 `query:"endpointId,omitempty"`
+	ProviderID int32  `query:"providerId,omitempty"`
+	EndpointID int32  `query:"endpointId,omitempty"`
 }
 
 type ListModelProviderEndpointsResponse = PaginatedResponse[ModelProviderEndpointView]

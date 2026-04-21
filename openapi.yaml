@@ -1,0 +1,549 @@
+components:
+  schemas:
+    CreateProviderRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/CreateProviderRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
+        credentials:
+          type: string
+        name:
+          type: string
+        priority:
+          format: int32
+          type: integer
+        providerModels:
+          items:
+            type: string
+          nullable: true
+          type: array
+      required:
+        - name
+        - credentials
+        - priority
+        - providerModels
+        - annotations
+      type: object
+    DeleteEndpointRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/DeleteEndpointRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        path:
+          type: string
+      required:
+        - path
+      type: object
+    DeleteModelProviderEndpointRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/DeleteModelProviderEndpointRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        endpointId:
+          format: int32
+          type: integer
+        modelName:
+          type: string
+        providerId:
+          format: int32
+          type: integer
+      required:
+        - modelName
+        - providerId
+        - endpointId
+      type: object
+    EndpointView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/EndpointView.json
+          format: uri
+          readOnly: true
+          type: string
+        credentialsResolver:
+          enum:
+            - generalApiKey
+            - unknown
+          type: string
+        modelPath:
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+      required:
+        - name
+        - path
+        - modelPath
+        - credentialsResolver
+      type: object
+    ModelProviderEndpointView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/ModelProviderEndpointView.json
+          format: uri
+          readOnly: true
+          type: string
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
+        endpointId:
+          format: int32
+          type: integer
+        modelName:
+          type: string
+        priority:
+          format: int32
+          type: integer
+        providerId:
+          format: int32
+          type: integer
+        upstreamModelName:
+          type: string
+      required:
+        - modelName
+        - providerId
+        - endpointId
+        - priority
+        - annotations
+      type: object
+    ModelView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/ModelView.json
+          format: uri
+          readOnly: true
+          type: string
+        developer:
+          type: string
+        name:
+          type: string
+        series:
+          type: string
+        title:
+          type: string
+      required:
+        - name
+        - title
+        - developer
+        - series
+      type: object
+    PaginatedBodyModelProviderEndpointView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/PaginatedBodyModelProviderEndpointView.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ModelProviderEndpointView"
+          nullable: true
+          type: array
+        pagination:
+          $ref: "#/components/schemas/PaginationInfo"
+      required:
+        - items
+        - pagination
+      type: object
+    PaginationInfo:
+      additionalProperties: false
+      properties:
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+      required:
+        - hasMore
+      type: object
+    PicoTeraError:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/PicoTeraError.json
+          format: uri
+          readOnly: true
+          type: string
+        code:
+          type: string
+        details:
+          items:
+            type: string
+          nullable: true
+          type: array
+        message:
+          type: string
+      required:
+        - message
+        - code
+        - details
+      type: object
+    ProviderView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/ProviderView.json
+          format: uri
+          readOnly: true
+          type: string
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
+        credentials:
+          type: string
+        id:
+          format: int32
+          type: integer
+        name:
+          type: string
+        priority:
+          format: int32
+          type: integer
+        providerModels:
+          items:
+            type: string
+          nullable: true
+          type: array
+      required:
+        - id
+        - name
+        - credentials
+        - priority
+        - providerModels
+        - annotations
+      type: object
+info:
+  title: PicoTera Management API
+  version: 1.0.0
+openapi: 3.0.3
+paths:
+  /api/picotera/endpoints:
+    get:
+      operationId: listEndpoints
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/EndpointView"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List all endpoints
+    put:
+      operationId: upsertEndpoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndpointView"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndpointView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Upsert an endpoint
+  /api/picotera/endpoints/delete:
+    post:
+      operationId: deleteEndpoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteEndpointRequestBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Delete an endpoint
+  /api/picotera/model-provider-endpoints:
+    get:
+      operationId: listModelProviderEndpoints
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 20
+            example: 20
+            format: int32
+            maximum: 100
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: cursor
+          schema:
+            example: eyJpZCI6MX0=
+            type: string
+        - explode: false
+          in: query
+          name: modelName
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            type: integer
+        - explode: false
+          in: query
+          name: endpointId
+          schema:
+            format: int32
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedBodyModelProviderEndpointView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List model provider endpoints
+    put:
+      operationId: upsertModelProviderEndpoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelProviderEndpointView"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelProviderEndpointView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Upsert a model provider endpoint
+  /api/picotera/model-provider-endpoints/delete:
+    post:
+      operationId: deleteModelProviderEndpoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteModelProviderEndpointRequestBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Delete a model provider endpoint
+  /api/picotera/model-provider-endpoints/{modelName}/{providerId}/{endpointId}:
+    get:
+      operationId: getModelProviderEndpoint
+      parameters:
+        - in: path
+          name: modelName
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: providerId
+          required: true
+          schema:
+            format: int32
+            type: integer
+        - in: path
+          name: endpointId
+          required: true
+          schema:
+            format: int32
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelProviderEndpointView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get a model provider endpoint
+  /api/picotera/models:
+    get:
+      operationId: listModels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ModelView"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List all models
+    put:
+      operationId: putModel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelView"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Upsert a model
+  /api/picotera/models/{name}:
+    get:
+      operationId: getModel
+      parameters:
+        - in: path
+          name: name
+          required: true
+          schema:
+            example: gpt-4o
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get a model by name
+  /api/picotera/providers:
+    post:
+      operationId: createProvider
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProviderRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Create a new provider
+  /api/picotera/providers/{id}:
+    get:
+      operationId: getProvider
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            example: 1
+            format: int32
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get a provider by ID
+
