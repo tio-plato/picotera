@@ -29,16 +29,15 @@ func (q *Queries) GetApiKeyByHash(ctx context.Context, apiKeyHash []byte) (ApiKe
 }
 
 const getEndpointByPath = `-- name: GetEndpointByPath :one
-SELECT id, name, path, model_path, credentials_resolver FROM endpoint WHERE path = $1 LIMIT 1
+SELECT path, name, model_path, credentials_resolver FROM endpoint WHERE path = $1 LIMIT 1
 `
 
 func (q *Queries) GetEndpointByPath(ctx context.Context, path string) (Endpoint, error) {
 	row := q.db.QueryRow(ctx, getEndpointByPath, path)
 	var i Endpoint
 	err := row.Scan(
-		&i.ID,
-		&i.Name,
 		&i.Path,
+		&i.Name,
 		&i.ModelPath,
 		&i.CredentialsResolver,
 	)

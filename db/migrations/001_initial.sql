@@ -11,9 +11,8 @@ CREATE TABLE provider (
 
 -- endpoint is a user-facing endpoint that can be used to access the API
 CREATE TABLE endpoint (
-  id SERIAL PRIMARY KEY,
+  path TEXT PRIMARY KEY, -- path component of the accessing URL. It should be a relative path, like /api/v1/chat/completions
   name TEXT NOT NULL,
-  path TEXT NOT NULL UNIQUE, -- path component of the accessing URL. It should be a relative path, like /api/v1/chat/completions
   model_path TEXT NOT NULL, -- model field path in the request body
   credentials_resolver INTEGER NOT NULL
 );

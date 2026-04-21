@@ -74,6 +74,9 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationListModels, s.handleListModels)
 	huma.Register(mgmt, contract.OperationGetModel, s.handleGetModel)
 	huma.Register(mgmt, contract.OperationPutModel, s.handlePutModel)
+	huma.Register(mgmt, contract.OperationListEndpoints, s.handleListEndpoints)
+	huma.Register(mgmt, contract.OperationUpsertEndpoint, s.handleUpsertEndpoint)
+	huma.Register(mgmt, contract.OperationDeleteEndpoint, s.handleDeleteEndpoint)
 }
 
 func (s *Server) registerEndpoints() {

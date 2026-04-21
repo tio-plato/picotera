@@ -17,9 +17,8 @@ type ApiKey struct {
 }
 
 type Endpoint struct {
-	ID                  int32  `json:"id"`
-	Name                string `json:"name"`
 	Path                string `json:"path"`
+	Name                string `json:"name"`
 	ModelPath           string `json:"modelPath"`
 	CredentialsResolver int32  `json:"credentialsResolver"`
 }
