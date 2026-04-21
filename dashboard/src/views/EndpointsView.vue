@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import api from '@/api'
 import type { EndpointView } from '@/api'
 import EndpointForm from '@/components/EndpointForm.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useOverlay } from '@/composables/useOverlay'
 
 const overlay = useOverlay()
@@ -28,9 +29,15 @@ function openEdit(ep: EndpointView) {
   overlay.open(EndpointForm, { endpoint: ep, onSave: fetchEndpoints })
 }
 
-async function deleteEndpoint(path: string) {
-  await api.POST('/api/picotera/endpoints/delete', { body: { path } })
-  fetchEndpoints()
+function confirmDeleteEndpoint(path: string) {
+  overlay.open(ConfirmDialog, {
+    title: '删除端点',
+    message: `确定要删除端点「${path}」吗？此操作不可撤销。`,
+    onConfirm: async () => {
+      await api.POST('/api/picotera/endpoints/delete', { body: { path } })
+      fetchEndpoints()
+    },
+  })
 }
 </script>
 
@@ -72,7 +79,7 @@ async function deleteEndpoint(path: string) {
                 <button class="btn-icon" title="编辑" aria-label="编辑" @click="openEdit(e)">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L20 8l-4-4L4 16v4z" /><path d="M14 6l4 4" /></svg>
                 </button>
-                <button class="btn-icon btn-icon--danger" title="删除" aria-label="删除" @click="deleteEndpoint(e.path)">
+                <button class="btn-icon btn-icon--danger" title="删除" aria-label="删除" @click="confirmDeleteEndpoint(e.path)">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /></svg>
                 </button>
               </div>
