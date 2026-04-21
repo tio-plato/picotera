@@ -1,18 +1,19 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import OverlayPanel from '@/components/OverlayPanel.vue'
 
 const route = useRoute()
-const pageName = computed(() => {
-  const map: Record<string, string> = {
-    providers: '渠道',
-    models: '模型',
-    endpoints: '端点',
-    mappings: '映射',
+
+const pageMeta = computed(() => {
+  const map: Record<string, { title: string; hint: string }> = {
+    providers: { title: '渠道', hint: '上游模型提供方与凭证' },
+    models: { title: '模型', hint: '对外暴露的模型标识' },
+    endpoints: { title: '端点', hint: 'HTTP 入口与请求形状' },
+    mappings: { title: '映射', hint: '模型 × 渠道 × 端点的路由' },
   }
-  return map[route.name as string] ?? ''
+  return map[route.name as string] ?? { title: '', hint: '' }
 })
 </script>
 
@@ -21,7 +22,10 @@ const pageName = computed(() => {
     <AppSidebar />
     <main class="app-main">
       <header class="app-header">
-        <h1 class="page-title">{{ pageName }}</h1>
+        <div class="header-titles">
+          <h1 class="page-title">{{ pageMeta.title }}</h1>
+          <p class="page-hint">{{ pageMeta.hint }}</p>
+        </div>
       </header>
       <div class="app-content">
         <RouterView />
@@ -35,6 +39,7 @@ const pageName = computed(() => {
 .app-shell {
   display: flex;
   min-height: 100dvh;
+  background: var(--color-surface-50);
 }
 .app-main {
   flex: 1;
@@ -43,20 +48,31 @@ const pageName = computed(() => {
   min-width: 0;
 }
 .app-header {
-  padding: 1rem 2rem;
-  background: var(--color-surface-0);
-  border-bottom: 1px solid var(--color-card-border);
+  padding: 1.125rem 2rem 0.875rem;
+  background: transparent;
+}
+.header-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
 }
 .page-title {
   font-size: 1.25rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   color: var(--color-ink);
   margin: 0;
+  line-height: 1.2;
+}
+.page-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-ink-faint);
+  line-height: 1.2;
 }
 .app-content {
   flex: 1;
-  padding: 1.5rem 2rem;
+  padding: 0.75rem 2rem 2rem;
   overflow-y: auto;
 }
 </style>
