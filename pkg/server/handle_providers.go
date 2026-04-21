@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
@@ -31,17 +32,23 @@ func (s *Server) handleGetProvider(ctx context.Context, input *contract.GetProvi
 }
 
 func (s *Server) handleCreateProvider(ctx context.Context, input *contract.CreateProviderRequest) (*contract.CreateProviderResponse, error) {
-	provider, err := contract.FromProviderView(&input.Body)
+
+	providerModelsBytes, err := json.Marshal(input.Body.ProviderModels)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to convert provider view to provider", err)
+		return nil, huma.Error500InternalServerError("failed to marshal provider models", err)
+	}
+
+	annotationsBytes, err := json.Marshal(input.Body.Annotations)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to marshal annotations", err)
 	}
 
 	newProvider, err := s.queries.CreateProvider(ctx, db.CreateProviderParams{
-		Name:           provider.Name,
-		Credentials:    provider.Credentials,
-		Priority:       provider.Priority,
-		ProviderModels: provider.ProviderModels,
-		Annotations:    provider.Annotations,
+		Name:           input.Body.Name,
+		Credentials:    input.Body.Credentials,
+		Priority:       input.Body.Priority,
+		ProviderModels: providerModelsBytes,
+		Annotations:    annotationsBytes,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to create provider", err)

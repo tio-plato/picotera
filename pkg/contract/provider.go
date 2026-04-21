@@ -26,7 +26,13 @@ type GetProviderResponse struct {
 }
 
 type CreateProviderRequest struct {
-	Body ProviderView
+	Body struct {
+		Name           string            `json:"name"`
+		Credentials    string            `json:"credentials"`
+		Priority       int32             `json:"priority"`
+		ProviderModels []string          `json:"providerModels"`
+		Annotations    map[string]string `json:"annotations"`
+	}
 }
 
 type CreateProviderResponse struct {
