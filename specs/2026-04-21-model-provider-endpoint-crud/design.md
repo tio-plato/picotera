@@ -6,11 +6,11 @@ Use **cursor-based pagination** with keyset pagination on the primary key. This 
 
 ### Generic Pagination Contract
 
-Define reusable pagination types in `pkg/contract/pagination.go`:
+Define generic pagination types in `pkg/contract/pagination.go` using Go generics:
 
 ```go
 type PaginationRequest struct {
-    Limit  int32 `query:"limit" example:"20" default:"20" maximum:"100" minimum:"1"`
+    Limit  int32  `query:"limit" example:"20" default:"20" maximum:"100" minimum:"1"`
     Cursor string `query:"cursor" example:"eyJpZCI6MX0="`
 }
 
@@ -18,11 +18,21 @@ type PaginationInfo struct {
     NextCursor string `json:"nextCursor,omitempty"`
     HasMore    bool   `json:"hasMore"`
 }
+
+type PaginatedBody[T any] struct {
+    Items      []T            `json:"items"`
+    Pagination PaginationInfo `json:"pagination"`
+}
+
+type PaginatedResponse[T any] struct {
+    Body PaginatedBody[T]
+}
 ```
 
 - `Limit`: max items per page (1-100, default 20).
 - `Cursor`: opaque base64-encoded token encoding the last row's sort key. Empty cursor = first page.
 - `NextCursor`: populated only when `HasMore` is true. Client passes this as `cursor` on the next request.
+- `PaginatedResponse[T]`: generic response type. Each list endpoint instantiates it with its view type, e.g. `PaginatedResponse[ModelProviderEndpointView]`.
 
 ### Cursor Encoding
 

@@ -5,6 +5,8 @@
 Create `pkg/contract/pagination.go`:
 - `PaginationRequest` struct with `Limit` and `Cursor` fields
 - `PaginationInfo` struct with `NextCursor` and `HasMore` fields
+- `PaginatedBody[T any]` generic struct with `Items []T` and `Pagination PaginationInfo`
+- `PaginatedResponse[T any]` generic struct with `Body PaginatedBody[T]`
 - `EncodeCursor(values ...any)` helper — JSON-encodes key values then base64-encodes
 - `DecodeCursor(cursor string, targets ...any)` helper — base64-decodes then JSON-decodes into targets
 
@@ -25,11 +27,64 @@ Add `ModelProviderEndpointNotFound` to `pkg/errorx/errors.go`.
 ## Step 4: Add contract types and operations
 
 Create `pkg/contract/model_provider_endpoint.go`:
-- `ModelProviderEndpointView` struct
+
+- `ModelProviderEndpointView` struct:
+```go
+type ModelProviderEndpointView struct {
+    ModelName         string            `json:"modelName"`
+    ProviderID        int32             `json:"providerId"`
+    EndpointID        int32             `json:"endpointId"`
+    UpstreamModelName string            `json:"upstreamModelName,omitempty"`
+    Priority          int32             `json:"priority"`
+    Annotations       map[string]string `json:"annotations"`
+}
+```
+
 - `ToModelProviderEndpointView` / `FromModelProviderEndpointView` conversion functions
-- Request/Response types for each operation (List, Get, Upsert, Delete)
-- `ListModelProviderEndpointsRequest` embeds `PaginationRequest` plus filter fields (modelName, providerId, endpointId)
-- `ListModelProviderEndpointsResponse` contains `Items []ModelProviderEndpointView` and `PaginationInfo`
+
+- Request/Response types:
+
+```go
+// List
+type ListModelProviderEndpointsRequest struct {
+    PaginationRequest
+    ModelName  string `query:"modelName,omitempty"`
+    ProviderID *int32 `query:"providerId,omitempty"`
+    EndpointID *int32 `query:"endpointId,omitempty"`
+}
+
+type ListModelProviderEndpointsResponse = PaginatedResponse[ModelProviderEndpointView]
+
+// Get
+type GetModelProviderEndpointRequest struct {
+    ModelName  string `path:"modelName"`
+    ProviderID int32  `path:"providerId"`
+    EndpointID int32  `path:"endpointId"`
+}
+
+type GetModelProviderEndpointResponse struct {
+    Body ModelProviderEndpointView
+}
+
+// Upsert
+type UpsertModelProviderEndpointRequest struct {
+    Body ModelProviderEndpointView
+}
+
+type UpsertModelProviderEndpointResponse struct {
+    Body ModelProviderEndpointView
+}
+
+// Delete
+type DeleteModelProviderEndpointRequest struct {
+    Body struct {
+        ModelName  string `json:"modelName"`
+        ProviderID int32  `json:"providerId"`
+        EndpointID int32  `json:"endpointId"`
+    }
+}
+```
+
 - Operation variables (OperationListModelProviderEndpoints, OperationGetModelProviderEndpoint, OperationUpsertModelProviderEndpoint, OperationDeleteModelProviderEndpoint)
 
 ## Step 5: Add server handlers
