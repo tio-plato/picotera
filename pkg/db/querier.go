@@ -10,13 +10,17 @@ import (
 
 type Querier interface {
 	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
+	DeleteModel(ctx context.Context, name string) error
 	DeleteProvider(ctx context.Context, id int32) error
 	GetApiKeyByHash(ctx context.Context, apiKeyHash []byte) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
+	GetModelByName(ctx context.Context, name string) (Model, error)
+	GetModels(ctx context.Context) ([]Model, error)
 	GetProviderByID(ctx context.Context, id int32) (Provider, error)
 	GetProviders(ctx context.Context) ([]Provider, error)
 	GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
+	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
 }
 
 var _ Querier = (*Queries)(nil)

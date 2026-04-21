@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"picotera/db/migrations"
 	"picotera/pkg/configx"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
@@ -31,10 +32,19 @@ func NewServer(ctx context.Context) (*Server, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	logx.WithContext(ctx).Info("running migrations")
+	err = migrations.Up(config.DatabaseURL)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).Error("failed to run migrations")
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	}
+	logx.WithContext(ctx).Info("migrations completed")
+
 	conn, err := pgx.Connect(ctx, config.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
+
 	queries := db.New(conn)
 
 	logx.WithContext(ctx).Info("connected to database")
@@ -61,6 +71,9 @@ func (s *Server) registerOperations() {
 	mgmt := huma.NewGroup(s.api, "/api/picotera")
 	huma.Register(mgmt, contract.OperationGetProvider, s.handleGetProvider)
 	huma.Register(mgmt, contract.OperationCreateProvider, s.handleCreateProvider)
+	huma.Register(mgmt, contract.OperationListModels, s.handleListModels)
+	huma.Register(mgmt, contract.OperationGetModel, s.handleGetModel)
+	huma.Register(mgmt, contract.OperationPutModel, s.handlePutModel)
 }
 
 func (s *Server) registerEndpoints() {
