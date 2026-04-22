@@ -14,6 +14,7 @@ type Querier interface {
 	DeleteModel(ctx context.Context, name string) error
 	DeleteModelProviderEndpoint(ctx context.Context, arg DeleteModelProviderEndpointParams) error
 	DeleteProvider(ctx context.Context, id int32) error
+	DeleteProviderEndpoint(ctx context.Context, arg DeleteProviderEndpointParams) error
 	GetApiKeyByHash(ctx context.Context, apiKeyHash []byte) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
 	GetEndpoints(ctx context.Context) ([]Endpoint, error)
@@ -24,10 +25,12 @@ type Querier interface {
 	GetProviders(ctx context.Context) ([]Provider, error)
 	GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error)
 	ListModelProviderEndpoints(ctx context.Context, arg ListModelProviderEndpointsParams) ([]ModelProviderEndpoint, error)
+	ListProviderEndpoints(ctx context.Context, providerID int32) ([]ProviderEndpoint, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
 	UpsertModelProviderEndpoint(ctx context.Context, arg UpsertModelProviderEndpointParams) (ModelProviderEndpoint, error)
+	UpsertProviderEndpoint(ctx context.Context, arg UpsertProviderEndpointParams) (ProviderEndpoint, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -81,6 +81,9 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationGetModelProviderEndpoint, s.handleGetModelProviderEndpoint)
 	huma.Register(mgmt, contract.OperationUpsertModelProviderEndpoint, s.handleUpsertModelProviderEndpoint)
 	huma.Register(mgmt, contract.OperationDeleteModelProviderEndpoint, s.handleDeleteModelProviderEndpoint)
+	huma.Register(mgmt, contract.OperationListProviderEndpoints, s.handleListProviderEndpoints)
+	huma.Register(mgmt, contract.OperationUpsertProviderEndpoint, s.handleUpsertProviderEndpoint)
+	huma.Register(mgmt, contract.OperationDeleteProviderEndpoint, s.handleDeleteProviderEndpoint)
 }
 
 func (s *Server) registerEndpoints() {
