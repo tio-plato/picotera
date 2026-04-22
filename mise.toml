@@ -6,3 +6,14 @@ sqlc = "latest"
 
 [env]
 _.file = [".env.default", { path = ".env", optional = true }]
+
+[tasks.server]
+run = "go run ./cmd/picotera/main.go"
+
+[tasks.web]
+run = "pnpm dev"
+dir = "dashboard"
+sources = ["dashboard"]
+
+[tasks.openapi]
+run = "go run ./cmd/picotera/main.go openapi > openapi.yaml"

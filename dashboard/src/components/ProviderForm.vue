@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import api from '@/api'
+import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 
 const emit = defineEmits<{ close: []; saved: [] }>()
 const props = defineProps<{ onSave?: () => void }>()
@@ -10,7 +11,7 @@ const form = ref({
   credentials: '',
   priority: 0,
   providerModels: '',
-  annotations: '' as string,
+  annotations: {} as Record<string, string>,
 })
 const saving = ref(false)
 const error = ref('')
@@ -23,7 +24,7 @@ async function submit() {
     credentials: form.value.credentials,
     priority: form.value.priority,
     providerModels: form.value.providerModels ? form.value.providerModels.split(',').map(s => s.trim()) : [],
-    annotations: form.value.annotations ? Object.fromEntries(form.value.annotations.split(',').map(s => { const [k, v] = s.split('='); return [k.trim(), (v ?? '').trim()] })) : {},
+    annotations: form.value.annotations,
   }
   const { error: err } = await api.POST('/api/picotera/providers', { body })
   if (err) {
@@ -59,10 +60,10 @@ async function submit() {
         <span class="field-label">模型列表</span>
         <input v-model="form.providerModels" class="input" placeholder="逗号分隔，如 gpt-4o, gpt-3.5-turbo" />
       </label>
-      <label class="field">
+      <div class="field">
         <span class="field-label">标注</span>
-        <input v-model="form.annotations" class="input" placeholder="key=value, 逗号分隔" />
-      </label>
+        <AnnotationsEditor v-model="form.annotations" />
+      </div>
       <div v-if="error" class="form-error">{{ error }}</div>
       <div class="form-actions">
         <button type="button" class="btn-ghost" @click="emit('close')">取消</button>

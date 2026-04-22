@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import api from '@/api'
 import type { ModelProviderEndpointView, ModelView, ProviderView } from '@/api'
+import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ mapping?: ModelProviderEndpointView; onSave?: () => void }>()
@@ -13,7 +14,7 @@ const form = ref({
   endpointId: props.mapping?.endpointId ?? 0,
   upstreamModelName: props.mapping?.upstreamModelName ?? '',
   priority: props.mapping?.priority ?? 0,
-  annotations: Object.entries(props.mapping?.annotations ?? {}).map(([k, v]) => `${k}=${v}`).join(', '),
+  annotations: { ...(props.mapping?.annotations ?? {}) } as Record<string, string>,
 })
 
 const models = ref<ModelView[]>([])
@@ -31,11 +32,6 @@ onMounted(async () => {
 const saving = ref(false)
 const error = ref('')
 
-function parseAnnotations(s: string): Record<string, string> {
-  if (!s.trim()) return {}
-  return Object.fromEntries(s.split(',').map(part => { const [k, v] = part.split('='); return [k.trim(), (v ?? '').trim()] }))
-}
-
 async function submit() {
   saving.value = true
   error.value = ''
@@ -45,7 +41,7 @@ async function submit() {
     endpointId: form.value.endpointId,
     upstreamModelName: form.value.upstreamModelName || undefined,
     priority: form.value.priority,
-    annotations: parseAnnotations(form.value.annotations),
+    annotations: form.value.annotations,
   }
   const { error: err } = await api.PUT('/api/picotera/model-provider-endpoints', { body })
   if (err) {
@@ -91,10 +87,10 @@ async function submit() {
         <span class="field-label">优先级</span>
         <input v-model.number="form.priority" type="number" class="input" required />
       </label>
-      <label class="field">
+      <div class="field">
         <span class="field-label">标注</span>
-        <input v-model="form.annotations" class="input" placeholder="key=value, 逗号分隔" />
-      </label>
+        <AnnotationsEditor v-model="form.annotations" />
+      </div>
       <div v-if="error" class="form-error">{{ error }}</div>
       <div class="form-actions">
         <button type="button" class="btn-ghost" @click="emit('close')">取消</button>
