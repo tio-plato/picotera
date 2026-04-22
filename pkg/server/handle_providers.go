@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+func (s *Server) handleListProviders(ctx context.Context, input *struct{}) (*contract.ListProvidersResponse, error) {
+	providers, err := s.queries.GetProviders(ctx)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to list providers", err)
+	}
+
+	providerViews := make([]contract.ProviderView, len(providers))
+	for i, provider := range providers {
+		providerView, err := contract.ToProviderView(&provider)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to convert provider to view", err)
+		}
+		providerViews[i] = *providerView
+	}
+	return &contract.ListProvidersResponse{
+		Body: providerViews,
+	}, nil
+}
+
 func (s *Server) handleGetProvider(ctx context.Context, input *contract.GetProviderRequest) (*contract.GetProviderResponse, error) {
 	provider, err := s.queries.GetProviderByID(ctx, input.ID)
 	if err != nil {

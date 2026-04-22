@@ -83,6 +83,17 @@ func FromProviderView(providerView *ProviderView) (*db.Provider, error) {
 	}, nil
 }
 
+type ListProvidersResponse struct {
+	Body []ProviderView
+}
+
+var OperationListProviders = huma.Operation{
+	OperationID: "listProviders",
+	Method:      http.MethodGet,
+	Path:        "/providers",
+	Summary:     "List all providers",
+}
+
 var OperationGetProvider = huma.Operation{
 	OperationID: "getProvider",
 	Method:      http.MethodGet,
