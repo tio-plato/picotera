@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import api from '@/api'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
+import ModelListEditor from '@/components/ModelListEditor.vue'
 
 const emit = defineEmits<{ close: []; saved: [] }>()
 const props = defineProps<{ onSave?: () => void }>()
@@ -10,7 +11,7 @@ const form = ref({
   name: '',
   credentials: '',
   priority: 0,
-  providerModels: '',
+  providerModels: [] as string[],
   annotations: {} as Record<string, string>,
 })
 const saving = ref(false)
@@ -23,7 +24,7 @@ async function submit() {
     name: form.value.name,
     credentials: form.value.credentials,
     priority: form.value.priority,
-    providerModels: form.value.providerModels ? form.value.providerModels.split(',').map(s => s.trim()) : [],
+    providerModels: form.value.providerModels,
     annotations: form.value.annotations,
   }
   const { error: err } = await api.POST('/api/picotera/providers', { body })
@@ -56,10 +57,10 @@ async function submit() {
         <span class="field-label">优先级</span>
         <input v-model.number="form.priority" type="number" class="input" required />
       </label>
-      <label class="field">
+      <div class="field">
         <span class="field-label">模型列表</span>
-        <input v-model="form.providerModels" class="input" placeholder="逗号分隔，如 gpt-4o, gpt-3.5-turbo" />
-      </label>
+        <ModelListEditor v-model="form.providerModels" />
+      </div>
       <div class="field">
         <span class="field-label">标注</span>
         <AnnotationsEditor v-model="form.annotations" />
