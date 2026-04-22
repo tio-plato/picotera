@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import api from '@/api'
+import { useApi } from '@/composables/useApi'
 import type { ProviderView } from '@/api'
 import ProviderForm from '@/components/ProviderForm.vue'
 import { useOverlay } from '@/composables/useOverlay'
 
 const overlay = useOverlay()
+const api = useApi()
 
 const providers = ref<ProviderView[]>([])
 const loading = ref(true)

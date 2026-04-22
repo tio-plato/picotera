@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import api from '@/api'
+import { useApi } from '@/composables/useApi'
 import type { ModelProviderEndpointView, ModelView, ProviderView } from '@/api'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ mapping?: ModelProviderEndpointView; onSave?: () => void }>()
+const api = useApi()
 
 const isEdit = !!props.mapping
 const form = ref({

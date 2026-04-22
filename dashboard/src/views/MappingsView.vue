@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import api from '@/api'
+import { useApi } from '@/composables/useApi'
 import type { ModelProviderEndpointView } from '@/api'
 import MappingForm from '@/components/MappingForm.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useOverlay } from '@/composables/useOverlay'
 
 const overlay = useOverlay()
+const api = useApi()
 
 const mappings = ref<ModelProviderEndpointView[]>([])
 const loading = ref(true)

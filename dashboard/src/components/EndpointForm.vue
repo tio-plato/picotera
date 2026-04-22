@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import api from '@/api'
+import { useApi } from '@/composables/useApi'
 import type { EndpointView } from '@/api'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ endpoint?: EndpointView; onSave?: () => void }>()
+const api = useApi()
 
 const isEdit = !!props.endpoint
 const form = ref({

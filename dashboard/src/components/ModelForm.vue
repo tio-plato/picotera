@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import api from '@/api'
+import { useApi } from '@/composables/useApi'
 import type { ModelView } from '@/api'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ model?: ModelView; onSave?: () => void }>()
+const api = useApi()
 
 const isEdit = !!props.model
 const form = ref({

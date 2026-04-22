@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import api from '@/api'
+import { useApi } from '@/composables/useApi'
 import type { EndpointView } from '@/api'
 import EndpointForm from '@/components/EndpointForm.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useOverlay } from '@/composables/useOverlay'
 
 const overlay = useOverlay()
+const api = useApi()
 
 const endpoints = ref<EndpointView[]>([])
 const loading = ref(true)

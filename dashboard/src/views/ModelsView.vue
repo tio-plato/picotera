@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import api from '@/api'
+import { useApi } from '@/composables/useApi'
 import type { ModelView } from '@/api'
 import ModelForm from '@/components/ModelForm.vue'
 import { useOverlay } from '@/composables/useOverlay'
 
 const overlay = useOverlay()
+const api = useApi()
 
 const models = ref<ModelView[]>([])
 const loading = ref(true)

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import api from '@/api'
+import { useApi } from '@/composables/useApi'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import ModelListEditor from '@/components/ModelListEditor.vue'
 
 const emit = defineEmits<{ close: []; saved: [] }>()
 const props = defineProps<{ onSave?: () => void }>()
+const api = useApi()
 
 const form = ref({
   name: '',
