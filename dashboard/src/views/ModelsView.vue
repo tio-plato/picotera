@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useConfirm } from 'primevue/useconfirm'
+import { useConfirm } from '@/composables/useConfirm'
 import { useApi } from '@/composables/useApi'
 import type { ModelView } from '@/api'
 import ModelForm from '@/components/ModelForm.vue'
@@ -33,11 +33,7 @@ function openEdit(m: ModelView) {
 
 function confirmDelete(event: Event, m: ModelView) {
   confirm.require({
-    target: event.currentTarget as HTMLElement,
     message: `确定要删除模型「${m.name}」吗？此操作不可撤销。`,
-    icon: 'pi pi-exclamation-triangle',
-    rejectProps: { label: '取消', severity: 'secondary', outlined: true },
-    acceptProps: { label: '删除', severity: 'danger' },
     accept: async () => {
       await api.POST('/api/picotera/models/delete', { body: { name: m.name } })
       fetchModels()

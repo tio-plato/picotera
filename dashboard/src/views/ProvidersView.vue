@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useConfirm } from 'primevue/useconfirm'
+import { useConfirm } from '@/composables/useConfirm'
 import { useApi } from '@/composables/useApi'
 import type { ProviderView } from '@/api'
 import ProviderForm from '@/components/ProviderForm.vue'
@@ -49,11 +49,7 @@ function toggleBindings(p: ProviderView) {
 
 function confirmDelete(event: Event, p: ProviderView) {
   confirm.require({
-    target: event.currentTarget as HTMLElement,
     message: `确定要删除渠道「${p.name}」吗？此操作不可撤销。`,
-    icon: 'pi pi-exclamation-triangle',
-    rejectProps: { label: '取消', severity: 'secondary', outlined: true },
-    acceptProps: { label: '删除', severity: 'danger' },
     accept: async () => {
       await api.POST('/api/picotera/providers/delete', { body: { id: p.id } })
       if (panel.isActive(editKey(p.id)) || panel.isActive(bindingKey(p.id))) panel.close()

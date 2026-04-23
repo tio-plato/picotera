@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import SidePanelHost from '@/components/SidePanelHost.vue'
-import ConfirmPopup from 'primevue/confirmpopup'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const route = useRoute()
 
@@ -36,7 +36,7 @@ const pageMeta = computed(() => {
       </div>
     </main>
   </div>
-  <ConfirmPopup />
+  <ConfirmDialog />
 </template>
 
 <style scoped>

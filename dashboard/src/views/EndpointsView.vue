@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useConfirm } from 'primevue/useconfirm'
+import { useConfirm } from '@/composables/useConfirm'
 import { useApi } from '@/composables/useApi'
 import type { EndpointView } from '@/api'
 import EndpointForm from '@/components/EndpointForm.vue'
@@ -33,11 +33,7 @@ function openEdit(ep: EndpointView) {
 
 function confirmDeleteEndpoint(event: Event, path: string) {
   confirm.require({
-    target: event.currentTarget as HTMLElement,
     message: `确定要删除端点「${path}」吗？此操作不可撤销。`,
-    icon: 'pi pi-exclamation-triangle',
-    rejectProps: { label: '取消', severity: 'secondary', outlined: true },
-    acceptProps: { label: '删除', severity: 'danger' },
     accept: async () => {
       await api.POST('/api/picotera/endpoints/delete', { body: { path } })
       fetchEndpoints()
