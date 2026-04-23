@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
-import OverlayPanel from '@/components/OverlayPanel.vue'
+import SidePanelHost from '@/components/SidePanelHost.vue'
+import ConfirmPopup from 'primevue/confirmpopup'
 
 const route = useRoute()
 
@@ -27,12 +28,15 @@ const pageMeta = computed(() => {
           <p class="page-hint">{{ pageMeta.hint }}</p>
         </div>
       </header>
-      <div class="app-content">
-        <RouterView />
+      <div class="app-body">
+        <div class="app-content">
+          <RouterView />
+        </div>
+        <SidePanelHost />
       </div>
     </main>
   </div>
-  <OverlayPanel />
+  <ConfirmPopup />
 </template>
 
 <style scoped>
@@ -70,8 +74,15 @@ const pageMeta = computed(() => {
   color: var(--color-ink-faint);
   line-height: 1.2;
 }
-.app-content {
+.app-body {
   flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+.app-content {
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 0.75rem 2rem 2rem;
   overflow-y: auto;
 }

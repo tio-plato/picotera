@@ -13,7 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
 
 	_ "github.com/danielgtaylor/huma/v2/formats/cbor"
@@ -40,7 +40,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}
 	logx.WithContext(ctx).Info("migrations completed")
 
-	conn, err := pgx.Connect(ctx, config.DatabaseURL)
+	conn, err := pgxpool.New(ctx, config.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

@@ -8,6 +8,7 @@ import router from './router'
 import { apiPlugin } from './api/plugin'
 
 import PrimeVue from 'primevue/config';
+import ConfirmationService from 'primevue/confirmationservice';
 import Aura from '@primeuix/themes/aura';
 import { definePreset } from '@primeuix/themes';
 
@@ -47,5 +48,6 @@ app.use(PrimeVue, {
     }
   }
 })
+app.use(ConfirmationService)
 
 app.mount('#app')
