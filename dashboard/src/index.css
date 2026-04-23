@@ -75,10 +75,10 @@
   --color-ink-muted: oklch(0.53 0.03 210);
   --color-ink-faint: oklch(0.66 0.025 200);
 
-  --color-accent: oklch(0.58 0.14 235);
-  --color-accent-strong: oklch(0.50 0.16 235);
-  --color-accent-faint: oklch(0.93 0.05 235);
-  --color-accent-ink: oklch(0.42 0.14 235);
+  --color-accent: oklch(0.72 0.15 85);
+  --color-accent-strong: oklch(0.64 0.17 85);
+  --color-accent-faint: oklch(0.94 0.05 85);
+  --color-accent-ink: oklch(0.46 0.14 85);
 
   --color-indicator-ok: oklch(0.60 0.14 135);
   --color-indicator-ok-ink: oklch(0.40 0.12 135);
