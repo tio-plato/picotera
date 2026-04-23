@@ -8,24 +8,24 @@ import (
 )
 
 type ProviderEndpointView struct {
-	ProviderID  int32  `json:"providerId"`
-	EndpointID  int32  `json:"endpointId"`
-	UpstreamUrl string `json:"upstreamUrl"`
+	ProviderID   int32  `json:"providerId"`
+	EndpointPath string `json:"endpointPath"`
+	UpstreamUrl  string `json:"upstreamUrl"`
 }
 
 func ToProviderEndpointView(pe *db.ProviderEndpoint) *ProviderEndpointView {
 	return &ProviderEndpointView{
-		ProviderID:  pe.ProviderID,
-		EndpointID:  pe.EndpointID,
-		UpstreamUrl: pe.UpstreamUrl,
+		ProviderID:   pe.ProviderID,
+		EndpointPath: pe.EndpointPath,
+		UpstreamUrl:  pe.UpstreamUrl,
 	}
 }
 
 func FromProviderEndpointView(view *ProviderEndpointView) *db.UpsertProviderEndpointParams {
 	return &db.UpsertProviderEndpointParams{
-		ProviderID:  view.ProviderID,
-		EndpointID:  view.EndpointID,
-		UpstreamUrl: view.UpstreamUrl,
+		ProviderID:   view.ProviderID,
+		EndpointPath: view.EndpointPath,
+		UpstreamUrl:  view.UpstreamUrl,
 	}
 }
 
@@ -47,8 +47,8 @@ type UpsertProviderEndpointResponse struct {
 
 type DeleteProviderEndpointRequest struct {
 	Body struct {
-		ProviderID int32 `json:"providerId"`
-		EndpointID int32 `json:"endpointId"`
+		ProviderID   int32  `json:"providerId"`
+		EndpointPath string `json:"endpointPath"`
 	}
 }
 

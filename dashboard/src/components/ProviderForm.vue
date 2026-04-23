@@ -3,17 +3,19 @@ import { ref } from 'vue'
 import { useApi } from '@/composables/useApi'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import ModelListEditor from '@/components/ModelListEditor.vue'
+import type { ProviderView } from '@/api'
 
 const emit = defineEmits<{ close: []; saved: [] }>()
-const props = defineProps<{ onSave?: () => void }>()
+const props = defineProps<{ provider?: ProviderView; onSave?: () => void }>()
 const api = useApi()
 
+const isEdit = !!props.provider
 const form = ref({
-  name: '',
-  credentials: '',
-  priority: 0,
-  providerModels: [] as string[],
-  annotations: {} as Record<string, string>,
+  name: props.provider?.name ?? '',
+  credentials: props.provider?.credentials ?? '',
+  priority: props.provider?.priority ?? 0,
+  providerModels: [...(props.provider?.providerModels ?? [])] as string[],
+  annotations: { ...(props.provider?.annotations ?? {}) } as Record<string, string>,
 })
 const saving = ref(false)
 const error = ref('')
@@ -22,15 +24,16 @@ async function submit() {
   saving.value = true
   error.value = ''
   const body = {
+    id: props.provider?.id ?? 0,
     name: form.value.name,
     credentials: form.value.credentials,
     priority: form.value.priority,
     providerModels: form.value.providerModels,
     annotations: form.value.annotations,
   }
-  const { error: err } = await api.POST('/api/picotera/providers', { body })
+  const { error: err } = await api.PUT('/api/picotera/providers', { body })
   if (err) {
-    error.value = err.message ?? '创建失败'
+    error.value = err.message ?? '操作失败'
   } else {
     props.onSave?.()
     emit('close')
@@ -42,7 +45,7 @@ async function submit() {
 <template>
   <div class="form-panel">
     <div class="form-header">
-      <h2 class="form-title">新增渠道</h2>
+      <h2 class="form-title">{{ isEdit ? '编辑渠道' : '新增渠道' }}</h2>
       <button class="close-btn" @click="emit('close')">&times;</button>
     </div>
     <form @submit.prevent="submit" class="form-body">
@@ -69,7 +72,7 @@ async function submit() {
       <div v-if="error" class="form-error">{{ error }}</div>
       <div class="form-actions">
         <button type="button" class="btn-ghost" @click="emit('close')">取消</button>
-        <button type="submit" class="btn-primary" :disabled="saving">{{ saving ? '保存中…' : '创建' }}</button>
+        <button type="submit" class="btn-primary" :disabled="saving">{{ saving ? '保存中…' : isEdit ? '更新' : '创建' }}</button>
       </div>
     </form>
   </div>

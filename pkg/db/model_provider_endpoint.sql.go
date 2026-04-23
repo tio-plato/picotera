@@ -13,38 +13,38 @@ import (
 
 const deleteModelProviderEndpoint = `-- name: DeleteModelProviderEndpoint :exec
 DELETE FROM model_provider_endpoint
-WHERE model_name = $1 AND provider_id = $2 AND endpoint_id = $3
+WHERE model_name = $1 AND provider_id = $2 AND endpoint_path = $3
 `
 
 type DeleteModelProviderEndpointParams struct {
-	ModelName  string `json:"modelName"`
-	ProviderID int32  `json:"providerId"`
-	EndpointID int32  `json:"endpointId"`
+	ModelName    string `json:"modelName"`
+	ProviderID   int32  `json:"providerId"`
+	EndpointPath string `json:"endpointPath"`
 }
 
 func (q *Queries) DeleteModelProviderEndpoint(ctx context.Context, arg DeleteModelProviderEndpointParams) error {
-	_, err := q.db.Exec(ctx, deleteModelProviderEndpoint, arg.ModelName, arg.ProviderID, arg.EndpointID)
+	_, err := q.db.Exec(ctx, deleteModelProviderEndpoint, arg.ModelName, arg.ProviderID, arg.EndpointPath)
 	return err
 }
 
 const getModelProviderEndpoint = `-- name: GetModelProviderEndpoint :one
-SELECT model_name, provider_id, endpoint_id, upstream_model_name, priority, annotations FROM model_provider_endpoint
-WHERE model_name = $1 AND provider_id = $2 AND endpoint_id = $3
+SELECT model_name, provider_id, endpoint_path, upstream_model_name, priority, annotations FROM model_provider_endpoint
+WHERE model_name = $1 AND provider_id = $2 AND endpoint_path = $3
 `
 
 type GetModelProviderEndpointParams struct {
-	ModelName  string `json:"modelName"`
-	ProviderID int32  `json:"providerId"`
-	EndpointID int32  `json:"endpointId"`
+	ModelName    string `json:"modelName"`
+	ProviderID   int32  `json:"providerId"`
+	EndpointPath string `json:"endpointPath"`
 }
 
 func (q *Queries) GetModelProviderEndpoint(ctx context.Context, arg GetModelProviderEndpointParams) (ModelProviderEndpoint, error) {
-	row := q.db.QueryRow(ctx, getModelProviderEndpoint, arg.ModelName, arg.ProviderID, arg.EndpointID)
+	row := q.db.QueryRow(ctx, getModelProviderEndpoint, arg.ModelName, arg.ProviderID, arg.EndpointPath)
 	var i ModelProviderEndpoint
 	err := row.Scan(
 		&i.ModelName,
 		&i.ProviderID,
-		&i.EndpointID,
+		&i.EndpointPath,
 		&i.UpstreamModelName,
 		&i.Priority,
 		&i.Annotations,
@@ -53,37 +53,37 @@ func (q *Queries) GetModelProviderEndpoint(ctx context.Context, arg GetModelProv
 }
 
 const listModelProviderEndpoints = `-- name: ListModelProviderEndpoints :many
-SELECT model_name, provider_id, endpoint_id, upstream_model_name, priority, annotations FROM model_provider_endpoint
+SELECT model_name, provider_id, endpoint_path, upstream_model_name, priority, annotations FROM model_provider_endpoint
 WHERE
   ($1::text IS NULL OR model_name = $1)
   AND ($2::int IS NULL OR provider_id = $2)
-  AND ($3::int IS NULL OR endpoint_id = $3)
+  AND ($3::text IS NULL OR endpoint_path = $3)
   AND (
     $4::text IS NULL
-    OR (model_name, provider_id, endpoint_id) > ($4, $5::int, $6::int)
+    OR (model_name, provider_id, endpoint_path) > ($4, $5::int, $6::text)
   )
-ORDER BY model_name, provider_id, endpoint_id
+ORDER BY model_name, provider_id, endpoint_path
 LIMIT $7::int
 `
 
 type ListModelProviderEndpointsParams struct {
-	ModelName        pgtype.Text `json:"modelName"`
-	ProviderID       pgtype.Int4 `json:"providerId"`
-	EndpointID       pgtype.Int4 `json:"endpointId"`
-	CursorModelName  pgtype.Text `json:"cursorModelName"`
-	CursorProviderID pgtype.Int4 `json:"cursorProviderId"`
-	CursorEndpointID pgtype.Int4 `json:"cursorEndpointId"`
-	Limit            pgtype.Int4 `json:"limit"`
+	ModelName          pgtype.Text `json:"modelName"`
+	ProviderID         pgtype.Int4 `json:"providerId"`
+	EndpointPath       pgtype.Text `json:"endpointPath"`
+	CursorModelName    pgtype.Text `json:"cursorModelName"`
+	CursorProviderID   pgtype.Int4 `json:"cursorProviderId"`
+	CursorEndpointPath pgtype.Text `json:"cursorEndpointPath"`
+	Limit              pgtype.Int4 `json:"limit"`
 }
 
 func (q *Queries) ListModelProviderEndpoints(ctx context.Context, arg ListModelProviderEndpointsParams) ([]ModelProviderEndpoint, error) {
 	rows, err := q.db.Query(ctx, listModelProviderEndpoints,
 		arg.ModelName,
 		arg.ProviderID,
-		arg.EndpointID,
+		arg.EndpointPath,
 		arg.CursorModelName,
 		arg.CursorProviderID,
-		arg.CursorEndpointID,
+		arg.CursorEndpointPath,
 		arg.Limit,
 	)
 	if err != nil {
@@ -96,7 +96,7 @@ func (q *Queries) ListModelProviderEndpoints(ctx context.Context, arg ListModelP
 		if err := rows.Scan(
 			&i.ModelName,
 			&i.ProviderID,
-			&i.EndpointID,
+			&i.EndpointPath,
 			&i.UpstreamModelName,
 			&i.Priority,
 			&i.Annotations,
@@ -112,19 +112,19 @@ func (q *Queries) ListModelProviderEndpoints(ctx context.Context, arg ListModelP
 }
 
 const upsertModelProviderEndpoint = `-- name: UpsertModelProviderEndpoint :one
-INSERT INTO model_provider_endpoint (model_name, provider_id, endpoint_id, upstream_model_name, priority, annotations)
+INSERT INTO model_provider_endpoint (model_name, provider_id, endpoint_path, upstream_model_name, priority, annotations)
 VALUES ($1, $2, $3, $4, $5, $6)
-ON CONFLICT (model_name, provider_id, endpoint_id) DO UPDATE SET
+ON CONFLICT (model_name, provider_id, endpoint_path) DO UPDATE SET
   upstream_model_name = EXCLUDED.upstream_model_name,
   priority = EXCLUDED.priority,
   annotations = EXCLUDED.annotations
-RETURNING model_name, provider_id, endpoint_id, upstream_model_name, priority, annotations
+RETURNING model_name, provider_id, endpoint_path, upstream_model_name, priority, annotations
 `
 
 type UpsertModelProviderEndpointParams struct {
 	ModelName         string      `json:"modelName"`
 	ProviderID        int32       `json:"providerId"`
-	EndpointID        int32       `json:"endpointId"`
+	EndpointPath      string      `json:"endpointPath"`
 	UpstreamModelName pgtype.Text `json:"upstreamModelName"`
 	Priority          int32       `json:"priority"`
 	Annotations       []byte      `json:"annotations"`
@@ -134,7 +134,7 @@ func (q *Queries) UpsertModelProviderEndpoint(ctx context.Context, arg UpsertMod
 	row := q.db.QueryRow(ctx, upsertModelProviderEndpoint,
 		arg.ModelName,
 		arg.ProviderID,
-		arg.EndpointID,
+		arg.EndpointPath,
 		arg.UpstreamModelName,
 		arg.Priority,
 		arg.Annotations,
@@ -143,7 +143,7 @@ func (q *Queries) UpsertModelProviderEndpoint(ctx context.Context, arg UpsertMod
 	err := row.Scan(
 		&i.ModelName,
 		&i.ProviderID,
-		&i.EndpointID,
+		&i.EndpointPath,
 		&i.UpstreamModelName,
 		&i.Priority,
 		&i.Annotations,

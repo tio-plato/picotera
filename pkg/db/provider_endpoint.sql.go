@@ -11,23 +11,23 @@ import (
 
 const deleteProviderEndpoint = `-- name: DeleteProviderEndpoint :exec
 DELETE FROM provider_endpoint
-WHERE provider_id = $1 AND endpoint_id = $2
+WHERE provider_id = $1 AND endpoint_path = $2
 `
 
 type DeleteProviderEndpointParams struct {
-	ProviderID int32 `json:"providerId"`
-	EndpointID int32 `json:"endpointId"`
+	ProviderID   int32  `json:"providerId"`
+	EndpointPath string `json:"endpointPath"`
 }
 
 func (q *Queries) DeleteProviderEndpoint(ctx context.Context, arg DeleteProviderEndpointParams) error {
-	_, err := q.db.Exec(ctx, deleteProviderEndpoint, arg.ProviderID, arg.EndpointID)
+	_, err := q.db.Exec(ctx, deleteProviderEndpoint, arg.ProviderID, arg.EndpointPath)
 	return err
 }
 
 const listProviderEndpoints = `-- name: ListProviderEndpoints :many
-SELECT provider_id, endpoint_id, upstream_url FROM provider_endpoint
+SELECT provider_id, endpoint_path, upstream_url FROM provider_endpoint
 WHERE provider_id = $1
-ORDER BY endpoint_id
+ORDER BY endpoint_path
 `
 
 func (q *Queries) ListProviderEndpoints(ctx context.Context, providerID int32) ([]ProviderEndpoint, error) {
@@ -39,7 +39,7 @@ func (q *Queries) ListProviderEndpoints(ctx context.Context, providerID int32) (
 	var items []ProviderEndpoint
 	for rows.Next() {
 		var i ProviderEndpoint
-		if err := rows.Scan(&i.ProviderID, &i.EndpointID, &i.UpstreamUrl); err != nil {
+		if err := rows.Scan(&i.ProviderID, &i.EndpointPath, &i.UpstreamUrl); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -51,22 +51,22 @@ func (q *Queries) ListProviderEndpoints(ctx context.Context, providerID int32) (
 }
 
 const upsertProviderEndpoint = `-- name: UpsertProviderEndpoint :one
-INSERT INTO provider_endpoint (provider_id, endpoint_id, upstream_url)
+INSERT INTO provider_endpoint (provider_id, endpoint_path, upstream_url)
 VALUES ($1, $2, $3)
-ON CONFLICT (provider_id, endpoint_id) DO UPDATE SET
+ON CONFLICT (provider_id, endpoint_path) DO UPDATE SET
   upstream_url = EXCLUDED.upstream_url
-RETURNING provider_id, endpoint_id, upstream_url
+RETURNING provider_id, endpoint_path, upstream_url
 `
 
 type UpsertProviderEndpointParams struct {
-	ProviderID  int32  `json:"providerId"`
-	EndpointID  int32  `json:"endpointId"`
-	UpstreamUrl string `json:"upstreamUrl"`
+	ProviderID   int32  `json:"providerId"`
+	EndpointPath string `json:"endpointPath"`
+	UpstreamUrl  string `json:"upstreamUrl"`
 }
 
 func (q *Queries) UpsertProviderEndpoint(ctx context.Context, arg UpsertProviderEndpointParams) (ProviderEndpoint, error) {
-	row := q.db.QueryRow(ctx, upsertProviderEndpoint, arg.ProviderID, arg.EndpointID, arg.UpstreamUrl)
+	row := q.db.QueryRow(ctx, upsertProviderEndpoint, arg.ProviderID, arg.EndpointPath, arg.UpstreamUrl)
 	var i ProviderEndpoint
-	err := row.Scan(&i.ProviderID, &i.EndpointID, &i.UpstreamUrl)
+	err := row.Scan(&i.ProviderID, &i.EndpointPath, &i.UpstreamUrl)
 	return i, err
 }

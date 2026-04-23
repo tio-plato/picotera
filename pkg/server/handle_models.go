@@ -64,3 +64,10 @@ func (s *Server) handleListModels(ctx context.Context, input *struct{}) (*contra
 		Body: modelViews,
 	}, nil
 }
+
+func (s *Server) handleDeleteModel(ctx context.Context, input *contract.DeleteModelRequest) (*struct{}, error) {
+	if err := s.queries.DeleteModel(ctx, input.Body.Name); err != nil {
+		return nil, huma.Error500InternalServerError("failed to delete model", err)
+	}
+	return &struct{}{}, nil
+}

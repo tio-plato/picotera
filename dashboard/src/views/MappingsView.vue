@@ -49,7 +49,7 @@ function confirmDeleteMapping(m: ModelProviderEndpointView) {
     message: `确定要删除模型「${m.modelName}」的映射吗？此操作不可撤销。`,
     onConfirm: async () => {
       await api.POST('/api/picotera/model-provider-endpoints/delete', {
-        body: { modelName: m.modelName, providerId: m.providerId, endpointId: m.endpointId },
+        body: { modelName: m.modelName, providerId: m.providerId, endpointPath: m.endpointPath },
       })
       fetchMappings()
     },
@@ -85,10 +85,10 @@ function confirmDeleteMapping(m: ModelProviderEndpointView) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="m in mappings" :key="`${m.modelName}-${m.providerId}-${m.endpointId}`">
+          <tr v-for="m in mappings" :key="`${m.modelName}-${m.providerId}-${m.endpointPath}`">
             <td class="mono font-medium">{{ m.modelName }}</td>
             <td class="mono muted">{{ m.providerId }}</td>
-            <td class="mono muted">{{ m.endpointId }}</td>
+            <td class="mono muted">{{ m.endpointPath }}</td>
             <td class="mono">{{ m.upstreamModelName || '—' }}</td>
             <td><span class="badge">{{ m.priority }}</span></td>
             <td>

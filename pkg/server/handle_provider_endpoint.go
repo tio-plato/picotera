@@ -32,8 +32,8 @@ func (s *Server) handleUpsertProviderEndpoint(ctx context.Context, input *contra
 
 func (s *Server) handleDeleteProviderEndpoint(ctx context.Context, input *contract.DeleteProviderEndpointRequest) (*struct{}, error) {
 	err := s.queries.DeleteProviderEndpoint(ctx, db.DeleteProviderEndpointParams{
-		ProviderID: input.Body.ProviderID,
-		EndpointID: input.Body.EndpointID,
+		ProviderID:   input.Body.ProviderID,
+		EndpointPath: input.Body.EndpointPath,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to delete provider endpoint", err)

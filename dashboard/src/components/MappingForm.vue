@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useApi } from '@/composables/useApi'
-import type { ModelProviderEndpointView, ModelView, ProviderView } from '@/api'
+import type { EndpointView, ModelProviderEndpointView, ModelView, ProviderView } from '@/api'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 
 const emit = defineEmits<{ close: [] }>()
@@ -12,7 +12,7 @@ const isEdit = !!props.mapping
 const form = ref({
   modelName: props.mapping?.modelName ?? '',
   providerId: props.mapping?.providerId ?? 0,
-  endpointId: props.mapping?.endpointId ?? 0,
+  endpointPath: props.mapping?.endpointPath ?? '',
   upstreamModelName: props.mapping?.upstreamModelName ?? '',
   priority: props.mapping?.priority ?? 0,
   annotations: { ...(props.mapping?.annotations ?? {}) } as Record<string, string>,
@@ -20,14 +20,17 @@ const form = ref({
 
 const models = ref<ModelView[]>([])
 const providers = ref<ProviderView[]>([])
+const endpoints = ref<EndpointView[]>([])
 
 onMounted(async () => {
-  const [m, p] = await Promise.all([
+  const [m, p, e] = await Promise.all([
     api.GET('/api/picotera/models'),
     api.GET('/api/picotera/providers'),
+    api.GET('/api/picotera/endpoints'),
   ])
   if (!m.error && m.data) models.value = m.data as ModelView[]
   if (!p.error && p.data) providers.value = p.data as ProviderView[]
+  if (!e.error && e.data) endpoints.value = e.data as EndpointView[]
 })
 
 const saving = ref(false)
@@ -39,7 +42,7 @@ async function submit() {
   const body = {
     modelName: form.value.modelName,
     providerId: form.value.providerId,
-    endpointId: form.value.endpointId,
+    endpointPath: form.value.endpointPath,
     upstreamModelName: form.value.upstreamModelName || undefined,
     priority: form.value.priority,
     annotations: form.value.annotations,
@@ -77,8 +80,11 @@ async function submit() {
         </select>
       </label>
       <label class="field">
-        <span class="field-label">端点 ID</span>
-        <input v-model.number="form.endpointId" type="number" class="input" required :disabled="isEdit" placeholder="输入端点 ID" />
+        <span class="field-label">端点</span>
+        <select v-model="form.endpointPath" class="input" required :disabled="isEdit">
+          <option value="" disabled>选择端点</option>
+          <option v-for="e in endpoints" :key="e.path" :value="e.path">{{ e.path }} — {{ e.name }}</option>
+        </select>
       </label>
       <label class="field">
         <span class="field-label">上游模型名称</span>

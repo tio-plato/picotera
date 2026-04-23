@@ -20,17 +20,17 @@ func (s *Server) handleListModelProviderEndpoints(ctx context.Context, input *co
 
 	var cursorModelName pgtype.Text
 	var cursorProviderID pgtype.Int4
-	var cursorEndpointID pgtype.Int4
+	var cursorEndpointPath pgtype.Text
 
 	if input.Cursor != "" {
-		var modelName string
-		var providerID, endpointID int32
-		if err := contract.DecodeCursor(input.Cursor, "modelName", &modelName, "providerId", &providerID, "endpointId", &endpointID); err != nil {
+		var modelName, endpointPath string
+		var providerID int32
+		if err := contract.DecodeCursor(input.Cursor, "modelName", &modelName, "providerId", &providerID, "endpointPath", &endpointPath); err != nil {
 			return nil, huma.Error400BadRequest("invalid cursor", err)
 		}
 		cursorModelName = pgtype.Text{String: modelName, Valid: true}
 		cursorProviderID = pgtype.Int4{Int32: providerID, Valid: true}
-		cursorEndpointID = pgtype.Int4{Int32: endpointID, Valid: true}
+		cursorEndpointPath = pgtype.Text{String: endpointPath, Valid: true}
 	}
 
 	var filterModelName pgtype.Text
@@ -43,19 +43,19 @@ func (s *Server) handleListModelProviderEndpoints(ctx context.Context, input *co
 		filterProviderID = pgtype.Int4{Int32: input.ProviderID, Valid: true}
 	}
 
-	var filterEndpointID pgtype.Int4
-	if input.EndpointID != 0 {
-		filterEndpointID = pgtype.Int4{Int32: input.EndpointID, Valid: true}
+	var filterEndpointPath pgtype.Text
+	if input.EndpointPath != "" {
+		filterEndpointPath = pgtype.Text{String: input.EndpointPath, Valid: true}
 	}
 
 	rows, err := s.queries.ListModelProviderEndpoints(ctx, db.ListModelProviderEndpointsParams{
-		ModelName:        filterModelName,
-		ProviderID:       filterProviderID,
-		EndpointID:       filterEndpointID,
-		CursorModelName:  cursorModelName,
-		CursorProviderID: cursorProviderID,
-		CursorEndpointID: cursorEndpointID,
-		Limit:            pgtype.Int4{Int32: fetchLimit, Valid: true},
+		ModelName:          filterModelName,
+		ProviderID:         filterProviderID,
+		EndpointPath:       filterEndpointPath,
+		CursorModelName:    cursorModelName,
+		CursorProviderID:   cursorProviderID,
+		CursorEndpointPath: cursorEndpointPath,
+		Limit:              pgtype.Int4{Int32: fetchLimit, Valid: true},
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list model provider endpoints", err)
@@ -78,7 +78,7 @@ func (s *Server) handleListModelProviderEndpoints(ctx context.Context, input *co
 	pagination := contract.PaginationInfo{HasMore: hasMore}
 	if hasMore && len(items) > 0 {
 		last := items[len(items)-1]
-		cursor, err := contract.EncodeCursor("modelName", last.ModelName, "providerId", last.ProviderID, "endpointId", last.EndpointID)
+		cursor, err := contract.EncodeCursor("modelName", last.ModelName, "providerId", last.ProviderID, "endpointPath", last.EndpointPath)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to encode cursor", err)
 		}
@@ -95,9 +95,9 @@ func (s *Server) handleListModelProviderEndpoints(ctx context.Context, input *co
 
 func (s *Server) handleGetModelProviderEndpoint(ctx context.Context, input *contract.GetModelProviderEndpointRequest) (*contract.GetModelProviderEndpointResponse, error) {
 	mpe, err := s.queries.GetModelProviderEndpoint(ctx, db.GetModelProviderEndpointParams{
-		ModelName:  input.ModelName,
-		ProviderID: input.ProviderID,
-		EndpointID: input.EndpointID,
+		ModelName:    input.ModelName,
+		ProviderID:   input.ProviderID,
+		EndpointPath: input.EndpointPath,
 	})
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -135,9 +135,9 @@ func (s *Server) handleUpsertModelProviderEndpoint(ctx context.Context, input *c
 
 func (s *Server) handleDeleteModelProviderEndpoint(ctx context.Context, input *contract.DeleteModelProviderEndpointRequest) (*struct{}, error) {
 	err := s.queries.DeleteModelProviderEndpoint(ctx, db.DeleteModelProviderEndpointParams{
-		ModelName:  input.Body.ModelName,
-		ProviderID: input.Body.ProviderID,
-		EndpointID: input.Body.EndpointID,
+		ModelName:    input.Body.ModelName,
+		ProviderID:   input.Body.ProviderID,
+		EndpointPath: input.Body.EndpointPath,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to delete model provider endpoint", err)

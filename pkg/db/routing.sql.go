@@ -45,21 +45,21 @@ func (q *Queries) GetEndpointByPath(ctx context.Context, path string) (Endpoint,
 }
 
 const getProvidersByEndpointAndModel = `-- name: GetProvidersByEndpointAndModel :many
-SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_id, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials
+SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials
   FROM model_provider_endpoint AS mpe
   LEFT JOIN provider AS p ON mpe.provider_id = p.id
-  WHERE mpe.endpoint_id = $1 AND mpe.model_name = $2
+  WHERE mpe.endpoint_path = $1 AND mpe.model_name = $2
 `
 
 type GetProvidersByEndpointAndModelParams struct {
-	EndpointID int32  `json:"endpointId"`
-	ModelName  string `json:"modelName"`
+	EndpointPath string `json:"endpointPath"`
+	ModelName    string `json:"modelName"`
 }
 
 type GetProvidersByEndpointAndModelRow struct {
 	ModelName           string      `json:"modelName"`
 	ProviderID          int32       `json:"providerId"`
-	EndpointID          int32       `json:"endpointId"`
+	EndpointPath        string      `json:"endpointPath"`
 	UpstreamModelName   pgtype.Text `json:"upstreamModelName"`
 	Priority            int32       `json:"priority"`
 	Annotations         []byte      `json:"annotations"`
@@ -68,7 +68,7 @@ type GetProvidersByEndpointAndModelRow struct {
 }
 
 func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error) {
-	rows, err := q.db.Query(ctx, getProvidersByEndpointAndModel, arg.EndpointID, arg.ModelName)
+	rows, err := q.db.Query(ctx, getProvidersByEndpointAndModel, arg.EndpointPath, arg.ModelName)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 		if err := rows.Scan(
 			&i.ModelName,
 			&i.ProviderID,
-			&i.EndpointID,
+			&i.EndpointPath,
 			&i.UpstreamModelName,
 			&i.Priority,
 			&i.Annotations,

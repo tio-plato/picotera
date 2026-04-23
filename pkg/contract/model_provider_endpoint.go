@@ -12,7 +12,7 @@ import (
 type ModelProviderEndpointView struct {
 	ModelName         string            `json:"modelName"`
 	ProviderID        int32             `json:"providerId"`
-	EndpointID        int32             `json:"endpointId"`
+	EndpointPath      string            `json:"endpointPath"`
 	UpstreamModelName string            `json:"upstreamModelName,omitempty"`
 	Priority          int32             `json:"priority"`
 	Annotations       map[string]string `json:"annotations"`
@@ -27,7 +27,7 @@ func ToModelProviderEndpointView(mpe *db.ModelProviderEndpoint) (*ModelProviderE
 	return &ModelProviderEndpointView{
 		ModelName:         mpe.ModelName,
 		ProviderID:        mpe.ProviderID,
-		EndpointID:        mpe.EndpointID,
+		EndpointPath:      mpe.EndpointPath,
 		UpstreamModelName: mpe.UpstreamModelName.String,
 		Priority:          mpe.Priority,
 		Annotations:       annotations,
@@ -43,7 +43,7 @@ func FromModelProviderEndpointView(view *ModelProviderEndpointView) (*db.UpsertM
 	return &db.UpsertModelProviderEndpointParams{
 		ModelName:         view.ModelName,
 		ProviderID:        view.ProviderID,
-		EndpointID:        view.EndpointID,
+		EndpointPath:      view.EndpointPath,
 		UpstreamModelName: pgtype.Text{String: view.UpstreamModelName, Valid: view.UpstreamModelName != ""},
 		Priority:          view.Priority,
 		Annotations:       annotations,
@@ -52,17 +52,17 @@ func FromModelProviderEndpointView(view *ModelProviderEndpointView) (*db.UpsertM
 
 type ListModelProviderEndpointsRequest struct {
 	PaginationRequest
-	ModelName  string `query:"modelName,omitempty"`
-	ProviderID int32  `query:"providerId,omitempty"`
-	EndpointID int32  `query:"endpointId,omitempty"`
+	ModelName    string `query:"modelName,omitempty"`
+	ProviderID   int32  `query:"providerId,omitempty"`
+	EndpointPath string `query:"endpointPath,omitempty"`
 }
 
 type ListModelProviderEndpointsResponse = PaginatedResponse[ModelProviderEndpointView]
 
 type GetModelProviderEndpointRequest struct {
-	ModelName  string `path:"modelName"`
-	ProviderID int32  `path:"providerId"`
-	EndpointID int32  `path:"endpointId"`
+	ModelName    string `query:"modelName"`
+	ProviderID   int32  `query:"providerId"`
+	EndpointPath string `query:"endpointPath"`
 }
 
 type GetModelProviderEndpointResponse struct {
@@ -79,9 +79,9 @@ type UpsertModelProviderEndpointResponse struct {
 
 type DeleteModelProviderEndpointRequest struct {
 	Body struct {
-		ModelName  string `json:"modelName"`
-		ProviderID int32  `json:"providerId"`
-		EndpointID int32  `json:"endpointId"`
+		ModelName    string `json:"modelName"`
+		ProviderID   int32  `json:"providerId"`
+		EndpointPath string `json:"endpointPath"`
 	}
 }
 
@@ -95,7 +95,7 @@ var OperationListModelProviderEndpoints = huma.Operation{
 var OperationGetModelProviderEndpoint = huma.Operation{
 	OperationID: "getModelProviderEndpoint",
 	Method:      http.MethodGet,
-	Path:        "/model-provider-endpoints/{modelName}/{providerId}/{endpointId}",
+	Path:        "/model-provider-endpoints/get",
 	Summary:     "Get a model provider endpoint",
 }
 

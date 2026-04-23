@@ -74,7 +74,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/picotera/model-provider-endpoints/{modelName}/{providerId}/{endpointId}": {
+    "/api/picotera/model-provider-endpoints/get": {
         parameters: {
             query?: never;
             header?: never;
@@ -109,6 +109,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/models/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a model */
+        post: operations["deleteModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/models/{name}": {
         parameters: {
             query?: never;
@@ -126,7 +143,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/picotera/providers": {
+    "/api/picotera/provider-endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List provider endpoints */
+        get: operations["listProviderEndpoints"];
+        /** Upsert a provider endpoint */
+        put: operations["upsertProviderEndpoint"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/provider-endpoints/delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -135,8 +170,44 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Delete a provider endpoint */
+        post: operations["deleteProviderEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all providers */
+        get: operations["listProviders"];
+        /** Upsert a provider */
+        put: operations["upsertProvider"];
         /** Create a new provider */
         post: operations["createProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/providers/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a provider */
+        post: operations["deleteProvider"];
         delete?: never;
         options?: never;
         head?: never;
@@ -196,11 +267,40 @@ export interface components {
              * @example https://example.com/schemas/DeleteModelProviderEndpointRequestBody.json
              */
             readonly $schema?: string;
-            /** Format: int32 */
-            endpointId: number;
+            endpointPath: string;
             modelName: string;
             /** Format: int32 */
             providerId: number;
+        };
+        DeleteModelRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteModelRequestBody.json
+             */
+            readonly $schema?: string;
+            name: string;
+        };
+        DeleteProviderEndpointRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteProviderEndpointRequestBody.json
+             */
+            readonly $schema?: string;
+            endpointPath: string;
+            /** Format: int32 */
+            providerId: number;
+        };
+        DeleteProviderRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteProviderRequestBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            id: number;
         };
         EndpointView: {
             /**
@@ -225,8 +325,7 @@ export interface components {
             annotations: {
                 [key: string]: string;
             };
-            /** Format: int32 */
-            endpointId: number;
+            endpointPath: string;
             modelName: string;
             /** Format: int32 */
             priority: number;
@@ -271,6 +370,18 @@ export interface components {
             details: string[] | null;
             message: string;
         };
+        ProviderEndpointView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ProviderEndpointView.json
+             */
+            readonly $schema?: string;
+            endpointPath: string;
+            /** Format: int32 */
+            providerId: number;
+            upstreamUrl: string;
+        };
         ProviderView: {
             /**
              * Format: uri
@@ -284,6 +395,24 @@ export interface components {
             credentials: string;
             /** Format: int32 */
             id: number;
+            name: string;
+            /** Format: int32 */
+            priority: number;
+            providerModels: string[] | null;
+        };
+        UpsertProviderRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpsertProviderRequestBody.json
+             */
+            readonly $schema?: string;
+            annotations: {
+                [key: string]: string;
+            };
+            credentials: string;
+            /** Format: int32 */
+            id?: number;
             name: string;
             /** Format: int32 */
             priority: number;
@@ -398,7 +527,7 @@ export interface operations {
                 cursor?: string;
                 modelName?: string;
                 providerId?: number;
-                endpointId?: number;
+                endpointPath?: string;
             };
             header?: never;
             path?: never;
@@ -492,13 +621,13 @@ export interface operations {
     };
     getModelProviderEndpoint: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                modelName: string;
-                providerId: number;
-                endpointId: number;
+            query?: {
+                modelName?: string;
+                providerId?: number;
+                endpointPath?: string;
             };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -585,6 +714,37 @@ export interface operations {
             };
         };
     };
+    deleteModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteModelRequestBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     getModel: {
         parameters: {
             query?: never;
@@ -603,6 +763,163 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    listProviderEndpoints: {
+        parameters: {
+            query?: {
+                providerId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderEndpointView"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    upsertProviderEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderEndpointView"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderEndpointView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    deleteProviderEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteProviderEndpointRequestBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    listProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderView"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    upsertProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertProviderRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderView"];
                 };
             };
             /** @description Error */
@@ -637,6 +954,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProviderView"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    deleteProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteProviderRequestBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

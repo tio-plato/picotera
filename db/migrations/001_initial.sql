@@ -20,9 +20,9 @@ CREATE TABLE endpoint (
 -- provider_endpoint indicates that a provider's endpoint is available for a given endpoint
 CREATE TABLE provider_endpoint (
   provider_id INTEGER NOT NULL,
-  endpoint_id INTEGER NOT NULL,
+  endpoint_path TEXT NOT NULL,
   upstream_url TEXT NOT NULL,
-  PRIMARY KEY (provider_id, endpoint_id)
+  PRIMARY KEY (provider_id, endpoint_path)
 );
 
 -- model is a model that can be used to access and route requests to the API
@@ -37,11 +37,11 @@ CREATE TABLE model (
 CREATE TABLE model_provider_endpoint (
   model_name TEXT NOT NULL,
   provider_id INTEGER NOT NULL,
-  endpoint_id INTEGER NOT NULL,
+  endpoint_path TEXT NOT NULL,
   upstream_model_name TEXT, -- model name in the upstream API, if different from the model name
   priority INTEGER NOT NULL,
   annotations JSONB NOT NULL,
-  PRIMARY KEY (model_name, provider_id, endpoint_id)
+  PRIMARY KEY (model_name, provider_id, endpoint_path)
 );
 
 -- api_key is a downstream API key for a given provider
@@ -60,7 +60,7 @@ CREATE TABLE request (
   parent_span_id TEXT,
   provider_id INTEGER NOT NULL,
   -- request metadata
-  endpoint_id INTEGER NOT NULL,
+  endpoint_path TEXT NOT NULL,
   api_key_id INTEGER NOT NULL,
   model TEXT,
   -- response metadata

@@ -7,7 +7,7 @@ const { visible, component, props, close } = useOverlay()
 <template>
   <Teleport to="body">
     <Transition name="overlay">
-      <div v-if="visible" class="overlay-backdrop" @click.self="close">
+      <div v-if="visible" class="overlay-backdrop">
         <div class="overlay-container">
           <component :is="component" v-bind="props" @close="close" />
         </div>

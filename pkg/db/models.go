@@ -33,7 +33,7 @@ type Model struct {
 type ModelProviderEndpoint struct {
 	ModelName         string      `json:"modelName"`
 	ProviderID        int32       `json:"providerId"`
-	EndpointID        int32       `json:"endpointId"`
+	EndpointPath      string      `json:"endpointPath"`
 	UpstreamModelName pgtype.Text `json:"upstreamModelName"`
 	Priority          int32       `json:"priority"`
 	Annotations       []byte      `json:"annotations"`
@@ -49,9 +49,9 @@ type Provider struct {
 }
 
 type ProviderEndpoint struct {
-	ProviderID  int32  `json:"providerId"`
-	EndpointID  int32  `json:"endpointId"`
-	UpstreamUrl string `json:"upstreamUrl"`
+	ProviderID   int32  `json:"providerId"`
+	EndpointPath string `json:"endpointPath"`
+	UpstreamUrl  string `json:"upstreamUrl"`
 }
 
 type Request struct {
@@ -59,7 +59,7 @@ type Request struct {
 	SpanID           pgtype.Text      `json:"spanId"`
 	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
 	ProviderID       int32            `json:"providerId"`
-	EndpointID       int32            `json:"endpointId"`
+	EndpointPath     string           `json:"endpointPath"`
 	ApiKeyID         int32            `json:"apiKeyId"`
 	Model            pgtype.Text      `json:"model"`
 	InputTokens      pgtype.Int4      `json:"inputTokens"`

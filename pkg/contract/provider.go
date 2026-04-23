@@ -39,6 +39,27 @@ type CreateProviderResponse struct {
 	Body ProviderView
 }
 
+type UpsertProviderRequest struct {
+	Body struct {
+		ID             int32             `json:"id,omitempty"`
+		Name           string            `json:"name"`
+		Credentials    string            `json:"credentials"`
+		Priority       int32             `json:"priority"`
+		ProviderModels []string          `json:"providerModels"`
+		Annotations    map[string]string `json:"annotations"`
+	}
+}
+
+type UpsertProviderResponse struct {
+	Body ProviderView
+}
+
+type DeleteProviderRequest struct {
+	Body struct {
+		ID int32 `json:"id"`
+	}
+}
+
 func ToProviderView(provider *db.Provider) (*ProviderView, error) {
 	var providerModels []string
 	err := json.Unmarshal(provider.ProviderModels, &providerModels)
@@ -106,4 +127,18 @@ var OperationCreateProvider = huma.Operation{
 	Method:      http.MethodPost,
 	Path:        "/providers",
 	Summary:     "Create a new provider",
+}
+
+var OperationUpsertProvider = huma.Operation{
+	OperationID: "upsertProvider",
+	Method:      http.MethodPut,
+	Path:        "/providers",
+	Summary:     "Upsert a provider",
+}
+
+var OperationDeleteProvider = huma.Operation{
+	OperationID: "deleteProvider",
+	Method:      http.MethodPost,
+	Path:        "/providers/delete",
+	Summary:     "Delete a provider",
 }

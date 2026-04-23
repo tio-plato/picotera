@@ -26,6 +26,12 @@ type PutModelRequest struct {
 	Body ModelView
 }
 
+type DeleteModelRequest struct {
+	Body struct {
+		Name string `json:"name"`
+	}
+}
+
 type ListModelsResponse struct {
 	Body []ModelView
 }
@@ -49,6 +55,13 @@ var OperationPutModel = huma.Operation{
 	Method:      http.MethodPut,
 	Path:        "/models",
 	Summary:     "Upsert a model",
+}
+
+var OperationDeleteModel = huma.Operation{
+	OperationID: "deleteModel",
+	Method:      http.MethodPost,
+	Path:        "/models/delete",
+	Summary:     "Delete a model",
 }
 
 func ToModelView(model *db.Model) (*ModelView, error) {
