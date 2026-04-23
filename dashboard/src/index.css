@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tailwindcss-primeui";
+@import 'primeicons/primeicons.css';
+
 
 @theme {
   --font-sans: 'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif;
@@ -56,6 +58,136 @@
   --shadow-xs: 0 1px 1px oklch(0.2 0.02 255 / 0.04);
   --shadow-sm: 0 1px 2px oklch(0.2 0.02 255 / 0.05), 0 1px 1px oklch(0.2 0.02 255 / 0.03);
   --shadow-lg: 0 18px 40px -12px oklch(0.15 0.02 255 / 0.22), 0 4px 12px oklch(0.15 0.02 255 / 0.06);
+}
+
+/* ---------- Themes ---------- */
+/* @theme above provides the "light" defaults (so Tailwind utilities generate).
+   data-theme="X" overrides re-assign the same custom properties. */
+
+:root[data-theme="solarized-light"] {
+  --color-surface-0: oklch(0.985 0.028 92);
+  --color-surface-50: oklch(0.965 0.036 92);
+  --color-surface-100: oklch(0.94 0.045 90);
+  --color-surface-200: oklch(0.895 0.05 88);
+  --color-surface-300: oklch(0.84 0.055 85);
+
+  --color-ink: oklch(0.42 0.03 210);
+  --color-ink-muted: oklch(0.53 0.03 210);
+  --color-ink-faint: oklch(0.66 0.025 200);
+
+  --color-accent: oklch(0.58 0.14 235);
+  --color-accent-strong: oklch(0.50 0.16 235);
+  --color-accent-faint: oklch(0.93 0.05 235);
+  --color-accent-ink: oklch(0.42 0.14 235);
+
+  --color-indicator-ok: oklch(0.60 0.14 135);
+  --color-indicator-ok-ink: oklch(0.40 0.12 135);
+  --color-indicator-ok-faint: oklch(0.93 0.06 135);
+  --color-indicator-warn: oklch(0.70 0.14 70);
+  --color-indicator-warn-ink: oklch(0.48 0.12 60);
+  --color-indicator-warn-faint: oklch(0.94 0.06 75);
+  --color-indicator-err: oklch(0.58 0.18 25);
+  --color-indicator-err-ink: oklch(0.42 0.16 25);
+  --color-indicator-err-faint: oklch(0.94 0.05 25);
+
+  --color-line: oklch(0.88 0.04 90);
+  --color-line-soft: oklch(0.93 0.035 90);
+  --color-card-border: var(--color-line);
+  --color-card-bg: var(--color-surface-0);
+
+  --color-sidebar-bg: oklch(0.955 0.035 92);
+  --color-sidebar-border: var(--color-line);
+  --color-sidebar-text: oklch(0.46 0.03 210);
+  --color-sidebar-text-active: oklch(0.32 0.03 210);
+  --color-sidebar-hover: oklch(0.93 0.045 90);
+  --color-sidebar-active-bg: var(--color-accent-faint);
+  --color-sidebar-active-text: var(--color-accent-ink);
+
+  --color-overlay-bg: oklch(0.35 0.03 210 / 0.42);
+}
+
+:root[data-theme="solarized-dark"] {
+  --color-surface-0: oklch(0.30 0.035 210);
+  --color-surface-50: oklch(0.26 0.035 210);
+  --color-surface-100: oklch(0.34 0.035 210);
+  --color-surface-200: oklch(0.39 0.035 210);
+  --color-surface-300: oklch(0.46 0.03 210);
+
+  --color-ink: oklch(0.82 0.02 205);
+  --color-ink-muted: oklch(0.70 0.025 205);
+  --color-ink-faint: oklch(0.58 0.025 205);
+
+  --color-accent: oklch(0.68 0.14 235);
+  --color-accent-strong: oklch(0.76 0.15 235);
+  --color-accent-faint: oklch(0.36 0.08 235);
+  --color-accent-ink: oklch(0.84 0.12 235);
+
+  --color-indicator-ok: oklch(0.70 0.14 140);
+  --color-indicator-ok-ink: oklch(0.86 0.12 140);
+  --color-indicator-ok-faint: oklch(0.34 0.09 140);
+  --color-indicator-warn: oklch(0.74 0.14 75);
+  --color-indicator-warn-ink: oklch(0.88 0.12 75);
+  --color-indicator-warn-faint: oklch(0.36 0.09 70);
+  --color-indicator-err: oklch(0.66 0.18 25);
+  --color-indicator-err-ink: oklch(0.86 0.14 25);
+  --color-indicator-err-faint: oklch(0.34 0.10 25);
+
+  --color-line: oklch(0.36 0.035 210);
+  --color-line-soft: oklch(0.32 0.035 210);
+  --color-card-border: var(--color-line);
+  --color-card-bg: var(--color-surface-0);
+
+  --color-sidebar-bg: oklch(0.27 0.035 210);
+  --color-sidebar-border: var(--color-line);
+  --color-sidebar-text: oklch(0.72 0.025 205);
+  --color-sidebar-text-active: oklch(0.92 0.02 205);
+  --color-sidebar-hover: oklch(0.34 0.035 210);
+  --color-sidebar-active-bg: var(--color-accent-faint);
+  --color-sidebar-active-text: var(--color-accent-ink);
+
+  --color-overlay-bg: oklch(0.12 0.03 210 / 0.60);
+}
+
+:root[data-theme="dark"] {
+  --color-surface-0: oklch(0.22 0.02 255);
+  --color-surface-50: oklch(0.19 0.02 255);
+  --color-surface-100: oklch(0.26 0.02 255);
+  --color-surface-200: oklch(0.31 0.02 255);
+  --color-surface-300: oklch(0.40 0.02 255);
+
+  --color-ink: oklch(0.93 0.012 255);
+  --color-ink-muted: oklch(0.74 0.015 255);
+  --color-ink-faint: oklch(0.58 0.015 255);
+
+  --color-accent: oklch(0.70 0.18 262);
+  --color-accent-strong: oklch(0.78 0.18 262);
+  --color-accent-faint: oklch(0.32 0.09 262);
+  --color-accent-ink: oklch(0.84 0.15 262);
+
+  --color-indicator-ok: oklch(0.72 0.16 155);
+  --color-indicator-ok-ink: oklch(0.88 0.14 155);
+  --color-indicator-ok-faint: oklch(0.32 0.10 155);
+  --color-indicator-warn: oklch(0.78 0.14 80);
+  --color-indicator-warn-ink: oklch(0.90 0.12 80);
+  --color-indicator-warn-faint: oklch(0.34 0.09 80);
+  --color-indicator-err: oklch(0.70 0.20 25);
+  --color-indicator-err-ink: oklch(0.88 0.14 25);
+  --color-indicator-err-faint: oklch(0.34 0.10 25);
+
+  --color-line: oklch(0.32 0.02 255);
+  --color-line-soft: oklch(0.28 0.02 255);
+  --color-card-border: var(--color-line);
+  --color-card-bg: var(--color-surface-0);
+
+  --color-sidebar-bg: oklch(0.20 0.02 255);
+  --color-sidebar-border: var(--color-line);
+  --color-sidebar-text: oklch(0.76 0.015 255);
+  --color-sidebar-text-active: oklch(0.94 0.012 255);
+  --color-sidebar-hover: oklch(0.27 0.02 255);
+  --color-sidebar-active-bg: var(--color-accent-faint);
+  --color-sidebar-active-text: var(--color-accent-ink);
+
+  --color-overlay-bg: oklch(0.08 0.02 255 / 0.60);
 }
 
 html {

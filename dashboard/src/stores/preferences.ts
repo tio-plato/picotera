@@ -1,0 +1,65 @@
+import { defineStore } from 'pinia'
+import { ref, watch } from 'vue'
+
+export type Theme = 'light' | 'solarized-light' | 'solarized-dark' | 'dark'
+export type PanelMode = 'auto' | 'right' | 'modal'
+
+const STORAGE_KEY = 'picotera.preferences'
+
+const DEFAULTS = {
+  theme: 'light' as Theme,
+  panelMode: 'auto' as PanelMode,
+}
+
+const THEME_VALUES: Theme[] = ['light', 'solarized-light', 'solarized-dark', 'dark']
+const PANEL_MODE_VALUES: PanelMode[] = ['auto', 'right', 'modal']
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return { ...DEFAULTS }
+    const parsed = JSON.parse(raw) as Partial<typeof DEFAULTS>
+    return {
+      theme: THEME_VALUES.includes(parsed.theme as Theme) ? (parsed.theme as Theme) : DEFAULTS.theme,
+      panelMode: PANEL_MODE_VALUES.includes(parsed.panelMode as PanelMode) ? (parsed.panelMode as PanelMode) : DEFAULTS.panelMode,
+    }
+  } catch {
+    return { ...DEFAULTS }
+  }
+}
+
+export const usePreferencesStore = defineStore('preferences', () => {
+  const initial = load()
+  const theme = ref<Theme>(initial.theme)
+  const panelMode = ref<PanelMode>(initial.panelMode)
+
+  function apply() {
+    const root = document.documentElement
+    root.dataset.theme = theme.value
+    root.dataset.panelMode = panelMode.value
+    const dark = theme.value === 'dark' || theme.value === 'solarized-dark'
+    root.classList.toggle('p-dark', dark)
+  }
+
+  function persist() {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ theme: theme.value, panelMode: panelMode.value }),
+      )
+    } catch {
+      // ignore quota / privacy-mode errors
+    }
+  }
+
+  watch([theme, panelMode], () => {
+    apply()
+    persist()
+  })
+
+  function init() {
+    apply()
+  }
+
+  return { theme, panelMode, init }
+})

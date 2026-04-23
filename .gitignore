@@ -2,3 +2,4 @@
 /.env
 /picotera
 .pnpm-store
+node_modules

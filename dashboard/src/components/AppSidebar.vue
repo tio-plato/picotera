@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
+import PreferencesMenu from '@/components/PreferencesMenu.vue'
 
 const route = useRoute()
 
@@ -9,6 +11,11 @@ const nav = [
   { name: 'endpoints', label: '端点' },
   { name: 'mappings', label: '映射' },
 ]
+
+const prefsRef = ref<InstanceType<typeof PreferencesMenu> | null>(null)
+function openPrefs(event: Event) {
+  prefsRef.value?.toggle(event)
+}
 </script>
 
 <template>
@@ -69,11 +76,20 @@ const nav = [
     </nav>
 
     <div class="sidebar-footer">
-      <div class="footer-row">
-        <span class="status-dot" aria-hidden="true"></span>
-        <span class="footer-label">已连接</span>
-      </div>
+      <button
+        class="btn-icon"
+        type="button"
+        aria-label="设置"
+        title="设置"
+        @click="openPrefs"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
       <span class="version">v1.0.0</span>
+      <PreferencesMenu ref="prefsRef" />
     </div>
   </aside>
 </template>
@@ -178,29 +194,12 @@ const nav = [
 .nav-item.active .nav-icon { color: var(--color-accent); }
 
 .sidebar-footer {
-  padding: 0.75rem 1rem 0.875rem;
+  padding: 0.625rem 0.875rem 0.75rem;
   border-top: 1px solid var(--color-sidebar-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-}
-.footer-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4375rem;
-  font-size: 0.75rem;
-  color: var(--color-ink-muted);
-}
-.status-dot {
-  width: 0.4375rem;
-  height: 0.4375rem;
-  border-radius: 999px;
-  background: var(--color-indicator-ok);
-  box-shadow: 0 0 0 2px var(--color-indicator-ok-faint);
-}
-.footer-label {
-  font-weight: 450;
 }
 .version {
   font-family: var(--font-mono);

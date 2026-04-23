@@ -6,6 +6,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { apiPlugin } from './api/plugin'
+import { usePreferencesStore } from './stores/preferences'
 
 import PrimeVue from 'primevue/config';
 import ConfirmationService from 'primevue/confirmationservice';
@@ -17,6 +18,8 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(apiPlugin)
+
+usePreferencesStore().init()
 
 const Noir = definePreset(Aura, {
   semantic: {
@@ -40,6 +43,7 @@ app.use(PrimeVue, {
   theme: {
     preset: Noir,
     options: {
+      darkModeSelector: '.p-dark',
       ripple: true,
       cssLayer: {
         name: 'primevue',
