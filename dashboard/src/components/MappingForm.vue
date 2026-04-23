@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
-import type { EndpointView, ModelProviderEndpointView, ModelView, ProviderView } from '@/api'
+import type { ModelProviderEndpointView, ModelView, ProviderEndpointView, ProviderView } from '@/api'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 
 const emit = defineEmits<{ close: [] }>()
@@ -20,18 +20,57 @@ const form = ref({
 
 const models = ref<ModelView[]>([])
 const providers = ref<ProviderView[]>([])
-const endpoints = ref<EndpointView[]>([])
+const providerEndpoints = ref<ProviderEndpointView[]>([])
+const loadingEndpoints = ref(false)
+
+const hasDirtyEndpoint = computed(
+  () =>
+    isEdit &&
+    !!form.value.endpointPath &&
+    !providerEndpoints.value.some((pe) => pe.endpointPath === form.value.endpointPath),
+)
+
+async function fetchProviderEndpoints(pid: number) {
+  if (!pid) {
+    providerEndpoints.value = []
+    return
+  }
+  loadingEndpoints.value = true
+  const { data, error } = await api.GET('/api/picotera/provider-endpoints', {
+    params: { query: { providerId: pid } },
+  })
+  loadingEndpoints.value = false
+  if (error) return
+  providerEndpoints.value = (data as ProviderEndpointView[]) ?? []
+  if (
+    !isEdit &&
+    form.value.endpointPath &&
+    !providerEndpoints.value.some((pe) => pe.endpointPath === form.value.endpointPath)
+  ) {
+    form.value.endpointPath = ''
+  }
+}
 
 onMounted(async () => {
-  const [m, p, e] = await Promise.all([
+  const [m, p] = await Promise.all([
     api.GET('/api/picotera/models'),
     api.GET('/api/picotera/providers'),
-    api.GET('/api/picotera/endpoints'),
   ])
   if (!m.error && m.data) models.value = m.data as ModelView[]
   if (!p.error && p.data) providers.value = p.data as ProviderView[]
-  if (!e.error && e.data) endpoints.value = e.data as EndpointView[]
+  if (form.value.providerId) fetchProviderEndpoints(form.value.providerId)
 })
+
+watch(
+  () => form.value.providerId,
+  (pid, old) => {
+    if (pid === old) return
+    if (isEdit) return
+    form.value.endpointPath = ''
+    if (pid) fetchProviderEndpoints(pid)
+    else providerEndpoints.value = []
+  },
+)
 
 const saving = ref(false)
 const error = ref('')
@@ -81,9 +120,25 @@ async function submit() {
       </label>
       <label class="field">
         <span class="field-label">端点</span>
-        <select v-model="form.endpointPath" class="input" required :disabled="isEdit">
-          <option value="" disabled>选择端点</option>
-          <option v-for="e in endpoints" :key="e.path" :value="e.path">{{ e.path }} — {{ e.name }}</option>
+        <select
+          v-model="form.endpointPath"
+          class="input"
+          required
+          :disabled="isEdit || !form.providerId || (!providerEndpoints.length && !hasDirtyEndpoint)"
+        >
+          <option value="" disabled>
+            {{ form.providerId
+              ? (loadingEndpoints
+                ? '加载中…'
+                : (providerEndpoints.length ? '选择端点' : '该渠道暂无绑定端点'))
+              : '先选择渠道' }}
+          </option>
+          <option v-for="pe in providerEndpoints" :key="pe.endpointPath" :value="pe.endpointPath">
+            {{ pe.endpointPath }}
+          </option>
+          <option v-if="hasDirtyEndpoint" :value="form.endpointPath">
+            {{ form.endpointPath }}（脏数据）
+          </option>
         </select>
       </label>
       <label class="field">

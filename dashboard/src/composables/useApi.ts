@@ -8,4 +8,4 @@ export function useApi(): ApiClient {
   return api
 }
 
-export type { ProviderView, CreateProviderRequestBody, ModelView, EndpointView, ModelProviderEndpointView, PaginatedBody } from '@/api'
+export type { ProviderView, CreateProviderRequestBody, ModelView, EndpointView, ModelProviderEndpointView, ProviderEndpointView, PaginatedBody } from '@/api'

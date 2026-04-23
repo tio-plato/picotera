@@ -5,4 +5,5 @@ export type CreateProviderRequestBody = components['schemas']['CreateProviderReq
 export type ModelView = components['schemas']['ModelView']
 export type EndpointView = components['schemas']['EndpointView']
 export type ModelProviderEndpointView = components['schemas']['ModelProviderEndpointView']
+export type ProviderEndpointView = components['schemas']['ProviderEndpointView']
 export type PaginatedBody = components['schemas']['PaginatedBodyModelProviderEndpointView']
