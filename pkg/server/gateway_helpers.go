@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,6 +30,8 @@ const (
 	authTypeAPIKey
 )
 
+const credentialsResolverGeneralAPIKey = 1
+
 // gatewayError represents an error that should be returned to the client
 // with a specific HTTP status code and error code.
 type gatewayError struct {
@@ -49,6 +52,17 @@ func writeGatewayError(w http.ResponseWriter, status int, message, code string) 
 		"code":    code,
 		"details": []string{},
 	})
+}
+
+// handleGatewayErr writes a gateway error response. If err is a *gatewayError,
+// its status, message, and code are used; otherwise a 500 INTERNAL_ERROR is returned.
+func handleGatewayErr(w http.ResponseWriter, err error) {
+	var gwErr *gatewayError
+	if err != nil && errors.As(err, &gwErr) {
+		writeGatewayError(w, gwErr.status, gwErr.message, gwErr.code)
+	} else {
+		writeGatewayError(w, http.StatusInternalServerError, "internal error", errorx.InternalError.Error())
+	}
 }
 
 // resolveEndpoint matches the request path to an endpoint in the database.

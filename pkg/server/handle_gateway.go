@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
+
+	"picotera/pkg/errorx"
 )
 
 type gatewayHandler struct {
@@ -19,63 +22,43 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	r.Body.Close()
 	if err != nil {
-		writeGatewayError(w, http.StatusInternalServerError, "failed to read request body", "INTERNAL_ERROR")
+		writeGatewayError(w, http.StatusInternalServerError, "failed to read request body", errorx.InternalError.Error())
 		return
 	}
 
 	// 2. Match endpoint by path
 	endpoint, err := h.resolveEndpoint(r.Context(), r.URL.Path)
 	if err != nil {
-		gwErr, ok := err.(*gatewayError)
-		if ok {
-			writeGatewayError(w, gwErr.status, gwErr.message, gwErr.code)
-		} else {
-			writeGatewayError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
-		}
+		handleGatewayErr(w, err)
 		return
 	}
 
 	// 3. Check credentials_resolver (only generalApiKey = 1 is supported in v1)
-	if endpoint.CredentialsResolver != 1 {
+	if endpoint.CredentialsResolver != credentialsResolverGeneralAPIKey {
 		writeGatewayError(w, http.StatusInternalServerError,
 			fmt.Sprintf("unsupported credentials resolver: %d", endpoint.CredentialsResolver),
-			"INTERNAL_ERROR")
+			errorx.InternalError.Error())
 		return
 	}
 
 	// 4. Resolve auth type from client headers
 	authTyp, err := resolveAuthType(r)
 	if err != nil {
-		gwErr, ok := err.(*gatewayError)
-		if ok {
-			writeGatewayError(w, gwErr.status, gwErr.message, gwErr.code)
-		} else {
-			writeGatewayError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
-		}
+		handleGatewayErr(w, err)
 		return
 	}
 
 	// 5. Extract model name from request body
 	model, err := extractModel(body, endpoint.ModelPath)
 	if err != nil {
-		gwErr, ok := err.(*gatewayError)
-		if ok {
-			writeGatewayError(w, gwErr.status, gwErr.message, gwErr.code)
-		} else {
-			writeGatewayError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
-		}
+		handleGatewayErr(w, err)
 		return
 	}
 
 	// 6. Resolve providers
 	providers, err := h.resolveProviders(r.Context(), endpoint.Path, model)
 	if err != nil {
-		gwErr, ok := err.(*gatewayError)
-		if ok {
-			writeGatewayError(w, gwErr.status, gwErr.message, gwErr.code)
-		} else {
-			writeGatewayError(w, http.StatusInternalServerError, "internal error", "INTERNAL_ERROR")
-		}
+		handleGatewayErr(w, err)
 		return
 	}
 
@@ -119,8 +102,11 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			// Stream response to client
+			// Stream response to client, stripping Content-Length since we're chunk-copying
 			for key, values := range resp.Header {
+				if strings.ToLower(key) == "content-length" {
+					continue
+				}
 				for _, value := range values {
 					w.Header().Add(key, value)
 				}
@@ -165,5 +151,5 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if lastErr != nil {
 		errMsg = lastErr.Error()
 	}
-	writeGatewayError(w, http.StatusBadGateway, errMsg, "UPSTREAM_ERROR")
+	writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
 }
