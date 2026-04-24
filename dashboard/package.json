@@ -15,6 +15,7 @@
     "format": "oxfmt src/"
   },
   "dependencies": {
+    "@floating-ui/vue": "^1.1.11",
     "openapi-fetch": "^0.17.0",
     "openapi-typescript": "^7.13.0",
     "pinia": "^3.0.4",
