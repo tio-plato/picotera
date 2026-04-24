@@ -83,6 +83,8 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var lastErr error
 	for _, provider := range providers {
 		start := time.Now()
+		// Create a per-attempt context so idle timeouts can cancel the upstream request
+		ctx, cancel := context.WithCancel(r.Context())
 
 		// Determine upstream model name
 		upstreamModel := ""
@@ -97,8 +99,9 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Build upstream request
-		req, err := buildUpstreamRequest(r, body, provider.UpstreamUrl.String, upstreamModel, creds, authTyp)
+		req, err := buildUpstreamRequest(ctx, r, body, provider.UpstreamUrl.String, upstreamModel, creds, authTyp)
 		if err != nil {
+			cancel()
 			timeSpent := int32(time.Since(start).Milliseconds())
 			h.logRequest(provider.ProviderID, endpoint.Path, model, 0, err.Error(), timeSpent)
 			lastErr = err
@@ -108,6 +111,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Forward request
 		resp, err := h.forwardRequest(req)
 		if err != nil {
+			cancel()
 			timeSpent := int32(time.Since(start).Milliseconds())
 			h.logRequest(provider.ProviderID, endpoint.Path, model, 0, err.Error(), timeSpent)
 			lastErr = err
@@ -123,7 +127,6 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			w.WriteHeader(http.StatusOK)
 
-			_, cancel := context.WithCancel(r.Context())
 			reader := newIdleTimeoutReader(resp.Body, h.config.GatewayReadTimeout, cancel)
 			flusher, canFlush := w.(http.Flusher)
 			buf := make([]byte, 32*1024)
@@ -148,6 +151,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Non-200 response: read body, log, try next provider
+		cancel()
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		timeSpent := int32(time.Since(start).Milliseconds())

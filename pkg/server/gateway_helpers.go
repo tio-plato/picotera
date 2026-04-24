@@ -153,7 +153,9 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 // buildUpstreamRequest constructs the upstream HTTP request.
 // It copies headers from the original request, replaces the model name in the body
 // if upstreamModel differs, and sets credentials based on the auth type.
-func buildUpstreamRequest(original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, auth authType) (*http.Request, error) {
+// The provided ctx is used for the request context, enabling cancellation of
+// upstream reads (e.g., by the idle timeout reader).
+func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, auth authType) (*http.Request, error) {
 	// Replace model name if upstream_model_name is set
 	reqBody := body
 	if upstreamModel != "" {
@@ -164,7 +166,7 @@ func buildUpstreamRequest(original *http.Request, body []byte, upstreamURL, upst
 		}
 	}
 
-	req, err := http.NewRequestWithContext(original.Context(), original.Method, upstreamURL, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, original.Method, upstreamURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create upstream request: %w", err)
 	}
