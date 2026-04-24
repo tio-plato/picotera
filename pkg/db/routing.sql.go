@@ -45,9 +45,10 @@ func (q *Queries) GetEndpointByPath(ctx context.Context, path string) (Endpoint,
 }
 
 const getProvidersByEndpointAndModel = `-- name: GetProvidersByEndpointAndModel :many
-SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials
+SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials, p.priority AS provider_priority, pe.upstream_url
   FROM model_provider_endpoint AS mpe
   LEFT JOIN provider AS p ON mpe.provider_id = p.id
+  LEFT JOIN provider_endpoint AS pe ON mpe.provider_id = pe.provider_id AND mpe.endpoint_path = pe.endpoint_path
   WHERE mpe.endpoint_path = $1 AND mpe.model_name = $2
 `
 
@@ -65,6 +66,8 @@ type GetProvidersByEndpointAndModelRow struct {
 	Annotations         []byte      `json:"annotations"`
 	ProviderName        pgtype.Text `json:"providerName"`
 	ProviderCredentials pgtype.Text `json:"providerCredentials"`
+	ProviderPriority    pgtype.Int4 `json:"providerPriority"`
+	UpstreamUrl         pgtype.Text `json:"upstreamUrl"`
 }
 
 func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error) {
@@ -85,6 +88,8 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 			&i.Annotations,
 			&i.ProviderName,
 			&i.ProviderCredentials,
+			&i.ProviderPriority,
+			&i.UpstreamUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -94,4 +99,32 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertRequest = `-- name: InsertRequest :exec
+INSERT INTO request (id, provider_id, endpoint_path, model, status_code, error_message, time_spent_ms)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type InsertRequestParams struct {
+	ID           string      `json:"id"`
+	ProviderID   int32       `json:"providerId"`
+	EndpointPath string      `json:"endpointPath"`
+	Model        pgtype.Text `json:"model"`
+	StatusCode   int32       `json:"statusCode"`
+	ErrorMessage pgtype.Text `json:"errorMessage"`
+	TimeSpentMs  int32       `json:"timeSpentMs"`
+}
+
+func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) error {
+	_, err := q.db.Exec(ctx, insertRequest,
+		arg.ID,
+		arg.ProviderID,
+		arg.EndpointPath,
+		arg.Model,
+		arg.StatusCode,
+		arg.ErrorMessage,
+		arg.TimeSpentMs,
+	)
+	return err
 }

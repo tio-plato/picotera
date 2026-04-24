@@ -60,7 +60,7 @@ type Request struct {
 	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
 	ProviderID       int32            `json:"providerId"`
 	EndpointPath     string           `json:"endpointPath"`
-	ApiKeyID         int32            `json:"apiKeyId"`
+	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
 	Model            pgtype.Text      `json:"model"`
 	InputTokens      pgtype.Int4      `json:"inputTokens"`
 	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
