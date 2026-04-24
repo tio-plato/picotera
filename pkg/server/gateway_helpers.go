@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"picotera/pkg/db"
+	"picotera/pkg/errorx"
 	"picotera/pkg/logx"
 
 	"github.com/google/uuid"
@@ -42,17 +44,21 @@ func (e *gatewayError) Error() string { return e.message }
 func writeGatewayError(w http.ResponseWriter, status int, message, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	fmt.Fprintf(w, `{"message":%q,"code":%q,"details":[]}`, message, code)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": message,
+		"code":    code,
+		"details": []string{},
+	})
 }
 
 // resolveEndpoint matches the request path to an endpoint in the database.
-func (s *Server) resolveEndpoint(path string) (db.Endpoint, error) {
-	endpoint, err := s.queries.GetEndpointByPath(context.Background(), path)
+func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint, error) {
+	endpoint, err := s.queries.GetEndpointByPath(ctx, path)
 	if err != nil {
 		return db.Endpoint{}, &gatewayError{
 			status:  http.StatusNotFound,
 			message: "route not found",
-			code:    "ROUTE_NOT_FOUND",
+			code:    errorx.RouteNotFound.Error(),
 		}
 	}
 	return endpoint, nil
@@ -72,7 +78,7 @@ func resolveAuthType(r *http.Request) (authType, error) {
 	return 0, &gatewayError{
 		status:  http.StatusUnauthorized,
 		message: "missing credentials",
-		code:    "UNAUTHORIZED",
+		code:    errorx.Unauthorized.Error(),
 	}
 }
 
@@ -83,7 +89,7 @@ func extractModel(body []byte, modelPath string) (string, error) {
 		return "", &gatewayError{
 			status:  http.StatusBadRequest,
 			message: "model not found in request body",
-			code:    "MODEL_NOT_FOUND",
+			code:    errorx.ModelNotFound.Error(),
 		}
 	}
 	return result.Str, nil
@@ -91,16 +97,23 @@ func extractModel(body []byte, modelPath string) (string, error) {
 
 // resolveProviders gets providers for the given endpoint and model, filters out
 // those without upstream URLs, and sorts by combined priority (descending).
-func (s *Server) resolveProviders(endpointPath, model string) ([]db.GetProvidersByEndpointAndModelRow, error) {
-	rows, err := s.queries.GetProvidersByEndpointAndModel(context.Background(), db.GetProvidersByEndpointAndModelParams{
+func (s *Server) resolveProviders(ctx context.Context, endpointPath, model string) ([]db.GetProvidersByEndpointAndModelRow, error) {
+	rows, err := s.queries.GetProvidersByEndpointAndModel(ctx, db.GetProvidersByEndpointAndModelParams{
 		EndpointPath: endpointPath,
 		ModelName:    model,
 	})
-	if err != nil || len(rows) == 0 {
+	if err != nil {
+		return nil, &gatewayError{
+			status:  http.StatusInternalServerError,
+			message: "failed to query providers",
+			code:    errorx.InternalError.Error(),
+		}
+	}
+	if len(rows) == 0 {
 		return nil, &gatewayError{
 			status:  http.StatusNotFound,
 			message: "no provider available for model",
-			code:    "NO_PROVIDER_AVAILABLE",
+			code:    errorx.NoProviderAvailable.Error(),
 		}
 	}
 
@@ -116,7 +129,7 @@ func (s *Server) resolveProviders(endpointPath, model string) ([]db.GetProviders
 		return nil, &gatewayError{
 			status:  http.StatusNotFound,
 			message: "no provider available for model",
-			code:    "NO_PROVIDER_AVAILABLE",
+			code:    errorx.NoProviderAvailable.Error(),
 		}
 	}
 

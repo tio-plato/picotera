@@ -15,3 +15,5 @@ var NoProviderAvailable = ErrorCode("NO_PROVIDER_AVAILABLE")
 var Unauthorized = ErrorCode("UNAUTHORIZED")
 
 var UpstreamError = ErrorCode("UPSTREAM_ERROR")
+
+var InternalError = ErrorCode("INTERNAL_ERROR")
