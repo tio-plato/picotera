@@ -4,14 +4,16 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	DatabaseURL string `mapstructure:"database_url"`
-	Host        string `mapstructure:"host"`
-	Port        int    `mapstructure:"port"`
+	DatabaseURL        string        `mapstructure:"database_url"`
+	Host               string        `mapstructure:"host"`
+	Port               int           `mapstructure:"port"`
+	GatewayReadTimeout time.Duration `mapstructure:"gateway_read_timeout"`
 }
 
 func Parse() (*Config, error) {
@@ -32,6 +34,7 @@ func Parse() (*Config, error) {
 	}
 
 	viper.SetDefault("port", 9898)
+	viper.SetDefault("gateway_read_timeout", 300*time.Second)
 
 	bindEnvs(Config{})
 	viper.Unmarshal(&config)
