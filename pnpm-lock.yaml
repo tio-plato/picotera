@@ -26,6 +26,9 @@ importers:
       '@floating-ui/vue':
         specifier: ^1.1.11
         version: 1.1.11(vue@3.6.0-beta.10(typescript@6.0.3))
+      '@tabler/icons-vue':
+        specifier: ^3.41.1
+        version: 3.41.1(vue@3.6.0-beta.10(typescript@6.0.3))
       openapi-fetch:
         specifier: ^0.17.0
         version: 0.17.0
@@ -707,6 +710,14 @@ packages:
 
   '@rolldown/pluginutils@1.0.0-rc.17':
     resolution: {integrity: sha512-n8iosDOt6Ig1UhJ2AYqoIhHWh/isz0xpicHTzpKBeotdVsTEcxsSA/i3EVM7gQAj0rU27OLAxCjzlj15IWY7bg==}
+
+  '@tabler/icons-vue@3.41.1':
+    resolution: {integrity: sha512-OLLWlyrx6HdQpdgnZ8dO8uBGIIZwQDPgE8Gl6tUuAD7AgtfnmtFz8vb7dTEvxddM5CMpPt21ogPpBhJfEjSY+Q==}
+    peerDependencies:
+      vue: '>=3.0.1'
+
+  '@tabler/icons@3.41.1':
+    resolution: {integrity: sha512-OaRnVbRmH2nHtFeg+RmMJ/7m2oBIF9XCJAUD5gQnMrpK9f05ydj8MZrAf3NZQqOXyxGN1UBL0D5IKLLEUfr74Q==}
 
   '@tailwindcss/node@4.2.4':
     resolution: {integrity: sha512-Ai7+yQPxz3ddrDQzFfBKdHEVBg0w3Zl83jnjuwxnZOsnH9pGn93QHQtpU0p/8rYWxvbFZHneni6p1BSLK4DkGA==}
@@ -2532,6 +2543,13 @@ snapshots:
   '@rolldown/pluginutils@1.0.0-rc.13': {}
 
   '@rolldown/pluginutils@1.0.0-rc.17': {}
+
+  '@tabler/icons-vue@3.41.1(vue@3.6.0-beta.10(typescript@6.0.3))':
+    dependencies:
+      '@tabler/icons': 3.41.1
+      vue: 3.6.0-beta.10(typescript@6.0.3)
+
+  '@tabler/icons@3.41.1': {}
 
   '@tailwindcss/node@4.2.4':
     dependencies:

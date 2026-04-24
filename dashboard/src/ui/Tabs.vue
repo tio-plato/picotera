@@ -24,7 +24,7 @@ function select(v: string | number) {
       type="button"
       role="tab"
       :aria-selected="modelValue === tab.value"
-      class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-sm cursor-pointer transition-colors"
+      class="inline-flex items-center gap-2 px-2 py-1 text-xs font-medium rounded-sm cursor-pointer transition-colors"
       :class="
         modelValue === tab.value
           ? 'bg-surface-0 text-ink shadow-xs [&_svg]:text-accent [&_svg]:opacity-100'

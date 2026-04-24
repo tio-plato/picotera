@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { iconPaths, type IconName } from './paths'
+import { computed } from 'vue'
+import { iconComponents, type IconName } from './paths'
 
 const props = defineProps<{
   name: IconName
@@ -7,20 +8,14 @@ const props = defineProps<{
   strokeWidth?: number | string
 }>()
 
-const sz = () => props.size ?? 14
+const component = computed(() => iconComponents[props.name])
 </script>
 
 <template>
-  <svg
-    :width="sz()"
-    :height="sz()"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    :stroke-width="strokeWidth ?? 1.8"
-    stroke-linecap="round"
-    stroke-linejoin="round"
+  <component
+    :is="component"
+    :size="props.size ?? 14"
+    :stroke-width="props.strokeWidth ?? 1.8"
     aria-hidden="true"
-    v-html="iconPaths[name]"
   />
 </template>

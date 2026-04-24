@@ -200,7 +200,7 @@ function onModeChange(v: string | number) {
       </span>
     </div>
 
-    <div v-if="mode === 'rows'" class="p-2 flex flex-col gap-1.5">
+    <div v-if="mode === 'rows'" class="p-2 flex flex-col gap-4">
       <div v-if="entries.length === 0" class="py-3 px-2 text-xs text-ink-faint text-center">
         暂无标注
       </div>
@@ -234,7 +234,7 @@ function onModeChange(v: string | number) {
       </div>
       <button
         type="button"
-        class="inline-flex items-center gap-1.5 self-start pl-2 pr-2 py-1 bg-transparent border border-dashed border-line rounded-[5px] text-xs text-ink-muted cursor-pointer transition-colors hover:bg-accent-faint hover:text-accent-ink hover:border-accent/40 hover:border-solid [&_svg]:opacity-70 hover:[&_svg]:opacity-100"
+        class="inline-flex items-center gap-2 self-start pl-2 pr-2 py-1 bg-transparent border border-dashed border-line rounded-[5px] text-xs text-ink-muted cursor-pointer transition-colors hover:bg-accent-faint hover:text-accent-ink hover:border-accent/40 hover:border-solid [&_svg]:opacity-70 hover:[&_svg]:opacity-100"
         @click="addRow"
       >
         <Icon name="plus" :size="11" :stroke-width="1.6" />
@@ -242,7 +242,7 @@ function onModeChange(v: string | number) {
       </button>
     </div>
 
-    <div v-else-if="mode === 'bulk'" class="p-2 flex flex-col gap-1.5">
+    <div v-else-if="mode === 'bulk'" class="p-2 flex flex-col gap-4">
       <textarea
         v-model="bulkText"
         class="w-full px-2.5 py-2 border border-line rounded-[5px] bg-surface-0 font-mono text-xs leading-[1.55] text-ink resize-y min-h-24 transition-colors focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
@@ -255,14 +255,14 @@ function onModeChange(v: string | number) {
       <div v-if="bulkError" class="text-2xs text-err-ink bg-err-faint px-2 py-1.5 rounded-sm font-mono">
         {{ bulkError }}
       </div>
-      <div v-else class="text-2xs text-ink-faint px-0.5">
+      <div v-else class="text-2xs text-ink-faint px-0.5 pb-1">
         每行一条
         <span class="font-mono px-1 py-px bg-surface-100 rounded-xs text-ink-muted">KEY=VALUE</span>
         ，# 开头的行视为注释
       </div>
     </div>
 
-    <div v-else class="p-2 flex flex-col gap-1.5">
+    <div v-else class="p-2 flex flex-col gap-4">
       <textarea
         v-model="jsonText"
         class="w-full px-2.5 py-2 border border-line rounded-[5px] bg-surface-0 font-mono text-xs leading-[1.55] text-ink resize-y min-h-24 transition-colors focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
@@ -275,7 +275,7 @@ function onModeChange(v: string | number) {
       <div v-if="jsonError" class="text-2xs text-err-ink bg-err-faint px-2 py-1.5 rounded-sm font-mono">
         {{ jsonError }}
       </div>
-      <div v-else class="text-2xs text-ink-faint px-0.5">对象字面量，值必须为字符串</div>
+      <div v-else class="text-2xs text-ink-faint px-0.5 pb-1">对象字面量，值必须为字符串</div>
     </div>
   </div>
 </template>

@@ -31,7 +31,7 @@ const sizeClass = computed(() =>
   <button
     :type="type"
     :disabled="disabled"
-    class="inline-flex items-center gap-1.5 rounded-md border font-medium leading-none cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+    class="inline-flex items-center gap-2 rounded-md border font-medium leading-none cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
     :class="[variantClass, sizeClass]"
   >
     <slot />

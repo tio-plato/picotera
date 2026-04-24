@@ -132,7 +132,7 @@ function onModeChange(v: string | number) {
       </span>
     </div>
 
-    <div v-if="mode === 'rows'" class="p-2 flex flex-col gap-1.5">
+    <div v-if="mode === 'rows'" class="p-2 flex flex-col gap-4">
       <div v-if="entries.length === 0" class="py-3 px-2 text-xs text-ink-faint text-center">
         暂无模型
       </div>
@@ -140,7 +140,7 @@ function onModeChange(v: string | number) {
         <div
           v-for="(row, idx) in entries"
           :key="row.id"
-          class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5"
+          class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
         >
           <span class="font-mono text-2xs text-ink-faint w-5 text-right tabular-nums select-none">{{ idx + 1 }}</span>
           <input
@@ -158,7 +158,7 @@ function onModeChange(v: string | number) {
       </div>
       <button
         type="button"
-        class="inline-flex items-center gap-1.5 self-start pl-2 pr-2 py-1 bg-transparent border border-dashed border-line rounded-[5px] text-xs text-ink-muted cursor-pointer transition-colors hover:bg-accent-faint hover:text-accent-ink hover:border-accent/40 hover:border-solid [&_svg]:opacity-70 hover:[&_svg]:opacity-100"
+        class="inline-flex items-center gap-2 self-start pl-2 pr-2 py-1 bg-transparent border border-dashed border-line rounded-[5px] text-xs text-ink-muted cursor-pointer transition-colors hover:bg-accent-faint hover:text-accent-ink hover:border-accent/40 hover:border-solid [&_svg]:opacity-70 hover:[&_svg]:opacity-100"
         @click="addRow"
       >
         <Icon name="plus" :size="11" :stroke-width="1.6" />
@@ -166,7 +166,7 @@ function onModeChange(v: string | number) {
       </button>
     </div>
 
-    <div v-else class="p-2 flex flex-col gap-1.5">
+    <div v-else class="p-2 flex flex-col gap-4">
       <textarea
         v-model="bulkText"
         class="w-full px-2.5 py-2 border border-line rounded-[5px] bg-surface-0 font-mono text-xs leading-[1.55] text-ink resize-y min-h-24 transition-colors focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
@@ -176,7 +176,7 @@ function onModeChange(v: string | number) {
         :placeholder="'gpt-4o\ngpt-4o-mini\no1-preview'"
         @input="onBulkInput"
       />
-      <div class="text-2xs text-ink-faint px-0.5">每行一个模型名，# 开头的行视为注释，重复项自动去重</div>
+      <div class="text-2xs text-ink-faint px-0.5 pb-1">每行一个模型名，# 开头的行视为注释，重复项自动去重</div>
     </div>
   </div>
 </template>

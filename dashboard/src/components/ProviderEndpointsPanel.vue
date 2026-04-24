@@ -158,7 +158,7 @@ function onDraftKeydown(e: KeyboardEvent, path: string) {
           <div class="font-mono text-sm text-ink overflow-hidden text-ellipsis whitespace-nowrap">
             {{ pe.endpointPath }}
           </div>
-          <div class="flex gap-1.5 items-center">
+          <div class="flex gap-2 items-center">
             <Input
               v-model="drafts[pe.endpointPath]"
               size="sm"
