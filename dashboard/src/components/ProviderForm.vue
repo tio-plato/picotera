@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useApi } from '@/composables/useApi'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import ModelListEditor from '@/components/ModelListEditor.vue'
-import SidePanel from '@/components/SidePanel.vue'
+import { SidePanel, Button, Input, Field } from '@/ui'
 import type { ProviderView } from '@/api'
 
 const emit = defineEmits<{ close: [] }>()
@@ -49,40 +49,31 @@ async function submit() {
     :kicker="isEdit ? '编辑渠道' : '渠道'"
     @close="emit('close')"
   >
-    <form id="provider-form" class="form-body" @submit.prevent="submit">
-      <label class="field">
-        <span class="field-label">名称</span>
-        <input v-model="form.name" class="input" required placeholder="例如 openai" />
-      </label>
-      <label class="field">
-        <span class="field-label">凭证</span>
-        <input v-model="form.credentials" class="input" required placeholder="API Key 或密钥" />
-      </label>
-      <label class="field">
-        <span class="field-label">优先级</span>
-        <input v-model.number="form.priority" type="number" class="input" required />
-      </label>
-      <div class="field">
-        <span class="field-label">模型列表</span>
+    <form id="provider-form" class="flex flex-col gap-4" @submit.prevent="submit">
+      <Field label="名称">
+        <Input v-model="form.name" required placeholder="例如 openai" />
+      </Field>
+      <Field label="凭证">
+        <Input v-model="form.credentials" required placeholder="API Key 或密钥" />
+      </Field>
+      <Field label="优先级">
+        <Input v-model.number="form.priority" type="number" required />
+      </Field>
+      <Field label="模型列表" as="div">
         <ModelListEditor v-model="form.providerModels" />
-      </div>
-      <div class="field">
-        <span class="field-label">标注</span>
+      </Field>
+      <Field label="标注" as="div">
         <AnnotationsEditor v-model="form.annotations" />
-      </div>
+      </Field>
     </form>
 
     <template v-if="error" #error>{{ error }}</template>
 
     <template #footer>
-      <button type="button" class="btn-ghost" @click="emit('close')">取消</button>
-      <button type="submit" form="provider-form" class="btn-primary" :disabled="saving">
+      <Button variant="ghost" @click="emit('close')">取消</Button>
+      <Button type="submit" form="provider-form" :disabled="saving">
         {{ saving ? '保存中…' : isEdit ? '更新' : '创建' }}
-      </button>
+      </Button>
     </template>
   </SidePanel>
 </template>
-
-<style scoped>
-.form-body { display: flex; flex-direction: column; gap: 1rem; }
-</style>

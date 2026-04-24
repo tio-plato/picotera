@@ -3,7 +3,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
 import type { ModelProviderEndpointView, ModelView, ProviderEndpointView, ProviderView } from '@/api'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
-import SidePanel from '@/components/SidePanel.vue'
+import { SidePanel, Button, Input, Select, Field } from '@/ui'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ mapping?: ModelProviderEndpointView; onSave?: () => void }>()
@@ -104,26 +104,22 @@ async function submit() {
     :kicker="isEdit ? '编辑映射' : '映射'"
     @close="emit('close')"
   >
-    <form id="mapping-form" class="form-body" @submit.prevent="submit">
-      <label class="field">
-        <span class="field-label">模型</span>
-        <select v-model="form.modelName" class="input" required :disabled="isEdit">
+    <form id="mapping-form" class="flex flex-col gap-4" @submit.prevent="submit">
+      <Field label="模型">
+        <Select v-model="form.modelName" required :disabled="isEdit">
           <option value="" disabled>选择模型</option>
           <option v-for="m in models" :key="m.name" :value="m.name">{{ m.title }} ({{ m.name }})</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">渠道</span>
-        <select v-model.number="form.providerId" class="input" required :disabled="isEdit">
+        </Select>
+      </Field>
+      <Field label="渠道">
+        <Select v-model.number="form.providerId" required :disabled="isEdit">
           <option :value="0" disabled>选择渠道</option>
           <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }} (ID: {{ p.id }})</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">端点</span>
-        <select
+        </Select>
+      </Field>
+      <Field label="端点">
+        <Select
           v-model="form.endpointPath"
-          class="input"
           required
           :disabled="isEdit || !form.providerId || (!providerEndpoints.length && !hasDirtyEndpoint)"
         >
@@ -140,33 +136,26 @@ async function submit() {
           <option v-if="hasDirtyEndpoint" :value="form.endpointPath">
             {{ form.endpointPath }}（脏数据）
           </option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">上游模型名称</span>
-        <input v-model="form.upstreamModelName" class="input" placeholder="留空则使用模型名称" />
-      </label>
-      <label class="field">
-        <span class="field-label">优先级</span>
-        <input v-model.number="form.priority" type="number" class="input" required />
-      </label>
-      <div class="field">
-        <span class="field-label">标注</span>
+        </Select>
+      </Field>
+      <Field label="上游模型名称">
+        <Input v-model="form.upstreamModelName" placeholder="留空则使用模型名称" />
+      </Field>
+      <Field label="优先级">
+        <Input v-model.number="form.priority" type="number" required />
+      </Field>
+      <Field label="标注" as="div">
         <AnnotationsEditor v-model="form.annotations" />
-      </div>
+      </Field>
     </form>
 
     <template v-if="error" #error>{{ error }}</template>
 
     <template #footer>
-      <button type="button" class="btn-ghost" @click="emit('close')">取消</button>
-      <button type="submit" form="mapping-form" class="btn-primary" :disabled="saving">
+      <Button variant="ghost" @click="emit('close')">取消</Button>
+      <Button type="submit" form="mapping-form" :disabled="saving">
         {{ saving ? '保存中…' : isEdit ? '更新' : '创建' }}
-      </button>
+      </Button>
     </template>
   </SidePanel>
 </template>
-
-<style scoped>
-.form-body { display: flex; flex-direction: column; gap: 1rem; }
-</style>

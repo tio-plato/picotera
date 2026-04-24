@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import SidePanelHost from '@/components/SidePanelHost.vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialog from '@/ui/ConfirmDialog.vue'
 
 const route = useRoute()
 
@@ -19,17 +19,19 @@ const pageMeta = computed(() => {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="flex min-h-[100dvh] bg-surface-50">
     <AppSidebar />
-    <main class="app-main">
-      <header class="app-header">
-        <div class="header-titles">
-          <h1 class="page-title">{{ pageMeta.title }}</h1>
-          <p class="page-hint">{{ pageMeta.hint }}</p>
+    <main class="flex-1 flex flex-col min-w-0">
+      <header class="px-8 pt-[1.125rem] pb-3.5">
+        <div class="flex flex-col gap-0.5">
+          <h1 class="text-xl font-semibold tracking-[-0.015em] text-ink m-0 leading-[1.2]">
+            {{ pageMeta.title }}
+          </h1>
+          <p class="m-0 text-sm text-ink-faint leading-[1.2]">{{ pageMeta.hint }}</p>
         </div>
       </header>
-      <div class="app-body">
-        <div class="app-content">
+      <div class="flex-1 flex min-h-0 min-w-0">
+        <div class="flex-1 min-w-0 px-8 pt-3 pb-8 overflow-y-auto">
           <RouterView />
         </div>
         <SidePanelHost />
@@ -38,52 +40,3 @@ const pageMeta = computed(() => {
   </div>
   <ConfirmDialog />
 </template>
-
-<style scoped>
-.app-shell {
-  display: flex;
-  min-height: 100dvh;
-  background: var(--color-surface-50);
-}
-.app-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.app-header {
-  padding: 1.125rem 2rem 0.875rem;
-  background: transparent;
-}
-.header-titles {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-.page-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  color: var(--color-ink);
-  margin: 0;
-  line-height: 1.2;
-}
-.page-hint {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: var(--color-ink-faint);
-  line-height: 1.2;
-}
-.app-body {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-  min-width: 0;
-}
-.app-content {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 0.75rem 2rem 2rem;
-  overflow-y: auto;
-}
-</style>

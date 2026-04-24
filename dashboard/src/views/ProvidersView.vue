@@ -6,6 +6,20 @@ import type { ProviderView } from '@/api'
 import ProviderForm from '@/components/ProviderForm.vue'
 import ProviderEndpointsPanel from '@/components/ProviderEndpointsPanel.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
+import {
+  Button,
+  IconButton,
+  DataCard,
+  DataTable,
+  Th,
+  Td,
+  Tr,
+  StateText,
+  Badge,
+  Tag,
+  TagList,
+  Icon,
+} from '@/ui'
 
 const panel = useSidePanel()
 const confirm = useConfirm()
@@ -47,7 +61,7 @@ function toggleBindings(p: ProviderView) {
   )
 }
 
-function confirmDelete(event: Event, p: ProviderView) {
+function confirmDelete(_event: Event, p: ProviderView) {
   confirm.require({
     message: `确定要删除渠道「${p.name}」吗？此操作不可撤销。`,
     accept: async () => {
@@ -64,71 +78,81 @@ function rowSelected(id: number) {
 </script>
 
 <template>
-  <div class="view">
-    <div class="view-toolbar">
-      <span class="view-toolbar__meta">{{ count }} 个渠道</span>
-      <div class="view-toolbar__actions">
-        <button class="btn-primary" @click="openCreate">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+  <div class="flex flex-col gap-3.5">
+    <div class="flex items-center justify-between gap-3">
+      <span class="text-xs text-ink-faint tabular-nums">{{ count }} 个渠道</span>
+      <div class="flex items-center gap-2">
+        <Button @click="openCreate">
+          <Icon name="plus" :size="14" :stroke-width="2.2" />
           <span>新增渠道</span>
-        </button>
+        </Button>
       </div>
     </div>
-    <div v-if="loading" class="state-text">加载中…</div>
-    <div v-else-if="providers.length" class="data-card">
-      <table class="data-table">
+    <StateText v-if="loading">加载中…</StateText>
+    <DataCard v-else-if="providers.length">
+      <DataTable>
         <thead>
           <tr>
-            <th>ID</th>
-            <th>名称</th>
-            <th>凭证</th>
-            <th>优先级</th>
-            <th>上游模型</th>
-            <th class="col-actions"></th>
+            <Th>ID</Th>
+            <Th>名称</Th>
+            <Th>凭证</Th>
+            <Th>优先级</Th>
+            <Th>上游模型</Th>
+            <Th actions />
           </tr>
         </thead>
         <tbody>
-          <tr v-for="p in providers" :key="p.id" :class="{ selected: rowSelected(p.id) }">
-            <td class="mono muted">{{ p.id }}</td>
-            <td class="font-medium">{{ p.name }}</td>
-            <td class="mono muted">{{ p.credentials.slice(0, 12) }}…</td>
-            <td><span class="badge">{{ p.priority }}</span></td>
-            <td>
-              <div class="tag-list">
-                <span v-for="m in (p.providerModels ?? []).slice(0, 3)" :key="m" class="tag tag--accent">{{ m }}</span>
-                <span v-if="(p.providerModels ?? []).length > 3" class="tag tag--more">+{{ (p.providerModels ?? []).length - 3 }}</span>
-              </div>
-            </td>
-            <td class="col-actions">
-              <div class="col-actions-cell">
-                <button
-                  class="btn-icon"
-                  :class="{ 'btn-icon--active': panel.isActive(bindingKey(p.id)) }"
+          <Tr v-for="p in providers" :key="p.id" :selected="rowSelected(p.id)">
+            <Td><span class="font-mono text-ink-faint">{{ p.id }}</span></Td>
+            <Td><span class="font-medium">{{ p.name }}</span></Td>
+            <Td><span class="font-mono text-ink-faint">{{ p.credentials.slice(0, 12) }}…</span></Td>
+            <Td><Badge>{{ p.priority }}</Badge></Td>
+            <Td>
+              <TagList>
+                <Tag
+                  v-for="m in (p.providerModels ?? []).slice(0, 3)"
+                  :key="m"
+                  variant="accent"
+                >{{ m }}</Tag>
+                <Tag
+                  v-if="(p.providerModels ?? []).length > 3"
+                  variant="more"
+                >+{{ (p.providerModels ?? []).length - 3 }}</Tag>
+              </TagList>
+            </Td>
+            <Td actions>
+              <div class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity">
+                <IconButton
+                  :active="panel.isActive(bindingKey(p.id))"
                   title="端点绑定"
                   aria-label="端点绑定"
                   :aria-pressed="panel.isActive(bindingKey(p.id))"
                   @click="toggleBindings(p)"
                 >
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" /><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></svg>
-                </button>
-                <button
-                  class="btn-icon"
-                  :class="{ 'btn-icon--active': panel.isActive(editKey(p.id)) }"
+                  <Icon name="link" :size="13" />
+                </IconButton>
+                <IconButton
+                  :active="panel.isActive(editKey(p.id))"
                   title="编辑"
                   aria-label="编辑"
                   @click="openEdit(p)"
                 >
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L20 8l-4-4L4 16v4z" /><path d="M14 6l4 4" /></svg>
-                </button>
-                <button class="btn-icon btn-icon--danger" title="删除" aria-label="删除" @click="(ev) => confirmDelete(ev, p)">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /></svg>
-                </button>
+                  <Icon name="edit" :size="13" />
+                </IconButton>
+                <IconButton
+                  variant="danger"
+                  title="删除"
+                  aria-label="删除"
+                  @click="(ev: Event) => confirmDelete(ev, p)"
+                >
+                  <Icon name="trash" :size="13" />
+                </IconButton>
               </div>
-            </td>
-          </tr>
+            </Td>
+          </Tr>
         </tbody>
-      </table>
-    </div>
-    <div v-else class="state-text">暂无渠道，点击右上角按钮新增</div>
+      </DataTable>
+    </DataCard>
+    <StateText v-else>暂无渠道，点击右上角按钮新增</StateText>
   </div>
 </template>

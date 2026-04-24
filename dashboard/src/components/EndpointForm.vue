@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useApi } from '@/composables/useApi'
-import SidePanel from '@/components/SidePanel.vue'
+import { SidePanel, Button, Input, Select, Field } from '@/ui'
 import type { EndpointView } from '@/api'
 
 const emit = defineEmits<{ close: [] }>()
@@ -38,39 +38,31 @@ async function submit() {
     :kicker="isEdit ? '编辑端点' : '端点'"
     @close="emit('close')"
   >
-    <form id="endpoint-form" class="form-body" @submit.prevent="submit">
-      <label class="field">
-        <span class="field-label">路径</span>
-        <input v-model="form.path" class="input" required placeholder="例如 /api/v1/chat/completions" :disabled="isEdit" />
-      </label>
-      <label class="field">
-        <span class="field-label">名称</span>
-        <input v-model="form.name" class="input" required placeholder="例如 Chat Completions" />
-      </label>
-      <label class="field">
-        <span class="field-label">模型字段路径</span>
-        <input v-model="form.modelPath" class="input" required placeholder="例如 body.model" />
-      </label>
-      <label class="field">
-        <span class="field-label">凭证解析</span>
-        <select v-model="form.credentialsResolver" class="input">
+    <form id="endpoint-form" class="flex flex-col gap-4" @submit.prevent="submit">
+      <Field label="路径">
+        <Input v-model="form.path" required placeholder="例如 /api/v1/chat/completions" :disabled="isEdit" />
+      </Field>
+      <Field label="名称">
+        <Input v-model="form.name" required placeholder="例如 Chat Completions" />
+      </Field>
+      <Field label="模型字段路径">
+        <Input v-model="form.modelPath" required placeholder="例如 body.model" />
+      </Field>
+      <Field label="凭证解析">
+        <Select v-model="form.credentialsResolver">
           <option value="generalApiKey">generalApiKey</option>
           <option value="unknown">unknown</option>
-        </select>
-      </label>
+        </Select>
+      </Field>
     </form>
 
     <template v-if="error" #error>{{ error }}</template>
 
     <template #footer>
-      <button type="button" class="btn-ghost" @click="emit('close')">取消</button>
-      <button type="submit" form="endpoint-form" class="btn-primary" :disabled="saving">
+      <Button variant="ghost" @click="emit('close')">取消</Button>
+      <Button type="submit" form="endpoint-form" :disabled="saving">
         {{ saving ? '保存中…' : isEdit ? '更新' : '创建' }}
-      </button>
+      </Button>
     </template>
   </SidePanel>
 </template>
-
-<style scoped>
-.form-body { display: flex; flex-direction: column; gap: 1rem; }
-</style>

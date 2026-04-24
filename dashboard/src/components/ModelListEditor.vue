@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Tabs, IconButton, Icon } from '@/ui'
 
 type Mode = 'rows' | 'bulk'
 type Entry = { id: number; name: string }
@@ -111,265 +112,71 @@ function onBulkInput() {
 }
 
 const entryCount = computed(() => entriesToList(entries.value).length)
+
+const tabs = [
+  { value: 'rows' as const, label: '交互', icon: 'list' as const },
+  { value: 'bulk' as const, label: '批量', icon: 'lines' as const },
+]
+
+function onModeChange(v: string | number) {
+  switchMode(v as Mode)
+}
 </script>
 
 <template>
-  <div class="ml-editor">
-    <div class="ml-header">
-      <div class="ml-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="mode === 'rows'"
-          :class="['ml-tab', { 'ml-tab--active': mode === 'rows' }]"
-          @click="switchMode('rows')"
-        >
-          <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
-          交互
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="mode === 'bulk'"
-          :class="['ml-tab', { 'ml-tab--active': mode === 'bulk' }]"
-          @click="switchMode('bulk')"
-        >
-          <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3.5h10M3 7h7M3 10.5h10M3 14h5" /></svg>
-          批量
-        </button>
-      </div>
-      <span class="ml-count">{{ entryCount }} {{ entryCount === 1 ? 'model' : 'models' }}</span>
+  <div class="flex flex-col gap-2 border border-line rounded-lg bg-surface-0 overflow-hidden">
+    <div class="flex items-center justify-between py-1.5 pl-2 pr-1.5 bg-surface-50 border-b border-line">
+      <Tabs :model-value="mode" :tabs="tabs" @update:model-value="onModeChange" />
+      <span class="font-mono text-2xs text-ink-faint pr-2 tabular-nums">
+        {{ entryCount }} {{ entryCount === 1 ? 'model' : 'models' }}
+      </span>
     </div>
 
-    <div v-if="mode === 'rows'" class="ml-rows">
-      <div v-if="entries.length === 0" class="ml-empty">
+    <div v-if="mode === 'rows'" class="p-2 flex flex-col gap-1.5">
+      <div v-if="entries.length === 0" class="py-3 px-2 text-xs text-ink-faint text-center">
         暂无模型
       </div>
-      <div v-else class="ml-rows-list">
-        <div v-for="(row, idx) in entries" :key="row.id" class="ml-row">
-          <span class="ml-index">{{ idx + 1 }}</span>
+      <div v-else class="flex flex-col gap-1">
+        <div
+          v-for="(row, idx) in entries"
+          :key="row.id"
+          class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5"
+        >
+          <span class="font-mono text-2xs text-ink-faint w-5 text-right tabular-nums select-none">{{ idx + 1 }}</span>
           <input
             v-model="row.name"
-            class="ml-input"
+            class="min-w-0 px-2 py-1.5 border border-line rounded-[5px] bg-surface-0 font-mono text-xs text-ink transition-colors hover:border-surface-300 focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
             :placeholder="placeholder ?? '例如 gpt-4o'"
             spellcheck="false"
             autocomplete="off"
             @input="onRowInput"
           />
-          <button
-            type="button"
-            class="ml-row-remove"
-            aria-label="删除此行"
-            @click="removeRow(row.id)"
-          >
-            <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
-          </button>
+          <IconButton variant="danger" size="sm" aria-label="删除此行" @click="removeRow(row.id)">
+            <Icon name="close" :size="11" :stroke-width="1.6" />
+          </IconButton>
         </div>
       </div>
-      <button type="button" class="ml-add" @click="addRow">
-        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10" /></svg>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 self-start pl-2 pr-2 py-1 bg-transparent border border-dashed border-line rounded-[5px] text-xs text-ink-muted cursor-pointer transition-colors hover:bg-accent-faint hover:text-accent-ink hover:border-accent/40 hover:border-solid [&_svg]:opacity-70 hover:[&_svg]:opacity-100"
+        @click="addRow"
+      >
+        <Icon name="plus" :size="11" :stroke-width="1.6" />
         添加一行
       </button>
     </div>
 
-    <div v-else class="ml-pane">
+    <div v-else class="p-2 flex flex-col gap-1.5">
       <textarea
         v-model="bulkText"
-        class="ml-textarea"
+        class="w-full px-2.5 py-2 border border-line rounded-[5px] bg-surface-0 font-mono text-xs leading-[1.55] text-ink resize-y min-h-24 transition-colors focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
         spellcheck="false"
         autocomplete="off"
         rows="6"
         :placeholder="'gpt-4o\ngpt-4o-mini\no1-preview'"
         @input="onBulkInput"
       />
-      <div class="ml-hint">每行一个模型名，# 开头的行视为注释，重复项自动去重</div>
+      <div class="text-2xs text-ink-faint px-0.5">每行一个模型名，# 开头的行视为注释，重复项自动去重</div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.ml-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  border: 1px solid var(--color-line);
-  border-radius: 0.5rem;
-  background: var(--color-surface-0);
-  overflow: hidden;
-}
-
-.ml-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.3125rem 0.375rem 0.3125rem 0.5rem;
-  background: var(--color-surface-50);
-  border-bottom: 1px solid var(--color-line);
-}
-
-.ml-tabs {
-  display: inline-flex;
-  gap: 0.125rem;
-  background: var(--color-surface-100);
-  padding: 0.1875rem;
-  border-radius: 0.375rem;
-}
-
-.ml-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3125rem;
-  padding: 0.25rem 0.5625rem;
-  background: transparent;
-  border: none;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-ink-muted);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.ml-tab:hover { color: var(--color-ink); }
-.ml-tab--active {
-  background: var(--color-surface-0);
-  color: var(--color-ink);
-  box-shadow: var(--shadow-xs);
-}
-.ml-tab svg { opacity: 0.7; }
-.ml-tab--active svg { opacity: 1; color: var(--color-accent); }
-
-.ml-count {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  color: var(--color-ink-faint);
-  padding-right: 0.5rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Rows */
-.ml-rows {
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3125rem;
-}
-.ml-rows-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.ml-empty {
-  padding: 0.75rem 0.5rem;
-  font-size: 0.75rem;
-  color: var(--color-ink-faint);
-  text-align: center;
-}
-.ml-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.375rem;
-}
-.ml-index {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  color: var(--color-ink-faint);
-  width: 1.25rem;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  user-select: none;
-}
-.ml-input {
-  min-width: 0;
-  padding: 0.3125rem 0.5rem;
-  border: 1px solid var(--color-line);
-  border-radius: 0.3125rem;
-  background: var(--color-surface-0);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--color-ink);
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
-}
-.ml-input::placeholder { color: var(--color-ink-faint); }
-.ml-input:hover { border-color: var(--color-surface-300); }
-.ml-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 18%, transparent);
-}
-.ml-row-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.375rem;
-  height: 1.375rem;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
-  color: var(--color-ink-faint);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-}
-.ml-row-remove:hover {
-  background: var(--color-indicator-err-faint);
-  border-color: oklch(0.88 0.06 25);
-  color: var(--color-indicator-err-ink);
-}
-.ml-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  align-self: flex-start;
-  padding: 0.25rem 0.5rem 0.25rem 0.4375rem;
-  background: transparent;
-  border: 1px dashed var(--color-line);
-  border-radius: 0.3125rem;
-  font-size: 0.75rem;
-  color: var(--color-ink-muted);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-}
-.ml-add:hover {
-  background: var(--color-accent-faint);
-  color: var(--color-accent-ink);
-  border-color: color-mix(in oklch, var(--color-accent) 35%, transparent);
-  border-style: solid;
-}
-.ml-add svg { opacity: 0.7; }
-.ml-add:hover svg { opacity: 1; }
-
-/* Bulk pane */
-.ml-pane {
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-.ml-textarea {
-  width: 100%;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--color-line);
-  border-radius: 0.3125rem;
-  background: var(--color-surface-0);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  line-height: 1.55;
-  color: var(--color-ink);
-  resize: vertical;
-  min-height: 6rem;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
-  tab-size: 2;
-}
-.ml-textarea::placeholder { color: var(--color-ink-faint); }
-.ml-textarea:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 18%, transparent);
-}
-
-.ml-hint {
-  font-size: 0.6875rem;
-  color: var(--color-ink-faint);
-  padding: 0 0.125rem;
-}
-</style>

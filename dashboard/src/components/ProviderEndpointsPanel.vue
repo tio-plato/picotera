@@ -2,7 +2,16 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useApi } from '@/composables/useApi'
 import type { EndpointView, ProviderEndpointView } from '@/api'
-import SidePanel from '@/components/SidePanel.vue'
+import {
+  SidePanel,
+  Button,
+  IconButton,
+  Input,
+  Select,
+  Field,
+  StateText,
+  Icon,
+} from '@/ui'
 
 const props = defineProps<{ providerId: number; providerName: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -133,71 +142,76 @@ function onDraftKeydown(e: KeyboardEvent, path: string) {
     kicker="端点绑定"
     @close="emit('close')"
   >
-    <section class="panel-section">
-      <div class="section-head">
-        <span class="section-title">已绑定</span>
-        <span class="section-count">{{ providerEndpoints.length }}</span>
+    <section class="flex flex-col gap-2">
+      <div class="flex items-baseline justify-between">
+        <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">已绑定</span>
+        <span class="text-xs text-ink-faint tabular-nums">{{ providerEndpoints.length }}</span>
       </div>
-      <div v-if="loading" class="state-text state-text--sm">加载中…</div>
-      <div v-else-if="!providerEndpoints.length" class="state-text state-text--sm">暂无绑定，下方选择端点添加</div>
-      <ul v-else class="binding-list">
-        <li v-for="pe in providerEndpoints" :key="pe.endpointPath" class="binding-item">
-          <div class="binding-path mono">{{ pe.endpointPath }}</div>
-          <div class="binding-row">
-            <input
+      <StateText v-if="loading" :dashed="false" compact>加载中…</StateText>
+      <StateText v-else-if="!providerEndpoints.length" compact>暂无绑定，下方选择端点添加</StateText>
+      <ul v-else class="list-none m-0 p-0 flex flex-col gap-2">
+        <li
+          v-for="pe in providerEndpoints"
+          :key="pe.endpointPath"
+          class="flex flex-col gap-1 px-2.5 py-2 border border-line rounded-md bg-surface-0"
+        >
+          <div class="font-mono text-sm text-ink overflow-hidden text-ellipsis whitespace-nowrap">
+            {{ pe.endpointPath }}
+          </div>
+          <div class="flex gap-1.5 items-center">
+            <Input
               v-model="drafts[pe.endpointPath]"
-              class="input input--sm"
+              size="sm"
+              class="flex-1 min-w-0"
               placeholder="上游 URL"
               :title="drafts[pe.endpointPath]"
               @keydown="onDraftKeydown($event, pe.endpointPath)"
               @blur="saveDraft(pe.endpointPath)"
             />
-            <button
-              class="btn-icon btn-icon--danger"
+            <IconButton
+              variant="danger"
               title="删除绑定"
               :aria-label="`删除 ${pe.endpointPath} 绑定`"
               @click="deleteBinding(pe.endpointPath)"
             >
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /></svg>
-            </button>
+              <Icon name="trash" :size="13" />
+            </IconButton>
           </div>
         </li>
       </ul>
     </section>
 
-    <section class="panel-section">
-      <div class="section-head">
-        <span class="section-title">新增绑定</span>
+    <section class="flex flex-col gap-2">
+      <div class="flex items-baseline justify-between">
+        <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">新增绑定</span>
       </div>
-      <form class="add-form" @submit.prevent="addBinding">
-        <label class="field">
-          <span class="field-label">端点</span>
-          <select v-model="form.endpointPath" class="input input--sm" :disabled="!availableEndpoints.length">
+      <form class="flex flex-col gap-2" @submit.prevent="addBinding">
+        <Field label="端点">
+          <Select v-model="form.endpointPath" size="sm" :disabled="!availableEndpoints.length">
             <option value="" disabled>
               {{ availableEndpoints.length ? '选择端点' : '该渠道暂无可绑定端点' }}
             </option>
             <option v-for="e in availableEndpoints" :key="e.path" :value="e.path">
               {{ e.path }} — {{ e.name }}
             </option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field-label">上游 URL</span>
-          <input
+          </Select>
+        </Field>
+        <Field label="上游 URL">
+          <Input
             v-model="form.upstreamUrl"
-            class="input input--sm"
+            size="sm"
             placeholder="https://api.example.com/v1/…"
             :disabled="!availableEndpoints.length"
           />
-        </label>
-        <div class="add-actions">
-          <button
+        </Field>
+        <div class="flex justify-end">
+          <Button
             type="submit"
-            class="btn-primary btn-primary--sm"
+            size="sm"
             :disabled="saving || !form.endpointPath || !form.upstreamUrl"
           >
             {{ saving ? '添加中…' : '添加' }}
-          </button>
+          </Button>
         </div>
       </form>
     </section>
@@ -205,49 +219,3 @@ function onDraftKeydown(e: KeyboardEvent, path: string) {
     <template v-if="error" #error>{{ error }}</template>
   </SidePanel>
 </template>
-
-<style scoped>
-.panel-section { display: flex; flex-direction: column; gap: 0.5rem; }
-.section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-.section-title {
-  font-size: 0.75rem;
-  font-weight: 550;
-  color: var(--color-ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.section-count {
-  font-size: 0.75rem;
-  color: var(--color-ink-faint);
-  font-variant-numeric: tabular-nums;
-}
-.state-text--sm { font-size: 0.8125rem; padding: 0.5rem 0; }
-.binding-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-.binding-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--color-line);
-  border-radius: 0.4375rem;
-  background: var(--color-surface-0);
-}
-.binding-path {
-  font-size: 0.8125rem;
-  color: var(--color-ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.binding-row { display: flex; gap: 0.375rem; align-items: center; }
-.binding-row .input { flex: 1 1 auto; min-width: 0; }
-
-.add-form { display: flex; flex-direction: column; gap: 0.5rem; }
-.add-actions { display: flex; justify-content: flex-end; }
-.btn-primary--sm { padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-</style>

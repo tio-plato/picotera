@@ -31,58 +31,31 @@ const mode = computed<'right' | 'modal'>(() => {
 <template>
   <aside
     v-if="state"
-    class="side-panel-host"
-    :data-mode="mode"
-    :style="{ '--side-panel-width': cssWidth }"
+    class="flex min-h-0 self-stretch"
+    :class="
+      mode === 'modal'
+        ? 'fixed inset-0 z-[900] w-auto items-center justify-center p-4'
+        : 'flex-none pr-8 pt-3 pb-8'
+    "
+    :style="mode === 'modal' ? undefined : { flexBasis: cssWidth, width: cssWidth }"
   >
-    <div class="side-panel-host__backdrop" @click="close" />
+    <div
+      v-if="mode === 'modal'"
+      class="absolute inset-0 bg-overlay-bg backdrop-blur-[4px]"
+      @click="close"
+    />
     <component
       :is="state.component"
       :key="state.key"
       v-bind="state.props"
-      class="side-panel-host__panel"
+      class="w-full max-h-full min-h-0"
+      :class="
+        mode === 'modal'
+          ? 'relative max-h-[calc(100vh-2rem)] shadow-[0_25px_50px_-12px_oklch(0.1_0.02_250/0.25)]'
+          : ''
+      "
+      :style="mode === 'modal' ? { width: `min(${cssWidth}, 100%)` } : undefined"
       @close="close"
     />
   </aside>
 </template>
-
-<style scoped>
-.side-panel-host {
-  flex: 0 0 var(--side-panel-width);
-  width: var(--side-panel-width);
-  display: flex;
-  min-height: 0;
-  align-self: stretch;
-  padding: 0.75rem 2rem 2rem 0;
-}
-.side-panel-host__backdrop { display: none; }
-.side-panel-host__panel {
-  width: 100%;
-  max-height: 100%;
-  min-height: 0;
-}
-
-.side-panel-host[data-mode="modal"] {
-  position: fixed;
-  inset: 0;
-  z-index: 900;
-  flex: 0 0 auto;
-  width: auto;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-}
-.side-panel-host[data-mode="modal"] .side-panel-host__backdrop {
-  display: block;
-  position: absolute;
-  inset: 0;
-  background: var(--color-overlay-bg);
-  backdrop-filter: blur(4px);
-}
-.side-panel-host[data-mode="modal"] .side-panel-host__panel {
-  position: relative;
-  width: min(var(--side-panel-width), 100%);
-  max-height: calc(100vh - 2rem);
-  box-shadow: 0 25px 50px -12px oklch(0.1 0.02 250 / 0.25);
-}
-</style>

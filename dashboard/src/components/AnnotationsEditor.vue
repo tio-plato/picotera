@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Tabs, IconButton, Icon } from '@/ui'
 
 type Mode = 'rows' | 'bulk' | 'json'
 type Entry = { id: number; key: string; value: string }
@@ -178,312 +179,103 @@ function onJsonInput() {
 }
 
 const entryCount = computed(() => entries.value.filter((e) => e.key.trim()).length)
+
+const tabs = [
+  { value: 'rows' as const, label: '交互', icon: 'list' as const },
+  { value: 'bulk' as const, label: '批量', icon: 'lines' as const },
+  { value: 'json' as const, label: 'JSON', icon: 'braces' as const },
+]
+
+function onModeChange(v: string | number) {
+  switchMode(v as Mode)
+}
 </script>
 
 <template>
-  <div class="anno-editor">
-    <div class="anno-header">
-      <div class="anno-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="mode === 'rows'"
-          :class="['anno-tab', { 'anno-tab--active': mode === 'rows' }]"
-          @click="switchMode('rows')"
-        >
-          <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
-          交互
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="mode === 'bulk'"
-          :class="['anno-tab', { 'anno-tab--active': mode === 'bulk' }]"
-          @click="switchMode('bulk')"
-        >
-          <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3.5h10M3 7h7M3 10.5h10M3 14h5" /></svg>
-          批量
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="mode === 'json'"
-          :class="['anno-tab', { 'anno-tab--active': mode === 'json' }]"
-          @click="switchMode('json')"
-        >
-          <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5.5 3C4 3 3 4 3 5.5V7c0 .8-.5 1.3-1 1.3C2.5 8.3 3 8.8 3 9.6v1.4C3 12.5 4 13 5.5 13" /><path d="M10.5 3C12 3 13 4 13 5.5V7c0 .8.5 1.3 1 1.3-.5 0-1 .5-1 1.3v1.4c0 1.5-1 2-2.5 2" /></svg>
-          JSON
-        </button>
-      </div>
-      <span class="anno-count">{{ entryCount }} {{ entryCount === 1 ? 'entry' : 'entries' }}</span>
+  <div class="flex flex-col gap-2 border border-line rounded-lg bg-surface-0 overflow-hidden">
+    <div class="flex items-center justify-between py-1.5 pl-2 pr-1.5 bg-surface-50 border-b border-line">
+      <Tabs :model-value="mode" :tabs="tabs" @update:model-value="onModeChange" />
+      <span class="font-mono text-2xs text-ink-faint pr-2 tabular-nums">
+        {{ entryCount }} {{ entryCount === 1 ? 'entry' : 'entries' }}
+      </span>
     </div>
 
-    <div v-if="mode === 'rows'" class="anno-rows">
-      <div v-if="entries.length === 0" class="anno-empty">
+    <div v-if="mode === 'rows'" class="p-2 flex flex-col gap-1.5">
+      <div v-if="entries.length === 0" class="py-3 px-2 text-xs text-ink-faint text-center">
         暂无标注
       </div>
-      <div v-else class="anno-rows-list">
-        <div v-for="row in entries" :key="row.id" class="anno-row">
+      <div v-else class="flex flex-col gap-1">
+        <div
+          v-for="row in entries"
+          :key="row.id"
+          class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1.5fr)_auto] items-center gap-1"
+        >
           <input
             v-model="row.key"
-            class="anno-input anno-input--key"
+            class="min-w-0 px-2 py-1.5 border border-line rounded-[5px] bg-surface-0 font-mono text-xs text-ink transition-colors hover:border-surface-300 focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
             placeholder="key"
             spellcheck="false"
             autocomplete="off"
             @input="onRowInput"
           />
-          <span class="anno-eq">=</span>
+          <span class="font-mono text-xs text-ink-faint px-px select-none">=</span>
           <input
             v-model="row.value"
-            class="anno-input anno-input--value"
+            class="min-w-0 px-2 py-1.5 border border-line rounded-[5px] bg-surface-0 font-mono text-xs text-ink transition-colors hover:border-surface-300 focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
             placeholder="value"
             spellcheck="false"
             autocomplete="off"
             @input="onRowInput"
           />
-          <button
-            type="button"
-            class="anno-row-remove"
-            aria-label="删除此行"
-            @click="removeRow(row.id)"
-          >
-            <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
-          </button>
+          <IconButton variant="danger" size="sm" aria-label="删除此行" @click="removeRow(row.id)">
+            <Icon name="close" :size="11" :stroke-width="1.6" />
+          </IconButton>
         </div>
       </div>
-      <button type="button" class="anno-add" @click="addRow">
-        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10" /></svg>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 self-start pl-2 pr-2 py-1 bg-transparent border border-dashed border-line rounded-[5px] text-xs text-ink-muted cursor-pointer transition-colors hover:bg-accent-faint hover:text-accent-ink hover:border-accent/40 hover:border-solid [&_svg]:opacity-70 hover:[&_svg]:opacity-100"
+        @click="addRow"
+      >
+        <Icon name="plus" :size="11" :stroke-width="1.6" />
         添加一行
       </button>
     </div>
 
-    <div v-else-if="mode === 'bulk'" class="anno-pane">
+    <div v-else-if="mode === 'bulk'" class="p-2 flex flex-col gap-1.5">
       <textarea
         v-model="bulkText"
-        class="anno-textarea"
+        class="w-full px-2.5 py-2 border border-line rounded-[5px] bg-surface-0 font-mono text-xs leading-[1.55] text-ink resize-y min-h-24 transition-colors focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
         spellcheck="false"
         autocomplete="off"
         rows="6"
         :placeholder="'KEY=value\nregion=us-east-1\ntier=premium'"
         @input="onBulkInput"
       />
-      <div v-if="bulkError" class="anno-err">{{ bulkError }}</div>
-      <div v-else class="anno-hint">每行一条 <span class="anno-hint-code">KEY=VALUE</span>，# 开头的行视为注释</div>
+      <div v-if="bulkError" class="text-2xs text-err-ink bg-err-faint px-2 py-1.5 rounded-sm font-mono">
+        {{ bulkError }}
+      </div>
+      <div v-else class="text-2xs text-ink-faint px-0.5">
+        每行一条
+        <span class="font-mono px-1 py-px bg-surface-100 rounded-xs text-ink-muted">KEY=VALUE</span>
+        ，# 开头的行视为注释
+      </div>
     </div>
 
-    <div v-else class="anno-pane">
+    <div v-else class="p-2 flex flex-col gap-1.5">
       <textarea
         v-model="jsonText"
-        class="anno-textarea"
+        class="w-full px-2.5 py-2 border border-line rounded-[5px] bg-surface-0 font-mono text-xs leading-[1.55] text-ink resize-y min-h-24 transition-colors focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/20 placeholder:text-ink-faint"
         spellcheck="false"
         autocomplete="off"
         rows="6"
         placeholder='{ "region": "us-east-1" }'
         @input="onJsonInput"
       />
-      <div v-if="jsonError" class="anno-err">{{ jsonError }}</div>
-      <div v-else class="anno-hint">对象字面量，值必须为字符串</div>
+      <div v-if="jsonError" class="text-2xs text-err-ink bg-err-faint px-2 py-1.5 rounded-sm font-mono">
+        {{ jsonError }}
+      </div>
+      <div v-else class="text-2xs text-ink-faint px-0.5">对象字面量，值必须为字符串</div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.anno-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  border: 1px solid var(--color-line);
-  border-radius: 0.5rem;
-  background: var(--color-surface-0);
-  overflow: hidden;
-}
-
-.anno-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.3125rem 0.375rem 0.3125rem 0.5rem;
-  background: var(--color-surface-50);
-  border-bottom: 1px solid var(--color-line);
-}
-
-.anno-tabs {
-  display: inline-flex;
-  gap: 0.125rem;
-  background: var(--color-surface-100);
-  padding: 0.1875rem;
-  border-radius: 0.375rem;
-}
-
-.anno-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3125rem;
-  padding: 0.25rem 0.5625rem;
-  background: transparent;
-  border: none;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-ink-muted);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.anno-tab:hover { color: var(--color-ink); }
-.anno-tab--active {
-  background: var(--color-surface-0);
-  color: var(--color-ink);
-  box-shadow: var(--shadow-xs);
-}
-.anno-tab svg { opacity: 0.7; }
-.anno-tab--active svg { opacity: 1; color: var(--color-accent); }
-
-.anno-count {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  color: var(--color-ink-faint);
-  padding-right: 0.5rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Rows */
-.anno-rows {
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3125rem;
-}
-.anno-rows-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.anno-empty {
-  padding: 0.75rem 0.5rem;
-  font-size: 0.75rem;
-  color: var(--color-ink-faint);
-  text-align: center;
-}
-.anno-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.5fr) auto;
-  align-items: center;
-  gap: 0.25rem;
-}
-.anno-input {
-  min-width: 0;
-  padding: 0.3125rem 0.5rem;
-  border: 1px solid var(--color-line);
-  border-radius: 0.3125rem;
-  background: var(--color-surface-0);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--color-ink);
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
-}
-.anno-input::placeholder { color: var(--color-ink-faint); }
-.anno-input:hover { border-color: var(--color-surface-300); }
-.anno-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 18%, transparent);
-}
-.anno-eq {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--color-ink-faint);
-  padding: 0 0.0625rem;
-  user-select: none;
-}
-.anno-row-remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.375rem;
-  height: 1.375rem;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
-  color: var(--color-ink-faint);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-}
-.anno-row-remove:hover {
-  background: var(--color-indicator-err-faint);
-  border-color: oklch(0.88 0.06 25);
-  color: var(--color-indicator-err-ink);
-}
-.anno-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  align-self: flex-start;
-  padding: 0.25rem 0.5rem 0.25rem 0.4375rem;
-  background: transparent;
-  border: 1px dashed var(--color-line);
-  border-radius: 0.3125rem;
-  font-size: 0.75rem;
-  color: var(--color-ink-muted);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-}
-.anno-add:hover {
-  background: var(--color-accent-faint);
-  color: var(--color-accent-ink);
-  border-color: color-mix(in oklch, var(--color-accent) 35%, transparent);
-  border-style: solid;
-}
-.anno-add svg { opacity: 0.7; }
-.anno-add:hover svg { opacity: 1; }
-
-/* Bulk & JSON pane */
-.anno-pane {
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-.anno-textarea {
-  width: 100%;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--color-line);
-  border-radius: 0.3125rem;
-  background: var(--color-surface-0);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  line-height: 1.55;
-  color: var(--color-ink);
-  resize: vertical;
-  min-height: 6rem;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
-  tab-size: 2;
-}
-.anno-textarea::placeholder { color: var(--color-ink-faint); }
-.anno-textarea:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 18%, transparent);
-}
-
-.anno-hint {
-  font-size: 0.6875rem;
-  color: var(--color-ink-faint);
-  padding: 0 0.125rem;
-}
-.anno-hint-code {
-  font-family: var(--font-mono);
-  padding: 0.0625rem 0.25rem;
-  background: var(--color-surface-100);
-  border-radius: 0.1875rem;
-  color: var(--color-ink-muted);
-}
-
-.anno-err {
-  font-size: 0.6875rem;
-  color: var(--color-indicator-err-ink);
-  background: var(--color-indicator-err-faint);
-  padding: 0.3125rem 0.5rem;
-  border-radius: 0.25rem;
-  font-family: var(--font-mono);
-}
-</style>
