@@ -66,6 +66,8 @@ Seven tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provi
 
 Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pinia + Vue Router + TypeScript. Located in `dashboard/`. Package manager is pnpm (workspace root at repo root). Icons via `@tabler/icons-vue`; floating/popover positioning via `@floating-ui/vue`.
 
+**Design system reference**: before building or modifying UI, read `dashboard/DESIGN_SYSTEM.md` for tokens, primitives (`src/ui/`), and conventions.
+
 ### Dashboard Layout
 
 - `src/main.ts`, `src/App.vue` — app bootstrap; `AppSidebar` + router-view shell.
