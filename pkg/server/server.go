@@ -20,10 +20,11 @@ import (
 )
 
 type Server struct {
-	queries *db.Queries
-	router  *chi.Mux
-	api     huma.API
-	config  *configx.Config
+	queries    *db.Queries
+	router     *chi.Mux
+	api        huma.API
+	config     *configx.Config
+	httpClient *http.Client
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -49,10 +50,16 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	logx.WithContext(ctx).Info("connected to database")
 
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: config.GatewayReadTimeout,
+		},
+	}
+
 	router := chi.NewMux()
 	api := humachi.New(router, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
 
-	server := &Server{config: config, queries: queries, router: router, api: api}
+	server := &Server{config: config, queries: queries, router: router, api: api, httpClient: httpClient}
 	server.registerOperations()
 	server.registerEndpoints()
 	logx.WithContext(ctx).Info("registered operations")
