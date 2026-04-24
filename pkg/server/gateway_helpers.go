@@ -17,6 +17,7 @@ import (
 	"picotera/pkg/logx"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -69,10 +70,17 @@ func handleGatewayErr(w http.ResponseWriter, err error) {
 func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint, error) {
 	endpoint, err := s.queries.GetEndpointByPath(ctx, path)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return db.Endpoint{}, &gatewayError{
+				status:  http.StatusNotFound,
+				message: "route not found",
+				code:    errorx.RouteNotFound.Error(),
+			}
+		}
 		return db.Endpoint{}, &gatewayError{
-			status:  http.StatusNotFound,
-			message: "route not found",
-			code:    errorx.RouteNotFound.Error(),
+			status:  http.StatusInternalServerError,
+			message: "failed to query endpoint",
+			code:    errorx.InternalError.Error(),
 		}
 	}
 	return endpoint, nil
