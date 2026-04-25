@@ -50,7 +50,8 @@ async function fetchSpans() {
   })
   spans.value = sorted
   if (!selectedId.value || !sorted.find(s => s.id === selectedId.value)) {
-    selectedId.value = sorted[0]?.id ?? ''
+    const match = sorted.find(s => s.id === props.requestId)
+    selectedId.value = match?.id ?? sorted[0]?.id ?? ''
   }
 }
 
@@ -173,6 +174,9 @@ function statusLabel(s: number) {
         <section class="flex flex-col gap-2.5">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">基本信息</span>
           <div class="grid grid-cols-2 gap-2.5">
+            <Field label="ID" as="div" class="col-span-2">
+              <span class="font-mono text-xs text-ink break-all">{{ selected.id }}</span>
+            </Field>
             <Field label="类型" as="div">
               <Tag :variant="selected.type === 0 ? 'accent' : 'muted'">{{ typeLabel(selected.type) }}</Tag>
             </Field>
