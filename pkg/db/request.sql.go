@@ -210,18 +210,53 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequ
 	return items, nil
 }
 
+const updateRequestMetrics = `-- name: UpdateRequestMetrics :exec
+UPDATE request
+SET ttft_ms = $2, input_tokens = $3, output_tokens = $4,
+    cache_read_tokens = $5, cache_write_tokens = $6
+WHERE id = $1
+`
+
+type UpdateRequestMetricsParams struct {
+	ID               string      `json:"id"`
+	TtftMs           pgtype.Int4 `json:"ttftMs"`
+	InputTokens      pgtype.Int4 `json:"inputTokens"`
+	OutputTokens     pgtype.Int4 `json:"outputTokens"`
+	CacheReadTokens  pgtype.Int4 `json:"cacheReadTokens"`
+	CacheWriteTokens pgtype.Int4 `json:"cacheWriteTokens"`
+}
+
+func (q *Queries) UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error {
+	_, err := q.db.Exec(ctx, updateRequestMetrics,
+		arg.ID,
+		arg.TtftMs,
+		arg.InputTokens,
+		arg.OutputTokens,
+		arg.CacheReadTokens,
+		arg.CacheWriteTokens,
+	)
+	return err
+}
+
 const updateRequestOnComplete = `-- name: UpdateRequestOnComplete :exec
 UPDATE request
-SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5
+SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
+    ttft_ms = $6, input_tokens = $7, output_tokens = $8,
+    cache_read_tokens = $9, cache_write_tokens = $10
 WHERE id = $1
 `
 
 type UpdateRequestOnCompleteParams struct {
-	ID           string      `json:"id"`
-	StatusCode   pgtype.Int4 `json:"statusCode"`
-	ErrorMessage pgtype.Text `json:"errorMessage"`
-	TimeSpentMs  pgtype.Int4 `json:"timeSpentMs"`
-	Status       int32       `json:"status"`
+	ID               string      `json:"id"`
+	StatusCode       pgtype.Int4 `json:"statusCode"`
+	ErrorMessage     pgtype.Text `json:"errorMessage"`
+	TimeSpentMs      pgtype.Int4 `json:"timeSpentMs"`
+	Status           int32       `json:"status"`
+	TtftMs           pgtype.Int4 `json:"ttftMs"`
+	InputTokens      pgtype.Int4 `json:"inputTokens"`
+	OutputTokens     pgtype.Int4 `json:"outputTokens"`
+	CacheReadTokens  pgtype.Int4 `json:"cacheReadTokens"`
+	CacheWriteTokens pgtype.Int4 `json:"cacheWriteTokens"`
 }
 
 func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error {
@@ -231,6 +266,11 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 		arg.ErrorMessage,
 		arg.TimeSpentMs,
 		arg.Status,
+		arg.TtftMs,
+		arg.InputTokens,
+		arg.OutputTokens,
+		arg.CacheReadTokens,
+		arg.CacheWriteTokens,
 	)
 	return err
 }

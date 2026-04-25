@@ -173,6 +173,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Forward request
+		upstreamStartTime := time.Now()
 		resp, err := h.forwardRequest(req)
 		if err != nil {
 			cancel()
@@ -218,7 +219,9 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			w.WriteHeader(http.StatusOK)
 
-			reader := newIdleTimeoutReader(resp.Body, h.config.GatewayReadTimeout, cancel)
+			// Wrap response body with extractor to capture TTFT and token usage
+			extractor := NewResponseExtractor(resp.Body, resp.Header.Get("Content-Type"), upstreamStartTime)
+			reader := newIdleTimeoutReader(extractor, h.config.GatewayReadTimeout, cancel)
 			flusher, canFlush := w.(http.Flusher)
 			buf := make([]byte, 32*1024)
 			for {
@@ -236,24 +239,38 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			cancel()
 			resp.Body.Close()
 
+			// Extract metrics from the response
+			m := extractor.Metrics()
+			ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens := metricsToPG(m)
+
 			// Complete upstream request
 			upstreamTimeSpent := int32(time.Since(attemptStart).Milliseconds())
 			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-				ID:           upstreamID,
-				StatusCode:   pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-				ErrorMessage: pgtype.Text{Valid: false},
-				TimeSpentMs:  pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
-				Status:       db.RequestStatusCompleted,
+				ID:               upstreamID,
+				StatusCode:       pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+				ErrorMessage:     pgtype.Text{Valid: false},
+				TimeSpentMs:      pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
+				Status:           db.RequestStatusCompleted,
+				TtftMs:           ttftMs,
+				InputTokens:      inputTokens,
+				OutputTokens:     outputTokens,
+				CacheReadTokens:  cacheReadTokens,
+				CacheWriteTokens: cacheWriteTokens,
 			})
 
-			// Complete meta request
+			// Complete meta request — inherit metrics from successful upstream
 			metaTimeSpent := int32(time.Since(gatewayStart).Milliseconds())
 			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-				ID:           metaID,
-				StatusCode:   pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-				ErrorMessage: pgtype.Text{Valid: false},
-				TimeSpentMs:  pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-				Status:       db.RequestStatusCompleted,
+				ID:               metaID,
+				StatusCode:       pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+				ErrorMessage:     pgtype.Text{Valid: false},
+				TimeSpentMs:      pgtype.Int4{Int32: metaTimeSpent, Valid: true},
+				Status:           db.RequestStatusCompleted,
+				TtftMs:           ttftMs,
+				InputTokens:      inputTokens,
+				OutputTokens:     outputTokens,
+				CacheReadTokens:  cacheReadTokens,
+				CacheWriteTokens: cacheWriteTokens,
 			})
 			return
 		}

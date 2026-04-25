@@ -17,6 +17,7 @@ import (
 	"picotera/pkg/logx"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -239,6 +240,26 @@ func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateReque
 	if err := s.queries.UpdateRequestOnComplete(ctx, arg); err != nil {
 		logx.WithContext(ctx).WithError(err).Error("failed to update request on complete")
 	}
+}
+
+// metricsToPG converts ResponseMetrics to pgtype fields for DB queries.
+func metricsToPG(m ResponseMetrics) (ttftMs pgtype.Int4, inputTokens pgtype.Int4, outputTokens pgtype.Int4, cacheReadTokens pgtype.Int4, cacheWriteTokens pgtype.Int4) {
+	if m.TTFTMs != nil {
+		ttftMs = pgtype.Int4{Int32: int32(*m.TTFTMs), Valid: true}
+	}
+	if m.InputTokens != nil {
+		inputTokens = pgtype.Int4{Int32: int32(*m.InputTokens), Valid: true}
+	}
+	if m.OutputTokens != nil {
+		outputTokens = pgtype.Int4{Int32: int32(*m.OutputTokens), Valid: true}
+	}
+	if m.CacheReadTokens != nil {
+		cacheReadTokens = pgtype.Int4{Int32: int32(*m.CacheReadTokens), Valid: true}
+	}
+	if m.CacheWriteTokens != nil {
+		cacheWriteTokens = pgtype.Int4{Int32: int32(*m.CacheWriteTokens), Valid: true}
+	}
+	return
 }
 
 // idleTimeoutReader wraps an io.Reader and enforces a per-read idle timeout.
