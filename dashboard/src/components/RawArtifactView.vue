@@ -102,7 +102,7 @@ function bodyDisplay(body: string | undefined, encoding: string | undefined) {
       </div>
       <pre
         v-else
-        class="font-mono text-xs whitespace-pre-wrap bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
+        class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
       >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre>
     </section>
   </div>

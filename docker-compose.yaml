@@ -17,11 +17,10 @@ services:
       - ./.data/postgres:/var/lib/postgresql/data
 
   minio:
-    image: docker.io/minio/minio:latest
-    command: server /data --console-address ":9001"
+    image: ghcr.io/featuredcontainers/minio:sha-ff4c330
+    command: /minio server /data --address ":9000"
     ports:
       - 34050:9000
-      - 34049:9001
     environment:
       MINIO_ROOT_USER: picotera
       MINIO_ROOT_PASSWORD: picotera-dev

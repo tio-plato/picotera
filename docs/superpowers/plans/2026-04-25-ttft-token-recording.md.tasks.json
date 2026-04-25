@@ -1,0 +1,47 @@
+{
+  "planPath": "docs/superpowers/plans/2026-04-25-ttft-token-recording.md",
+  "tasks": [
+    {
+      "id": 9,
+      "subject": "Task 1: ResponseExtractor — SSE line buffering and Read()",
+      "status": "pending",
+      "description": "**Goal:** Create the ResponseExtractor type that wraps an io.Reader, buffers SSE events across Read() boundaries, and forwards bytes unchanged.\n\n**Files:**\n- Create: `pkg/server/response_extractor.go`\n- Create: `pkg/server/response_extractor_test.go`\n\n**Verify:** `go test ./pkg/server/ -run TestResponseExtractor -v`\n\n```json:metadata\n{\"files\": [\"pkg/server/response_extractor.go\", \"pkg/server/response_extractor_test.go\"], \"verifyCommand\": \"go test ./pkg/server/ -run TestResponseExtractor -v\", \"acceptanceCriteria\": [\"ResponseExtractor implements io.Reader\", \"SSE bytes forwarded unchanged\", \"SSE events detected across Read calls\", \"JSON bytes forwarded unchanged\", \"Content-type detection works\", \"Metrics() returns ResponseMetrics\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 2: ResponseExtractor — OpenAI and Anthropic SSE metric extraction",
+      "status": "pending",
+      "blockedBy": ["9"],
+      "description": "**Goal:** Parse SSE events with gjson to extract TTFT and token usage for OpenAI and Anthropic streaming formats.\n\n**Files:**\n- Modify: `pkg/server/response_extractor.go`\n- Modify: `pkg/server/response_extractor_test.go`\n\n**Verify:** `go test ./pkg/server/ -run TestResponseExtractor_SSE -v`\n\n```json:metadata\n{\"files\": [\"pkg/server/response_extractor.go\", \"pkg/server/response_extractor_test.go\"], \"verifyCommand\": \"go test ./pkg/server/ -run TestResponseExtractor_SSE -v\", \"acceptanceCriteria\": [\"OpenAI SSE TTFT extraction\", \"OpenAI SSE usage extraction\", \"Anthropic SSE TTFT extraction\", \"Anthropic SSE usage extraction\", \"[DONE] sentinel handled\", \"Multi-line data concatenated\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 3: ResponseExtractor — JSON (non-streaming) metric extraction",
+      "status": "pending",
+      "blockedBy": ["9"],
+      "description": "**Goal:** Parse buffered JSON body after EOF to extract token usage for non-streaming responses.\n\n**Files:**\n- Modify: `pkg/server/response_extractor.go`\n- Modify: `pkg/server/response_extractor_test.go`\n\n**Verify:** `go test ./pkg/server/ -run TestResponseExtractor_JSON -v`\n\n```json:metadata\n{\"files\": [\"pkg/server/response_extractor.go\", \"pkg/server/response_extractor_test.go\"], \"verifyCommand\": \"go test ./pkg/server/ -run TestResponseExtractor_JSON -v\", \"acceptanceCriteria\": [\"OpenAI JSON extraction\", \"Anthropic JSON extraction\", \"Unrecognized JSON produces nil metrics\", \"TTFT nil for non-streaming\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 4: Update sqlc queries for metric fields",
+      "status": "pending",
+      "blockedBy": ["9", "10", "11"],
+      "description": "**Goal:** Add metric columns to UpdateRequestOnComplete and add UpdateRequestMetrics query.\n\n**Files:**\n- Modify: `db/queries/request.sql`\n- Regenerate: `pkg/db/request.sql.go`, `pkg/db/querier.go`\n\n**Verify:** `sqlc generate && go build ./...`\n\n```json:metadata\n{\"files\": [\"db/queries/request.sql\", \"pkg/db/request.sql.go\", \"pkg/db/querier.go\"], \"verifyCommand\": \"sqlc generate && go build ./...\", \"acceptanceCriteria\": [\"UpdateRequestOnComplete has metric fields\", \"UpdateRequestMetrics query exists\", \"sqlc generate succeeds\", \"Go build succeeds\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 5: Wire ResponseExtractor into the gateway handler",
+      "status": "pending",
+      "blockedBy": ["9", "10", "11", "12"],
+      "description": "**Goal:** Integrate the ResponseExtractor into the gateway stream loop, capture timing, and write metrics to the database.\n\n**Files:**\n- Modify: `pkg/server/handle_gateway.go`\n- Modify: `pkg/server/gateway_helpers.go`\n\n**Verify:** `go build ./...`\n\n```json:metadata\n{\"files\": [\"pkg/server/handle_gateway.go\", \"pkg/server/gateway_helpers.go\"], \"verifyCommand\": \"go build ./...\", \"acceptanceCriteria\": [\"Extractor wired into reader chain\", \"Timing captured\", \"Metrics passed to DB on complete\", \"Meta request gets metrics\", \"Non-200 bypass extractor\", \"Build compiles\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 6: Regenerate OpenAPI spec and verify end-to-end",
+      "status": "pending",
+      "blockedBy": ["13"],
+      "description": "**Goal:** Regenerate openapi.yaml and do final compilation check.\n\n**Files:**\n- Regenerate: `openapi.yaml`\n\n**Verify:** `mise run openapi && go build ./... && go test ./pkg/server/ -v`\n\n```json:metadata\n{\"files\": [\"openapi.yaml\"], \"verifyCommand\": \"mise run openapi && go build ./... && go test ./pkg/server/ -v\", \"acceptanceCriteria\": [\"openapi.yaml regenerated\", \"Go build passes\", \"All tests pass\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-04-25T00:00:00Z"
+}

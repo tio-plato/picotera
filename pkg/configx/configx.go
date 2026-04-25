@@ -49,6 +49,8 @@ func Parse() (*Config, error) {
 	viper.SetDefault("s3.region", "us-east-1")
 	viper.SetDefault("s3.use_ssl", false)
 
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
 	bindEnvs(Config{})
 	viper.Unmarshal(&config)
 	return &config, nil
