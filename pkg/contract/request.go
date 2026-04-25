@@ -162,7 +162,7 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 
 type ListRequestsRequest struct {
 	PaginationRequest
-	Type         *int32 `query:"type,omitempty"`
+	Type         int32  `query:"type,omitempty" default:"-1"`
 	ProviderID   int32  `query:"providerId,omitempty"`
 	EndpointPath string `query:"endpointPath,omitempty"`
 	Model        string `query:"model,omitempty"`

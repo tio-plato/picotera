@@ -36,8 +36,8 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 	}
 
 	var filterType pgtype.Int4
-	if input.Type != nil {
-		filterType = pgtype.Int4{Int32: *input.Type, Valid: true}
+	if input.Type >= 0 {
+		filterType = pgtype.Int4{Int32: input.Type, Valid: true}
 	}
 	var filterProviderID pgtype.Int4
 	if input.ProviderID != 0 {
