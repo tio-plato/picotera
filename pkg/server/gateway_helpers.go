@@ -16,7 +16,7 @@ import (
 	"picotera/pkg/errorx"
 	"picotera/pkg/logx"
 
-	"github.com/google/uuid"
+	"github.com/rs/xid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tidwall/gjson"
@@ -226,7 +226,7 @@ func (s *Server) forwardRequest(req *http.Request) (*http.Response, error) {
 // Errors during logging are reported but do not affect the response.
 func (s *Server) logRequest(providerID int32, endpointPath, model string, statusCode int32, errorMessage string, timeSpentMs int32) {
 	err := s.queries.InsertRequest(context.Background(), db.InsertRequestParams{
-		ID:           uuid.New().String(),
+		ID:           xid.New().String(),
 		ProviderID:   providerID,
 		EndpointPath: endpointPath,
 		Model:        pgtype.Text{String: model, Valid: model != ""},
