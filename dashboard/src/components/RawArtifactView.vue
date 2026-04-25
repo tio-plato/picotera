@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { StateText, DataTable, Th, Td, Tr, Field } from '@/ui'
+import ResponseArtifactView from './ResponseArtifactView.vue'
 
 interface ArtifactPayload {
   method?: string
@@ -62,48 +63,50 @@ function bodyDisplay(body: string | undefined, encoding: string | undefined) {
   <StateText v-if="!url" :dashed="false" compact>未启用 artifact 记录</StateText>
   <StateText v-else-if="loading" :dashed="false" compact>加载中…</StateText>
   <StateText v-else-if="error" :dashed="false" compact>{{ error }}</StateText>
-  <div v-else-if="payload" class="flex flex-col gap-3">
-    <div class="grid grid-cols-2 gap-2.5">
-      <Field v-if="kind === 'request' && payload.method" label="Method" as="div">
-        <span class="font-mono text-sm">{{ payload.method }}</span>
-      </Field>
-      <Field v-if="kind === 'request' && payload.url" label="URL" as="div" class="col-span-2">
-        <span class="font-mono text-xs break-all">{{ payload.url }}</span>
-      </Field>
-      <Field v-if="kind === 'response' && payload.statusCode" label="Status" as="div">
-        <span class="font-mono text-sm">{{ payload.statusCode }}</span>
-      </Field>
-    </div>
+  <template v-else-if="payload">
+    <template v-if="kind === 'request'">
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-cols-2 gap-2.5">
+          <Field v-if="payload.method" label="Method" as="div">
+            <span class="font-mono text-sm">{{ payload.method }}</span>
+          </Field>
+          <Field v-if="payload.url" label="URL" as="div" class="col-span-2">
+            <span class="font-mono text-xs break-all">{{ payload.url }}</span>
+          </Field>
+        </div>
 
-    <section class="flex flex-col gap-2">
-      <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Headers</span>
-      <div v-if="!headerEntries(payload.headers).length" class="text-xs text-ink-faint">—</div>
-      <DataTable v-else>
-        <thead>
-          <Tr>
-            <Th class="w-44">Header</Th>
-            <Th>Value</Th>
-          </Tr>
-        </thead>
-        <tbody>
-          <Tr v-for="h in headerEntries(payload.headers)" :key="h.key">
-            <Td class="font-mono text-2xs whitespace-nowrap">{{ h.key }}</Td>
-            <Td class="font-mono text-2xs break-all">{{ h.value }}</Td>
-          </Tr>
-        </tbody>
-      </DataTable>
-    </section>
+        <section class="flex flex-col gap-2">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Headers</span>
+          <div v-if="!headerEntries(payload.headers).length" class="text-xs text-ink-faint">—</div>
+          <DataTable v-else>
+            <thead>
+              <Tr>
+                <Th class="w-44">Header</Th>
+                <Th>Value</Th>
+              </Tr>
+            </thead>
+            <tbody>
+              <Tr v-for="h in headerEntries(payload.headers)" :key="h.key">
+                <Td class="font-mono text-2xs whitespace-nowrap">{{ h.key }}</Td>
+                <Td class="font-mono text-2xs break-all">{{ h.value }}</Td>
+              </Tr>
+            </tbody>
+          </DataTable>
+        </section>
 
-    <section class="flex flex-col gap-2">
-      <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Body</span>
-      <div v-if="payload.bodyEncoding === 'base64'" class="flex items-center gap-3 text-xs text-ink-faint">
-        <span>[binary, {{ payload.body?.length ?? 0 }} bytes]</span>
-        <a :href="url" download class="text-accent-ink underline hover:no-underline">下载原始数据</a>
+        <section class="flex flex-col gap-2">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Body</span>
+          <div v-if="payload.bodyEncoding === 'base64'" class="flex items-center gap-3 text-xs text-ink-faint">
+            <span>[binary, {{ payload.body?.length ?? 0 }} bytes]</span>
+            <a :href="url" download class="text-accent-ink underline hover:no-underline">下载原始数据</a>
+          </div>
+          <pre
+            v-else
+            class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
+          >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre>
+        </section>
       </div>
-      <pre
-        v-else
-        class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
-      >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre>
-    </section>
-  </div>
+    </template>
+    <ResponseArtifactView v-else :payload="payload" :url="url" />
+  </template>
 </template>
