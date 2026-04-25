@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,43 +34,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Match endpoint by path
-	endpoint, err := h.resolveEndpoint(r.Context(), r.URL.Path)
-	if err != nil {
-		handleGatewayErr(w, err)
-		return
-	}
-
-	// 3. Check credentials_resolver (only generalApiKey = 1 is supported in v1)
-	if endpoint.CredentialsResolver != credentialsResolverGeneralAPIKey {
-		writeGatewayError(w, http.StatusInternalServerError,
-			fmt.Sprintf("unsupported credentials resolver: %d", endpoint.CredentialsResolver),
-			errorx.InternalError.Error())
-		return
-	}
-
-	// 4. Resolve auth type from client headers
-	authTyp, err := resolveAuthType(r)
-	if err != nil {
-		handleGatewayErr(w, err)
-		return
-	}
-
-	// 5. Extract model name from request body
-	model, err := extractModel(body, endpoint.ModelPath)
-	if err != nil {
-		handleGatewayErr(w, err)
-		return
-	}
-
-	// 6. Resolve providers
-	providers, err := h.resolveProviders(r.Context(), endpoint.Path, model)
-	if err != nil {
-		handleGatewayErr(w, err)
-		return
-	}
-
-	// 7. Insert meta request (client/downstream)
+	// 2. Insert meta request immediately on arrival
 	metaID := xid.New().String()
 	h.insertRequest(bgCtx, db.InsertRequestParams{
 		ID:           metaID,
@@ -85,6 +50,76 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ErrorMessage: pgtype.Text{Valid: false},
 		TimeSpentMs:  pgtype.Int4{Valid: false},
 	})
+
+	failMeta := func(statusCode int32, errMsg string) {
+		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+			ID:           metaID,
+			StatusCode:   pgtype.Int4{Int32: statusCode, Valid: true},
+			ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
+			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(gatewayStart).Milliseconds()), Valid: true},
+			Status:       db.RequestStatusFailed,
+		})
+	}
+
+	// 3. Match endpoint by path
+	endpoint, err := h.resolveEndpoint(r.Context(), r.URL.Path)
+	if err != nil {
+		var gwErr *gatewayError
+		if errors.As(err, &gwErr) {
+			failMeta(int32(gwErr.status), gwErr.message)
+		} else {
+			failMeta(http.StatusInternalServerError, "failed to query endpoint")
+		}
+		handleGatewayErr(w, err)
+		return
+	}
+
+	// 4. Check credentials_resolver (only generalApiKey = 1 is supported in v1)
+	if endpoint.CredentialsResolver != credentialsResolverGeneralAPIKey {
+		errMsg := fmt.Sprintf("unsupported credentials resolver: %d", endpoint.CredentialsResolver)
+		failMeta(http.StatusInternalServerError, errMsg)
+		writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
+		return
+	}
+
+	// 5. Resolve auth type from client headers
+	authTyp, err := resolveAuthType(r)
+	if err != nil {
+		var gwErr *gatewayError
+		if errors.As(err, &gwErr) {
+			failMeta(int32(gwErr.status), gwErr.message)
+		} else {
+			failMeta(http.StatusInternalServerError, "auth resolution failed")
+		}
+		handleGatewayErr(w, err)
+		return
+	}
+
+	// 6. Extract model name from request body
+	model, err := extractModel(body, endpoint.ModelPath)
+	if err != nil {
+		var gwErr *gatewayError
+		if errors.As(err, &gwErr) {
+			failMeta(int32(gwErr.status), gwErr.message)
+		} else {
+			failMeta(http.StatusBadRequest, "model extraction failed")
+		}
+		handleGatewayErr(w, err)
+		return
+	}
+
+	// 7. Resolve providers
+	providers, err := h.resolveProviders(r.Context(), endpoint.Path, model)
+	if err != nil {
+		var gwErr *gatewayError
+		if errors.As(err, &gwErr) {
+			failMeta(int32(gwErr.status), gwErr.message)
+		} else {
+			failMeta(http.StatusInternalServerError, "failed to query providers")
+		}
+		handleGatewayErr(w, err)
+		return
+	}
 
 	// 8. Try each provider with failover
 	var lastErr error
