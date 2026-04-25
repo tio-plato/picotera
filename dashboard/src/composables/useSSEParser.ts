@@ -82,6 +82,7 @@ function detectFormat(events: SSEEvent[]): SSEFormat {
 
 function aggregateOpenAIChat(events: SSEEvent[]): Record<string, unknown> | null {
   let content = ''
+  let reasoning = ''
   let role = ''
   let finishReason: string | null = null
   let id = ''
@@ -100,6 +101,8 @@ function aggregateOpenAIChat(events: SSEEvent[]): Record<string, unknown> | null
       if (delta) {
         if (delta.content) content += delta.content as string
         if (delta.role) role = delta.role as string
+        if (delta.reasoning) reasoning += delta.reasoning as string
+        if (delta.reasoning_content) reasoning += delta.reasoning_content as string
       }
       if (choice.finish_reason) finishReason = choice.finish_reason as string
     }
@@ -112,7 +115,11 @@ function aggregateOpenAIChat(events: SSEEvent[]): Record<string, unknown> | null
     model,
     choices: [{
       index: 0,
-      message: { role: role || 'assistant', content },
+      message: {
+        role: role || 'assistant',
+        content,
+        ...(reasoning ? { reasoning_content: reasoning } : {}),
+      },
       finish_reason: finishReason,
     }],
     ...(usage ? { usage } : {}),
@@ -262,6 +269,7 @@ function extractOpenAIChatContent(events: SSEEvent[]): ContentResult {
     const delta = choices?.[0]?.delta as Record<string, unknown> | undefined
     if (!delta) continue
     if (delta.content) reply += delta.content as string
+    if (delta.reasoning) thinking += delta.reasoning as string
     if (delta.reasoning_content) thinking += delta.reasoning_content as string
   }
   return { thinking: thinking || null, reply: reply || null }
@@ -372,7 +380,7 @@ function extractJsonContent(body: string): ContentResult {
     if (choices?.[0]) {
       const msg = choices[0].message as Record<string, unknown> | undefined
       const reply = (msg?.content as string) || null
-      const thinking = (msg?.reasoning_content as string) || null
+      const thinking = (msg?.reasoning_content as string) || (msg?.reasoning as string) || null
       return { thinking, reply }
     }
 
