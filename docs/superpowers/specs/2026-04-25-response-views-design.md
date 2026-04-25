@@ -66,7 +66,7 @@ Extract thinking and reply text from SSE body.
 
 ### `RawArtifactView.vue`
 
-Keep the `kind="request"` path unchanged. For `kind="response"`, render `ResponseArtifactView` instead of the inline body section.
+Keep the `kind="request"` path unchanged. For `kind="response"`, after the fetch completes, pass the loaded `payload` to `ResponseArtifactView` as a prop instead of rendering the inline body section. The fetch logic stays in `RawArtifactView`; `ResponseArtifactView` only handles display.
 
 ### `ResponseArtifactView.vue` (new)
 
