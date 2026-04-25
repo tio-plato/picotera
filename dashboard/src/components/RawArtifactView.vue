@@ -75,24 +75,30 @@ function bodyDisplay(body: string | undefined, encoding: string | undefined) {
           </Field>
         </div>
 
-        <section class="flex flex-col gap-2">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Headers</span>
-          <div v-if="!headerEntries(payload.headers).length" class="text-xs text-ink-faint">—</div>
-          <DataTable v-else>
-            <thead>
-              <Tr>
-                <Th class="w-44">Header</Th>
-                <Th>Value</Th>
-              </Tr>
-            </thead>
-            <tbody>
-              <Tr v-for="h in headerEntries(payload.headers)" :key="h.key">
-                <Td class="font-mono text-2xs whitespace-nowrap">{{ h.key }}</Td>
-                <Td class="font-mono text-2xs break-all">{{ h.value }}</Td>
-              </Tr>
-            </tbody>
-          </DataTable>
-        </section>
+        <details class="group flex flex-col gap-2">
+          <summary class="flex items-center gap-1.5 cursor-pointer select-none list-none text-2xs font-medium text-ink-muted uppercase tracking-[0.04em] hover:text-ink">
+            Headers
+            <span v-if="headerEntries(payload.headers).length" class="text-ink-faint normal-case tracking-normal">({{ headerEntries(payload.headers).length }})</span>
+            <svg class="w-3 h-3 transition-transform group-open:rotate-90" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5l5 4.5-5 4.5V3.5z"/></svg>
+          </summary>
+          <div class="mt-2">
+            <div v-if="!headerEntries(payload.headers).length" class="text-xs text-ink-faint">—</div>
+            <DataTable v-else>
+              <thead>
+                <Tr>
+                  <Th class="w-44">Header</Th>
+                  <Th>Value</Th>
+                </Tr>
+              </thead>
+              <tbody>
+                <Tr v-for="h in headerEntries(payload.headers)" :key="h.key">
+                  <Td class="font-mono text-2xs whitespace-nowrap">{{ h.key }}</Td>
+                  <Td class="font-mono text-2xs break-all">{{ h.value }}</Td>
+                </Tr>
+              </tbody>
+            </DataTable>
+          </div>
+        </details>
 
         <section class="flex flex-col gap-2">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Body</span>
