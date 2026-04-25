@@ -60,11 +60,6 @@ watch(() => props.requestId, () => {
   fetchSpans()
 })
 
-const shortId = computed(() => {
-  const id = props.requestId
-  return id.length > 10 ? id.slice(0, 10) : id
-})
-
 function formatTime(iso: string | undefined) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -117,7 +112,7 @@ function statusLabel(s: number) {
 </script>
 
 <template>
-  <SidePanel title="请求详情" :kicker="shortId" @close="emit('close')">
+  <SidePanel title="请求详情" :kicker="$props.requestId" @close="emit('close')">
     <StateText v-if="loading && !spans.length" :dashed="false" compact>加载中…</StateText>
     <template v-else-if="spans.length">
       <div class="flex items-start gap-2">
@@ -134,14 +129,11 @@ function statusLabel(s: number) {
             @click="selectedId = meta.id"
           >
             <div class="flex items-center justify-between gap-2">
-              <span class="text-2xs font-semibold text-accent-ink uppercase tracking-[0.04em]">META</span>
+              <span class="text-2xs font-semibold text-accent-ink uppercase tracking-[0.04em]">meta</span>
               <span
                 class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2]"
                 :class="statusCodeClass(meta.statusCode)"
               >{{ meta.statusCode || '—' }}</span>
-            </div>
-            <div class="font-medium text-sm text-ink truncate">
-              {{ providerLabel(meta.providerId) }}
             </div>
             <div class="font-mono tabular-nums text-2xs text-ink-faint">
               {{ formatTimeSpent(meta.timeSpentMs) }}
@@ -160,14 +152,12 @@ function statusLabel(s: number) {
             @click="selectedId = s.id"
           >
             <div class="flex items-center justify-between gap-2">
-              <span class="text-2xs font-semibold text-ink-muted uppercase tracking-[0.04em]">#{{ idx + 1 }}</span>
+              <span class="text-2xs font-semibold text-ink-muted uppercase tracking-[0.04em]">
+              {{ providerLabel(s.providerId) }}</span>
               <span
                 class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2]"
                 :class="statusCodeClass(s.statusCode)"
               >{{ s.statusCode || '—' }}</span>
-            </div>
-            <div class="font-medium text-sm text-ink truncate">
-              {{ providerLabel(s.providerId) }}
             </div>
             <div class="font-mono tabular-nums text-2xs text-ink-faint">
               {{ formatTimeSpent(s.timeSpentMs) }}
@@ -183,19 +173,16 @@ function statusLabel(s: number) {
         <section class="flex flex-col gap-2.5">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">基本信息</span>
           <div class="grid grid-cols-2 gap-2.5">
-            <Field label="ID" as="div" class="col-span-2">
-              <span class="font-mono text-xs text-ink break-all">{{ selected.id }}</span>
-            </Field>
             <Field label="类型" as="div">
               <Tag :variant="selected.type === 0 ? 'accent' : 'muted'">{{ typeLabel(selected.type) }}</Tag>
             </Field>
             <Field label="状态" as="div">
               <Tag :variant="statusVariantTag(selected.statusCode)">{{ statusLabel(selected.status) }}</Tag>
             </Field>
-            <Field v-if="selected.spanId" label="Span" as="div" class="col-span-2">
+            <Field v-if="selected.spanId" label="Span" as="div">
               <span class="font-mono text-xs text-ink break-all">{{ selected.spanId }}</span>
             </Field>
-            <Field v-if="selected.parentSpanId" label="Parent Span" as="div" class="col-span-2">
+            <Field v-if="selected.parentSpanId" label="Parent Span" as="div">
               <span class="font-mono text-xs text-ink break-all">{{ selected.parentSpanId }}</span>
             </Field>
             <Field label="渠道" as="div">
@@ -204,7 +191,7 @@ function statusLabel(s: number) {
             <Field label="端点" as="div">
               <span class="font-mono text-sm">{{ selected.endpointPath || '—' }}</span>
             </Field>
-            <Field label="模型" as="div" class="col-span-2">
+            <Field label="模型" as="div">
               <span class="font-mono text-sm">{{ selected.model || '—' }}</span>
             </Field>
             <Field label="状态码" as="div">
