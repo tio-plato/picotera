@@ -183,17 +183,32 @@ function aggregateAnthropic(events: SSEEvent[]): Record<string, unknown> | null 
 // ---- Aggregation: OpenAI Responses ----
 
 function aggregateOpenAIResponses(events: SSEEvent[]): Record<string, unknown> | null {
-  // Prefer response.completed event if present
+  // Collect completed items and response.completed payload
+  let completedResponse: Record<string, unknown> | null = null
+  const completedItems: Array<Record<string, unknown>> = []
+
   for (const event of events) {
     const parsed = parseEventData(event)
     if (!parsed) continue
     if (parsed.type === 'response.completed') {
-      return parsed.response as Record<string, unknown> ?? null
+      completedResponse = parsed.response as Record<string, unknown> ?? null
+    } else if (parsed.type === 'response.output_item.done') {
+      completedItems.push(parsed.item as Record<string, unknown>)
     }
   }
 
-  // Reconstruct from deltas
+  // Use response.completed as base, fill output from output_item.done if empty
+  if (completedResponse) {
+    const output = completedResponse.output as Array<Record<string, unknown>> | undefined
+    if ((!output || output.length === 0) && completedItems.length > 0) {
+      completedResponse.output = completedItems
+    }
+    return completedResponse
+  }
+
+  // Fallback: reconstruct from output_item.done + deltas
   const outputTexts: Map<string, string> = new Map()
+  const itemTypes: Map<string, { id: string; type: string }> = new Map()
   let id = ''
   let model = ''
 
@@ -207,11 +222,19 @@ function aggregateOpenAIResponses(events: SSEEvent[]): Record<string, unknown> |
         id = (resp.id as string) || id
         model = (resp.model as string) || model
       }
+    } else if (parsed.type === 'response.output_item.added') {
+      const item = parsed.item as Record<string, unknown> | undefined
+      if (item?.id) itemTypes.set(item.id as string, { id: item.id as string, type: item.type as string })
     } else if (parsed.type === 'response.output_text.delta') {
       const itemId = parsed.item_id as string
       const delta = parsed.delta as string
       outputTexts.set(itemId, (outputTexts.get(itemId) || '') + delta)
     }
+  }
+
+  // Prefer completed items over delta reconstruction
+  if (completedItems.length > 0) {
+    return { id, object: 'response', model, output: completedItems }
   }
 
   const output: Array<Record<string, unknown>> = []
@@ -224,12 +247,7 @@ function aggregateOpenAIResponses(events: SSEEvent[]): Record<string, unknown> |
     })
   }
 
-  return {
-    id,
-    object: 'response',
-    model,
-    output,
-  }
+  return { id, object: 'response', model, output }
 }
 
 // ---- Content Extraction ----
@@ -271,38 +289,67 @@ function extractAnthropicContent(events: SSEEvent[]): ContentResult {
 }
 
 function extractOpenAIResponsesContent(events: SSEEvent[]): ContentResult {
-  // Try response.completed first
+  let reply = ''
+  let thinking = ''
+
+  // Collect content from output_item.done events (most reliable)
+  for (const event of events) {
+    const parsed = parseEventData(event)
+    if (!parsed) continue
+    if (parsed.type === 'response.output_item.done') {
+      const item = parsed.item as Record<string, unknown>
+      if (item.type === 'message') {
+        const content = item.content as Array<Record<string, unknown>> | undefined
+        if (content) {
+          for (const part of content) {
+            if (part.type === 'output_text' && part.text) reply += part.text as string
+          }
+        }
+      } else if (item.type === 'reasoning') {
+        const summary = item.summary as Array<Record<string, unknown>> | undefined
+        if (summary) {
+          for (const part of summary) {
+            if (part.text) thinking += part.text as string
+          }
+        }
+      }
+    }
+  }
+
+  // If output_item.done gave us content, return it
+  if (reply || thinking) return { thinking: thinking || null, reply: reply || null }
+
+  // Fallback: try response.completed
   for (const event of events) {
     const parsed = parseEventData(event)
     if (!parsed) continue
     if (parsed.type === 'response.completed') {
       const resp = parsed.response as Record<string, unknown>
       const output = resp?.output as Array<Record<string, unknown>> | undefined
-      let reply = ''
-      let thinking = ''
       if (output) {
         for (const item of output) {
-          const content = item.content as Array<Record<string, unknown>> | undefined
-          if (content) {
-            for (const part of content) {
-              if (part.type === 'output_text' && part.text) reply += part.text as string
+          if (item.type === 'message') {
+            const content = item.content as Array<Record<string, unknown>> | undefined
+            if (content) {
+              for (const part of content) {
+                if (part.type === 'output_text' && part.text) reply += part.text as string
+              }
             }
-          }
-          const summary = item.summary as Array<Record<string, unknown>> | undefined
-          if (summary) {
-            for (const part of summary) {
-              if (part.text) thinking += part.text as string
+          } else if (item.type === 'reasoning') {
+            const summary = item.summary as Array<Record<string, unknown>> | undefined
+            if (summary) {
+              for (const part of summary) {
+                if (part.text) thinking += part.text as string
+              }
             }
           }
         }
       }
-      return { thinking: thinking || null, reply: reply || null }
+      if (reply || thinking) return { thinking: thinking || null, reply: reply || null }
     }
   }
 
-  // Fallback: concatenate deltas
-  let reply = ''
-  let thinking = ''
+  // Last fallback: concatenate deltas
   for (const event of events) {
     const parsed = parseEventData(event)
     if (!parsed) continue
@@ -345,16 +392,19 @@ function extractJsonContent(body: string): ContentResult {
       let reply = ''
       let thinking = ''
       for (const item of parsed.output as Array<Record<string, unknown>>) {
-        const content = item.content as Array<Record<string, unknown>> | undefined
-        if (content) {
-          for (const part of content) {
-            if (part.type === 'output_text' && part.text) reply += part.text as string
+        if (item.type === 'message') {
+          const content = item.content as Array<Record<string, unknown>> | undefined
+          if (content) {
+            for (const part of content) {
+              if (part.type === 'output_text' && part.text) reply += part.text as string
+            }
           }
-        }
-        const summary = item.summary as Array<Record<string, unknown>> | undefined
-        if (summary) {
-          for (const part of summary) {
-            if (part.text) thinking += part.text as string
+        } else if (item.type === 'reasoning') {
+          const summary = item.summary as Array<Record<string, unknown>> | undefined
+          if (summary) {
+            for (const part of summary) {
+              if (part.text) thinking += part.text as string
+            }
           }
         }
       }
