@@ -4,37 +4,37 @@
     {
       "id": 10,
       "subject": "Task 1: Install dependencies",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add `marked`, `dompurify`, `@tailwindcss/typography`, and `@types/dompurify` to the dashboard package.\n\n**Files:**\n- Modify: `dashboard/package.json`\n- Modify: `dashboard/src/index.css`\n\n**Acceptance Criteria:**\n- [ ] `pnpm --dir dashboard install` succeeds\n- [ ] `@tailwindcss/typography` plugin registered in CSS\n- [ ] `prose` utility class is available\n\n**Verify:** `pnpm --dir dashboard build` → exit 0\n\n```json:metadata\n{\"files\": [\"dashboard/package.json\", \"dashboard/src/index.css\"], \"verifyCommand\": \"pnpm --dir dashboard build\", \"acceptanceCriteria\": [\"pnpm install succeeds\", \"typography plugin registered in CSS\", \"prose class available\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 2: Create SSE parser composable",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10],
       "description": "**Goal:** Implement `useSSEParser.ts` with `aggregateSSE()` and `extractContent()` functions.\n\n**Files:**\n- Create: `dashboard/src/composables/useSSEParser.ts`\n\n**Acceptance Criteria:**\n- [ ] parseSSEEvents() splits SSE body into typed event objects\n- [ ] detectFormat() correctly identifies all 3 formats\n- [ ] aggregateSSE() builds non-streaming JSON\n- [ ] extractContent() returns {thinking, reply}\n- [ ] OpenAI Responses prefers response.completed\n\n**Verify:** `pnpm --dir dashboard type-check` → exit 0\n\n```json:metadata\n{\"files\": [\"dashboard/src/composables/useSSEParser.ts\"], \"verifyCommand\": \"pnpm --dir dashboard type-check\", \"acceptanceCriteria\": [\"parseSSEEvents splits SSE into events\", \"detectFormat identifies all 3 formats\", \"aggregateSSE builds non-streaming JSON\", \"extractContent returns thinking/reply\", \"response.completed preferred\", \"malformed events handled gracefully\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 3: Create ResponseArtifactView component",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10, 11],
       "description": "**Goal:** Build ResponseArtifactView.vue with sub-view switching (Raw / Aggregated / Rendered).\n\n**Files:**\n- Create: `dashboard/src/components/ResponseArtifactView.vue`\n\n**Acceptance Criteria:**\n- [ ] SegmentedControl switches sub-views\n- [ ] Raw shows pretty-printed JSON\n- [ ] Aggregated shows SSE aggregation (SSE only)\n- [ ] Rendered shows thinking/reply markdown\n- [ ] Binary body hides non-raw views\n\n**Verify:** `pnpm --dir dashboard type-check` → exit 0\n\n```json:metadata\n{\"files\": [\"dashboard/src/components/ResponseArtifactView.vue\"], \"verifyCommand\": \"pnpm --dir dashboard type-check\", \"acceptanceCriteria\": [\"SegmentedControl switches sub-views\", \"Raw shows pretty-printed JSON\", \"Aggregated shows SSE aggregation\", \"Rendered shows thinking/reply markdown\", \"Binary body hides non-raw views\", \"SSE detected via Content-Type header\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 4: Wire ResponseArtifactView into RawArtifactView",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** Modify RawArtifactView.vue to delegate response rendering to ResponseArtifactView.\n\n**Files:**\n- Modify: `dashboard/src/components/RawArtifactView.vue`\n\n**Acceptance Criteria:**\n- [ ] Request rendering unchanged\n- [ ] Response rendering via ResponseArtifactView\n- [ ] Loading/error/empty states preserved\n\n**Verify:** `pnpm --dir dashboard type-check` → exit 0\n\n```json:metadata\n{\"files\": [\"dashboard/src/components/RawArtifactView.vue\"], \"verifyCommand\": \"pnpm --dir dashboard type-check\", \"acceptanceCriteria\": [\"request rendering unchanged\", \"response rendering delegated to ResponseArtifactView\", \"loading/error/empty states preserved\"]}\n```"
     },
     {
       "id": 14,
       "subject": "Task 5: Verify end-to-end and lint",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [13],
       "description": "**Goal:** Ensure full feature works — build, type-check, lint all pass.\n\n**Files:**\n- No new files\n\n**Acceptance Criteria:**\n- [ ] type-check passes\n- [ ] lint passes\n- [ ] build passes\n\n**Verify:** All three commands exit 0\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"pnpm --dir dashboard build\", \"acceptanceCriteria\": [\"type-check passes\", \"lint passes\", \"build passes\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-04-25T00:00:00Z"
+  "lastUpdated": "2026-04-25T12:00:00Z"
 }
