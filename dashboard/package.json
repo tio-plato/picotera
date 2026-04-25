@@ -17,6 +17,8 @@
   "dependencies": {
     "@floating-ui/vue": "^1.1.11",
     "@tabler/icons-vue": "^3.41.1",
+    "dompurify": "^3.4.1",
+    "marked": "^18.0.2",
     "openapi-fetch": "^0.17.0",
     "openapi-typescript": "^7.13.0",
     "pinia": "^3.0.4",
@@ -24,8 +26,10 @@
     "vue-router": "^5.0.4"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.4",
     "@tsconfig/node24": "^24.0.4",
+    "@types/dompurify": "^3.2.0",
     "@types/node": "^24.12.2",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/eslint-config-typescript": "^14.7.0",
