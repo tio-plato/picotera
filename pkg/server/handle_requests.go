@@ -107,3 +107,18 @@ func (s *Server) handleGetRequest(ctx context.Context, input *contract.GetReques
 	}
 	return &contract.GetRequestResponse{Body: *contract.ToRequestView(&req)}, nil
 }
+
+func (s *Server) handleListRequestSpans(ctx context.Context, input *contract.ListRequestSpansRequest) (*contract.ListRequestSpansResponse, error) {
+	rows, err := s.queries.ListRequestsBySpan(ctx, input.ID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to list request spans", err)
+	}
+	if len(rows) == 0 {
+		return nil, huma.Error404NotFound("request not found", errorx.RequestNotFound)
+	}
+	items := make([]contract.RequestView, len(rows))
+	for i, row := range rows {
+		items[i] = *contract.ToListRequestsBySpanRowView(&row)
+	}
+	return &contract.ListRequestSpansResponse{Body: items}, nil
+}

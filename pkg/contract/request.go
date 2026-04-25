@@ -160,6 +160,29 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 	})
 }
 
+func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
+	return toRequestView(requestLike{
+		ID:               r.ID,
+		SpanID:           r.SpanID,
+		ParentSpanID:     r.ParentSpanID,
+		Type:             r.Type,
+		Status:           r.Status,
+		ProviderID:       r.ProviderID,
+		EndpointPath:     r.EndpointPath,
+		ApiKeyID:         r.ApiKeyID,
+		Model:            r.Model,
+		InputTokens:      r.InputTokens,
+		CacheReadTokens:  r.CacheReadTokens,
+		OutputTokens:     r.OutputTokens,
+		CacheWriteTokens: r.CacheWriteTokens,
+		StatusCode:       r.StatusCode,
+		ErrorMessage:     r.ErrorMessage,
+		TtftMs:           r.TtftMs,
+		TimeSpentMs:      r.TimeSpentMs,
+		CreatedAt:        r.CreatedAt,
+	})
+}
+
 type ListRequestsRequest struct {
 	PaginationRequest
 	Type         int32  `query:"type,omitempty" default:"-1"`
@@ -178,6 +201,14 @@ type GetRequestResponse struct {
 	Body RequestView
 }
 
+type ListRequestSpansRequest struct {
+	ID string `path:"id"`
+}
+
+type ListRequestSpansResponse struct {
+	Body []RequestView
+}
+
 var OperationListRequests = huma.Operation{
 	OperationID: "listRequests",
 	Method:      http.MethodGet,
@@ -190,4 +221,11 @@ var OperationGetRequest = huma.Operation{
 	Method:      http.MethodGet,
 	Path:        "/requests/{id}",
 	Summary:     "Get a request by ID",
+}
+
+var OperationListRequestSpans = huma.Operation{
+	OperationID: "listRequestSpans",
+	Method:      http.MethodGet,
+	Path:        "/requests/{id}/spans",
+	Summary:     "List spans (meta + upstream) related to a request",
 }

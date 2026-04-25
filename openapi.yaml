@@ -953,4 +953,30 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Get a request by ID
+  /api/picotera/requests/{id}/spans:
+    get:
+      operationId: listRequestSpans
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/RequestView"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List spans (meta + upstream) related to a request
 

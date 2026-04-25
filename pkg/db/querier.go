@@ -29,6 +29,7 @@ type Querier interface {
 	ListModelProviderEndpoints(ctx context.Context, arg ListModelProviderEndpointsParams) ([]ModelProviderEndpoint, error)
 	ListProviderEndpoints(ctx context.Context, providerID int32) ([]ProviderEndpoint, error)
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
+	ListRequestsBySpan(ctx context.Context, id string) ([]ListRequestsBySpanRow, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
 	UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error
 	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error

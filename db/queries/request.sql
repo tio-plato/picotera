@@ -18,6 +18,18 @@ LIMIT sqlc.narg('limit')::int;
 -- name: GetRequest :one
 SELECT * FROM request WHERE id = $1;
 
+-- name: ListRequestsBySpan :many
+WITH anchor AS (
+  SELECT request.span_id FROM request WHERE request.id = $1
+)
+SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
+       r.api_key_id, r.model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
+       r.cache_write_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
+       r.created_at
+FROM request r, anchor
+WHERE r.span_id = anchor.span_id
+ORDER BY r.created_at ASC, r.id ASC;
+
 -- name: UpdateRequestOnHeader :exec
 UPDATE request
 SET provider_id = $2, model = $3, endpoint_path = $4, api_key_id = $5, status = $6

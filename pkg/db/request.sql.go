@@ -137,6 +137,79 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 	return items, nil
 }
 
+const listRequestsBySpan = `-- name: ListRequestsBySpan :many
+WITH anchor AS (
+  SELECT request.span_id FROM request WHERE request.id = $1
+)
+SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
+       r.api_key_id, r.model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
+       r.cache_write_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
+       r.created_at
+FROM request r, anchor
+WHERE r.span_id = anchor.span_id
+ORDER BY r.created_at ASC, r.id ASC
+`
+
+type ListRequestsBySpanRow struct {
+	ID               string           `json:"id"`
+	SpanID           pgtype.Text      `json:"spanId"`
+	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
+	Type             int32            `json:"type"`
+	Status           int32            `json:"status"`
+	ProviderID       pgtype.Int4      `json:"providerId"`
+	EndpointPath     pgtype.Text      `json:"endpointPath"`
+	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
+	Model            pgtype.Text      `json:"model"`
+	InputTokens      pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens     pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens pgtype.Int4      `json:"cacheWriteTokens"`
+	StatusCode       pgtype.Int4      `json:"statusCode"`
+	ErrorMessage     pgtype.Text      `json:"errorMessage"`
+	TtftMs           pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs      pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt        pgtype.Timestamp `json:"createdAt"`
+}
+
+func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequestsBySpanRow, error) {
+	rows, err := q.db.Query(ctx, listRequestsBySpan, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRequestsBySpanRow
+	for rows.Next() {
+		var i ListRequestsBySpanRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SpanID,
+			&i.ParentSpanID,
+			&i.Type,
+			&i.Status,
+			&i.ProviderID,
+			&i.EndpointPath,
+			&i.ApiKeyID,
+			&i.Model,
+			&i.InputTokens,
+			&i.CacheReadTokens,
+			&i.OutputTokens,
+			&i.CacheWriteTokens,
+			&i.StatusCode,
+			&i.ErrorMessage,
+			&i.TtftMs,
+			&i.TimeSpentMs,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRequestOnComplete = `-- name: UpdateRequestOnComplete :exec
 UPDATE request
 SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5
