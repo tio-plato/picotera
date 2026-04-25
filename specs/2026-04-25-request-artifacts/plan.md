@@ -65,9 +65,10 @@
   - 改写流程：
     1. 入口 `body, _ := io.ReadAll(r.Body)` 后，构造 `metaReqHeader := r.Header.Clone()`；插入 meta 时拿到 `metaCreatedAt`；提交 `s.artifacts.Put(ctx, RequestKey(metaID, metaCreatedAt), BuildRequest(r.Method, r.URL.String(), metaReqHeader, body))`。
     2. 进入 provider 循环，每次构建 `req` 后插入 upstream 行（同样改 `:one` 拿 `upstreamCreatedAt`），把 `req.Body` 的字节（`buildUpstreamRequest` 已知 `reqBody`，让它也 return `reqBody`）打成 upstream request artifact。
-    3. forward 后 `resp` 200 路径：把现有 `for { reader.Read; w.Write }` 改成 `tee := io.MultiWriter(w, &captureBuf)`；用 `io.Copy(tee, reader)` 替换原循环（保留 flusher 行为：可以用自定义 writer 包装 `w`，每次 Write 后 flush）。完成后：
+    3. forward 后 `resp` 200 路径：现有代码已经把 `resp.Body` 包成 `ResponseExtractor` 再套 `idleTimeoutReader`，循环里 `reader.Read` 后写到 `w`。改动：在循环里同时把 `buf[:n]` 追加到一个 `captureBuf := bytes.Buffer`（无需 `io.MultiWriter`，直接在现有 `w.Write(buf[:n])` 之后加一行 `captureBuf.Write(buf[:n])` 即可，保留现有 flusher 行为）。完成后：
        - 上传 upstream response：`BuildResponse(resp.StatusCode, resp.Header, captureBuf.Bytes())` → `ResponseKey(upstreamID, upstreamCreatedAt)`。
        - 上传 meta response：用我们写出去的 header（即剥离 `Content-Length` 后的 header）和同字节 body → `ResponseKey(metaID, metaCreatedAt)`。
+       - 注意：捕获发生在 `ResponseExtractor` 之后，与现有 TTFT/token 提取互不影响（同一份字节流，分别走两个旁路）。
     4. 非 200 路径：`respBody` 已读到，构造 upstream response artifact 上传。meta response artifact 在「all providers failed」分支统一上传：使用 `writeGatewayError` 写入的 JSON 字节作为 body（把 `writeGatewayError` 改为返回它写入的字节，或抽出 helper 返回字节再 `w.Write`）。
     5. 早期失败分支（resolveEndpoint 等）：调用 `failMetaResponse(status, msg)` 同时写 DB + 上传 meta response artifact（body 是错误 JSON）。
 

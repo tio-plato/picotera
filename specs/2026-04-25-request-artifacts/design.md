@@ -25,7 +25,7 @@ artifacts/<YYYY-MM-DD>/<id>.response.json.zst
 ## 缓冲与上传时机
 
 - **请求 body**：在 gateway 入口 `io.ReadAll` 后即得到完整字节，已经在内存里。
-- **响应 body**：流式转发给下游的同时，用 `io.MultiWriter(w, &captureBuf)` 把字节同时写入一个内存 buffer。`captureBuf` 不设上限（按用户要求）。
+- **响应 body**：网关已经把 `resp.Body` 包成 `ResponseExtractor`（提取 TTFT 与 token usage）再套 `idleTimeoutReader`。在现有循环 `n, _ := reader.Read(buf); w.Write(buf[:n])` 之后追加 `captureBuf.Write(buf[:n])`，把字节复制一份到 `bytes.Buffer`。`captureBuf` 不设上限（按用户要求）。
 - 上游请求的 request body 与 meta 相同（除非替换了 `model` 字段，因此各 upstream 按改写后的字节单独保存）。
 - 上游响应 body：同样在 forward 循环里用 `io.MultiWriter` 把读到的字节复制一份。
 
@@ -85,7 +85,9 @@ Client ─body→ Gateway
                        │  ├── 改写 model 后的字节 → upstreamReqBytes
                        │  ├── 上传 upstream request artifact
                        │  ├── HTTP do
-                       │  └── ResponseBody  ─Tee→ MultiWriter(client, buf)
+                       │  └── ResponseBody → ResponseExtractor → idleTimeoutReader
+                       │                              │
+                       │                              └── 循环中 w.Write 同时复制到 captureBuf
                                        │
                                        ├── 上传 upstream response artifact
                                        └── 上传 meta response artifact
