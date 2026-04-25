@@ -2,7 +2,8 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
 import type { RequestView, ProviderView } from '@/api'
-import { SidePanel, StateText, Field, Tag, IconButton, Icon } from '@/ui'
+import { SidePanel, StateText, Field, Tag, IconButton, Icon, Tabs } from '@/ui'
+import RawArtifactView from './RawArtifactView.vue'
 
 const props = defineProps<{ requestId: string; providers?: ProviderView[] }>()
 const emit = defineEmits<{ close: [] }>()
@@ -110,6 +111,17 @@ function statusLabel(s: number) {
     default: return String(s)
   }
 }
+
+type DetailTab = 'overview' | 'request' | 'response'
+const detailTab = ref<DetailTab>('overview')
+const detailTabs = [
+  { value: 'overview', label: '概览' },
+  { value: 'request', label: '原始请求' },
+  { value: 'response', label: '原始响应' },
+]
+watch(selectedId, () => {
+  detailTab.value = 'overview'
+})
 </script>
 
 <template>
@@ -171,6 +183,12 @@ function statusLabel(s: number) {
       </div>
 
       <template v-if="selected">
+        <Tabs
+          :model-value="detailTab"
+          :tabs="detailTabs"
+          @update:model-value="(v: string | number) => (detailTab = v as DetailTab)"
+        />
+        <template v-if="detailTab === 'overview'">
         <section class="flex flex-col gap-2.5">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">基本信息</span>
           <div class="grid grid-cols-2 gap-2.5">
@@ -244,6 +262,17 @@ function statusLabel(s: number) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">错误信息</span>
           <pre class="font-mono text-xs whitespace-pre-wrap bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink">{{ selected.errorMessage }}</pre>
         </section>
+        </template>
+        <RawArtifactView
+          v-else-if="detailTab === 'request'"
+          :url="selected.requestArtifactUrl"
+          kind="request"
+        />
+        <RawArtifactView
+          v-else-if="detailTab === 'response'"
+          :url="selected.responseArtifactUrl"
+          kind="response"
+        />
       </template>
     </template>
 

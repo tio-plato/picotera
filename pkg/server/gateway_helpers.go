@@ -43,26 +43,30 @@ type gatewayError struct {
 func (e *gatewayError) Error() string { return e.message }
 
 // writeGatewayError writes a structured error response in the format:
-// {"message":"...","code":"...","details":[]}
-func writeGatewayError(w http.ResponseWriter, status int, message, code string) {
+// {"message":"...","code":"...","details":[]}.
+// Returns the bytes written to the body (for artifact capture).
+func writeGatewayError(w http.ResponseWriter, status int, message, code string) []byte {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{
+	body, _ := json.Marshal(map[string]any{
 		"message": message,
 		"code":    code,
 		"details": []string{},
 	})
+	body = append(body, '\n')
+	w.Write(body)
+	return body
 }
 
 // handleGatewayErr writes a gateway error response. If err is a *gatewayError,
 // its status, message, and code are used; otherwise a 500 INTERNAL_ERROR is returned.
-func handleGatewayErr(w http.ResponseWriter, err error) {
+// Returns (status, body) for artifact capture.
+func handleGatewayErr(w http.ResponseWriter, err error) (int, []byte) {
 	var gwErr *gatewayError
 	if err != nil && errors.As(err, &gwErr) {
-		writeGatewayError(w, gwErr.status, gwErr.message, gwErr.code)
-	} else {
-		writeGatewayError(w, http.StatusInternalServerError, "internal error", errorx.InternalError.Error())
+		return gwErr.status, writeGatewayError(w, gwErr.status, gwErr.message, gwErr.code)
 	}
+	return http.StatusInternalServerError, writeGatewayError(w, http.StatusInternalServerError, "internal error", errorx.InternalError.Error())
 }
 
 // resolveEndpoint matches the request path to an endpoint in the database.
@@ -176,20 +180,20 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 // if upstreamModel differs, and sets credentials based on the auth type.
 // The provided ctx is used for the request context, enabling cancellation of
 // upstream reads (e.g., by the idle timeout reader).
-func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, auth authType) (*http.Request, error) {
+func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, auth authType) (*http.Request, []byte, error) {
 	// Replace model name if upstream_model_name is set
 	reqBody := body
 	if upstreamModel != "" {
 		var err error
 		reqBody, err = sjson.SetBytes(body, "model", upstreamModel)
 		if err != nil {
-			return nil, fmt.Errorf("failed to set model in request body: %w", err)
+			return nil, nil, fmt.Errorf("failed to set model in request body: %w", err)
 		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, original.Method, upstreamURL, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create upstream request: %w", err)
+		return nil, nil, fmt.Errorf("failed to create upstream request: %w", err)
 	}
 
 	// Copy headers from original request, excluding auth headers, Host, and Content-Length
@@ -213,7 +217,7 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 
 	req.ContentLength = int64(len(reqBody))
 
-	return req, nil
+	return req, reqBody, nil
 }
 
 // forwardRequest sends the request to the upstream provider using the shared HTTP client.
@@ -221,11 +225,18 @@ func (s *Server) forwardRequest(req *http.Request) (*http.Response, error) {
 	return s.httpClient.Do(req)
 }
 
-// insertRequest inserts a request record. Errors are logged but do not affect the response.
-func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) {
-	if err := s.queries.InsertRequest(ctx, arg); err != nil {
+// insertRequest inserts a request record and returns the DB-assigned created_at.
+// On error, returns time.Now().UTC() so artifact keys remain computable.
+func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) time.Time {
+	createdAt, err := s.queries.InsertRequest(ctx, arg)
+	if err != nil {
 		logx.WithContext(ctx).WithError(err).Error("failed to insert request")
+		return time.Now().UTC()
 	}
+	if !createdAt.Valid {
+		return time.Now().UTC()
+	}
+	return createdAt.Time
 }
 
 // updateRequestOnHeader backfills provider and request metadata. Errors are logged but do not affect the response.

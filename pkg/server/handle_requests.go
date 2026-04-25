@@ -3,15 +3,40 @@ package server
 import (
 	"context"
 	"errors"
+	"picotera/pkg/artifacts"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
+	"picotera/pkg/logx"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const artifactPresignTTL = time.Hour
+
+// attachArtifactUrls fills in presigned URLs for the given view using id+createdAt.
+// Errors are logged and silently dropped (URL fields stay empty).
+func (s *Server) attachArtifactUrls(ctx context.Context, v *contract.RequestView, createdAt pgtype.Timestamp) {
+	if s.artifacts == nil || !s.artifacts.Enabled() || !createdAt.Valid {
+		return
+	}
+	ts := createdAt.Time
+	reqURL, err := s.artifacts.PresignedGet(ctx, artifacts.RequestKey(v.ID, ts), artifactPresignTTL)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", v.ID).Warn("artifact: presign request failed")
+	} else {
+		v.RequestArtifactUrl = reqURL
+	}
+	respURL, err := s.artifacts.PresignedGet(ctx, artifacts.ResponseKey(v.ID, ts), artifactPresignTTL)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", v.ID).Warn("artifact: presign response failed")
+	} else {
+		v.ResponseArtifactUrl = respURL
+	}
+}
 
 func (s *Server) handleListRequests(ctx context.Context, input *contract.ListRequestsRequest) (*contract.ListRequestsResponse, error) {
 	limit := input.Limit
@@ -73,6 +98,7 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 	items := make([]contract.RequestView, len(rows))
 	for i, row := range rows {
 		items[i] = *contract.ToListRequestRowView(&row)
+		s.attachArtifactUrls(ctx, &items[i], row.CreatedAt)
 	}
 
 	pagination := contract.PaginationInfo{HasMore: hasMore}
@@ -105,7 +131,9 @@ func (s *Server) handleGetRequest(ctx context.Context, input *contract.GetReques
 		}
 		return nil, huma.Error500InternalServerError("failed to get request", err)
 	}
-	return &contract.GetRequestResponse{Body: *contract.ToRequestView(&req)}, nil
+	view := contract.ToRequestView(&req)
+	s.attachArtifactUrls(ctx, view, req.CreatedAt)
+	return &contract.GetRequestResponse{Body: *view}, nil
 }
 
 func (s *Server) handleListRequestSpans(ctx context.Context, input *contract.ListRequestSpansRequest) (*contract.ListRequestSpansResponse, error) {
@@ -119,6 +147,7 @@ func (s *Server) handleListRequestSpans(ctx context.Context, input *contract.Lis
 	items := make([]contract.RequestView, len(rows))
 	for i, row := range rows {
 		items[i] = *contract.ToListRequestsBySpanRowView(&row)
+		s.attachArtifactUrls(ctx, &items[i], row.CreatedAt)
 	}
 	return &contract.ListRequestSpansResponse{Body: items}, nil
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"picotera/pkg/artifacts"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
+	"picotera/pkg/logx"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/xid"
@@ -36,7 +39,10 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Insert meta request immediately on arrival
 	metaID := xid.New().String()
-	h.insertRequest(bgCtx, db.InsertRequestParams{
+	metaReqHeader := r.Header.Clone()
+	metaReqMethod := r.Method
+	metaReqURL := r.URL.String()
+	metaCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
 		ID:           metaID,
 		SpanID:       pgtype.Text{String: metaID, Valid: true},
 		ParentSpanID: pgtype.Text{Valid: false},
@@ -51,6 +57,9 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		TimeSpentMs:  pgtype.Int4{Valid: false},
 	})
 
+	// Upload meta request artifact
+	h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, metaReqMethod, metaReqURL, metaReqHeader, body)
+
 	failMeta := func(statusCode int32, errMsg string) {
 		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 			ID:           metaID,
@@ -59,6 +68,12 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(gatewayStart).Milliseconds()), Valid: true},
 			Status:       db.RequestStatusFailed,
 		})
+	}
+
+	// failMetaResponse handles a write of the gateway error response and uploads the meta response artifact.
+	failMetaResponse := func(err error) {
+		statusCode, respBody := handleGatewayErr(w, err)
+		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, statusCode, w.Header().Clone(), respBody)
 	}
 
 	// 3. Match endpoint by path
@@ -70,7 +85,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			failMeta(http.StatusInternalServerError, "failed to query endpoint")
 		}
-		handleGatewayErr(w, err)
+		failMetaResponse(err)
 		return
 	}
 
@@ -78,7 +93,8 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if endpoint.CredentialsResolver != credentialsResolverGeneralAPIKey {
 		errMsg := fmt.Sprintf("unsupported credentials resolver: %d", endpoint.CredentialsResolver)
 		failMeta(http.StatusInternalServerError, errMsg)
-		writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
+		respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
+		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody)
 		return
 	}
 
@@ -91,7 +107,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			failMeta(http.StatusInternalServerError, "auth resolution failed")
 		}
-		handleGatewayErr(w, err)
+		failMetaResponse(err)
 		return
 	}
 
@@ -104,7 +120,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			failMeta(http.StatusBadRequest, "model extraction failed")
 		}
-		handleGatewayErr(w, err)
+		failMetaResponse(err)
 		return
 	}
 
@@ -117,7 +133,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			failMeta(http.StatusInternalServerError, "failed to query providers")
 		}
-		handleGatewayErr(w, err)
+		failMetaResponse(err)
 		return
 	}
 
@@ -129,7 +145,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Insert upstream request
 		upstreamID := xid.New().String()
-		h.insertRequest(bgCtx, db.InsertRequestParams{
+		upstreamCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
 			ID:           upstreamID,
 			SpanID:       pgtype.Text{String: metaID, Valid: true},
 			ParentSpanID: pgtype.Text{Valid: false},
@@ -157,7 +173,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Build upstream request
-		req, err := buildUpstreamRequest(ctx, r, body, provider.UpstreamUrl.String, upstreamModel, creds, authTyp)
+		req, reqBody, err := buildUpstreamRequest(ctx, r, body, provider.UpstreamUrl.String, upstreamModel, creds, authTyp)
 		if err != nil {
 			cancel()
 			timeSpent := int32(time.Since(attemptStart).Milliseconds())
@@ -171,6 +187,9 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			lastErr = err
 			continue
 		}
+
+		// Upload upstream request artifact
+		h.uploadRequestArtifact(bgCtx, upstreamID, upstreamCreatedAt, req.Method, req.URL.String(), req.Header.Clone(), reqBody)
 
 		// Forward request
 		upstreamStartTime := time.Now()
@@ -217,6 +236,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					w.Header().Add(key, value)
 				}
 			}
+			metaRespHeader := w.Header().Clone()
 			w.WriteHeader(http.StatusOK)
 
 			// Wrap response body with extractor to capture TTFT and token usage
@@ -224,10 +244,12 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			reader := newIdleTimeoutReader(extractor, h.config.GatewayReadTimeout, cancel)
 			flusher, canFlush := w.(http.Flusher)
 			buf := make([]byte, 32*1024)
+			var captureBuf bytes.Buffer
 			for {
 				n, readErr := reader.Read(buf)
 				if n > 0 {
 					w.Write(buf[:n])
+					captureBuf.Write(buf[:n])
 					if canFlush {
 						flusher.Flush()
 					}
@@ -238,6 +260,11 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			cancel()
 			resp.Body.Close()
+
+			// Upload response artifacts (upstream + meta share the same body bytes)
+			respBytes := captureBuf.Bytes()
+			h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes)
+			h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes)
 
 			// Extract metrics from the response
 			m := extractor.Metrics()
@@ -279,6 +306,8 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		// Upload upstream response artifact for the failed attempt
+		h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody)
 		timeSpent := int32(time.Since(attemptStart).Milliseconds())
 		errMsg := string(respBody)
 		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
@@ -304,5 +333,32 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		TimeSpentMs:  pgtype.Int4{Int32: metaTimeSpent, Valid: true},
 		Status:       db.RequestStatusFailed,
 	})
-	writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
+	respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
+	h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody)
+}
+
+// uploadRequestArtifact builds and asynchronously uploads a request artifact for the given id+ts.
+func (h *gatewayHandler) uploadRequestArtifact(ctx context.Context, id string, ts time.Time, method, url string, header http.Header, body []byte) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildRequest(method, url, header, body)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build request failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.RequestKey(id, ts), payload)
+}
+
+// uploadResponseArtifact builds and asynchronously uploads a response artifact for the given id+ts.
+func (h *gatewayHandler) uploadResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildResponse(statusCode, header, body)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build response failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
 }

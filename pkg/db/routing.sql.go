@@ -101,7 +101,7 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 	return items, nil
 }
 
-const insertRequest = `-- name: InsertRequest :exec
+const insertRequest = `-- name: InsertRequest :one
 INSERT INTO request (
   id, span_id, parent_span_id, type, status,
   provider_id, endpoint_path, api_key_id, model,
@@ -113,6 +113,7 @@ INSERT INTO request (
   $10, $11, $12, $13,
   $14, $15, $16, $17
 )
+RETURNING created_at
 `
 
 type InsertRequestParams struct {
@@ -135,8 +136,8 @@ type InsertRequestParams struct {
 	TimeSpentMs      pgtype.Int4 `json:"timeSpentMs"`
 }
 
-func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) error {
-	_, err := q.db.Exec(ctx, insertRequest,
+func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (pgtype.Timestamp, error) {
+	row := q.db.QueryRow(ctx, insertRequest,
 		arg.ID,
 		arg.SpanID,
 		arg.ParentSpanID,
@@ -155,5 +156,7 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) er
 		arg.TtftMs,
 		arg.TimeSpentMs,
 	)
-	return err
+	var created_at pgtype.Timestamp
+	err := row.Scan(&created_at)
+	return created_at, err
 }

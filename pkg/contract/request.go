@@ -28,6 +28,8 @@ type RequestView struct {
 	TtftMs           *int32  `json:"ttftMs,omitempty"`
 	TimeSpentMs      *int32  `json:"timeSpentMs,omitempty"`
 	CreatedAt        string  `json:"createdAt,omitempty"`
+	RequestArtifactUrl  string `json:"requestArtifactUrl,omitempty"`
+	ResponseArtifactUrl string `json:"responseArtifactUrl,omitempty"`
 }
 
 type requestLike struct {

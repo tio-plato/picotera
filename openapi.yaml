@@ -364,6 +364,10 @@ components:
         providerId:
           format: int32
           type: integer
+        requestArtifactUrl:
+          type: string
+        responseArtifactUrl:
+          type: string
         spanId:
           type: string
         status:

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"picotera/db/migrations"
+	"picotera/pkg/artifacts"
 	"picotera/pkg/configx"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
@@ -25,6 +26,7 @@ type Server struct {
 	api        huma.API
 	config     *configx.Config
 	httpClient *http.Client
+	artifacts  artifacts.Sink
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -56,10 +58,16 @@ func NewServer(ctx context.Context) (*Server, error) {
 		},
 	}
 
+	sink, err := artifacts.NewSink(config.S3, logx.WithContext(ctx))
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).Warn("failed to init artifact sink, continuing without artifacts")
+		sink, _ = artifacts.NewSink(configx.S3Config{}, logx.WithContext(ctx))
+	}
+
 	router := chi.NewMux()
 	api := humachi.New(router, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
 
-	server := &Server{config: config, queries: queries, router: router, api: api, httpClient: httpClient}
+	server := &Server{config: config, queries: queries, router: router, api: api, httpClient: httpClient, artifacts: sink}
 	server.registerOperations()
 	server.registerEndpoints()
 	logx.WithContext(ctx).Info("registered operations")

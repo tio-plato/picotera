@@ -486,6 +486,8 @@ export interface components {
             parentSpanId?: string;
             /** Format: int32 */
             providerId?: number;
+            requestArtifactUrl?: string;
+            responseArtifactUrl?: string;
             spanId?: string;
             /** Format: int32 */
             status: number;

@@ -14,6 +14,17 @@ type Config struct {
 	Host               string        `mapstructure:"host"`
 	Port               int           `mapstructure:"port"`
 	GatewayReadTimeout time.Duration `mapstructure:"gateway_read_timeout"`
+	S3                 S3Config      `mapstructure:"s3"`
+}
+
+type S3Config struct {
+	Endpoint  string `mapstructure:"endpoint"`
+	Region    string `mapstructure:"region"`
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	Bucket    string `mapstructure:"bucket"`
+	UseSSL    bool   `mapstructure:"use_ssl"`
+	PublicURL string `mapstructure:"public_url"`
 }
 
 func Parse() (*Config, error) {
@@ -35,6 +46,8 @@ func Parse() (*Config, error) {
 
 	viper.SetDefault("port", 9898)
 	viper.SetDefault("gateway_read_timeout", 300*time.Second)
+	viper.SetDefault("s3.region", "us-east-1")
+	viper.SetDefault("s3.use_ssl", false)
 
 	bindEnvs(Config{})
 	viper.Unmarshal(&config)

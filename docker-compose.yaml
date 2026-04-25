@@ -15,3 +15,26 @@ services:
       POSTGRES_INITDB_ARGS: '--data-checksums --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8'
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
+
+  minio:
+    image: docker.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - 34050:9000
+      - 34049:9001
+    environment:
+      MINIO_ROOT_USER: picotera
+      MINIO_ROOT_PASSWORD: picotera-dev
+    volumes:
+      - ./.data/minio:/data
+
+  minio-init:
+    image: docker.io/minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set local http://minio:9000 picotera picotera-dev) do echo 'waiting for minio...' && sleep 1; done;
+      /usr/bin/mc mb -p local/picotera-artifacts || true;
+      exit 0;
+      "

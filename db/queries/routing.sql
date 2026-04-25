@@ -11,7 +11,7 @@ SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_na
 -- name: GetApiKeyByHash :one
 SELECT * FROM api_key WHERE api_key_hash = $1 LIMIT 1;
 
--- name: InsertRequest :exec
+-- name: InsertRequest :one
 INSERT INTO request (
   id, span_id, parent_span_id, type, status,
   provider_id, endpoint_path, api_key_id, model,
@@ -22,4 +22,5 @@ INSERT INTO request (
   $6, $7, $8, $9,
   $10, $11, $12, $13,
   $14, $15, $16, $17
-);
+)
+RETURNING created_at;

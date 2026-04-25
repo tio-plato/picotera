@@ -6,6 +6,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -25,7 +27,7 @@ type Querier interface {
 	GetProviders(ctx context.Context) ([]Provider, error)
 	GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error)
 	GetRequest(ctx context.Context, id string) (Request, error)
-	InsertRequest(ctx context.Context, arg InsertRequestParams) error
+	InsertRequest(ctx context.Context, arg InsertRequestParams) (pgtype.Timestamp, error)
 	ListModelProviderEndpoints(ctx context.Context, arg ListModelProviderEndpointsParams) ([]ModelProviderEndpoint, error)
 	ListProviderEndpoints(ctx context.Context, providerID int32) ([]ProviderEndpoint, error)
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
