@@ -43,14 +43,14 @@ Parse SSE text stream, concatenate deltas, build non-streaming equivalent JSON.
 
 1. Split body on `\n\n` to get events, extract `data: ` lines from each event
 2. Skip `[DONE]` sentinel
-3. Auto-detect format from first event if not provided:
-   - Has `choices` field → `openai-chat`
-   - Has `type` field with Anthropic event types (`message_start`, `content_block_delta`, etc.) → `anthropic`
-   - Has `output` or matches OpenAI Responses schema → `openai-responses`
+3. Auto-detect format from the `type` field in the first parsed event's JSON:
+   - `type` starts with `response.` (e.g. `response.created`, `response.output_text.delta`) → `openai-responses`
+   - `type` is an Anthropic event type (`message_start`, `content_block_delta`, `message_delta`, etc.) → `anthropic`
+   - Has `choices` field and no `type` → `openai-chat`
 4. Aggregate per format:
    - **OpenAI Chat**: Concatenate `choices[0].delta.content`, build `{id, object:"chat.completion", choices:[{index:0, message:{role, content}, finish_reason}], model, usage}`
    - **Anthropic**: Concatenate `text_delta.text`, collect `thinking` blocks, build `{id, type:"message", role:"assistant", content:[...], model, stop_reason, usage}`
-   - **OpenAI Responses**: Concatenate output item deltas, build complete response object
+   - **OpenAI Responses**: If a `response.completed` event exists (type === `"response.completed"`), use its `response` field directly as the aggregated JSON. Otherwise, reconstruct from deltas: concatenate `response.output_text.delta` events' `delta` fields, collect reasoning summary deltas, build a response object.
 5. Return `{format, json}`; if body is not SSE (no `data:` lines detected after checking content-type says it should be), return `{format:'unknown', json: JSON.parse(body)}`
 
 ### `extractContent(body: string, format: SSEFormat): ContentResult`
@@ -59,7 +59,9 @@ Extract thinking and reply text from SSE body.
 
 - **Anthropic**: `thinking` content blocks → `thinking`; `text` content blocks → `reply`
 - **OpenAI Chat**: `reasoning_content` (o1 models) → `thinking`; `choices[0].delta.content` → `reply`
-- **OpenAI Responses**: `reasoning` summary → `thinking`; `output_text` → `reply`
+- **OpenAI Responses**:
+  - `reply`: concatenate `response.output_text.delta` events' `delta` fields; or extract from `response.completed` → `response.output[].content[].text`
+  - `thinking`: concatenate `response.reasoning_summary_text.delta` events' `delta` fields; or extract from `response.completed` → `response.output[].summary[].text`
 - For non-SSE JSON responses, parse directly and extract the same fields from the non-streaming structure.
 
 ## Component Changes
