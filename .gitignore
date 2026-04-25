@@ -4,3 +4,4 @@
 .pnpm-store
 node_modules
 /.claude/worktrees
+/.worktrees
