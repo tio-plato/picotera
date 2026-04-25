@@ -16,7 +16,7 @@ const form = ref({
   endpointPath: props.mapping?.endpointPath ?? '',
   upstreamModelName: props.mapping?.upstreamModelName ?? '',
   priority: props.mapping?.priority ?? 0,
-  annotations: { ...(props.mapping?.annotations ?? {}) } as Record<string, string>,
+  annotations: { ...props.mapping?.annotations } as Record<string, string>,
 })
 
 const models = ref<ModelView[]>([])

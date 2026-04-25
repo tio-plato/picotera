@@ -16,7 +16,7 @@ const form = ref({
   credentials: props.provider?.credentials ?? '',
   priority: props.provider?.priority ?? 0,
   providerModels: [...(props.provider?.providerModels ?? [])] as string[],
-  annotations: { ...(props.provider?.annotations ?? {}) } as Record<string, string>,
+  annotations: { ...props.provider?.annotations } as Record<string, string>,
 })
 const saving = ref(false)
 const error = ref('')

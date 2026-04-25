@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 import {
+  IconActivity,
   IconAlignJustified,
   IconBraces,
   IconCpu,
@@ -10,6 +11,7 @@ import {
   IconList,
   IconPlug,
   IconPlus,
+  IconRefresh,
   IconSettings,
   IconTrash,
   IconX,
@@ -30,6 +32,8 @@ export type IconName =
   | 'list'
   | 'lines'
   | 'braces'
+  | 'activity'
+  | 'refresh'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -46,4 +50,6 @@ export const iconComponents: Record<IconName, Component> = {
   list: IconList,
   lines: IconAlignJustified,
   braces: IconBraces,
+  activity: IconActivity,
+  refresh: IconRefresh,
 }

@@ -98,6 +98,7 @@ Imported from the barrel `src/ui/index.ts`. Keep adding to this barrel when intr
 
 - **`DataCard`** — generic titled container: `surface-0` background, `border-line`, `rounded-xl`, `shadow-sm`, `overflow-hidden`. Compose the header yourself inside the slot.
 - **`DataTable` + `Tr` + `Th` + `Td`** — full-width `<table>` with `border-separate border-spacing-0`. `Th actions` / `Td actions` variant pins the column to the right with `w-[1%]`. `Tr selected` draws the 2px inset accent stripe; `Tr hoverable` (default true) gives row hover state.
+- **`AutoDataTable`** — thin wrapper around `DataTable`/`Tr`/`Th`/`Td` that renders rows from `columns + items`. Props: `columns: AutoDataTableColumn<Row>[]`, `items: Row[]`, `rowKey(row, i) => string | number`, optional `selected(row) => boolean`, `hoverable`, `onRowClick(row, event)`. Column has `{ key, header?, field?, actions?, align?, headerClass?, cellClass? }`; `field` supports dotted paths. Slots: `#header-<key>` and `#cell-<key>="{ row, value, index }"` override the default header / cell rendering. Use this when the table is pure data-in / row-out; fall back to composing `DataTable` directly when rows need irregular structure.
 - **`Badge`** — small monospace counter pill, intended for numeric values (row counts, sizes). `min-w-6`, tabular-nums.
 - **`Tag`** — labeled chip, variants: `default`, `accent`, `ok`, `muted`, `more`. Monospace, 2xs. Use for identifiers, enum values, small stateful flags.
 - **`TagList`** — `flex flex-wrap gap-1` container. Always wrap Tags in this.

@@ -231,6 +231,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List requests */
+        get: operations["listRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a request by ID */
+        get: operations["getRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -355,6 +389,16 @@ export interface components {
             items: components["schemas"]["ModelProviderEndpointView"][] | null;
             pagination: components["schemas"]["PaginationInfo"];
         };
+        PaginatedBodyRequestView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PaginatedBodyRequestView.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["RequestView"][] | null;
+            pagination: components["schemas"]["PaginationInfo"];
+        };
         PaginationInfo: {
             hasMore: boolean;
             nextCursor?: string;
@@ -399,6 +443,39 @@ export interface components {
             /** Format: int32 */
             priority: number;
             providerModels: string[] | null;
+        };
+        RequestView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RequestView.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            apiKeyId?: number;
+            /** Format: int32 */
+            cacheReadTokens?: number;
+            /** Format: int32 */
+            cacheWriteTokens?: number;
+            createdAt: string;
+            endpointPath: string;
+            errorMessage?: string;
+            id: string;
+            /** Format: int32 */
+            inputTokens?: number;
+            model?: string;
+            /** Format: int32 */
+            outputTokens?: number;
+            parentSpanId?: string;
+            /** Format: int32 */
+            providerId: number;
+            spanId?: string;
+            /** Format: int32 */
+            statusCode: number;
+            /** Format: int32 */
+            timeSpentMs: number;
+            /** Format: int32 */
+            ttftMs?: number;
         };
         UpsertProviderRequestBody: {
             /**
@@ -1015,6 +1092,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    listRequests: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+                providerId?: number;
+                endpointPath?: string;
+                model?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedBodyRequestView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestView"];
                 };
             };
             /** @description Error */
