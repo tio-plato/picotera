@@ -16,9 +16,7 @@ import (
 	"picotera/pkg/errorx"
 	"picotera/pkg/logx"
 
-	"github.com/rs/xid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -222,20 +220,24 @@ func (s *Server) forwardRequest(req *http.Request) (*http.Response, error) {
 	return s.httpClient.Do(req)
 }
 
-// logRequest records the attempt in the request table.
-// Errors during logging are reported but do not affect the response.
-func (s *Server) logRequest(providerID int32, endpointPath, model string, statusCode int32, errorMessage string, timeSpentMs int32) {
-	err := s.queries.InsertRequest(context.Background(), db.InsertRequestParams{
-		ID:           xid.New().String(),
-		ProviderID:   providerID,
-		EndpointPath: endpointPath,
-		Model:        pgtype.Text{String: model, Valid: model != ""},
-		StatusCode:   statusCode,
-		ErrorMessage: pgtype.Text{String: errorMessage, Valid: errorMessage != ""},
-		TimeSpentMs:  timeSpentMs,
-	})
-	if err != nil {
-		logx.WithContext(context.Background()).WithError(err).Error("failed to log request")
+// insertRequest inserts a request record. Errors are logged but do not affect the response.
+func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) {
+	if err := s.queries.InsertRequest(ctx, arg); err != nil {
+		logx.WithContext(ctx).WithError(err).Error("failed to insert request")
+	}
+}
+
+// updateRequestOnHeader backfills provider and request metadata. Errors are logged but do not affect the response.
+func (s *Server) updateRequestOnHeader(ctx context.Context, arg db.UpdateRequestOnHeaderParams) {
+	if err := s.queries.UpdateRequestOnHeader(ctx, arg); err != nil {
+		logx.WithContext(ctx).WithError(err).Error("failed to update request on header")
+	}
+}
+
+// updateRequestOnComplete backfills result fields. Errors are logged but do not affect the response.
+func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateRequestOnCompleteParams) {
+	if err := s.queries.UpdateRequestOnComplete(ctx, arg); err != nil {
+		logx.WithContext(ctx).WithError(err).Error("failed to update request on complete")
 	}
 }
 

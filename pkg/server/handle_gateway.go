@@ -8,7 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"picotera/pkg/db"
 	"picotera/pkg/errorx"
+
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/rs/xid"
 )
 
 type gatewayHandler struct {
@@ -18,6 +22,9 @@ type gatewayHandler struct {
 var _ http.Handler = (*gatewayHandler)(nil)
 
 func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	gatewayStart := time.Now()
+	bgCtx := context.Background()
+
 	// 1. Read request body
 	body, err := io.ReadAll(r.Body)
 	r.Body.Close()
@@ -62,12 +69,45 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 7. Try each provider with failover
+	// 7. Insert meta request (client/downstream)
+	metaID := xid.New().String()
+	h.insertRequest(bgCtx, db.InsertRequestParams{
+		ID:           metaID,
+		SpanID:       pgtype.Text{String: metaID, Valid: true},
+		ParentSpanID: pgtype.Text{Valid: false},
+		Type:         db.RequestTypeMeta,
+		Status:       db.RequestStatusPending,
+		ProviderID:   pgtype.Int4{Valid: false},
+		EndpointPath: pgtype.Text{Valid: false},
+		ApiKeyID:     pgtype.Int4{Valid: false},
+		Model:        pgtype.Text{Valid: false},
+		StatusCode:   pgtype.Int4{Valid: false},
+		ErrorMessage: pgtype.Text{Valid: false},
+		TimeSpentMs:  pgtype.Int4{Valid: false},
+	})
+
+	// 8. Try each provider with failover
 	var lastErr error
 	for _, provider := range providers {
-		start := time.Now()
-		// Create a per-attempt context so idle timeouts can cancel the upstream request
+		attemptStart := time.Now()
 		ctx, cancel := context.WithCancel(r.Context())
+
+		// Insert upstream request
+		upstreamID := xid.New().String()
+		h.insertRequest(bgCtx, db.InsertRequestParams{
+			ID:           upstreamID,
+			SpanID:       pgtype.Text{String: metaID, Valid: true},
+			ParentSpanID: pgtype.Text{Valid: false},
+			Type:         db.RequestTypeUpstream,
+			Status:       db.RequestStatusPending,
+			ProviderID:   pgtype.Int4{Int32: provider.ProviderID, Valid: true},
+			EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
+			ApiKeyID:     pgtype.Int4{Valid: false},
+			Model:        pgtype.Text{String: model, Valid: true},
+			StatusCode:   pgtype.Int4{Valid: false},
+			ErrorMessage: pgtype.Text{Valid: false},
+			TimeSpentMs:  pgtype.Int4{Valid: false},
+		})
 
 		// Determine upstream model name
 		upstreamModel := ""
@@ -85,8 +125,14 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req, err := buildUpstreamRequest(ctx, r, body, provider.UpstreamUrl.String, upstreamModel, creds, authTyp)
 		if err != nil {
 			cancel()
-			timeSpent := int32(time.Since(start).Milliseconds())
-			h.logRequest(provider.ProviderID, endpoint.Path, model, 0, err.Error(), timeSpent)
+			timeSpent := int32(time.Since(attemptStart).Milliseconds())
+			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+				ID:           upstreamID,
+				StatusCode:   pgtype.Int4{Int32: 0, Valid: true},
+				ErrorMessage: pgtype.Text{String: err.Error(), Valid: true},
+				TimeSpentMs:  pgtype.Int4{Int32: timeSpent, Valid: true},
+				Status:       db.RequestStatusFailed,
+			})
 			lastErr = err
 			continue
 		}
@@ -95,13 +141,37 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp, err := h.forwardRequest(req)
 		if err != nil {
 			cancel()
-			timeSpent := int32(time.Since(start).Milliseconds())
-			h.logRequest(provider.ProviderID, endpoint.Path, model, 0, err.Error(), timeSpent)
+			timeSpent := int32(time.Since(attemptStart).Milliseconds())
+			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+				ID:           upstreamID,
+				StatusCode:   pgtype.Int4{Int32: 0, Valid: true},
+				ErrorMessage: pgtype.Text{String: err.Error(), Valid: true},
+				TimeSpentMs:  pgtype.Int4{Int32: timeSpent, Valid: true},
+				Status:       db.RequestStatusFailed,
+			})
 			lastErr = err
 			continue
 		}
 
 		if resp.StatusCode == http.StatusOK {
+			// Backfill meta and upstream on header success
+			h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
+				ID:           metaID,
+				ProviderID:   pgtype.Int4{Int32: provider.ProviderID, Valid: true},
+				Model:        pgtype.Text{String: model, Valid: true},
+				EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
+				ApiKeyID:     pgtype.Int4{Valid: false},
+				Status:       db.RequestStatusHeaderReceived,
+			})
+			h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
+				ID:           upstreamID,
+				ProviderID:   pgtype.Int4{Int32: provider.ProviderID, Valid: true},
+				Model:        pgtype.Text{String: model, Valid: true},
+				EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
+				ApiKeyID:     pgtype.Int4{Valid: false},
+				Status:       db.RequestStatusHeaderReceived,
+			})
+
 			// Stream response to client, stripping Content-Length since we're chunk-copying
 			for key, values := range resp.Header {
 				if strings.ToLower(key) == "content-length" {
@@ -131,25 +201,56 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			cancel()
 			resp.Body.Close()
 
-			timeSpent := int32(time.Since(start).Milliseconds())
-			h.logRequest(provider.ProviderID, endpoint.Path, model, int32(resp.StatusCode), "", timeSpent)
+			// Complete upstream request
+			upstreamTimeSpent := int32(time.Since(attemptStart).Milliseconds())
+			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+				ID:           upstreamID,
+				StatusCode:   pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+				ErrorMessage: pgtype.Text{Valid: false},
+				TimeSpentMs:  pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
+				Status:       db.RequestStatusCompleted,
+			})
+
+			// Complete meta request
+			metaTimeSpent := int32(time.Since(gatewayStart).Milliseconds())
+			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+				ID:           metaID,
+				StatusCode:   pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+				ErrorMessage: pgtype.Text{Valid: false},
+				TimeSpentMs:  pgtype.Int4{Int32: metaTimeSpent, Valid: true},
+				Status:       db.RequestStatusCompleted,
+			})
 			return
 		}
 
-		// Non-200 response: read body, log, try next provider
+		// Non-200 response: read body, complete upstream, try next provider
 		cancel()
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		timeSpent := int32(time.Since(start).Milliseconds())
+		timeSpent := int32(time.Since(attemptStart).Milliseconds())
 		errMsg := string(respBody)
-		h.logRequest(provider.ProviderID, endpoint.Path, model, int32(resp.StatusCode), errMsg, timeSpent)
+		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+			ID:           upstreamID,
+			StatusCode:   pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+			ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
+			TimeSpentMs:  pgtype.Int4{Int32: timeSpent, Valid: true},
+			Status:       db.RequestStatusFailed,
+		})
 		lastErr = fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg)
 	}
 
-	// 8. All providers failed
+	// 9. All providers failed — complete meta request
 	errMsg := "all providers failed"
 	if lastErr != nil {
 		errMsg = lastErr.Error()
 	}
+	metaTimeSpent := int32(time.Since(gatewayStart).Milliseconds())
+	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+		ID:           metaID,
+		StatusCode:   pgtype.Int4{Int32: http.StatusBadGateway, Valid: true},
+		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
+		TimeSpentMs:  pgtype.Int4{Int32: metaTimeSpent, Valid: true},
+		Status:       db.RequestStatusFailed,
+	})
 	writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
 }
