@@ -58,17 +58,19 @@ type Request struct {
 	ID               string           `json:"id"`
 	SpanID           pgtype.Text      `json:"spanId"`
 	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
-	ProviderID       int32            `json:"providerId"`
-	EndpointPath     string           `json:"endpointPath"`
+	ProviderID       pgtype.Int4      `json:"providerId"`
+	EndpointPath     pgtype.Text      `json:"endpointPath"`
 	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
 	Model            pgtype.Text      `json:"model"`
 	InputTokens      pgtype.Int4      `json:"inputTokens"`
 	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
 	OutputTokens     pgtype.Int4      `json:"outputTokens"`
 	CacheWriteTokens pgtype.Int4      `json:"cacheWriteTokens"`
-	StatusCode       int32            `json:"statusCode"`
+	StatusCode       pgtype.Int4      `json:"statusCode"`
 	ErrorMessage     pgtype.Text      `json:"errorMessage"`
 	TtftMs           pgtype.Int4      `json:"ttftMs"`
-	TimeSpentMs      int32            `json:"timeSpentMs"`
+	TimeSpentMs      pgtype.Int4      `json:"timeSpentMs"`
 	CreatedAt        pgtype.Timestamp `json:"createdAt"`
+	Type             int32            `json:"type"`
+	Status           int32            `json:"status"`
 }

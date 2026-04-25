@@ -102,28 +102,57 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 }
 
 const insertRequest = `-- name: InsertRequest :exec
-INSERT INTO request (id, provider_id, endpoint_path, model, status_code, error_message, time_spent_ms)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO request (
+  id, span_id, parent_span_id, type, status,
+  provider_id, endpoint_path, api_key_id, model,
+  input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
+  status_code, error_message, ttft_ms, time_spent_ms
+) VALUES (
+  $1, $2, $3, $4, $5,
+  $6, $7, $8, $9,
+  $10, $11, $12, $13,
+  $14, $15, $16, $17
+)
 `
 
 type InsertRequestParams struct {
-	ID           string      `json:"id"`
-	ProviderID   int32       `json:"providerId"`
-	EndpointPath string      `json:"endpointPath"`
-	Model        pgtype.Text `json:"model"`
-	StatusCode   int32       `json:"statusCode"`
-	ErrorMessage pgtype.Text `json:"errorMessage"`
-	TimeSpentMs  int32       `json:"timeSpentMs"`
+	ID               string      `json:"id"`
+	SpanID           pgtype.Text `json:"spanId"`
+	ParentSpanID     pgtype.Text `json:"parentSpanId"`
+	Type             int32       `json:"type"`
+	Status           int32       `json:"status"`
+	ProviderID       pgtype.Int4 `json:"providerId"`
+	EndpointPath     pgtype.Text `json:"endpointPath"`
+	ApiKeyID         pgtype.Int4 `json:"apiKeyId"`
+	Model            pgtype.Text `json:"model"`
+	InputTokens      pgtype.Int4 `json:"inputTokens"`
+	CacheReadTokens  pgtype.Int4 `json:"cacheReadTokens"`
+	OutputTokens     pgtype.Int4 `json:"outputTokens"`
+	CacheWriteTokens pgtype.Int4 `json:"cacheWriteTokens"`
+	StatusCode       pgtype.Int4 `json:"statusCode"`
+	ErrorMessage     pgtype.Text `json:"errorMessage"`
+	TtftMs           pgtype.Int4 `json:"ttftMs"`
+	TimeSpentMs      pgtype.Int4 `json:"timeSpentMs"`
 }
 
 func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) error {
 	_, err := q.db.Exec(ctx, insertRequest,
 		arg.ID,
+		arg.SpanID,
+		arg.ParentSpanID,
+		arg.Type,
+		arg.Status,
 		arg.ProviderID,
 		arg.EndpointPath,
+		arg.ApiKeyID,
 		arg.Model,
+		arg.InputTokens,
+		arg.CacheReadTokens,
+		arg.OutputTokens,
+		arg.CacheWriteTokens,
 		arg.StatusCode,
 		arg.ErrorMessage,
+		arg.TtftMs,
 		arg.TimeSpentMs,
 	)
 	return err

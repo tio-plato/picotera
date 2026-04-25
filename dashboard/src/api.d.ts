@@ -457,8 +457,8 @@ export interface components {
             cacheReadTokens?: number;
             /** Format: int32 */
             cacheWriteTokens?: number;
-            createdAt: string;
-            endpointPath: string;
+            createdAt?: string;
+            endpointPath?: string;
             errorMessage?: string;
             id: string;
             /** Format: int32 */
@@ -468,14 +468,18 @@ export interface components {
             outputTokens?: number;
             parentSpanId?: string;
             /** Format: int32 */
-            providerId: number;
+            providerId?: number;
             spanId?: string;
             /** Format: int32 */
-            statusCode: number;
+            status: number;
             /** Format: int32 */
-            timeSpentMs: number;
+            statusCode?: number;
+            /** Format: int32 */
+            timeSpentMs?: number;
             /** Format: int32 */
             ttftMs?: number;
+            /** Format: int32 */
+            type: number;
         };
         UpsertProviderRequestBody: {
             /**
@@ -1110,6 +1114,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string;
+                type?: number;
                 providerId?: number;
                 endpointPath?: string;
                 model?: string;

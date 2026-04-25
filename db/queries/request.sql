@@ -1,10 +1,11 @@
 -- name: ListRequests :many
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model,
+SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
        input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
        status_code, error_message, ttft_ms, time_spent_ms, created_at
 FROM request
 WHERE
-  (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id'))
+  (sqlc.narg('type')::int IS NULL OR type = sqlc.narg('type'))
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id'))
   AND (sqlc.narg('endpoint_path')::text IS NULL OR endpoint_path = sqlc.narg('endpoint_path'))
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model'))
   AND (
@@ -16,3 +17,13 @@ LIMIT sqlc.narg('limit')::int;
 
 -- name: GetRequest :one
 SELECT * FROM request WHERE id = $1;
+
+-- name: UpdateRequestOnHeader :exec
+UPDATE request
+SET provider_id = $2, model = $3, endpoint_path = $4, api_key_id = $5, status = $6
+WHERE id = $1;
+
+-- name: UpdateRequestOnComplete :exec
+UPDATE request
+SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5
+WHERE id = $1;

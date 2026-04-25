@@ -12,7 +12,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at FROM request WHERE id = $1
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status FROM request WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
@@ -35,28 +35,32 @@ func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
 		&i.TtftMs,
 		&i.TimeSpentMs,
 		&i.CreatedAt,
+		&i.Type,
+		&i.Status,
 	)
 	return i, err
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model,
+SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
        input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
        status_code, error_message, ttft_ms, time_spent_ms, created_at
 FROM request
 WHERE
-  ($1::int IS NULL OR provider_id = $1)
-  AND ($2::text IS NULL OR endpoint_path = $2)
-  AND ($3::text IS NULL OR model = $3)
+  ($1::int IS NULL OR type = $1)
+  AND ($2::int IS NULL OR provider_id = $2)
+  AND ($3::text IS NULL OR endpoint_path = $3)
+  AND ($4::text IS NULL OR model = $4)
   AND (
-    $4::timestamp IS NULL
-    OR (created_at, id) < ($4::timestamp, $5::text)
+    $5::timestamp IS NULL
+    OR (created_at, id) < ($5::timestamp, $6::text)
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $6::int
+LIMIT $7::int
 `
 
 type ListRequestsParams struct {
+	Type            pgtype.Int4      `json:"type"`
 	ProviderID      pgtype.Int4      `json:"providerId"`
 	EndpointPath    pgtype.Text      `json:"endpointPath"`
 	Model           pgtype.Text      `json:"model"`
@@ -65,8 +69,30 @@ type ListRequestsParams struct {
 	Limit           pgtype.Int4      `json:"limit"`
 }
 
-func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]Request, error) {
+type ListRequestsRow struct {
+	ID               string           `json:"id"`
+	SpanID           pgtype.Text      `json:"spanId"`
+	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
+	Type             int32            `json:"type"`
+	Status           int32            `json:"status"`
+	ProviderID       pgtype.Int4      `json:"providerId"`
+	EndpointPath     pgtype.Text      `json:"endpointPath"`
+	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
+	Model            pgtype.Text      `json:"model"`
+	InputTokens      pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens     pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens pgtype.Int4      `json:"cacheWriteTokens"`
+	StatusCode       pgtype.Int4      `json:"statusCode"`
+	ErrorMessage     pgtype.Text      `json:"errorMessage"`
+	TtftMs           pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs      pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt        pgtype.Timestamp `json:"createdAt"`
+}
+
+func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listRequests,
+		arg.Type,
 		arg.ProviderID,
 		arg.EndpointPath,
 		arg.Model,
@@ -78,13 +104,15 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Request
+	var items []ListRequestsRow
 	for rows.Next() {
-		var i Request
+		var i ListRequestsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.SpanID,
 			&i.ParentSpanID,
+			&i.Type,
+			&i.Status,
 			&i.ProviderID,
 			&i.EndpointPath,
 			&i.ApiKeyID,
@@ -107,4 +135,56 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]R
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateRequestOnComplete = `-- name: UpdateRequestOnComplete :exec
+UPDATE request
+SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5
+WHERE id = $1
+`
+
+type UpdateRequestOnCompleteParams struct {
+	ID           string      `json:"id"`
+	StatusCode   pgtype.Int4 `json:"statusCode"`
+	ErrorMessage pgtype.Text `json:"errorMessage"`
+	TimeSpentMs  pgtype.Int4 `json:"timeSpentMs"`
+	Status       int32       `json:"status"`
+}
+
+func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error {
+	_, err := q.db.Exec(ctx, updateRequestOnComplete,
+		arg.ID,
+		arg.StatusCode,
+		arg.ErrorMessage,
+		arg.TimeSpentMs,
+		arg.Status,
+	)
+	return err
+}
+
+const updateRequestOnHeader = `-- name: UpdateRequestOnHeader :exec
+UPDATE request
+SET provider_id = $2, model = $3, endpoint_path = $4, api_key_id = $5, status = $6
+WHERE id = $1
+`
+
+type UpdateRequestOnHeaderParams struct {
+	ID           string      `json:"id"`
+	ProviderID   pgtype.Int4 `json:"providerId"`
+	Model        pgtype.Text `json:"model"`
+	EndpointPath pgtype.Text `json:"endpointPath"`
+	ApiKeyID     pgtype.Int4 `json:"apiKeyId"`
+	Status       int32       `json:"status"`
+}
+
+func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error {
+	_, err := q.db.Exec(ctx, updateRequestOnHeader,
+		arg.ID,
+		arg.ProviderID,
+		arg.Model,
+		arg.EndpointPath,
+		arg.ApiKeyID,
+		arg.Status,
+	)
+	return err
 }

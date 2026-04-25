@@ -366,6 +366,9 @@ components:
           type: integer
         spanId:
           type: string
+        status:
+          format: int32
+          type: integer
         statusCode:
           format: int32
           type: integer
@@ -375,13 +378,13 @@ components:
         ttftMs:
           format: int32
           type: integer
+        type:
+          format: int32
+          type: integer
       required:
         - id
-        - providerId
-        - endpointPath
-        - statusCode
-        - timeSpentMs
-        - createdAt
+        - type
+        - status
       type: object
     UpsertProviderRequestBody:
       additionalProperties: false
@@ -890,6 +893,13 @@ paths:
           schema:
             example: eyJpZCI6MX0=
             type: string
+        - explode: false
+          in: query
+          name: type
+          schema:
+            default: -1
+            format: int32
+            type: integer
         - explode: false
           in: query
           name: providerId

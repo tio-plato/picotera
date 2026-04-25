@@ -12,5 +12,14 @@ SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_na
 SELECT * FROM api_key WHERE api_key_hash = $1 LIMIT 1;
 
 -- name: InsertRequest :exec
-INSERT INTO request (id, provider_id, endpoint_path, model, status_code, error_message, time_spent_ms)
-VALUES ($1, $2, $3, $4, $5, $6, $7);
+INSERT INTO request (
+  id, span_id, parent_span_id, type, status,
+  provider_id, endpoint_path, api_key_id, model,
+  input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
+  status_code, error_message, ttft_ms, time_spent_ms
+) VALUES (
+  $1, $2, $3, $4, $5,
+  $6, $7, $8, $9,
+  $10, $11, $12, $13,
+  $14, $15, $16, $17
+);
