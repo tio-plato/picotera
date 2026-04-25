@@ -28,8 +28,10 @@ type Querier interface {
 	InsertRequest(ctx context.Context, arg InsertRequestParams) error
 	ListModelProviderEndpoints(ctx context.Context, arg ListModelProviderEndpointsParams) ([]ModelProviderEndpoint, error)
 	ListProviderEndpoints(ctx context.Context, providerID int32) ([]ProviderEndpoint, error)
-	ListRequests(ctx context.Context, arg ListRequestsParams) ([]Request, error)
+	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
+	UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error
+	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
 	UpsertModelProviderEndpoint(ctx context.Context, arg UpsertModelProviderEndpointParams) (ModelProviderEndpoint, error)
