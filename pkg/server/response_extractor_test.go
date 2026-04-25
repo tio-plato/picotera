@@ -261,6 +261,70 @@ func TestResponseExtractor_SSE_DONESentinel(t *testing.T) {
 	}
 }
 
+func TestResponseExtractor_SSE_OpenAIResponses_UsageAndTTFT(t *testing.T) {
+	start := time.Now().Add(-100 * time.Millisecond)
+	events := []string{
+		"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\n",
+		"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\" world\"}\n\n",
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"usage\":{\"input_tokens\":22,\"input_tokens_details\":{\"cached_tokens\":5},\"output_tokens\":42,\"output_tokens_details\":{\"reasoning_tokens\":17},\"total_tokens\":64}}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", start)
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.TTFTMs == nil {
+		t.Fatal("expected TTFTMs to be set from response.output_text.delta")
+	}
+	if *m.TTFTMs < 50 {
+		t.Errorf("TTFTMs too low: got %d, expected >= 50", *m.TTFTMs)
+	}
+	if m.InputTokens == nil || *m.InputTokens != 22 {
+		t.Errorf("InputTokens: got %v, want 22", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 42 {
+		t.Errorf("OutputTokens: got %v, want 42", m.OutputTokens)
+	}
+	if m.CacheReadTokens == nil || *m.CacheReadTokens != 5 {
+		t.Errorf("CacheReadTokens: got %v, want 5", m.CacheReadTokens)
+	}
+}
+
+func TestResponseExtractor_SSE_OpenAIResponses_FunctionCallTTFT(t *testing.T) {
+	events := []string{
+		"event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"{\\\"arg\\\"\"}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.TTFTMs == nil {
+		t.Fatal("expected TTFTMs to be set for function_call_arguments.delta")
+	}
+}
+
+func TestResponseExtractor_JSON_OpenAIResponses(t *testing.T) {
+	jsonData := `{"id":"resp_1","object":"response","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi"}]}],"usage":{"input_tokens":22,"input_tokens_details":{"cached_tokens":0},"output_tokens":40,"output_tokens_details":{"reasoning_tokens":15},"total_tokens":62}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 22 {
+		t.Errorf("InputTokens: got %v, want 22", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 40 {
+		t.Errorf("OutputTokens: got %v, want 40", m.OutputTokens)
+	}
+	if m.CacheReadTokens == nil || *m.CacheReadTokens != 0 {
+		t.Errorf("CacheReadTokens: got %v, want 0", m.CacheReadTokens)
+	}
+}
+
 func TestResponseExtractor_SSE_MultiLineData(t *testing.T) {
 	// SSE spec: multiple data: lines in one event are joined with \n
 	events := "data: {\"id\":\"1\",\ndata: \"choices\":[]}\n\n"

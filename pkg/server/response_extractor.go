@@ -109,8 +109,10 @@ func (e *ResponseExtractor) processSSEEvent(eventBytes []byte) {
 		return
 	}
 
-	// Try OpenAI format
+	// Try OpenAI Chat Completions format
 	e.extractOpenAISSE(payload)
+	// Try OpenAI Responses format
+	e.extractOpenAIResponsesSSE(payload)
 	// Try Anthropic format
 	e.extractAnthropicSSE(payload)
 }
@@ -143,6 +145,44 @@ func (e *ResponseExtractor) extractOpenAISSE(payload string) {
 		if v := usage.Get("prompt_tokens_details.cached_tokens"); v.Exists() {
 			val := v.Int()
 			e.metrics.CacheReadTokens = &val
+		}
+	}
+}
+
+func (e *ResponseExtractor) extractOpenAIResponsesSSE(payload string) {
+	result := gjson.Parse(payload)
+	eventType := result.Get("type").String()
+
+	// Only process OpenAI Responses API events
+	if !strings.HasPrefix(eventType, "response.") {
+		return
+	}
+
+	// TTFT: first output text or function call delta
+	if !e.ttftRecorded {
+		if eventType == "response.output_text.delta" || eventType == "response.function_call_arguments.delta" {
+			ttft := time.Since(e.startTime).Milliseconds()
+			e.metrics.TTFTMs = &ttft
+			e.ttftRecorded = true
+		}
+	}
+
+	// Usage from response.completed
+	if eventType == "response.completed" {
+		usage := result.Get("response.usage")
+		if usage.Exists() {
+			if v := usage.Get("input_tokens"); v.Exists() {
+				val := v.Int()
+				e.metrics.InputTokens = &val
+			}
+			if v := usage.Get("output_tokens"); v.Exists() {
+				val := v.Int()
+				e.metrics.OutputTokens = &val
+			}
+			if v := usage.Get("input_tokens_details.cached_tokens"); v.Exists() {
+				val := v.Int()
+				e.metrics.CacheReadTokens = &val
+			}
 		}
 	}
 }
@@ -201,7 +241,7 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 func (e *ResponseExtractor) extractJSONMetrics() {
 	result := gjson.ParseBytes(e.jsonBuf)
 
-	// Try OpenAI format
+	// Try OpenAI Chat Completions format
 	if v := result.Get("usage.prompt_tokens"); v.Exists() {
 		val := v.Int()
 		e.metrics.InputTokens = &val
@@ -215,7 +255,27 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 		e.metrics.CacheReadTokens = &val
 	}
 
-	// Try Anthropic format (only sets if OpenAI didn't find fields)
+	// Try OpenAI Responses format (only sets if Chat Completions didn't find fields)
+	if e.metrics.InputTokens == nil {
+		if v := result.Get("usage.input_tokens"); v.Exists() {
+			val := v.Int()
+			e.metrics.InputTokens = &val
+		}
+	}
+	if e.metrics.OutputTokens == nil {
+		if v := result.Get("usage.output_tokens"); v.Exists() {
+			val := v.Int()
+			e.metrics.OutputTokens = &val
+		}
+	}
+	if e.metrics.CacheReadTokens == nil {
+		if v := result.Get("usage.input_tokens_details.cached_tokens"); v.Exists() {
+			val := v.Int()
+			e.metrics.CacheReadTokens = &val
+		}
+	}
+
+	// Try Anthropic format (only sets if above didn't find fields)
 	if e.metrics.InputTokens == nil {
 		if v := result.Get("usage.input_tokens"); v.Exists() {
 			val := v.Int()
