@@ -35,6 +35,10 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 		cursorID = pgtype.Text{String: id, Valid: true}
 	}
 
+	var filterType pgtype.Int4
+	if input.Type != nil {
+		filterType = pgtype.Int4{Int32: *input.Type, Valid: true}
+	}
 	var filterProviderID pgtype.Int4
 	if input.ProviderID != 0 {
 		filterProviderID = pgtype.Int4{Int32: input.ProviderID, Valid: true}
@@ -49,6 +53,7 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 	}
 
 	rows, err := s.queries.ListRequests(ctx, db.ListRequestsParams{
+		Type:            filterType,
 		ProviderID:      filterProviderID,
 		EndpointPath:    filterEndpointPath,
 		Model:           filterModel,
@@ -67,7 +72,7 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 
 	items := make([]contract.RequestView, len(rows))
 	for i, row := range rows {
-		items[i] = *contract.ToRequestView(&row)
+		items[i] = *contract.ToListRequestRowView(&row)
 	}
 
 	pagination := contract.PaginationInfo{HasMore: hasMore}
