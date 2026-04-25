@@ -13,6 +13,7 @@ const pageMeta = computed(() => {
     models: { title: '模型', hint: '对外暴露的模型标识' },
     endpoints: { title: '端点', hint: 'HTTP 入口与请求形状' },
     mappings: { title: '映射', hint: '模型 × 渠道 × 端点的路由' },
+    requests: { title: '请求', hint: '推理请求历史与状态' },
   }
   return map[route.name as string] ?? { title: '', hint: '' }
 })
