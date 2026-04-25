@@ -1,4 +1,4 @@
-import type { components } from '@/api'
+import type { components } from '@/openapi-types'
 
 export type ProviderView = components['schemas']['ProviderView']
 export type CreateProviderRequestBody = components['schemas']['CreateProviderRequestBody']

@@ -51,7 +51,7 @@ function parseBulk(text: string): { ok: true; entries: Pair[] } | { ok: false; e
   const lines = text.split(/\r?\n/)
   const out: Pair[] = []
   for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]
+    const raw = lines[i]!
     const line = raw.trim()
     if (!line) continue
     if (line.startsWith('#')) continue

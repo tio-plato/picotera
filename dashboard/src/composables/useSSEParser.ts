@@ -160,10 +160,12 @@ function aggregateAnthropic(events: SSEEvent[]): Record<string, unknown> | null 
       const delta = parsed.delta as Record<string, unknown> | undefined
       if (delta && currentBlockIndex >= 0) {
         const block = contentBlocks[currentBlockIndex]
-        if (delta.type === 'text_delta' && delta.text) {
-          block.text = (block.text || '') + (delta.text as string)
-        } else if (delta.type === 'thinking_delta' && delta.thinking) {
-          block.thinking = (block.thinking || '') + (delta.thinking as string)
+        if (block) {
+          if (delta.type === 'text_delta' && delta.text) {
+            block.text = (block.text || '') + (delta.text as string)
+          } else if (delta.type === 'thinking_delta' && delta.thinking) {
+            block.thinking = (block.thinking || '') + (delta.thinking as string)
+          }
         }
       }
     } else if (type === 'message_delta') {
@@ -171,7 +173,7 @@ function aggregateAnthropic(events: SSEEvent[]): Record<string, unknown> | null 
       if (delta?.stop_reason) stopReason = delta.stop_reason as string
       if (parsed.usage) {
         const u = parsed.usage as Record<string, unknown>
-        usage = { ...usage, ...u }
+        usage = { ...usage!, ...u }
       }
     }
   }

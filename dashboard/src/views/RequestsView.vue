@@ -133,7 +133,7 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
   return base
 })
 
-function formatTimeParts(iso: string): { time: string; date: string } {
+function formatTimeParts(iso: string | undefined): { time: string; date: string } {
   if (!iso) return { time: '—', date: '' }
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return { time: iso, date: '' }
@@ -143,13 +143,15 @@ function formatTimeParts(iso: string): { time: string; date: string } {
   return { time, date }
 }
 
-function statusVariant(code: number): 'ok' | 'warn' | 'err' {
+function statusVariant(code: number | undefined): 'ok' | 'warn' | 'err' {
+  if (code === undefined) return 'err'
   if (code >= 200 && code < 300) return 'ok'
   if (code >= 400 && code < 500) return 'warn'
   return 'err'
 }
 
-function formatTimeSpent(ms: number): string {
+function formatTimeSpent(ms: number | undefined): string {
+  if (ms === undefined) return '—'
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
 }

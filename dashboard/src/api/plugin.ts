@@ -1,6 +1,6 @@
 import type { App } from 'vue'
 import createClient from 'openapi-fetch'
-import type { paths } from '@/api'
+import type { paths } from '@/openapi-types'
 
 export type ApiClient = ReturnType<typeof createClient<paths>>
 

@@ -1,6 +1,6 @@
 import { shallowRef, computed, type Component } from 'vue'
 
-export type SidePanelKey = string | number | symbol
+export type SidePanelKey = string | number | symbol | Component
 
 interface SidePanelState {
   key: SidePanelKey
