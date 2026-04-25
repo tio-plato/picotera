@@ -19,6 +19,7 @@ import {
   Select,
   Field,
   Icon,
+  SegmentedControl,
   type AutoDataTableColumn,
 } from '@/ui'
 
@@ -40,11 +41,20 @@ const providersMap = computed(() => {
   return m
 })
 
+type RequestKind = 'meta' | 'upstream' | 'all'
+
 const filters = reactive({
+  type: 'meta' as RequestKind,
   providerId: 0,
   endpointPath: '',
   model: '',
 })
+
+const typeOptions: { value: RequestKind; label: string }[] = [
+  { value: 'meta', label: '元请求' },
+  { value: 'upstream', label: '上游请求' },
+  { value: 'all', label: '全部' },
+]
 
 async function fetchReferenceData() {
   const [providersRes, endpointsRes, modelsRes] = await Promise.all([
@@ -63,6 +73,8 @@ async function fetchRequests(cursor?: string) {
     limit: 30,
     cursor: cursor || undefined,
   }
+  if (filters.type === 'meta') query.type = 0
+  else if (filters.type === 'upstream') query.type = 1
   if (filters.providerId) query.providerId = filters.providerId
   if (filters.endpointPath) query.endpointPath = filters.endpointPath
   if (filters.model) query.model = filters.model
@@ -88,7 +100,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => [filters.providerId, filters.endpointPath, filters.model],
+  () => [filters.type, filters.providerId, filters.endpointPath, filters.model],
   () => {
     fetchRequests()
   },
@@ -101,8 +113,8 @@ function rowKey(r: RequestView) {
 function openDetails(r: RequestView) {
   panel.toggle(
     RequestDetailsPanel,
-    { requestId: r.id },
-    { key: `request:${r.id}` },
+    { requestId: r.id, providers: providers.value },
+    { key: `request:${r.id}`, width: '520px' },
   )
 }
 
@@ -110,15 +122,23 @@ function rowSelected(r: RequestView) {
   return panel.isActive(`request:${r.id}`)
 }
 
-const columns: AutoDataTableColumn<RequestView>[] = [
-  { key: 'createdAt', header: '时间' },
-  { key: 'providerId', header: '渠道' },
-  { key: 'endpointPath', header: '端点' },
-  { key: 'model', header: '模型' },
-  { key: 'status', header: '状态' },
-  { key: 'tokens', header: 'Token' },
-  { key: 'timeSpentMs', header: '耗时', align: 'right' },
-]
+const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
+  const base: AutoDataTableColumn<RequestView>[] = [
+    { key: 'createdAt', header: '时间' },
+  ]
+  if (filters.type === 'all') {
+    base.push({ key: 'type', header: '类型' })
+  }
+  base.push(
+    { key: 'providerId', header: '渠道' },
+    { key: 'endpointPath', header: '端点' },
+    { key: 'model', header: '模型' },
+    { key: 'status', header: '状态' },
+    { key: 'tokens', header: 'Token' },
+    { key: 'timeSpentMs', header: '耗时', align: 'right' },
+  )
+  return base
+})
 
 function formatTimeParts(iso: string): { time: string; date: string } {
   if (!iso) return { time: '—', date: '' }
@@ -155,6 +175,9 @@ function resetCursorAndReload() {
   <div class="flex flex-col gap-3.5">
     <div class="flex items-end justify-between gap-3 flex-wrap">
       <div class="flex items-end gap-2.5 flex-wrap">
+        <Field label="类型" as="div">
+          <SegmentedControl v-model="filters.type" :options="typeOptions" />
+        </Field>
         <Field label="渠道" as="div" class="min-w-40">
           <Select v-model.number="filters.providerId" size="sm">
             <option :value="0">全部</option>
@@ -205,8 +228,12 @@ function resetCursorAndReload() {
             <span class="font-mono text-2xs text-ink-faint">{{ formatTimeParts(row.createdAt).date }}</span>
           </div>
         </template>
+        <template #cell-type="{ row }">
+          <Tag :variant="row.type === 0 ? 'accent' : 'muted'">{{ row.type === 0 ? 'META' : 'UP' }}</Tag>
+        </template>
         <template #cell-providerId="{ row }">
-          <span class="font-medium">{{ providerLabel(row.providerId) }}</span>
+          <span v-if="row.providerId" class="font-medium">{{ providerLabel(row.providerId) }}</span>
+          <span v-else class="text-ink-faint">—</span>
         </template>
         <template #cell-endpointPath="{ row }">
           <span class="font-mono text-ink-faint">{{ row.endpointPath }}</span>
