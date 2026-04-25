@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { useApi } from '@/composables/useApi'
+import { useProvidersMap } from '@/composables/useProvidersMap'
 import type { ModelProviderEndpointView } from '@/api'
 import MappingForm from '@/components/MappingForm.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
@@ -23,6 +24,7 @@ import {
 const panel = useSidePanel()
 const confirm = useConfirm()
 const api = useApi()
+const { providerLabel, fetchProviders } = useProvidersMap()
 
 const mappings = ref<ModelProviderEndpointView[]>([])
 const loading = ref(true)
@@ -48,7 +50,10 @@ async function fetchMappings(cursor?: string) {
   loading.value = false
 }
 
-onMounted(() => fetchMappings())
+onMounted(() => {
+  fetchProviders()
+  fetchMappings()
+})
 
 function mappingKey(m: ModelProviderEndpointView) {
   return `mapping:${m.modelName}:${m.providerId}:${m.endpointPath}`
@@ -109,7 +114,7 @@ function confirmDeleteMapping(_event: Event, m: ModelProviderEndpointView) {
             :selected="panel.isActive(mappingKey(m))"
           >
             <Td><span class="font-mono font-medium">{{ m.modelName }}</span></Td>
-            <Td><span class="font-mono text-ink-faint">{{ m.providerId }}</span></Td>
+            <Td>{{ providerLabel(m.providerId) }}</Td>
             <Td><span class="font-mono text-ink-faint">{{ m.endpointPath }}</span></Td>
             <Td><span class="font-mono">{{ m.upstreamModelName || '—' }}</span></Td>
             <Td><Badge>{{ m.priority }}</Badge></Td>

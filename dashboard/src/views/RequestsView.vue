@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
+import { useProvidersMap } from '@/composables/useProvidersMap'
 import type {
   RequestView,
-  ProviderView,
   EndpointView,
   ModelView,
 } from '@/api'
@@ -25,21 +25,15 @@ import {
 
 const api = useApi()
 const panel = useSidePanel()
+const { providers, providerLabel, fetchProviders } = useProvidersMap()
 
 const requests = ref<RequestView[]>([])
 const loading = ref(false)
 const hasMore = ref(false)
 const nextCursor = ref('')
 
-const providers = ref<ProviderView[]>([])
 const endpoints = ref<EndpointView[]>([])
 const models = ref<ModelView[]>([])
-
-const providersMap = computed(() => {
-  const m = new Map<number, ProviderView>()
-  for (const p of providers.value) m.set(p.id, p)
-  return m
-})
 
 type RequestKind = 'meta' | 'upstream' | 'all'
 
@@ -57,12 +51,11 @@ const typeOptions: { value: RequestKind; label: string }[] = [
 ]
 
 async function fetchReferenceData() {
-  const [providersRes, endpointsRes, modelsRes] = await Promise.all([
-    api.GET('/api/picotera/providers'),
+  const [, endpointsRes, modelsRes] = await Promise.all([
+    fetchProviders(),
     api.GET('/api/picotera/endpoints'),
     api.GET('/api/picotera/models'),
   ])
-  providers.value = (providersRes.data as ProviderView[] | undefined) ?? []
   endpoints.value = (endpointsRes.data as EndpointView[] | undefined) ?? []
   models.value = (modelsRes.data as ModelView[] | undefined) ?? []
 }
@@ -148,11 +141,6 @@ function formatTimeParts(iso: string): { time: string; date: string } {
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
   const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   return { time, date }
-}
-
-function providerLabel(id: number): string {
-  const p = providersMap.value.get(id)
-  return p ? p.name : `#${id}`
 }
 
 function statusVariant(code: number): 'ok' | 'warn' | 'err' {
