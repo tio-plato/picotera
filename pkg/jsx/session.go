@@ -98,9 +98,9 @@ func (s *Session) RunSortHook(in SortInput) ([]Candidate, error) {
 		return nil, err
 	}
 	expr := fmt.Sprintf(`(async () => {
-		globalThis.__sortCtx = %s;
-		const r = await picotera.hooks.sortProviders.runWaterfall(globalThis.__sortCtx);
-		if (r === globalThis.__sortCtx || typeof r === 'undefined') return null;
+		const context = %s;
+		const r = await picotera.hooks.sortProviders.runWaterfall(context, { providers: context.providers });
+		if (r === context || typeof r === 'undefined') return null;
 		return r;
 	})()`, lit)
 	jsonStr, err := s.runHookExpr("sortProviders.js", expr)
@@ -136,7 +136,7 @@ func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDeci
 	}
 	expr := fmt.Sprintf(`(async () => {
 		const ctx = %s;
-		const r = await picotera.hooks.beforeRequest.runWaterfall(ctx);
+		const r = await picotera.hooks.beforeRequest.runWaterfall(ctx, { next: ctx.currentRetryCount > 0, delay: 0 });
 		if (r === ctx || typeof r === 'undefined' || r === null) return null;
 		return { next: !!r.next, delay: r.delay | 0 };
 	})()`, lit)
@@ -166,9 +166,9 @@ func (s *Session) RunRewriteHook(in RewriteInput) (RewriteOutput, error) {
 		return out, err
 	}
 	expr := fmt.Sprintf(`(async () => {
-		globalThis.__rwCtx = %s;
-		const r = await picotera.hooks.rewriteRequest.runWaterfall(globalThis.__rwCtx);
-		if (r === globalThis.__rwCtx || typeof r === 'undefined' || r === null) return null;
+		const ctx = %s;
+		const r = await picotera.hooks.rewriteRequest.runWaterfall(ctx, null);
+		if (r === ctx || typeof r === 'undefined' || r === null) return null;
 		if (r && typeof r.body === 'object' && r.body !== null) {
 			return Object.assign({}, r, { body: JSON.stringify(r.body) });
 		}

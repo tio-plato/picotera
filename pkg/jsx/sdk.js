@@ -4,13 +4,16 @@
   function Waterfall() {
     this._taps = []
   }
-  Waterfall.prototype.tap = function (name, fn) {
-    this._taps.push({ name: String(name || 'anonymous'), fn: fn })
+  Waterfall.prototype.tap = function (name, fn, priority) {
+    this._taps.push({ name: String(name || 'anonymous'), fn: fn, priority: priority })
+    this._taps.sort(function (a, b) {
+      return b.priority - a.priority;
+    });
   }
-  Waterfall.prototype.runWaterfall = async function (input) {
+  Waterfall.prototype.runWaterfall = async function (context, input) {
     let value = input
     for (const tap of this._taps) {
-      const out = await tap.fn(value)
+      const out = await tap.fn(context, value)
       if (typeof out !== 'undefined') {
         value = out
       }
@@ -49,12 +52,4 @@
     error: consoleEmit('error'),
     debug: consoleEmit('info'),
   }
-
-  globalThis.setTimeout = function (fn, ms) {
-    globalThis.__picotera_setTimeout((ms | 0) || 0).then(function () {
-      try { fn() } catch (_e) { /* swallow */ }
-    })
-    return 0
-  }
-  globalThis.clearTimeout = function () { /* no-op in v1 */ }
 })()

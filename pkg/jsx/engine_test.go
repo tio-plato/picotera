@@ -103,8 +103,8 @@ func TestSession_Promise_Timeout(t *testing.T) {
 
 func TestSession_CtxRoundTrip(t *testing.T) {
 	s := newTestSession(t, db.Script{ID: "rev", Source: `
-		picotera.hooks.sortProviders.tap("rev", function (ctx) {
-			return { providers: ctx.providers.slice().reverse() };
+		picotera.hooks.sortProviders.tap("rev", function (ctx, input) {
+			return { providers: input.providers.slice().reverse() };
 		});
 	`})
 
@@ -115,7 +115,7 @@ func TestSession_CtxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	expr := "picotera.hooks.sortProviders.runWaterfall(" + lit + ")"
+	expr := "picotera.hooks.sortProviders.runWaterfall(" + lit + "," + lit + ")"
 	jsonStr, err := s.runHookExpr("rev.js", expr)
 	if err != nil {
 		t.Fatalf("runHookExpr: %v", err)
