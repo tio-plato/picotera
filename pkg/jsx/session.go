@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"picotera/pkg/logx"
 	"time"
 
 	"github.com/fastschema/qjs"
@@ -101,7 +102,7 @@ func (s *Session) RunSortHook(in SortInput) ([]Candidate, error) {
 		const context = %s;
 		const r = await picotera.hooks.sortProviders.runWaterfall(context, { providers: context.providers });
 		if (r === context || typeof r === 'undefined') return null;
-		return r;
+		return JSON.stringify(r);
 	})()`, lit)
 	jsonStr, err := s.runHookExpr("sortProviders.js", expr)
 	if err != nil {
@@ -115,11 +116,13 @@ func (s *Session) RunSortHook(in SortInput) ([]Candidate, error) {
 		Providers []Candidate `json:"providers"`
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &obj); err == nil && obj.Providers != nil {
+		logx.WithContext(s.Context()).WithField("new_providers", obj.Providers).Debug("sortProviders hook returned new providers")
 		return obj.Providers, nil
 	}
 	// Try direct array.
 	var arr []Candidate
 	if err := json.Unmarshal([]byte(jsonStr), &arr); err == nil {
+		logx.WithContext(s.Context()).WithField("new_providers", arr).Debug("sortProviders hook returned new providers")
 		return arr, nil
 	}
 	return in.Providers, nil
@@ -138,7 +141,7 @@ func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDeci
 		const ctx = %s;
 		const r = await picotera.hooks.beforeRequest.runWaterfall(ctx, { next: ctx.currentRetryCount > 0, delay: 0 });
 		if (r === ctx || typeof r === 'undefined' || r === null) return null;
-		return { next: !!r.next, delay: r.delay | 0 };
+		return JSON.stringify({ next: !!r.next, delay: r.delay || 0 });
 	})()`, lit)
 	jsonStr, err := s.runHookExpr("beforeRequest.js", expr)
 	if err != nil {
@@ -172,7 +175,7 @@ func (s *Session) RunRewriteHook(in RewriteInput) (RewriteOutput, error) {
 		if (r && typeof r.body === 'object' && r.body !== null) {
 			return Object.assign({}, r, { body: JSON.stringify(r.body) });
 		}
-		return r;
+		return JSON.stringify(r);
 	})()`, lit)
 	jsonStr, err := s.runHookExpr("rewriteRequest.js", expr)
 	if err != nil {
@@ -211,17 +214,21 @@ func (s *Session) runHookExpr(name, expr string) (string, error) {
 			ch <- result{err: err}
 			return
 		}
+		if v.IsPromise() {
+			v, err = v.Await()
+			if err != nil {
+				ch <- result{err: err}
+				return
+			}
+		}
 		defer v.Free()
 		switch v.Type() {
 		case "Undefined", "Null":
 			ch <- result{jsonStr: "null"}
 			return
 		}
-		jsonStr, err := v.JSONStringify()
-		if err != nil {
-			ch <- result{err: fmt.Errorf("jsx: stringify hook result: %w", err)}
-			return
-		}
+
+		jsonStr := v.String()
 		ch <- result{jsonStr: jsonStr}
 	}()
 
