@@ -226,6 +226,37 @@ func TestSession_Hooks_Rewrite_Passthrough(t *testing.T) {
 	}
 }
 
+func TestSession_Helpers_Console(t *testing.T) {
+	// No log capture — verify no panic and the script can call console.* freely.
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.sortProviders.tap("a", function (ctx) {
+			console.log("hello", "world", { nested: true });
+			console.warn("warn");
+			console.error("err");
+			return ctx;
+		});
+	`})
+	if _, err := s.RunSortHook(SortInput{}); err != nil {
+		t.Fatalf("RunSortHook: %v", err)
+	}
+}
+
+func TestSession_Helpers_SetTimeout(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.sortProviders.tap("a", async function (ctx) {
+			await new Promise(function (r) { setTimeout(r, 5); });
+			return ctx;
+		});
+	`})
+	start := time.Now()
+	if _, err := s.RunSortHook(SortInput{}); err != nil {
+		t.Fatalf("RunSortHook: %v", err)
+	}
+	if time.Since(start) > 200*time.Millisecond {
+		t.Errorf("setTimeout took too long: %v", time.Since(start))
+	}
+}
+
 func contains(s, substr string) bool {
 	for i := 0; i+len(substr) <= len(s); i++ {
 		if s[i:i+len(substr)] == substr {

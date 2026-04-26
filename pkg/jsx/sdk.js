@@ -24,5 +24,37 @@
       beforeRequest: new Waterfall(),
       rewriteRequest: new Waterfall(),
     },
+    fetch: function (url, init) {
+      var initJSON = init ? JSON.stringify(init) : ''
+      return globalThis.__picotera_fetch(String(url), initJSON).then(function (s) {
+        return JSON.parse(s)
+      })
+    },
   }
+
+  var consoleEmit = function (level) {
+    return function () {
+      var parts = []
+      for (var i = 0; i < arguments.length; i++) {
+        var a = arguments[i]
+        parts.push(typeof a === 'string' ? a : (function () { try { return JSON.stringify(a) } catch (_e) { return String(a) } })())
+      }
+      globalThis.__picotera_console(level, parts.join(' '))
+    }
+  }
+  globalThis.console = {
+    log: consoleEmit('info'),
+    info: consoleEmit('info'),
+    warn: consoleEmit('warn'),
+    error: consoleEmit('error'),
+    debug: consoleEmit('info'),
+  }
+
+  globalThis.setTimeout = function (fn, ms) {
+    globalThis.__picotera_setTimeout((ms | 0) || 0).then(function () {
+      try { fn() } catch (_e) { /* swallow */ }
+    })
+    return 0
+  }
+  globalThis.clearTimeout = function () { /* no-op in v1 */ }
 })()

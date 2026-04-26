@@ -36,6 +36,7 @@ func newSession(ctx context.Context, eng *Engine, requestID string) (*Session, e
 		return nil, fmt.Errorf("jsx: qjs.New: %w", err)
 	}
 	s := &Session{engine: eng, rt: rt, cancel: cancel, requestID: requestID}
+	registerHelpers(s)
 
 	c := rt.Context()
 	if _, err := c.Eval("sdk.js", qjs.Code(sdkSource)); err != nil {
