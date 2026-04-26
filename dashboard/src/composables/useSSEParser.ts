@@ -100,14 +100,14 @@ function aggregateOpenAIChat(events: SSEEvent[]): Record<string, unknown> | null
             oldChoice = { index: choice.index, content: "" };
             output.choices.push(oldChoice);
           }
-          oldChoice.content = (oldChoice.content || "") + choice.delta.content;
+          oldChoice.content = (oldChoice.content || "") + (choice.delta.content || "");
           oldChoice.role = choice.delta.role || oldChoice.role;
           if (choice.delta.reasoning) {
-            oldChoice.reasoning = (oldChoice.reasoning || "") + choice.delta.reasoning;
+            oldChoice.reasoning = (oldChoice.reasoning || "") + (choice.delta.reasoning || "");
           }
           if (choice.delta.reasoning_content) {
             oldChoice.reasoning_content =
-              (oldChoice.reasoning_content || "") + choice.delta.reasoning_content;
+              (oldChoice.reasoning_content || "") + (choice.delta.reasoning_content || "");
           }
           oldChoice.finish_reason = choice.delta.finish_reason;
           if (choice.delta.reasoning_details) {
@@ -122,6 +122,18 @@ function aggregateOpenAIChat(events: SSEEvent[]): Record<string, unknown> | null
                 oldReasoningDetails.format = detail.format || oldReasoningDetails.format;
               } else {
                 oldChoice.reasoning_details.push(detail);
+              }
+            }
+          }
+          if (choice.delta.tool_calls) {
+            oldChoice.tool_calls = oldChoice.tool_calls || [];
+            for (const call of choice.delta.tool_calls) {
+              const oldToolCall = oldChoice.tool_calls.find((c: any) => c.index === call.index);
+              if (oldToolCall) {
+                oldToolCall.function = call.function || oldToolCall.function;
+                oldToolCall.index = call.index ?? oldToolCall.index;
+              } else {
+                oldChoice.tool_calls.push(call);
               }
             }
           }
