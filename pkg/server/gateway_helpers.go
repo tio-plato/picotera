@@ -14,6 +14,7 @@ import (
 
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
+	"picotera/pkg/jsx"
 	"picotera/pkg/logx"
 
 	"github.com/jackc/pgx/v5"
@@ -271,6 +272,92 @@ func metricsToPG(m ResponseMetrics) (ttftMs pgtype.Int4, inputTokens pgtype.Int4
 		cacheWriteTokens = pgtype.Int4{Int32: int32(*m.CacheWriteTokens), Valid: true}
 	}
 	return
+}
+
+// candidateProviderID extracts the provider ID from a hook-returned candidate.
+// JS round-trips numbers as float64, so we accept both int32 (Go-side construction)
+// and float64 (post-JSON) shapes. Returns false if the field is missing or malformed.
+func candidateProviderID(c jsx.Candidate) (int32, bool) {
+	pm, ok := c.Provider.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	switch v := pm["id"].(type) {
+	case float64:
+		return int32(v), true
+	case int32:
+		return v, true
+	case int:
+		return int32(v), true
+	case json.Number:
+		n, err := v.Int64()
+		if err == nil {
+			return int32(n), true
+		}
+	}
+	return 0, false
+}
+
+// candidateUpstreamModel pulls upstreamModelName from a candidate's mpe field.
+// Empty string means "use the model name from the request body verbatim",
+// matching the existing buildUpstreamRequest contract.
+func candidateUpstreamModel(c jsx.Candidate) string {
+	mm, ok := c.MPE.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if v, ok := mm["upstreamModelName"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// applyRewrite mutates req and reqBody based on the JS rewrite hook output.
+// Nil pointer fields and empty Body mean "leave unchanged".
+func applyRewrite(req *http.Request, reqBody *[]byte, rw jsx.RewriteOutput) {
+	if rw.URL != nil {
+		if parsed, perr := http.NewRequestWithContext(req.Context(), req.Method, *rw.URL, nil); perr == nil {
+			req.URL = parsed.URL
+			req.Host = parsed.Host
+		}
+	}
+	if rw.Method != nil {
+		req.Method = *rw.Method
+	}
+	if rw.Headers != nil {
+		req.Header = http.Header{}
+		for k, vv := range *rw.Headers {
+			for _, v := range vv {
+				req.Header.Add(k, v)
+			}
+		}
+	}
+	if len(rw.Body) > 0 {
+		// rw.Body is JSON-encoded. If it's a JSON string, unwrap to its
+		// contents; otherwise pass the raw JSON through (object/array bodies
+		// are already JSON.stringify'd by the SDK, so they too land as
+		// JSON strings — this branch is for safety).
+		var asString string
+		if jerr := json.Unmarshal(rw.Body, &asString); jerr == nil {
+			*reqBody = []byte(asString)
+		} else {
+			*reqBody = []byte(rw.Body)
+		}
+		req.Body = io.NopCloser(bytes.NewReader(*reqBody))
+		req.ContentLength = int64(len(*reqBody))
+	}
+}
+
+// completeFailedAttempt is a small wrapper around updateRequestOnComplete for the
+// retry loop's error path.
+func (s *Server) completeFailedAttempt(ctx context.Context, upstreamID string, attemptStart time.Time, statusCode int32, errMsg string) {
+	s.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
+		ID:           upstreamID,
+		StatusCode:   pgtype.Int4{Int32: statusCode, Valid: true},
+		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
+		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true},
+		Status:       db.RequestStatusFailed,
+	})
 }
 
 // idleTimeoutReader wraps an io.Reader and enforces a per-read idle timeout.

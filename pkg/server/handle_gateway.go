@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"picotera/pkg/artifacts"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
+	"picotera/pkg/jsx"
 	"picotera/pkg/logx"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -57,7 +59,6 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		TimeSpentMs:  pgtype.Int4{Valid: false},
 	})
 
-	// Upload meta request artifact
 	h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, metaReqMethod, metaReqURL, metaReqHeader, body)
 
 	failMeta := func(statusCode int32, errMsg string) {
@@ -70,10 +71,20 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// failMetaResponse handles a write of the gateway error response and uploads the meta response artifact.
 	failMetaResponse := func(err error) {
 		statusCode, respBody := handleGatewayErr(w, err)
 		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, statusCode, w.Header().Clone(), respBody)
+	}
+
+	failHook := func(err error) {
+		status := http.StatusBadGateway
+		if errors.Is(err, jsx.ErrHookTimeout) {
+			status = http.StatusServiceUnavailable
+		}
+		errMsg := err.Error()
+		failMeta(int32(status), errMsg)
+		respBody := writeGatewayError(w, status, errMsg, errorx.UpstreamError.Error())
+		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody)
 	}
 
 	// 3. Match endpoint by path
@@ -89,7 +100,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Check credentials_resolver (only generalApiKey = 1 is supported in v1)
+	// 4. Check credentials_resolver
 	if endpoint.CredentialsResolver != credentialsResolverGeneralAPIKey {
 		errMsg := fmt.Sprintf("unsupported credentials resolver: %d", endpoint.CredentialsResolver)
 		failMeta(http.StatusInternalServerError, errMsg)
@@ -98,7 +109,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Resolve auth type from client headers
+	// 5. Resolve auth type
 	authTyp, err := resolveAuthType(r)
 	if err != nil {
 		var gwErr *gatewayError
@@ -111,8 +122,8 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 6. Extract model name from request body
-	model, err := extractModel(body, endpoint.ModelPath)
+	// 6. Extract model name
+	modelName, err := extractModel(body, endpoint.ModelPath)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
@@ -125,7 +136,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 7. Resolve providers
-	providers, err := h.resolveProviders(r.Context(), endpoint.Path, model)
+	providers, err := h.resolveProviders(r.Context(), endpoint.Path, modelName)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
@@ -137,13 +148,133 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 8. Try each provider with failover
+	// 8. Build jsx session and run hooks. The session loads enabled scripts from
+	// the DB; if no scripts are enabled this is essentially a no-op pass-through.
+	session, err := h.jsxEngine.NewSession(r.Context(), metaID)
+	if err != nil {
+		errMsg := "failed to load js hooks: " + err.Error()
+		failMeta(http.StatusBadGateway, errMsg)
+		respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
+		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody)
+		return
+	}
+	defer session.Close()
+
+	// 8a. Build candidate list and a sidecar map for fields not exposed to JS
+	// (upstream URL, credentials). The hooks see {provider, mpe}; we look up
+	// the rest by providerID after the hook returns.
+	type providerSidecar struct {
+		upstreamURL string
+		credentials string
+	}
+	sidecar := make(map[int32]providerSidecar, len(providers))
+	candidates := make([]jsx.Candidate, 0, len(providers))
+	for _, row := range providers {
+		sidecar[row.ProviderID] = providerSidecar{
+			upstreamURL: row.UpstreamUrl.String,
+			credentials: row.ProviderCredentials.String,
+		}
+		candidates = append(candidates, jsx.Candidate{
+			Provider: map[string]any{
+				"id":       row.ProviderID,
+				"name":     row.ProviderName.String,
+				"priority": row.ProviderPriority.Int32,
+			},
+			MPE: map[string]any{
+				"modelName":         row.ModelName,
+				"providerId":        row.ProviderID,
+				"endpointPath":      row.EndpointPath,
+				"upstreamModelName": row.UpstreamModelName.String,
+				"priority":          row.Priority,
+				"annotations":       json.RawMessage(row.Annotations),
+			},
+		})
+	}
+
+	// 8b. The JS-visible client request shape (read-only).
+	jsClientRequest := jsx.RequestShape{
+		Path:    r.URL.Path,
+		Method:  r.Method,
+		Headers: r.Header.Clone(),
+		Body:    string(body),
+		Model:   modelName,
+	}
+
+	// 8c. sortProviders — once before the loop.
+	sortedCandidates, err := session.RunSortHook(jsx.SortInput{
+		Endpoint:  endpoint,
+		Model:     nil, // model row lookup is out of scope for v1
+		Request:   jsClientRequest,
+		Providers: candidates,
+	})
+	if err != nil {
+		failHook(err)
+		return
+	}
+
+	// 8d. Retry loop
 	var lastErr error
-	for _, provider := range providers {
+	var lastJSErr *jsx.LastError
+	i := 0
+	currentRetryCount := 0
+	totalAttemptCount := 0
+
+	for {
+		if i >= len(sortedCandidates) {
+			break
+		}
+		if totalAttemptCount >= h.config.JSMaxTotalAttempts {
+			break
+		}
+		cand := sortedCandidates[i]
+
+		// Pull providerID back from the JSON-roundtripped Provider field.
+		providerID, ok := candidateProviderID(cand)
+		if !ok {
+			// Skip malformed candidate.
+			i++
+			currentRetryCount = 0
+			continue
+		}
+		side, hasSide := sidecar[providerID]
+		if !hasSide {
+			// JS introduced a provider we never saw — fail safely by skipping it.
+			i++
+			currentRetryCount = 0
+			continue
+		}
+
+		dec, err := session.RunBeforeRequestHook(jsx.BeforeRequestInput{
+			Endpoint:          endpoint,
+			Model:             nil,
+			Request:           jsClientRequest,
+			Provider:          cand.Provider,
+			MPE:               cand.MPE,
+			CurrentRetryCount: currentRetryCount,
+			TotalAttemptCount: totalAttemptCount,
+			LastError:         lastJSErr,
+		})
+		if err != nil {
+			failHook(err)
+			return
+		}
+		if dec.Delay > 0 {
+			d := time.Duration(dec.Delay) * time.Millisecond
+			if h.config.JSMaxDelay > 0 && d > h.config.JSMaxDelay {
+				d = h.config.JSMaxDelay
+			}
+			time.Sleep(d)
+		}
+		if dec.Next {
+			i++
+			currentRetryCount = 0
+			continue
+		}
+
+		// Build upstream request.
 		attemptStart := time.Now()
 		ctx, cancel := context.WithCancel(r.Context())
 
-		// Insert upstream request
 		upstreamID := xid.New().String()
 		upstreamCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
 			ID:           upstreamID,
@@ -151,188 +282,97 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ParentSpanID: pgtype.Text{Valid: false},
 			Type:         db.RequestTypeUpstream,
 			Status:       db.RequestStatusPending,
-			ProviderID:   pgtype.Int4{Int32: provider.ProviderID, Valid: true},
+			ProviderID:   pgtype.Int4{Int32: providerID, Valid: true},
 			EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
 			ApiKeyID:     pgtype.Int4{Valid: false},
-			Model:        pgtype.Text{String: model, Valid: true},
+			Model:        pgtype.Text{String: modelName, Valid: true},
 			StatusCode:   pgtype.Int4{Valid: false},
 			ErrorMessage: pgtype.Text{Valid: false},
 			TimeSpentMs:  pgtype.Int4{Valid: false},
 		})
 
-		// Determine upstream model name
-		upstreamModel := ""
-		if provider.UpstreamModelName.Valid {
-			upstreamModel = provider.UpstreamModelName.String
-		}
+		upstreamModel := candidateUpstreamModel(cand)
 
-		// Determine provider credentials
-		creds := ""
-		if provider.ProviderCredentials.Valid {
-			creds = provider.ProviderCredentials.String
-		}
-
-		// Build upstream request
-		req, reqBody, err := buildUpstreamRequest(ctx, r, body, provider.UpstreamUrl.String, upstreamModel, creds, authTyp)
-		if err != nil {
+		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, authTyp)
+		if berr != nil {
 			cancel()
-			timeSpent := int32(time.Since(attemptStart).Milliseconds())
-			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-				ID:           upstreamID,
-				StatusCode:   pgtype.Int4{Int32: 0, Valid: true},
-				ErrorMessage: pgtype.Text{String: err.Error(), Valid: true},
-				TimeSpentMs:  pgtype.Int4{Int32: timeSpent, Valid: true},
-				Status:       db.RequestStatusFailed,
-			})
-			lastErr = err
+			h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, berr.Error())
+			lastErr = berr
+			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: berr.Error()}
+			currentRetryCount++
+			totalAttemptCount++
 			continue
 		}
 
-		// Upload upstream request artifact
+		// rewriteRequest hook.
+		rw, rerr := session.RunRewriteHook(jsx.RewriteInput{
+			Endpoint:          endpoint,
+			Model:             nil,
+			Request:           jsClientRequest,
+			Provider:          cand.Provider,
+			MPE:               cand.MPE,
+			CurrentRetryCount: currentRetryCount,
+			TotalAttemptCount: totalAttemptCount,
+			UpstreamRequest: jsx.UpstreamRequestShape{
+				URL:     req.URL.String(),
+				Method:  req.Method,
+				Headers: req.Header.Clone(),
+				Body:    string(reqBody),
+			},
+			ClientRequest: jsClientRequest,
+		})
+		if rerr != nil {
+			cancel()
+			failHook(rerr)
+			return
+		}
+		applyRewrite(req, &reqBody, rw)
+
+		// Upload upstream request artifact AFTER rewrite so it reflects what was sent.
 		h.uploadRequestArtifact(bgCtx, upstreamID, upstreamCreatedAt, req.Method, req.URL.String(), req.Header.Clone(), reqBody)
 
-		// Forward request
 		upstreamStartTime := time.Now()
 		resp, err := h.forwardRequest(req)
 		if err != nil {
 			cancel()
-			timeSpent := int32(time.Since(attemptStart).Milliseconds())
-			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-				ID:           upstreamID,
-				StatusCode:   pgtype.Int4{Int32: 0, Valid: true},
-				ErrorMessage: pgtype.Text{String: err.Error(), Valid: true},
-				TimeSpentMs:  pgtype.Int4{Int32: timeSpent, Valid: true},
-				Status:       db.RequestStatusFailed,
-			})
+			h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, err.Error())
 			lastErr = err
+			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: err.Error()}
+			currentRetryCount++
+			totalAttemptCount++
 			continue
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			// Backfill meta and upstream on header success
-			h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
-				ID:           metaID,
-				ProviderID:   pgtype.Int4{Int32: provider.ProviderID, Valid: true},
-				Model:        pgtype.Text{String: model, Valid: true},
-				EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
-				ApiKeyID:     pgtype.Int4{Valid: false},
-				Status:       db.RequestStatusHeaderReceived,
-			})
-			h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
-				ID:           upstreamID,
-				ProviderID:   pgtype.Int4{Int32: provider.ProviderID, Valid: true},
-				Model:        pgtype.Text{String: model, Valid: true},
-				EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
-				ApiKeyID:     pgtype.Int4{Valid: false},
-				Status:       db.RequestStatusHeaderReceived,
-			})
-
-			// Stream response to client, stripping Content-Length since we're chunk-copying
-			for key, values := range resp.Header {
-				if strings.ToLower(key) == "content-length" {
-					continue
-				}
-				for _, value := range values {
-					w.Header().Add(key, value)
-				}
-			}
-			metaRespHeader := w.Header().Clone()
-			w.WriteHeader(http.StatusOK)
-
-			// Wrap response body with extractor to capture TTFT and token usage
-			extractor := NewResponseExtractor(resp.Body, resp.Header.Get("Content-Type"), upstreamStartTime)
-			reader := newIdleTimeoutReader(extractor, h.config.GatewayReadTimeout, cancel)
-			flusher, canFlush := w.(http.Flusher)
-			buf := make([]byte, 32*1024)
-			var captureBuf bytes.Buffer
-			for {
-				n, readErr := reader.Read(buf)
-				if n > 0 {
-					w.Write(buf[:n])
-					captureBuf.Write(buf[:n])
-					if canFlush {
-						flusher.Flush()
-					}
-				}
-				if readErr != nil {
-					break
-				}
-			}
-			cancel()
-			resp.Body.Close()
-
-			// Upload response artifacts (upstream + meta share the same body bytes)
-			respBytes := captureBuf.Bytes()
-			h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes)
-			h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes)
-
-			// Extract metrics from the response
-			m := extractor.Metrics()
-			ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens := metricsToPG(m)
-
-			// Complete upstream request
-			upstreamTimeSpent := int32(time.Since(attemptStart).Milliseconds())
-			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-				ID:               upstreamID,
-				StatusCode:       pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-				ErrorMessage:     pgtype.Text{Valid: false},
-				TimeSpentMs:      pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
-				Status:           db.RequestStatusCompleted,
-				TtftMs:           ttftMs,
-				InputTokens:      inputTokens,
-				OutputTokens:     outputTokens,
-				CacheReadTokens:  cacheReadTokens,
-				CacheWriteTokens: cacheWriteTokens,
-			})
-
-			// Complete meta request — inherit metrics from successful upstream
-			metaTimeSpent := int32(time.Since(gatewayStart).Milliseconds())
-			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-				ID:               metaID,
-				StatusCode:       pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-				ErrorMessage:     pgtype.Text{Valid: false},
-				TimeSpentMs:      pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-				Status:           db.RequestStatusCompleted,
-				TtftMs:           ttftMs,
-				InputTokens:      inputTokens,
-				OutputTokens:     outputTokens,
-				CacheReadTokens:  cacheReadTokens,
-				CacheWriteTokens: cacheWriteTokens,
-			})
+			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, modelName, endpoint.Path, upstreamStartTime, bgCtx)
 			return
 		}
 
-		// Non-200 response: read body, complete upstream, try next provider
+		// Non-200: record + try again.
 		cancel()
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		// Upload upstream response artifact for the failed attempt
 		h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody)
-		timeSpent := int32(time.Since(attemptStart).Milliseconds())
 		errMsg := string(respBody)
 		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 			ID:           upstreamID,
 			StatusCode:   pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
 			ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
-			TimeSpentMs:  pgtype.Int4{Int32: timeSpent, Valid: true},
+			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true},
 			Status:       db.RequestStatusFailed,
 		})
 		lastErr = fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg)
+		lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
+		currentRetryCount++
+		totalAttemptCount++
 	}
 
-	// 9. All providers failed — complete meta request
+	// 9. All providers failed (or attempts cap reached) — fail meta with 502.
 	errMsg := "all providers failed"
 	if lastErr != nil {
 		errMsg = lastErr.Error()
 	}
-	metaTimeSpent := int32(time.Since(gatewayStart).Milliseconds())
-	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-		ID:           metaID,
-		StatusCode:   pgtype.Int4{Int32: http.StatusBadGateway, Valid: true},
-		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
-		TimeSpentMs:  pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-		Status:       db.RequestStatusFailed,
-	})
+	failMeta(http.StatusBadGateway, errMsg)
 	respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
 	h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody)
 }
@@ -361,4 +401,102 @@ func (h *gatewayHandler) uploadResponseArtifact(ctx context.Context, id string, 
 		return
 	}
 	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
+}
+
+// streamSuccess writes the upstream 200 response back to the client and
+// completes both the upstream and meta request rows. Pulled out of the main
+// handler so the retry loop body stays scannable.
+func (h *gatewayHandler) streamSuccess(
+	w http.ResponseWriter, r *http.Request,
+	ctx context.Context, cancel context.CancelFunc, resp *http.Response,
+	upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time,
+	metaID string, metaCreatedAt time.Time, gatewayStart time.Time,
+	providerID int32, modelName, endpointPath string,
+	upstreamStartTime time.Time,
+	bgCtx context.Context,
+) {
+	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
+		ID:           metaID,
+		ProviderID:   pgtype.Int4{Int32: providerID, Valid: true},
+		Model:        pgtype.Text{String: modelName, Valid: true},
+		EndpointPath: pgtype.Text{String: endpointPath, Valid: true},
+		ApiKeyID:     pgtype.Int4{Valid: false},
+		Status:       db.RequestStatusHeaderReceived,
+	})
+	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
+		ID:           upstreamID,
+		ProviderID:   pgtype.Int4{Int32: providerID, Valid: true},
+		Model:        pgtype.Text{String: modelName, Valid: true},
+		EndpointPath: pgtype.Text{String: endpointPath, Valid: true},
+		ApiKeyID:     pgtype.Int4{Valid: false},
+		Status:       db.RequestStatusHeaderReceived,
+	})
+
+	for key, values := range resp.Header {
+		if strings.ToLower(key) == "content-length" {
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	metaRespHeader := w.Header().Clone()
+	w.WriteHeader(http.StatusOK)
+
+	extractor := NewResponseExtractor(resp.Body, resp.Header.Get("Content-Type"), upstreamStartTime)
+	reader := newIdleTimeoutReader(extractor, h.config.GatewayReadTimeout, cancel)
+	flusher, canFlush := w.(http.Flusher)
+	buf := make([]byte, 32*1024)
+	var captureBuf bytes.Buffer
+	for {
+		n, readErr := reader.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+			captureBuf.Write(buf[:n])
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	cancel()
+	resp.Body.Close()
+
+	respBytes := captureBuf.Bytes()
+	h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes)
+	h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes)
+
+	m := extractor.Metrics()
+	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens := metricsToPG(m)
+
+	upstreamTimeSpent := int32(time.Since(attemptStart).Milliseconds())
+	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+		ID:               upstreamID,
+		StatusCode:       pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+		ErrorMessage:     pgtype.Text{Valid: false},
+		TimeSpentMs:      pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
+		Status:           db.RequestStatusCompleted,
+		TtftMs:           ttftMs,
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		CacheReadTokens:  cacheReadTokens,
+		CacheWriteTokens: cacheWriteTokens,
+	})
+
+	metaTimeSpent := int32(time.Since(gatewayStart).Milliseconds())
+	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+		ID:               metaID,
+		StatusCode:       pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+		ErrorMessage:     pgtype.Text{Valid: false},
+		TimeSpentMs:      pgtype.Int4{Int32: metaTimeSpent, Valid: true},
+		Status:           db.RequestStatusCompleted,
+		TtftMs:           ttftMs,
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		CacheReadTokens:  cacheReadTokens,
+		CacheWriteTokens: cacheWriteTokens,
+	})
+	_ = r // kept for interface symmetry; r.Context() may be useful for future hooks
 }
