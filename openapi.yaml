@@ -114,6 +114,20 @@ components:
       required:
         - id
       type: object
+    DeleteScriptRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/DeleteScriptRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          type: string
+      required:
+        - id
+      type: object
     EndpointView:
       additionalProperties: false
       properties:
@@ -389,6 +403,55 @@ components:
         - id
         - type
         - status
+      type: object
+    ScriptMutateBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/ScriptMutateBody.json
+          format: uri
+          readOnly: true
+          type: string
+        enabled:
+          type: boolean
+        name:
+          type: string
+        source:
+          type: string
+      required:
+        - name
+        - source
+        - enabled
+      type: object
+    ScriptView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/ScriptView.json
+          format: uri
+          readOnly: true
+          type: string
+        createdAt:
+          type: string
+        enabled:
+          type: boolean
+        id:
+          type: string
+        name:
+          type: string
+        source:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - source
+        - enabled
+        - createdAt
+        - updatedAt
       type: object
     UpsertProviderRequestBody:
       additionalProperties: false
@@ -983,4 +1046,116 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: List spans (meta + upstream) related to a request
+  /api/picotera/scripts:
+    get:
+      operationId: listScripts
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ScriptView"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List all scripts
+    post:
+      operationId: createScript
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScriptMutateBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScriptView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Create a script
+  /api/picotera/scripts/delete:
+    post:
+      operationId: deleteScript
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteScriptRequestBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Delete a script
+  /api/picotera/scripts/{id}:
+    get:
+      operationId: getScript
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScriptView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get a script
+    put:
+      operationId: updateScript
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScriptMutateBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScriptView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Update a script
 
