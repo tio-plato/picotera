@@ -17,6 +17,7 @@ type Querier interface {
 	DeleteModelProviderEndpoint(ctx context.Context, arg DeleteModelProviderEndpointParams) error
 	DeleteProvider(ctx context.Context, id int32) error
 	DeleteProviderEndpoint(ctx context.Context, arg DeleteProviderEndpointParams) error
+	DeleteScript(ctx context.Context, id string) error
 	GetApiKeyByHash(ctx context.Context, apiKeyHash []byte) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
 	GetEndpoints(ctx context.Context) ([]Endpoint, error)
@@ -27,15 +28,20 @@ type Querier interface {
 	GetProviders(ctx context.Context) ([]Provider, error)
 	GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error)
 	GetRequest(ctx context.Context, id string) (Request, error)
+	GetScript(ctx context.Context, id string) (Script, error)
 	InsertRequest(ctx context.Context, arg InsertRequestParams) (pgtype.Timestamp, error)
+	InsertScript(ctx context.Context, arg InsertScriptParams) (Script, error)
+	ListEnabledScripts(ctx context.Context) ([]Script, error)
 	ListModelProviderEndpoints(ctx context.Context, arg ListModelProviderEndpointsParams) ([]ModelProviderEndpoint, error)
 	ListProviderEndpoints(ctx context.Context, providerID int32) ([]ProviderEndpoint, error)
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
 	ListRequestsBySpan(ctx context.Context, id string) ([]ListRequestsBySpanRow, error)
+	ListScripts(ctx context.Context) ([]Script, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
 	UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error
 	UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error
 	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
+	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
 	UpsertModelProviderEndpoint(ctx context.Context, arg UpsertModelProviderEndpointParams) (ModelProviderEndpoint, error)

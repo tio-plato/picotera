@@ -74,3 +74,12 @@ type Request struct {
 	Type             int32            `json:"type"`
 	Status           int32            `json:"status"`
 }
+
+type Script struct {
+	ID        string             `json:"id"`
+	Name      string             `json:"name"`
+	Source    string             `json:"source"`
+	Enabled   bool               `json:"enabled"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
+}
