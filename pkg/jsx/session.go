@@ -85,6 +85,25 @@ func (s *Session) Context() *qjs.Context {
 	return s.rt.Context()
 }
 
+// runHookExpr evaluates the JS expression with HookTimeout, then
+// JSON-serializes the resolved value and returns the JSON string. This is
+// the boundary used by all hook entrypoints to move data Go-ward.
+func (s *Session) runHookExpr(name, expr string) (string, error) {
+	v, err := s.evalWithTimeout(name, expr)
+	if err != nil {
+		return "", err
+	}
+	defer v.Free()
+	if v.Type() == "Undefined" {
+		return "null", nil
+	}
+	jsonStr, err := v.JSONStringify()
+	if err != nil {
+		return "", fmt.Errorf("jsx: stringify hook result: %w", err)
+	}
+	return jsonStr, nil
+}
+
 // evalWithTimeout runs an Eval, racing against Engine.Config.HookTimeout.
 // On timeout: cancels the runtime context (causing the in-flight Eval to
 // panic via wazero's CloseOnContextDone), recovers, marks the session as
