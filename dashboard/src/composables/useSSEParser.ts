@@ -147,52 +147,6 @@ function aggregateOpenAIChat(events: SSEEvent[]): Record<string, unknown> | null
   }
   return output;
   /* eslint-enable @typescript-eslint/no-explicit-any */
-
-  let content = "";
-  let reasoning = "";
-  let role = "";
-  let finishReason: string | null = null;
-  let id = "";
-  let model = "";
-  let usage: Record<string, unknown> | null = null;
-
-  for (const event of events) {
-    const parsed = parseJson(event);
-    if (!parsed) continue;
-    if (parsed.id) id = parsed.id as string;
-    if (parsed.model) model = parsed.model as string;
-    const choices = parsed.choices as Array<Record<string, unknown>> | undefined;
-    if (choices?.[0]) {
-      const choice = choices[0];
-      const delta = choice.delta as Record<string, unknown> | undefined;
-      if (delta) {
-        if (delta.content) content += delta.content as string;
-        if (delta.role) role = delta.role as string;
-        if (delta.reasoning) reasoning += delta.reasoning as string;
-        if (delta.reasoning_content) reasoning += delta.reasoning_content as string;
-      }
-      if (choice.finish_reason) finishReason = choice.finish_reason as string;
-    }
-    if (parsed.usage) usage = parsed.usage as Record<string, unknown>;
-  }
-
-  return {
-    id,
-    object: "chat.completion",
-    model,
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: role || "assistant",
-          content,
-          ...(reasoning ? { reasoning_content: reasoning } : {}),
-        },
-        finish_reason: finishReason,
-      },
-    ],
-    ...(usage ? { usage } : {}),
-  };
 }
 
 // ---- Aggregation: Anthropic ----
