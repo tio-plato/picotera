@@ -5,7 +5,7 @@
     this._taps = []
   }
   Waterfall.prototype.tap = function (name, fn, priority) {
-    this._taps.push({ name: String(name || 'anonymous'), fn: fn, priority: priority })
+    this._taps.push({ name: String(name || 'anonymous'), fn: fn, priority: priority ?? 0 })
     this._taps.sort(function (a, b) {
       return b.priority - a.priority;
     });
