@@ -2,7 +2,7 @@
 SELECT * FROM endpoint WHERE path = $1 LIMIT 1;
 
 -- name: GetProvidersByEndpointAndModel :many
-SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials, p.priority AS provider_priority, pe.upstream_url
+SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials, p.priority AS provider_priority, pe.upstream_url, p.annotations AS provider_annotations
   FROM model_provider_endpoint AS mpe
   LEFT JOIN provider AS p ON mpe.provider_id = p.id
   LEFT JOIN provider_endpoint AS pe ON mpe.provider_id = pe.provider_id AND mpe.endpoint_path = pe.endpoint_path

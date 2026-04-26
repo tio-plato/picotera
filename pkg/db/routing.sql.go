@@ -45,7 +45,7 @@ func (q *Queries) GetEndpointByPath(ctx context.Context, path string) (Endpoint,
 }
 
 const getProvidersByEndpointAndModel = `-- name: GetProvidersByEndpointAndModel :many
-SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials, p.priority AS provider_priority, pe.upstream_url
+SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials, p.priority AS provider_priority, pe.upstream_url, p.annotations AS provider_annotations
   FROM model_provider_endpoint AS mpe
   LEFT JOIN provider AS p ON mpe.provider_id = p.id
   LEFT JOIN provider_endpoint AS pe ON mpe.provider_id = pe.provider_id AND mpe.endpoint_path = pe.endpoint_path
@@ -68,6 +68,7 @@ type GetProvidersByEndpointAndModelRow struct {
 	ProviderCredentials pgtype.Text `json:"providerCredentials"`
 	ProviderPriority    pgtype.Int4 `json:"providerPriority"`
 	UpstreamUrl         pgtype.Text `json:"upstreamUrl"`
+	ProviderAnnotations []byte      `json:"providerAnnotations"`
 }
 
 func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error) {
@@ -90,6 +91,7 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 			&i.ProviderCredentials,
 			&i.ProviderPriority,
 			&i.UpstreamUrl,
+			&i.ProviderAnnotations,
 		); err != nil {
 			return nil, err
 		}

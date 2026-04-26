@@ -179,6 +179,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"id":       row.ProviderID,
 				"name":     row.ProviderName.String,
 				"priority": row.ProviderPriority.Int32,
+				"annotations": json.RawMessage(row.ProviderAnnotations),
 			},
 			MPE: map[string]any{
 				"modelName":         row.ModelName,
@@ -195,7 +196,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	jsClientRequest := jsx.RequestShape{
 		Path:    r.URL.Path,
 		Method:  r.Method,
-		Headers: r.Header.Clone(),
+		Headers: mapLowerKeys(r.Header.Clone()),
 		Body:    string(body),
 		Model:   modelName,
 	}
@@ -375,6 +376,14 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	failMeta(http.StatusBadGateway, errMsg)
 	respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
 	h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody)
+}
+
+func mapLowerKeys(header http.Header) http.Header {
+	lower := make(http.Header, len(header))
+	for k, v := range header {
+		lower[strings.ToLower(k)] = v
+	}
+	return lower
 }
 
 // uploadRequestArtifact builds and asynchronously uploads a request artifact for the given id+ts.
