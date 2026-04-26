@@ -135,9 +135,9 @@ func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDeci
 		return dec, err
 	}
 	expr := fmt.Sprintf(`(async () => {
-		globalThis.__brCtx = %s;
-		const r = await picotera.hooks.beforeRequest.runWaterfall(globalThis.__brCtx);
-		if (r === globalThis.__brCtx || typeof r === 'undefined' || r === null) return null;
+		const ctx = %s;
+		const r = await picotera.hooks.beforeRequest.runWaterfall(ctx);
+		if (r === ctx || typeof r === 'undefined' || r === null) return null;
 		return { next: !!r.next, delay: r.delay | 0 };
 	})()`, lit)
 	jsonStr, err := s.runHookExpr("beforeRequest.js", expr)
@@ -145,6 +145,9 @@ func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDeci
 		return dec, err
 	}
 	if jsonStr == "" || jsonStr == "null" {
+		if in.CurrentRetryCount > 0 {
+			dec.Next = true
+		}
 		return dec, nil
 	}
 	if err := json.Unmarshal([]byte(jsonStr), &dec); err != nil {
