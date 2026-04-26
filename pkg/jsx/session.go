@@ -2,6 +2,7 @@ package jsx
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -85,29 +86,163 @@ func (s *Session) Context() *qjs.Context {
 	return s.rt.Context()
 }
 
+// RunSortHook calls the sortProviders waterfall with the given input. Return
+// semantics: if no tap mutated the value (passthrough), in.Providers is
+// returned unchanged; if a tap returned an array of candidates, that array
+// is returned; if a tap returned a `{providers: [...]}` shape, that array is
+// returned. An empty array means "no providers" (gateway then fails 502).
+func (s *Session) RunSortHook(in SortInput) ([]Candidate, error) {
+	lit, err := marshalToJSLiteral(in)
+	if err != nil {
+		return nil, err
+	}
+	expr := fmt.Sprintf(`(async () => {
+		globalThis.__sortCtx = %s;
+		const r = await picotera.hooks.sortProviders.runWaterfall(globalThis.__sortCtx);
+		if (r === globalThis.__sortCtx || typeof r === 'undefined') return null;
+		return r;
+	})()`, lit)
+	jsonStr, err := s.runHookExpr("sortProviders.js", expr)
+	if err != nil {
+		return nil, err
+	}
+	if jsonStr == "" || jsonStr == "null" {
+		return in.Providers, nil
+	}
+	// Try {providers: [...]} first.
+	var obj struct {
+		Providers []Candidate `json:"providers"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &obj); err == nil && obj.Providers != nil {
+		return obj.Providers, nil
+	}
+	// Try direct array.
+	var arr []Candidate
+	if err := json.Unmarshal([]byte(jsonStr), &arr); err == nil {
+		return arr, nil
+	}
+	return in.Providers, nil
+}
+
+// RunBeforeRequestHook calls the beforeRequest waterfall and decodes the
+// returned `{next, delay}` shape. Passthrough or a return that doesn't carry
+// either key collapses to `Next=false, Delay=0`.
+func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDecision, error) {
+	var dec BeforeRequestDecision
+	lit, err := marshalToJSLiteral(in)
+	if err != nil {
+		return dec, err
+	}
+	expr := fmt.Sprintf(`(async () => {
+		globalThis.__brCtx = %s;
+		const r = await picotera.hooks.beforeRequest.runWaterfall(globalThis.__brCtx);
+		if (r === globalThis.__brCtx || typeof r === 'undefined' || r === null) return null;
+		return { next: !!r.next, delay: r.delay | 0 };
+	})()`, lit)
+	jsonStr, err := s.runHookExpr("beforeRequest.js", expr)
+	if err != nil {
+		return dec, err
+	}
+	if jsonStr == "" || jsonStr == "null" {
+		return dec, nil
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &dec); err != nil {
+		return dec, fmt.Errorf("jsx: beforeRequest decode: %w", err)
+	}
+	return dec, nil
+}
+
+// RunRewriteHook calls the rewriteRequest waterfall. Passthrough returns an
+// empty RewriteOutput (all fields nil). If a tap returned `{body: <object>}`,
+// the body is JSON-stringified at the JS boundary before reaching Go.
+func (s *Session) RunRewriteHook(in RewriteInput) (RewriteOutput, error) {
+	var out RewriteOutput
+	lit, err := marshalToJSLiteral(in)
+	if err != nil {
+		return out, err
+	}
+	expr := fmt.Sprintf(`(async () => {
+		globalThis.__rwCtx = %s;
+		const r = await picotera.hooks.rewriteRequest.runWaterfall(globalThis.__rwCtx);
+		if (r === globalThis.__rwCtx || typeof r === 'undefined' || r === null) return null;
+		if (r && typeof r.body === 'object' && r.body !== null) {
+			return Object.assign({}, r, { body: JSON.stringify(r.body) });
+		}
+		return r;
+	})()`, lit)
+	jsonStr, err := s.runHookExpr("rewriteRequest.js", expr)
+	if err != nil {
+		return out, err
+	}
+	if jsonStr == "" || jsonStr == "null" {
+		return out, nil
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+		return out, fmt.Errorf("jsx: rewriteRequest decode: %w", err)
+	}
+	return out, nil
+}
+
 // runHookExpr evaluates the JS expression with HookTimeout, then
-// JSON-serializes the resolved value and returns the JSON string. This is
-// the boundary used by all hook entrypoints to move data Go-ward.
+// JSON-serializes the resolved value (inside the same goroutine as the
+// eval — fastschema/qjs values are not safe to use across goroutines).
+// Returns the JSON string ready for json.Unmarshal.
 func (s *Session) runHookExpr(name, expr string) (string, error) {
-	v, err := s.evalWithTimeout(name, expr)
-	if err != nil {
-		return "", err
+	if s.tainted {
+		return "", ErrHookTimeout
 	}
-	defer v.Free()
-	if v.Type() == "Undefined" {
-		return "null", nil
+	type result struct {
+		jsonStr string
+		err     error
 	}
-	jsonStr, err := v.JSONStringify()
-	if err != nil {
-		return "", fmt.Errorf("jsx: stringify hook result: %w", err)
+	ch := make(chan result, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- result{err: fmt.Errorf("jsx: eval panic: %v", r)}
+			}
+		}()
+		v, err := s.rt.Context().Eval(name, qjs.Code(expr))
+		if err != nil {
+			ch <- result{err: err}
+			return
+		}
+		defer v.Free()
+		switch v.Type() {
+		case "Undefined", "Null":
+			ch <- result{jsonStr: "null"}
+			return
+		}
+		jsonStr, err := v.JSONStringify()
+		if err != nil {
+			ch <- result{err: fmt.Errorf("jsx: stringify hook result: %w", err)}
+			return
+		}
+		ch <- result{jsonStr: jsonStr}
+	}()
+
+	timeout := s.engine.cfg.HookTimeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
 	}
-	return jsonStr, nil
+	select {
+	case r := <-ch:
+		return r.jsonStr, r.err
+	case <-time.After(timeout):
+		s.tainted = true
+		s.cancel() // wakes the goroutine via panic; recover handles it
+		<-ch       // drain
+		return "", ErrHookTimeout
+	}
 }
 
 // evalWithTimeout runs an Eval, racing against Engine.Config.HookTimeout.
 // On timeout: cancels the runtime context (causing the in-flight Eval to
 // panic via wazero's CloseOnContextDone), recovers, marks the session as
 // tainted, returns ErrHookTimeout. Subsequent calls fail fast.
+//
+// NOTE: the returned *qjs.Value is bound to the goroutine that produced it.
+// Use runHookExpr instead of touching the Value from another goroutine.
 func (s *Session) evalWithTimeout(name, src string) (*qjs.Value, error) {
 	if s.tainted {
 		return nil, ErrHookTimeout
