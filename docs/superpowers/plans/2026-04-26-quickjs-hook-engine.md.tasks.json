@@ -1,0 +1,143 @@
+{
+  "planPath": "docs/superpowers/plans/2026-04-26-quickjs-hook-engine.md",
+  "tasks": [
+    {
+      "id": 2,
+      "subject": "Task 1: Add script table migration",
+      "status": "pending",
+      "description": "**Goal:** Create the `script` table with the partial index defined in the spec.\n\n**Files:**\n- Create: `db/migrations/004_script.sql`\n\n**Verify:** Boot the server, confirm `migrations completed` log line, then `\\d script` in psql.\n\n```json:metadata\n{\"files\":[\"db/migrations/004_script.sql\"],\"verifyCommand\":\"docker compose up -d && go run ./cmd/picotera/main.go --help\",\"acceptanceCriteria\":[\"Migration creates script table\",\"Partial index on (enabled) WHERE enabled=TRUE\",\"Up + Down sections present\",\"Runs cleanly on dev DB\"]}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 2: Add sqlc queries for script",
+      "status": "pending",
+      "blockedBy": ["2"],
+      "description": "**Goal:** Define CRUD + ListEnabledScripts queries and regenerate Go code.\n\n**Files:**\n- Create: `db/queries/script.sql`\n- Regenerate: `pkg/db/script.sql.go`, `pkg/db/models.go`, `pkg/db/querier.go`\n\n**Verify:** `sqlc generate && go build ./...`\n\n```json:metadata\n{\"files\":[\"db/queries/script.sql\",\"pkg/db/script.sql.go\",\"pkg/db/models.go\",\"pkg/db/querier.go\"],\"verifyCommand\":\"sqlc generate && go build ./...\",\"acceptanceCriteria\":[\"ListScripts ordered by created_at DESC\",\"ListEnabledScripts ordered by id ASC\",\"GetScript by id\",\"InsertScript returns *\",\"UpdateScript with updated_at=now()\",\"DeleteScript\",\"sqlc generate succeeds\",\"go build ./... succeeds\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 3: Add JS-engine config fields",
+      "status": "pending",
+      "description": "**Goal:** Add JSHookTimeout, JSMemoryLimit, JSMaxTotalAttempts, JSMaxDelay to configx.Config.\n\n**Files:**\n- Modify: `pkg/configx/configx.go`\n\n**Verify:** `go build ./...`\n\n```json:metadata\n{\"files\":[\"pkg/configx/configx.go\"],\"verifyCommand\":\"go build ./...\",\"acceptanceCriteria\":[\"Four new fields with mapstructure tags\",\"Defaults: 5s, 64MiB, 50, 60s\",\"Env vars auto-bound by bindEnvs\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 4: Add modernc.org/quickjs dependency",
+      "status": "pending",
+      "description": "**Goal:** Add `modernc.org/quickjs` to go.mod and verify it imports.\n\n**Files:**\n- Modify: `go.mod`, `go.sum`\n\n**Verify:** Trivial smoke test runs.\n\n```json:metadata\n{\"files\":[\"go.mod\",\"go.sum\"],\"verifyCommand\":\"go test ./pkg/jsx/ -run TestQuickJSSmoke -v\",\"acceptanceCriteria\":[\"go get modernc.org/quickjs succeeds\",\"NewVM/Eval/Close smoke runs\",\"Module in require block\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 5: jsx package skeleton — Engine, Session, embedded SDK",
+      "status": "pending",
+      "blockedBy": ["3", "20", "21"],
+      "description": "**Goal:** Foundation for `pkg/jsx`: Engine, per-request Session that creates a VM, evaluates embedded SDK, and loads enabled user scripts.\n\n**Files:**\n- Create: `pkg/jsx/engine.go`, `pkg/jsx/session.go`, `pkg/jsx/store.go`, `pkg/jsx/sdk.go`, `pkg/jsx/sdk.js`, `pkg/jsx/engine_test.go`\n\n**Verify:** `go test ./pkg/jsx/ -run TestEngine_LoadsScripts -v`\n\n```json:metadata\n{\"files\":[\"pkg/jsx/engine.go\",\"pkg/jsx/session.go\",\"pkg/jsx/store.go\",\"pkg/jsx/sdk.go\",\"pkg/jsx/sdk.js\",\"pkg/jsx/engine_test.go\"],\"verifyCommand\":\"go test ./pkg/jsx/ -run TestEngine_LoadsScripts -v\",\"acceptanceCriteria\":[\"NewSession constructs VM with limits\",\"Close idempotent\",\"sdk.js sets globalThis.picotera.hooks.<name>\",\"Waterfall.tap and runWaterfall implemented\",\"Two-tap test asserts both registered\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 6: Promise pump — awaitJSExpr",
+      "status": "pending",
+      "blockedBy": ["19"],
+      "description": "**Goal:** Drive QuickJS until a Promise settles or timeout fires.\n\n**Files:**\n- Create: `pkg/jsx/promise.go`\n- Modify: `pkg/jsx/sdk.js`, `pkg/jsx/session.go`, `pkg/jsx/engine_test.go`\n\n**Verify:** `go test ./pkg/jsx/ -run TestSession_Promise -v`\n\n```json:metadata\n{\"files\":[\"pkg/jsx/promise.go\",\"pkg/jsx/sdk.js\",\"pkg/jsx/session.go\",\"pkg/jsx/engine_test.go\"],\"verifyCommand\":\"go test ./pkg/jsx/ -run TestSession_Promise -v\",\"acceptanceCriteria\":[\"Resolves Promise.resolve(42)\",\"Propagates rejection with message\",\"Returns ErrHookTimeout on wall-clock expiry\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 7: ctx marshaling — Go ↔ JS types via JSON",
+      "status": "pending",
+      "blockedBy": ["14"],
+      "description": "**Goal:** JSON-based round-trip marshaling between Go and JS for hook ctx.\n\n**Files:**\n- Create: `pkg/jsx/types.go`\n- Modify: `pkg/jsx/sdk.js`, `pkg/jsx/session.go`, `pkg/jsx/engine_test.go`\n\n**Verify:** `go test ./pkg/jsx/ -run TestSession_CtxRoundTrip -v && go test ./pkg/jsx/ -v`\n\n```json:metadata\n{\"files\":[\"pkg/jsx/types.go\",\"pkg/jsx/sdk.js\",\"pkg/jsx/session.go\",\"pkg/jsx/engine_test.go\"],\"verifyCommand\":\"go test ./pkg/jsx/ -v\",\"acceptanceCriteria\":[\"marshalToJSLiteral encodes Go to JSON\",\"JS resolves with JSON.stringify\",\"unmarshalJSON decodes back to Go\",\"Reverse-array roundtrip test passes\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 8: Hook entrypoints — Sort/BeforeRequest/Rewrite",
+      "status": "pending",
+      "blockedBy": ["17"],
+      "description": "**Goal:** Three Go-callable hook methods on Session.\n\n**Files:**\n- Modify: `pkg/jsx/session.go`, `pkg/jsx/types.go`, `pkg/jsx/engine_test.go`\n\n**Verify:** `go test ./pkg/jsx/ -run TestSession_Hooks -v`\n\n```json:metadata\n{\"files\":[\"pkg/jsx/session.go\",\"pkg/jsx/types.go\",\"pkg/jsx/engine_test.go\"],\"verifyCommand\":\"go test ./pkg/jsx/ -run TestSession_Hooks -v\",\"acceptanceCriteria\":[\"RunSortHook handles undefined/array/ctx return\",\"RunBeforeRequestHook defaults to {next:false,delay:0}\",\"RunBeforeRequestHook reads {next,delay}\",\"RunRewriteHook stringifies object body\",\"All three honor HookTimeout\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 9: Helpers — fetch, setTimeout, console",
+      "status": "pending",
+      "blockedBy": ["18"],
+      "description": "**Goal:** picotera.fetch (5s timeout), setTimeout/clearTimeout, console.* via logx.\n\n**Files:**\n- Create: `pkg/jsx/helpers.go`\n- Modify: `pkg/jsx/sdk.js`, `pkg/jsx/session.go`, `pkg/jsx/engine.go`, `pkg/jsx/engine_test.go`\n\n**Verify:** `go test ./pkg/jsx/ -v`\n\n```json:metadata\n{\"files\":[\"pkg/jsx/helpers.go\",\"pkg/jsx/sdk.js\",\"pkg/jsx/session.go\",\"pkg/jsx/engine.go\",\"pkg/jsx/engine_test.go\"],\"verifyCommand\":\"go test ./pkg/jsx/ -v\",\"acceptanceCriteria\":[\"NewSession takes requestID\",\"picotera.fetch returns Promise of {status,headers,body}\",\"setTimeout/clearTimeout via Go timers\",\"console.* writes via logx with script_id and request_id\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 10: Syntax validation on submit",
+      "status": "pending",
+      "blockedBy": ["3"],
+      "description": "**Goal:** ValidateSyntax(source) boots throwaway VM and returns syntax errors only.\n\n**Files:**\n- Create: `pkg/jsx/validate.go`, `pkg/jsx/validate_test.go`\n\n**Verify:** `go test ./pkg/jsx/ -run TestValidateSyntax -v`\n\n```json:metadata\n{\"files\":[\"pkg/jsx/validate.go\",\"pkg/jsx/validate_test.go\"],\"verifyCommand\":\"go test ./pkg/jsx/ -run TestValidateSyntax -v\",\"acceptanceCriteria\":[\"Valid source returns nil\",\"Bad syntax returns error\",\"Runtime reference passes (not validated)\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 11: Script CRUD contract",
+      "status": "pending",
+      "blockedBy": ["21"],
+      "description": "**Goal:** Huma operations and view types for /scripts.\n\n**Files:**\n- Create: `pkg/contract/script.go`\n\n**Verify:** `go build ./...`\n\n```json:metadata\n{\"files\":[\"pkg/contract/script.go\"],\"verifyCommand\":\"go build ./...\",\"acceptanceCriteria\":[\"ScriptView with all fields\",\"Five Operation declarations\",\"ToScriptView from db.Script\",\"Create/Update/Delete request types\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 12: Script CRUD handlers (with syntax validation)",
+      "status": "pending",
+      "blockedBy": ["4", "16"],
+      "description": "**Goal:** Five handlers; Create/Update validate syntax via jsx.ValidateSyntax; reject 400 on syntax error.\n\n**Files:**\n- Create: `pkg/server/handle_script.go`\n- Modify: `pkg/server/server.go`\n\n**Verify:** `go build ./...` and curl 400/200 smoke tests.\n\n```json:metadata\n{\"files\":[\"pkg/server/handle_script.go\",\"pkg/server/server.go\"],\"verifyCommand\":\"go build ./...\",\"acceptanceCriteria\":[\"List/Get/Create/Update/Delete handlers\",\"Create generates xid\",\"Create+Update call ValidateSyntax → 400 on error\",\"Get returns 404 on no rows\",\"All five operations registered\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 13: Wire jsx Engine into server boot",
+      "status": "pending",
+      "blockedBy": ["15", "20"],
+      "description": "**Goal:** Construct *jsx.Engine in NewServer; store on *Server.\n\n**Files:**\n- Modify: `pkg/server/server.go`\n\n**Verify:** `go build ./...`\n\n```json:metadata\n{\"files\":[\"pkg/server/server.go\"],\"verifyCommand\":\"go build ./...\",\"acceptanceCriteria\":[\"Server struct gains jsxEngine *jsx.Engine\",\"NewServer constructs engine with config\",\"Build succeeds\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 14: Gateway integration — call hooks in retry loop",
+      "status": "pending",
+      "blockedBy": ["6", "5"],
+      "description": "**Goal:** Replace for-range loop with index-based retry loop; call sortProviders once, beforeRequest each iter, rewriteRequest before forward.\n\n**Files:**\n- Modify: `pkg/server/handle_gateway.go`, `pkg/server/gateway_helpers.go`\n\n**Verify:** `go build ./...` + manual smoke (sort reverse, skip-all, rewrite header).\n\n```json:metadata\n{\"files\":[\"pkg/server/handle_gateway.go\",\"pkg/server/gateway_helpers.go\"],\"verifyCommand\":\"go build ./...\",\"acceptanceCriteria\":[\"Session created after resolveProviders, defer Close\",\"Session init fails → 502\",\"RunSortHook once before loop\",\"Index-based loop with currentRetryCount/totalAttemptCount/lastError\",\"beforeRequest honored: next/delay clamped to MaxDelay\",\"rewriteRequest applies url/method/headers/body overrides\",\"Body changed → ContentLength updated\",\"timeout → 503; other hook err → 502\",\"MaxTotalAttempts cap → 502\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 15: Regenerate openapi.yaml",
+      "status": "pending",
+      "blockedBy": ["7"],
+      "description": "**Goal:** Refresh openapi.yaml with /scripts paths.\n\n**Files:**\n- Modify: `openapi.yaml`\n\n**Verify:** `mise run openapi && grep -c '/scripts' openapi.yaml`\n\n```json:metadata\n{\"files\":[\"openapi.yaml\"],\"verifyCommand\":\"mise run openapi && grep -c '/scripts' openapi.yaml\",\"acceptanceCriteria\":[\"/scripts paths present\",\"ScriptView schema present\",\"Diff shows new operations\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 16: Regenerate dashboard OpenAPI types",
+      "status": "pending",
+      "blockedBy": ["8"],
+      "description": "**Goal:** Refresh dashboard typed client.\n\n**Files:**\n- Modify: `dashboard/src/api.d.ts` or `dashboard/src/openapi-types.ts`\n\n**Verify:** `pnpm --dir dashboard type-check`\n\n```json:metadata\n{\"files\":[\"dashboard/src/openapi-types.ts\"],\"verifyCommand\":\"pnpm --dir dashboard type-check\",\"acceptanceCriteria\":[\"paths['/api/picotera/scripts'] present\",\"ScriptView in components.schemas\",\"type-check passes\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 17: Dashboard scripts route + sidebar entry",
+      "status": "pending",
+      "blockedBy": ["9"],
+      "description": "**Goal:** /scripts route + AppSidebar nav entry + placeholder ScriptsView.\n\n**Files:**\n- Modify: `dashboard/src/router/index.ts`, `dashboard/src/components/AppSidebar.vue`\n- Create: `dashboard/src/views/ScriptsView.vue` (stub)\n\n**Verify:** `pnpm --dir dashboard build`\n\n```json:metadata\n{\"files\":[\"dashboard/src/router/index.ts\",\"dashboard/src/components/AppSidebar.vue\",\"dashboard/src/views/ScriptsView.vue\"],\"verifyCommand\":\"pnpm --dir dashboard build\",\"acceptanceCriteria\":[\"/scripts route lazy-loads ScriptsView\",\"Sidebar entry with appropriate icon\",\"Active styling works\",\"Build succeeds\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 18: Dashboard ScriptForm component",
+      "status": "pending",
+      "blockedBy": ["10"],
+      "description": "**Goal:** Side-panel create/edit form with name, enabled toggle, source textarea.\n\n**Files:**\n- Create: `dashboard/src/components/ScriptForm.vue`\n\n**Verify:** `pnpm --dir dashboard type-check && pnpm --dir dashboard lint`\n\n```json:metadata\n{\"files\":[\"dashboard/src/components/ScriptForm.vue\"],\"verifyCommand\":\"pnpm --dir dashboard type-check && pnpm --dir dashboard lint\",\"acceptanceCriteria\":[\"Reuses SidePanel/Field/Input/Textarea/Button\",\"Edit shows id read-only\",\"Enabled toggle\",\"Source textarea rows=20 font-mono\",\"POST /scripts on create, PUT /scripts/{id} on edit\",\"400 syntax error shown in error slot\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 19: Dashboard ScriptsView list page",
+      "status": "pending",
+      "blockedBy": ["11"],
+      "description": "**Goal:** List page with create/edit/delete + enable toggle.\n\n**Files:**\n- Modify: `dashboard/src/views/ScriptsView.vue`\n\n**Verify:** `pnpm --dir dashboard build && pnpm --dir dashboard lint`\n\n```json:metadata\n{\"files\":[\"dashboard/src/views/ScriptsView.vue\"],\"verifyCommand\":\"pnpm --dir dashboard build && pnpm --dir dashboard lint\",\"acceptanceCriteria\":[\"Mirrors EndpointsView structure\",\"Columns: name, status, createdAt, updatedAt, actions\",\"新增 opens ScriptForm\",\"Edit/Delete via row IconButtons\",\"Enable toggle PUTs flipped value\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 20: End-to-end smoke test",
+      "status": "pending",
+      "blockedBy": ["12", "7"],
+      "description": "**Goal:** Verify full stack: dashboard CRUD + gateway picks up scripts on next request.\n\n**Files:** none\n\n**Verify:** Manual checklist (sort reverse, skip-all, header rewrite, baseline restore).\n\n```json:metadata\n{\"files\":[],\"verifyCommand\":\"manual\",\"acceptanceCriteria\":[\"Server boots cleanly with new migration\",\"Dashboard /scripts page works end-to-end\",\"sortProviders reverse changes provider selection\",\"beforeRequest skip-all → 502\",\"rewriteRequest header reflected in upstream artifact\",\"Disable all scripts restores baseline\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-04-26T16:34:51+08:00"
+}
