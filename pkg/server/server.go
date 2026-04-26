@@ -9,6 +9,7 @@ import (
 	"picotera/pkg/configx"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
+	"picotera/pkg/jsx"
 	"picotera/pkg/logx"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -27,6 +28,7 @@ type Server struct {
 	config     *configx.Config
 	httpClient *http.Client
 	artifacts  artifacts.Sink
+	jsxEngine  *jsx.Engine
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -67,7 +69,14 @@ func NewServer(ctx context.Context) (*Server, error) {
 	router := chi.NewMux()
 	api := humachi.New(router, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
 
-	server := &Server{config: config, queries: queries, router: router, api: api, httpClient: httpClient, artifacts: sink}
+	jsxEngine := jsx.NewEngine(jsx.Config{
+		HookTimeout:      config.JSHookTimeout,
+		MemoryLimit:      config.JSMemoryLimit,
+		MaxTotalAttempts: config.JSMaxTotalAttempts,
+		MaxDelay:         config.JSMaxDelay,
+	}, queries)
+
+	server := &Server{config: config, queries: queries, router: router, api: api, httpClient: httpClient, artifacts: sink, jsxEngine: jsxEngine}
 	server.registerOperations()
 	server.registerEndpoints()
 	logx.WithContext(ctx).Info("registered operations")
