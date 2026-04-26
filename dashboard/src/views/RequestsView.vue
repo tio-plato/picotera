@@ -14,13 +14,13 @@ import {
   IconButton,
   DataCard,
   AutoDataTable,
-  StateText,
   Tag,
-  Select,
   Field,
   Icon,
   SegmentedControl,
+  ColumnFilter,
   type AutoDataTableColumn,
+  type ColumnFilterOption,
 } from '@/ui'
 
 const api = useApi()
@@ -123,15 +123,51 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
     base.push({ key: 'type', header: '类型' })
   }
   base.push(
-    { key: 'providerId', header: '渠道' },
-    { key: 'endpointPath', header: '端点' },
-    { key: 'model', header: '模型' },
+    {
+      key: 'providerId',
+      header: '渠道',
+      headerClass: filters.providerId ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
+    },
+    {
+      key: 'endpointPath',
+      header: '端点',
+      headerClass: filters.endpointPath ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
+    },
+    {
+      key: 'model',
+      header: '模型',
+      headerClass: filters.model ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
+    },
     { key: 'status', header: '状态' },
     { key: 'tokens', header: 'Token' },
     { key: 'timeSpentMs', header: '耗时', align: 'right' },
   )
   return base
 })
+
+const providerOptions = computed<ColumnFilterOption<number>[]>(() =>
+  providers.value.map((p) => ({ value: p.id, label: p.name })),
+)
+const endpointOptions = computed<ColumnFilterOption<string>[]>(() =>
+  endpoints.value.map((e) => ({ value: e.path, label: e.path })),
+)
+const modelOptions = computed<ColumnFilterOption<string>[]>(() =>
+  models.value.map((m) => ({ value: m.name, label: m.name })),
+)
+
+function activeFilterCount(): number {
+  let n = 0
+  if (filters.providerId) n++
+  if (filters.endpointPath) n++
+  if (filters.model) n++
+  return n
+}
+
+function clearAllFilters() {
+  filters.providerId = 0
+  filters.endpointPath = ''
+  filters.model = ''
+}
 
 function formatTimeParts(iso: string | undefined): { time: string; date: string } {
   if (!iso) return { time: '—', date: '' }
@@ -164,36 +200,19 @@ function resetCursorAndReload() {
 <template>
   <div class="flex flex-col gap-3.5">
     <div class="flex items-end justify-between gap-3 flex-wrap">
-      <div class="flex items-end gap-2.5 flex-wrap">
-        <Field label="类型" as="div">
-          <SegmentedControl v-model="filters.type" :options="typeOptions" />
-        </Field>
-        <Field label="渠道" as="div" class="min-w-40">
-          <Select v-model.number="filters.providerId" size="sm">
-            <option :value="0">全部</option>
-            <option v-for="p in providers" :key="p.id" :value="p.id">
-              {{ p.name }}
-            </option>
-          </Select>
-        </Field>
-        <Field label="端点" as="div" class="min-w-48">
-          <Select v-model="filters.endpointPath" size="sm">
-            <option value="">全部</option>
-            <option v-for="e in endpoints" :key="e.path" :value="e.path">
-              {{ e.path }}
-            </option>
-          </Select>
-        </Field>
-        <Field label="模型" as="div" class="min-w-48">
-          <Select v-model="filters.model" size="sm">
-            <option value="">全部</option>
-            <option v-for="m in models" :key="m.name" :value="m.name">
-              {{ m.name }}
-            </option>
-          </Select>
-        </Field>
-      </div>
+      <Field label="类型" as="div">
+        <SegmentedControl v-model="filters.type" :options="typeOptions" />
+      </Field>
       <div class="flex items-center gap-2">
+        <button
+          v-if="activeFilterCount() > 0"
+          type="button"
+          class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-transparent border-0 rounded-xs text-xs text-ink-faint cursor-pointer transition-colors hover:text-ink hover:bg-surface-100"
+          @click="clearAllFilters"
+        >
+          <Icon name="close" :size="11" />
+          <span>清除筛选 ({{ activeFilterCount() }})</span>
+        </button>
         <span class="text-xs text-ink-faint tabular-nums">
           {{ requests.length }} 条<span v-if="hasMore">（还有更多）</span>
         </span>
@@ -203,8 +222,7 @@ function resetCursorAndReload() {
       </div>
     </div>
 
-    <StateText v-if="loading && !requests.length">加载中…</StateText>
-    <DataCard v-else-if="requests.length">
+    <DataCard>
       <AutoDataTable
         :columns="columns"
         :items="requests"
@@ -212,6 +230,31 @@ function resetCursorAndReload() {
         :selected="rowSelected"
         :on-row-click="(r) => openDetails(r)"
       >
+        <template #header-providerId>
+          <ColumnFilter
+            v-model.number="filters.providerId"
+            label="渠道"
+            :options="providerOptions"
+            :empty-value="0"
+            placeholder="过滤渠道…"
+          />
+        </template>
+        <template #header-endpointPath>
+          <ColumnFilter
+            v-model="filters.endpointPath"
+            label="端点"
+            :options="endpointOptions"
+            placeholder="过滤端点…"
+          />
+        </template>
+        <template #header-model>
+          <ColumnFilter
+            v-model="filters.model"
+            label="模型"
+            :options="modelOptions"
+            placeholder="过滤模型…"
+          />
+        </template>
         <template #cell-createdAt="{ row }">
           <div class="flex flex-col leading-tight">
             <span class="font-mono tabular-nums text-ink">{{ formatTimeParts(row.createdAt).time }}</span>
@@ -260,9 +303,12 @@ function resetCursorAndReload() {
         <template #cell-timeSpentMs="{ row }">
           <span class="font-mono tabular-nums text-ink">{{ formatTimeSpent(row.timeSpentMs) }}</span>
         </template>
+        <template #empty>
+          <span v-if="loading">加载中…</span>
+          <span v-else>暂无请求</span>
+        </template>
       </AutoDataTable>
     </DataCard>
-    <StateText v-else>暂无请求</StateText>
 
     <div v-if="hasMore" class="flex justify-center py-1">
       <Button variant="ghost" :disabled="loading" @click="fetchRequests(nextCursor)">

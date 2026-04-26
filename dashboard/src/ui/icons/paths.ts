@@ -3,6 +3,7 @@ import {
   IconActivity,
   IconAlignJustified,
   IconBraces,
+  IconChevronDown,
   IconCpu,
   IconDatabase,
   IconEdit,
@@ -12,6 +13,7 @@ import {
   IconPlug,
   IconPlus,
   IconRefresh,
+  IconSearch,
   IconSettings,
   IconTrash,
   IconX,
@@ -34,6 +36,8 @@ export type IconName =
   | 'braces'
   | 'activity'
   | 'refresh'
+  | 'chevron-down'
+  | 'search'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -52,4 +56,6 @@ export const iconComponents: Record<IconName, Component> = {
   braces: IconBraces,
   activity: IconActivity,
   refresh: IconRefresh,
+  'chevron-down': IconChevronDown,
+  search: IconSearch,
 }

@@ -95,6 +95,14 @@ function handleRowClick(row: Row, event: MouseEvent) {
           >{{ defaultFormat(get(row, col.field)) }}</slot>
         </Td>
       </Tr>
+      <tr v-if="items.length === 0">
+        <td
+          :colspan="columns.length"
+          class="px-4 py-10 text-center text-sm text-ink-faint"
+        >
+          <slot name="empty">暂无数据</slot>
+        </td>
+      </tr>
     </tbody>
   </DataTable>
 </template>
