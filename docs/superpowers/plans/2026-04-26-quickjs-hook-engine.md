@@ -2957,3 +2957,52 @@ This task only verifies. If any step revealed a bug, fix it under the relevant e
 **Type consistency:** `Candidate`, `RequestShape`, `BeforeRequestInput`, `RewriteOutput` are defined once in Task 7/8 and consumed unchanged in Task 14. `jsx.LastError` defined in Task 8, used in Task 14. `pendingSlot.value` typing changed deliberately in Task 7 (string after stringification).
 
 **Known compromise — JSON marshaling of db.* structs into JS:** The implementer should verify that `db.Provider` (with `json` tags via sqlc `emit_json_tags: true`) round-trips through JSON cleanly. Fields like `ProviderModels []byte` will encode as base64 JSON strings. If this causes problems for user scripts, add a Provider→JS-friendly wrapper struct in `pkg/jsx/types.go` that decodes the bytes upfront. Out of scope for v1 unless found broken in Task 20.
+
+---
+
+## Revision (2026-04-26): JS engine swap to `github.com/fastschema/qjs`
+
+A spike in Task 4 found that `modernc.org/quickjs` does **not expose** `JS_ExecutePendingJob`. Promise jobs cannot be drained from Go — Promises stay pending forever, async/await never settles, `setTimeout` callbacks never fire. The plan's microtask pump (Task 6) is therefore impossible against that library.
+
+We have switched to **`github.com/fastschema/qjs`** (CGO-free, wazero-based QuickJS port) which has first-class async support. Per-VM startup is ~2–5ms warm (acceptable for per-request lifecycle).
+
+### API differences (cheat-sheet)
+
+| Old (`modernc.org/quickjs`)                    | New (`github.com/fastschema/qjs`)                                            |
+|------------------------------------------------|-------------------------------------------------------------------------------|
+| `vm, _ := quickjs.NewVM()`                     | `rt, _ := qjs.New(qjs.Option{...})`; `c := rt.Context()`                       |
+| `vm.Eval(src, quickjs.EvalGlobal)`             | `c.Eval("name.js", qjs.Code(src))`                                             |
+| `vm.SetMemoryLimit(n)`                         | `qjs.Option{MemoryLimit: n}` at runtime construction                            |
+| `vm.SetEvalTimeout(d)`                         | `MaxExecutionTime` is non-functional. Use `Option{Context, CloseOnContextDone:true}` and recover from panic |
+| `vm.RegisterFunc(name, fn, false)`             | `c.SetFunc(name, func(*qjs.This)(*qjs.Value, error){...})`                      |
+| (no async support)                             | `c.SetAsyncFunc(name, func(*qjs.This){...; this.Promise().Resolve(v)})`         |
+| Manual microtask pump (`__picotera_run`, ...)  | **DELETED** — `Eval` auto-awaits in-flight promises; for explicit Promise return values use `value.Await()` |
+| Compile/validate via `Eval` + parse error sniff | `c.Compile("name.js", qjs.Code(src))` returns syntax error directly             |
+| (no JSON helpers)                              | `c.ParseJSON(s)`, `value.JSONStringify()`                                      |
+
+### Tasks affected
+
+- **Task 4** — package: `github.com/fastschema/qjs` (added; smoke test passed; runtime startup ~2-5ms warm).
+- **Task 5** — `Session` wraps `*qjs.Runtime` (per-request via `qjs.New`). Memory/stack/ctx-deadline configured at `qjs.New`. `sdk.js` simplified — no `__picotera_*` plumbing.
+- **Task 6** — **DELETED**. No microtask pump needed. The "promise pump" capability becomes a thin helper: `runHookExpr(c, expr) (jsonStr, error)` that calls `c.Eval`, checks if `v.Type()=="Promise"` then `v.Await()`, then `v.JSONStringify()`. Acceptance criteria fold into Tasks 7/8.
+- **Task 7** — ctx marshaling: `marshalToJSLiteral` (Go → JSON text) unchanged. Unmarshaling: `value.JSONStringify()` returns Go string for `json.Unmarshal`. Test `TestSession_CtxRoundTrip` reverses an array — same shape, simpler implementation.
+- **Task 8** — Hook entrypoints: same Go API surface. Inside, build expression `(async () => { return await picotera.hooks.<name>.runWaterfall(<jsonLit>); })()`, `c.Eval`, auto-await, `JSONStringify`, unmarshal. No `pendingSlot` map.
+- **Task 9** — Helpers:
+  - `picotera.fetch` → `c.SetAsyncFunc("__picotera_fetch", ...)` performing the HTTP call in a goroutine and resolving via `this.Promise().Resolve(...)`.
+  - `setTimeout` → `c.SetAsyncFunc("__picotera_setTimeout", ...)` that schedules a `time.AfterFunc` and resolves the promise after the delay. JS-side `setTimeout(fn, ms)` becomes `__picotera_setTimeout(ms).then(fn)`. (Note: shape differs slightly — no `clearTimeout` for v1 since no host-side handle is exposed; can be added later if needed.)
+  - `console.*` → `c.SetFunc("__picotera_console", ...)`.
+- **Task 10** — `ValidateSyntax(src)` calls `c.Compile("submitted.js", qjs.Code(src))` — direct error on syntax problems.
+- **Task 13** — `*jsx.Engine` field unchanged; constructor signature stays.
+- **Task 14** — Gateway integration unchanged. `RunSortHook` / `RunBeforeRequestHook` / `RunRewriteHook` API is preserved; only their internal implementation changes.
+
+### New invariants
+
+1. **Per-request runtime.** `Session` owns one `*qjs.Runtime`. Created in `Engine.NewSession`. Closed in `Session.Close`. The runtime is **never reused** between requests (spec: per-request fresh state).
+2. **Hook timeout via context.** The Engine's `HookTimeout` becomes a `context.WithTimeout(ctx, cfg.HookTimeout)` passed via `qjs.Option.Context` with `CloseOnContextDone:true`. Each Eval is wrapped in `func() (..., err error) { defer func() { if r := recover(); r != nil { err = jsx.ErrHookTimeout } }(); ... }`. The runtime is treated as dead after a timeout (already true since per-request).
+3. **Auto-await semantics.** `c.Eval("(async () => Promise.resolve(42))()")` returns Number=42 directly, not a Promise. We only call `value.Await()` when `value.Type() == "Promise"`.
+4. **Memory limit.** `qjs.Option{MemoryLimit: int(cfg.MemoryLimit)}` (int, not int64; capped at MaxInt32 if cfg ever exceeds).
+5. **Pooling deferred.** v1 uses per-request `qjs.New`; pool optimization is a follow-up if profiling warrants.
+
+### Validation
+
+Spike tests run during Task 4 confirmed: Promise auto-await, async host fn resolution from goroutines, JSON parse/stringify, syntax validation via Compile, context-cancel-driven timeout (with panic recovery), and 2–5ms per-VM warm startup. Spike files removed (will be rebuilt in Task 5).
