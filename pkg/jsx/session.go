@@ -57,16 +57,19 @@ func newSession(ctx context.Context, eng *Engine, requestID string) (*Session, e
 }
 
 // Close releases the underlying QuickJS runtime. Safe to call multiple times.
+// If the session was tainted by a hook timeout, the runtime's wasm module is
+// already gone — Close still tries rt.Close() but recovers any panic so the
+// caller's `defer session.Close()` is always safe.
 func (s *Session) Close() {
 	if s.closed {
 		return
 	}
 	s.closed = true
-	// rt.Close releases the wasm module cleanly. We cancel the context after
-	// to avoid surprising panics during in-flight evals (caller is expected
-	// to drain hook calls before Close).
 	if s.rt != nil {
-		s.rt.Close()
+		func() {
+			defer func() { _ = recover() }()
+			s.rt.Close()
+		}()
 		s.rt = nil
 	}
 	if s.cancel != nil {

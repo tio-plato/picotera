@@ -49,3 +49,77 @@ func TestSession_CloseIdempotent(t *testing.T) {
 	s.Close()
 	s.Close()
 }
+
+func newTestSession(t *testing.T, scripts ...db.Script) *Session {
+	t.Helper()
+	eng := NewEngine(Config{HookTimeout: 500 * time.Millisecond, MemoryLimit: 64 * 1024 * 1024}, &fakeStore{scripts: scripts})
+	s, err := eng.NewSession(context.Background(), "")
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	t.Cleanup(s.Close)
+	return s
+}
+
+func TestSession_Promise_ResolvesValue(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `globalThis.giveMe42 = function () { return Promise.resolve(42); }`})
+	v, err := s.evalWithTimeout("call.js", "giveMe42()")
+	if err != nil {
+		t.Fatalf("evalWithTimeout: %v", err)
+	}
+	defer v.Free()
+	if got := v.Int32(); got != 42 {
+		t.Errorf("want 42, got %d", got)
+	}
+}
+
+func TestSession_Promise_PropagatesRejection(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `globalThis.boom = function () { return Promise.reject(new Error("boom message")); }`})
+	_, err := s.evalWithTimeout("call.js", "boom()")
+	if err == nil {
+		t.Fatalf("want rejection, got nil")
+	}
+	if !contains(err.Error(), "boom message") {
+		t.Errorf("error should mention `boom message`: %v", err)
+	}
+}
+
+func TestSession_Promise_Timeout(t *testing.T) {
+	// Tight loop ignoring the eval timeout — runaway script.
+	s := newTestSession(t, db.Script{ID: "a", Source: `globalThis.loop = function () { for(;;){} }`})
+	start := time.Now()
+	_, err := s.evalWithTimeout("call.js", "loop()")
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatalf("want ErrHookTimeout, got nil")
+	}
+	if !errIs(err, ErrHookTimeout) {
+		t.Errorf("want ErrHookTimeout, got %v", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("timeout took too long: %v", elapsed)
+	}
+}
+
+func contains(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func errIs(err, target error) bool {
+	for e := err; e != nil; {
+		if e == target {
+			return true
+		}
+		u, ok := e.(interface{ Unwrap() error })
+		if !ok {
+			return false
+		}
+		e = u.Unwrap()
+	}
+	return false
+}
