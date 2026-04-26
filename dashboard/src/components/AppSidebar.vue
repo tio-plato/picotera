@@ -12,6 +12,7 @@ const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'endpoints', label: '端点', icon: 'plug' },
   { name: 'mappings', label: '映射', icon: 'branch' },
   { name: 'requests', label: '请求', icon: 'activity' },
+  { name: 'scripts', label: '脚本', icon: 'braces' },
 ]
 </script>
 
