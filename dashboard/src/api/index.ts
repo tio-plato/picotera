@@ -8,3 +8,4 @@ export type ModelProviderEndpointView = components['schemas']['ModelProviderEndp
 export type ProviderEndpointView = components['schemas']['ProviderEndpointView']
 export type PaginatedBody = components['schemas']['PaginatedBodyModelProviderEndpointView']
 export type RequestView = components['schemas']['RequestView']
+export type ScriptView = components['schemas']['ScriptView']
