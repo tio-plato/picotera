@@ -140,6 +140,8 @@ components:
         credentialsResolver:
           enum:
             - generalApiKey
+            - bearerToken
+            - xApiKey
             - unknown
           type: string
         modelPath:
@@ -153,6 +155,45 @@ components:
         - path
         - modelPath
         - credentialsResolver
+      type: object
+    FetchModelsRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/FetchModelsRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        endpointPath:
+          type: string
+        providerId:
+          format: int32
+          type: integer
+      required:
+        - providerId
+        - endpointPath
+      type: object
+    FetchModelsResponseBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/FetchModelsResponseBody.json
+          format: uri
+          readOnly: true
+          type: string
+        models:
+          items:
+            type: string
+          nullable: true
+          type: array
+        providerId:
+          format: int32
+          type: integer
+      required:
+        - providerId
+        - models
       type: object
     ModelProviderEndpointView:
       additionalProperties: false
@@ -832,6 +873,29 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Delete a provider endpoint
+  /api/picotera/provider-endpoints/fetch-models:
+    post:
+      operationId: fetchModels
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FetchModelsRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FetchModelsResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Fetch model list from upstream provider
   /api/picotera/providers:
     get:
       operationId: listProviders

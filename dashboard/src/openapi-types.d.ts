@@ -178,6 +178,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/provider-endpoints/fetch-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch model list from upstream provider */
+        post: operations["fetchModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/providers": {
         parameters: {
             query?: never;
@@ -423,10 +440,32 @@ export interface components {
              */
             readonly $schema?: string;
             /** @enum {string} */
-            credentialsResolver: "generalApiKey" | "unknown";
+            credentialsResolver: "generalApiKey" | "bearerToken" | "xApiKey" | "unknown";
             modelPath: string;
             name: string;
             path: string;
+        };
+        FetchModelsRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FetchModelsRequestBody.json
+             */
+            readonly $schema?: string;
+            endpointPath: string;
+            /** Format: int32 */
+            providerId: number;
+        };
+        FetchModelsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FetchModelsResponseBody.json
+             */
+            readonly $schema?: string;
+            models: string[] | null;
+            /** Format: int32 */
+            providerId: number;
         };
         ModelProviderEndpointView: {
             /**
@@ -1046,6 +1085,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    fetchModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchModelsRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FetchModelsResponseBody"];
+                };
             };
             /** @description Error */
             default: {
