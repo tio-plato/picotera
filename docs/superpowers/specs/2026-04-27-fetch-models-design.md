@@ -8,7 +8,7 @@ Add a feature to fetch model lists from upstream providers' `/models` API endpoi
 
 ### Background
 
-The `credentials_resolver` field on the `endpoint` table currently only supports `generalApiKey` (value 1). The gateway detects the upstream auth style from the client request headers and applies `provider.credentials` accordingly. This is indirect — the auth style should be a property of the endpoint configuration, not inferred from the incoming request.
+The `credentials_resolver` field on the `endpoint` table currently only supports `generalApiKey` (value 1). The gateway detects the upstream auth style from the client request headers and applies `provider.credentials` accordingly. This is indirect — new resolver types should allow explicit control.
 
 ### New Credentials Resolver Values
 
@@ -16,7 +16,7 @@ Add two new resolver types to the existing enum:
 
 | Value | Name | Upstream Headers |
 |-------|------|-----------------|
-| 1 | `generalApiKey` | Both `Authorization: Bearer <creds>` and `X-Api-Key: <creds>` |
+| 1 | `generalApiKey` | Inferred from client request (gateway) or both headers (no client request). See below. |
 | 2 | `bearerToken` | Only `Authorization: Bearer <creds>` |
 | 3 | `xApiKey` | Only `X-Api-Key: <creds>` |
 
@@ -24,16 +24,24 @@ Add two new resolver types to the existing enum:
 
 ### Shared Auth Helper
 
-Extract a shared function `setCredentialsHeaders(headers http.Header, credentials string, resolver int)` that applies the correct headers based on the resolver type. Used by both the gateway and the fetch-models handler.
+Extract a shared function:
+
+```go
+func setCredentialsHeaders(headers http.Header, credentials string, resolver int, sourceRequest *http.Request)
+```
+
+Behavior by resolver type:
+- **`generalApiKey`**: If `sourceRequest` is provided, infer the auth style from it (Bearer → `Authorization: Bearer <creds>`, X-Api-Key → `X-Api-Key: <creds>`) — this preserves existing gateway behavior. If `sourceRequest` is nil, send both headers as fallback.
+- **`bearerToken`**: Always set `Authorization: Bearer <creds>`. Ignore `sourceRequest`.
+- **`xApiKey`**: Always set `X-Api-Key: <creds>`. Ignore `sourceRequest`.
 
 ### Gateway Refactor
 
-Replace the upstream auth logic in `buildUpstreamRequest` (`gateway_helpers.go`):
-- Keep `resolveAuthType()` for validating that the client request is authenticated (return 401 if not), but no longer use its result for upstream header style
-- Read `credentials_resolver` from the endpoint (already available in the routing query results) instead
-- Call `setCredentialsHeaders(req.Header, creds, resolver)` to set upstream auth headers
-
-This makes upstream auth behavior explicit and configurable per endpoint, rather than inferred from the client request. Client auth validation (401 for missing credentials) remains unchanged.
+Update the upstream auth logic in `buildUpstreamRequest` (`gateway_helpers.go`):
+- Keep `resolveAuthType()` for client auth validation (401 if missing credentials) — unchanged
+- Read `credentials_resolver` from the endpoint (already available in the routing query results)
+- Call `setCredentialsHeaders(req.Header, creds, resolver, originalRequest)` — passes the original client request so `generalApiKey` can infer the style
+- For `bearerToken` and `xApiKey`, the client request is ignored; the upstream header is determined solely by the resolver type
 
 ### Frontend: Endpoint Form
 
@@ -70,7 +78,7 @@ Update the endpoint form's credentials resolver field to offer three options:
 
 ### Auth
 
-Read `provider.credentials` and `endpoint.credentials_resolver`. Apply headers via the shared `setCredentialsHeaders` function. If credentials is empty, omit all auth headers.
+Read `provider.credentials` and `endpoint.credentials_resolver`. Apply headers via `setCredentialsHeaders(req.Header, creds, resolver, nil)` — no client request available, so `generalApiKey` falls back to sending both headers. If credentials is empty, omit all auth headers.
 
 ### Response Parsing Priority
 
