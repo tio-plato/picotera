@@ -1,0 +1,37 @@
+.git
+.gitignore
+.dockerignore
+.github
+
+# Local toolchain / state
+.direnv
+.envrc
+.nix
+.claude
+.worktrees
+.pnpm-store
+
+# Build outputs (re-built inside the image)
+node_modules
+dashboard/node_modules
+dashboard/dist
+picotera
+
+# Built dashboard assets — Dockerfile rebuilds them
+pkg/server/static/dist/assets
+pkg/server/static/dist/*.js
+pkg/server/static/dist/*.css
+
+# Runtime data / secrets
+.data
+.env
+.env.*
+
+# Editor & OS
+.vscode
+.idea
+.DS_Store
+
+# Misc
+*.log
+coverage
