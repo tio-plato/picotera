@@ -10,6 +10,8 @@ import (
 const (
 	CredentialsResolver_Unknown       int32 = 0
 	CredentialsResolver_GeneralApiKey int32 = 1
+	CredentialsResolver_BearerToken   int32 = 2
+	CredentialsResolver_XApiKey       int32 = 3
 )
 
 func ToCredentialsResolver(s string) int32 {
@@ -18,6 +20,10 @@ func ToCredentialsResolver(s string) int32 {
 		return CredentialsResolver_Unknown
 	case "generalApiKey":
 		return CredentialsResolver_GeneralApiKey
+	case "bearerToken":
+		return CredentialsResolver_BearerToken
+	case "xApiKey":
+		return CredentialsResolver_XApiKey
 	default:
 		return CredentialsResolver_Unknown
 	}
@@ -29,6 +35,10 @@ func FromCredentialsResolver(cr int32) string {
 		return "unknown"
 	case CredentialsResolver_GeneralApiKey:
 		return "generalApiKey"
+	case CredentialsResolver_BearerToken:
+		return "bearerToken"
+	case CredentialsResolver_XApiKey:
+		return "xApiKey"
 	default:
 		return "unknown"
 	}
@@ -38,7 +48,7 @@ type EndpointView struct {
 	Name                string `json:"name"`
 	Path                string `json:"path"`
 	ModelPath           string `json:"modelPath"`
-	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,unknown"`
+	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,bearerToken,xApiKey,unknown"`
 }
 
 func ToEndpointView(endpoint *db.Endpoint) (*EndpointView, error) {
