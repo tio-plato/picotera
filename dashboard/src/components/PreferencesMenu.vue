@@ -2,7 +2,7 @@
 import { ref, useTemplateRef, watch, onBeforeUnmount } from 'vue'
 import { useFloating, offset, flip, shift, autoUpdate } from '@floating-ui/vue'
 import { usePreferencesStore } from '@/stores/preferences'
-import type { Theme, PanelMode } from '@/stores/preferences'
+import type { Theme, PanelMode, FontSize } from '@/stores/preferences'
 import Icon from '@/ui/icons/Icon.vue'
 import SegmentedControl from '@/ui/SegmentedControl.vue'
 
@@ -68,6 +68,13 @@ const panelModes: { value: PanelMode; label: string }[] = [
   { value: 'auto',  label: '自动' },
   { value: 'right', label: '右侧' },
   { value: 'modal', label: '弹窗' },
+]
+
+const fontSizes: { value: FontSize; label: string }[] = [
+  { value: 'tall',    label: 'Tall' },
+  { value: 'grande',  label: 'Grande' },
+  { value: 'venti',   label: 'Venti' },
+  { value: 'trenta',  label: 'Trenta' },
 ]
 </script>
 
@@ -136,6 +143,13 @@ const panelModes: { value: PanelMode; label: string }[] = [
       <section class="px-1 pt-1.5 pb-2">
         <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">面板位置</h3>
         <SegmentedControl v-model="prefs.panelMode" :options="panelModes" :columns="3" />
+      </section>
+
+      <hr class="m-0 h-px border-0 bg-line-soft" />
+
+      <section class="px-1 pt-1.5 pb-2">
+        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">字体大小</h3>
+        <SegmentedControl v-model="prefs.fontSize" :options="fontSizes" :columns="4" />
       </section>
     </div>
   </Teleport>

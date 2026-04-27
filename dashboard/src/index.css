@@ -183,7 +183,7 @@
 }
 
 html {
-  font-size: 14px;
+  /* Root font-size is set inline by the preferences store (FONT_SIZE_PX). */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   scrollbar-gutter: stable;

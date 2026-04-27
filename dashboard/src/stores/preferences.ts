@@ -4,16 +4,26 @@ import { ref, watch } from 'vue'
 
 export type Theme = 'light' | 'solarized-light' | 'solarized-dark' | 'dark'
 export type PanelMode = 'auto' | 'right' | 'modal'
+export type FontSize = 'tall' | 'grande' | 'venti' | 'trenta'
 
 const STORAGE_KEY = 'picotera.preferences'
 
 const DEFAULTS = {
   theme: 'light' as Theme,
   panelMode: 'auto' as PanelMode,
+  fontSize: 'tall' as FontSize,
 }
 
 const THEME_VALUES: Theme[] = ['light', 'solarized-light', 'solarized-dark', 'dark']
 const PANEL_MODE_VALUES: PanelMode[] = ['auto', 'right', 'modal']
+const FONT_SIZE_VALUES: FontSize[] = ['tall', 'grande', 'venti', 'trenta']
+
+export const FONT_SIZE_PX: Record<FontSize, number> = {
+  tall: 14,
+  grande: 16,
+  venti: 18,
+  trenta: 24,
+}
 
 
 function load() {
@@ -24,6 +34,7 @@ function load() {
     return {
       theme: THEME_VALUES.includes(parsed.theme as Theme) ? (parsed.theme as Theme) : DEFAULTS.theme,
       panelMode: PANEL_MODE_VALUES.includes(parsed.panelMode as PanelMode) ? (parsed.panelMode as PanelMode) : DEFAULTS.panelMode,
+      fontSize: FONT_SIZE_VALUES.includes(parsed.fontSize as FontSize) ? (parsed.fontSize as FontSize) : DEFAULTS.fontSize,
     }
   } catch {
     return { ...DEFAULTS }
@@ -34,26 +45,28 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const initial = load()
   const theme = ref<Theme>(initial.theme)
   const panelMode = ref<PanelMode>(initial.panelMode)
+  const fontSize = ref<FontSize>(initial.fontSize)
 
   function apply() {
     const root = document.documentElement
     root.dataset.theme = theme.value
     root.dataset.panelMode = panelMode.value
     root.dataset.dark = String(theme.value === 'dark' || theme.value === 'solarized-dark')
+    root.style.fontSize = `${FONT_SIZE_PX[fontSize.value]}px`
   }
 
   function persist() {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ theme: theme.value, panelMode: panelMode.value }),
+        JSON.stringify({ theme: theme.value, panelMode: panelMode.value, fontSize: fontSize.value }),
       )
     } catch {
       // ignore quota / privacy-mode errors
     }
   }
 
-  watch([theme, panelMode], () => {
+  watch([theme, panelMode, fontSize], () => {
     apply()
     persist()
   })
@@ -62,5 +75,5 @@ export const usePreferencesStore = defineStore('preferences', () => {
     apply()
   }
 
-  return { theme, panelMode, init }
+  return { theme, panelMode, fontSize, init }
 })
