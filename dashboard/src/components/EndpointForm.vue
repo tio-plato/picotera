@@ -50,8 +50,9 @@ async function submit() {
       </Field>
       <Field label="凭证解析">
         <Select v-model="form.credentialsResolver">
-          <option value="generalApiKey">generalApiKey</option>
-          <option value="unknown">unknown</option>
+          <option value="generalApiKey">通用 API Key</option>
+          <option value="bearerToken">Bearer Token</option>
+          <option value="xApiKey">X-Api-Key</option>
         </Select>
       </Field>
     </form>
