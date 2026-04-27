@@ -101,29 +101,20 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody)
 	}
 
-	// 4. Check credentials_resolver
-	if endpoint.CredentialsResolver != credentialsResolverGeneralAPIKey {
-		errMsg := fmt.Sprintf("unsupported credentials resolver: %d", endpoint.CredentialsResolver)
-		failMeta(http.StatusInternalServerError, errMsg)
-		respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
-		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody)
-		return
-	}
-
-	// 5. Resolve auth type
-	authTyp, err := resolveAuthType(r)
+	// 4. Validate client auth
+	err = validateClientAuth(r)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
 			failMeta(int32(gwErr.status), gwErr.message)
 		} else {
-			failMeta(http.StatusInternalServerError, "auth resolution failed")
+			failMeta(http.StatusInternalServerError, "auth validation failed")
 		}
 		failMetaResponse(err)
 		return
 	}
 
-	// 6. Extract model name
+	// 5. Extract model name
 	modelName, err := extractModel(body, endpoint.ModelPath)
 	if err != nil {
 		var gwErr *gatewayError
@@ -295,7 +286,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		upstreamModel := candidateUpstreamModel(cand)
 
-		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, authTyp)
+		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, endpoint.CredentialsResolver)
 		if berr != nil {
 			cancel()
 			h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, berr.Error())

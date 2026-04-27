@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
@@ -22,16 +23,6 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
-
-// authType represents the authentication method used by the client.
-type authType int
-
-const (
-	authTypeBearer authType = iota
-	authTypeAPIKey
-)
-
-const credentialsResolverGeneralAPIKey = 1
 
 // gatewayError represents an error that should be returned to the client
 // with a specific HTTP status code and error code.
@@ -116,21 +107,56 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 	return endpoint, nil
 }
 
-// resolveAuthType determines the authentication method from the client request headers.
-// Returns the auth type and nil on success, or a gatewayError if credentials are missing.
-func resolveAuthType(r *http.Request) (authType, error) {
+// validateClientAuth checks that the client request includes credentials.
+// Returns a gatewayError if credentials are missing.
+func validateClientAuth(r *http.Request) error {
 	auth := r.Header.Get("Authorization")
 	if strings.HasPrefix(auth, "Bearer ") {
-		return authTypeBearer, nil
+		return nil
 	}
 	apiKey := r.Header.Get("X-Api-Key")
 	if apiKey != "" {
-		return authTypeAPIKey, nil
+		return nil
 	}
-	return 0, &gatewayError{
+	return &gatewayError{
 		status:  http.StatusUnauthorized,
 		message: "missing credentials",
 		code:    errorx.Unauthorized.Error(),
+	}
+}
+
+// setCredentialsHeaders sets the appropriate authentication headers based on the
+// credentials resolver type. For generalApiKey with a source request, it infers
+// the auth style from the source request (preserving existing gateway behavior).
+// For generalApiKey without a source request, both headers are sent as fallback.
+// For bearerToken and xApiKey, the source request is ignored.
+func setCredentialsHeaders(headers http.Header, credentials string, resolver int32, sourceRequest *http.Request) {
+	if credentials == "" {
+		return
+	}
+	switch resolver {
+	case contract.CredentialsResolver_GeneralApiKey:
+		if sourceRequest != nil {
+			auth := sourceRequest.Header.Get("Authorization")
+			if strings.HasPrefix(auth, "Bearer ") {
+				headers.Set("Authorization", "Bearer "+credentials)
+			} else {
+				apiKey := sourceRequest.Header.Get("X-Api-Key")
+				if apiKey != "" {
+					headers.Set("X-Api-Key", credentials)
+				} else {
+					headers.Set("Authorization", "Bearer "+credentials)
+					headers.Set("X-Api-Key", credentials)
+				}
+			}
+		} else {
+			headers.Set("Authorization", "Bearer "+credentials)
+			headers.Set("X-Api-Key", credentials)
+		}
+	case contract.CredentialsResolver_BearerToken:
+		headers.Set("Authorization", "Bearer "+credentials)
+	case contract.CredentialsResolver_XApiKey:
+		headers.Set("X-Api-Key", credentials)
 	}
 }
 
@@ -207,7 +233,7 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 // if upstreamModel differs, and sets credentials based on the auth type.
 // The provided ctx is used for the request context, enabling cancellation of
 // upstream reads (e.g., by the idle timeout reader).
-func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, auth authType) (*http.Request, []byte, error) {
+func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, resolver int32) (*http.Request, []byte, error) {
 	// Replace model name if upstream_model_name is set
 	reqBody := body
 	if upstreamModel != "" {
@@ -234,13 +260,8 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 		}
 	}
 
-	// Set credentials based on auth type
-	switch auth {
-	case authTypeBearer:
-		req.Header.Set("Authorization", "Bearer "+creds)
-	case authTypeAPIKey:
-		req.Header.Set("X-Api-Key", creds)
-	}
+	// Set credentials based on resolver type
+	setCredentialsHeaders(req.Header, creds, resolver, original)
 
 	req.ContentLength = int64(len(reqBody))
 
