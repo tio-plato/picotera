@@ -72,3 +72,24 @@ var OperationDeleteProviderEndpoint = huma.Operation{
 	Path:        "/provider-endpoints/delete",
 	Summary:     "Delete a provider endpoint",
 }
+
+type FetchModelsRequest struct {
+	Body struct {
+		ProviderID   int32  `json:"providerId"`
+		EndpointPath string `json:"endpointPath"`
+	}
+}
+
+type FetchModelsResponse struct {
+	Body struct {
+		ProviderID int32    `json:"providerId"`
+		Models     []string `json:"models"`
+	}
+}
+
+var OperationFetchModels = huma.Operation{
+	OperationID: "fetchModels",
+	Method:      http.MethodPost,
+	Path:        "/provider-endpoints/fetch-models",
+	Summary:     "Fetch model list from upstream provider",
+}

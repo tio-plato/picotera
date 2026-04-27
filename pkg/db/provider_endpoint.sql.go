@@ -24,6 +24,23 @@ func (q *Queries) DeleteProviderEndpoint(ctx context.Context, arg DeleteProvider
 	return err
 }
 
+const getProviderEndpoint = `-- name: GetProviderEndpoint :one
+SELECT provider_id, endpoint_path, upstream_url FROM provider_endpoint
+WHERE provider_id = $1 AND endpoint_path = $2
+`
+
+type GetProviderEndpointParams struct {
+	ProviderID   int32  `json:"providerId"`
+	EndpointPath string `json:"endpointPath"`
+}
+
+func (q *Queries) GetProviderEndpoint(ctx context.Context, arg GetProviderEndpointParams) (ProviderEndpoint, error) {
+	row := q.db.QueryRow(ctx, getProviderEndpoint, arg.ProviderID, arg.EndpointPath)
+	var i ProviderEndpoint
+	err := row.Scan(&i.ProviderID, &i.EndpointPath, &i.UpstreamUrl)
+	return i, err
+}
+
 const listProviderEndpoints = `-- name: ListProviderEndpoints :many
 SELECT provider_id, endpoint_path, upstream_url FROM provider_endpoint
 WHERE provider_id = $1

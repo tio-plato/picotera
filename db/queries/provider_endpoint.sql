@@ -13,3 +13,7 @@ RETURNING *;
 -- name: DeleteProviderEndpoint :exec
 DELETE FROM provider_endpoint
 WHERE provider_id = $1 AND endpoint_path = $2;
+
+-- name: GetProviderEndpoint :one
+SELECT * FROM provider_endpoint
+WHERE provider_id = $1 AND endpoint_path = $2;
