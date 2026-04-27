@@ -1,5 +1,7 @@
 /.data
 /.env
+/.env.*
+/.direnv/
 /picotera
 .pnpm-store
 node_modules
