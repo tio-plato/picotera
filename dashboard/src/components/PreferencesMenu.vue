@@ -101,7 +101,7 @@ const panelModes: { value: PanelMode; label: string }[] = [
               type="button"
               role="radio"
               :aria-checked="prefs.theme === t.value"
-              class="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 w-full px-2 py-1.5 bg-transparent border border-transparent rounded-md text-sm leading-none text-left cursor-pointer transition-colors hover:bg-surface-50"
+              class="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 w-full px-2 py-1.5 bg-transparent border border-transparent rounded-md text-sm text-left cursor-pointer transition-colors hover:bg-surface-50"
               :class="
                 prefs.theme === t.value
                   ? 'bg-accent-faint border-accent/25 text-accent-ink font-medium'
