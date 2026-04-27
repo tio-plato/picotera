@@ -1,0 +1,54 @@
+{
+  "planPath": "docs/superpowers/plans/2026-04-27-fetch-models.md",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 1: Add credentials resolver types to contract",
+      "status": "pending",
+      "description": "**Goal:** Add bearerToken and xApiKey resolver constants and update the endpoint contract.\n\n**Files:**\n- Modify: `pkg/contract/endpoint.go`\n\n**Acceptance Criteria:**\n- CredentialsResolver_BearerToken (2) and CredentialsResolver_XApiKey (3) constants exist\n- ToCredentialsResolver handles bearerToken and xApiKey\n- FromCredentialsResolver handles values 2 and 3\n- EndpointView enum tag updated\n\n**Verify:** `go build ./...`\n\n```json:metadata\n{\"files\": [\"pkg/contract/endpoint.go\"], \"verifyCommand\": \"go build ./...\", \"acceptanceCriteria\": [\"CredentialsResolver_BearerToken and CredentialsResolver_XApiKey constants exist\", \"EndpointView enum tag includes all values\", \"go build passes\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 2: Add setCredentialsHeaders helper and refactor gateway",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** Extract shared setCredentialsHeaders function and refactor gateway to use credentials_resolver from endpoint.\n\n**Files:**\n- Modify: `pkg/server/gateway_helpers.go`\n- Modify: `pkg/server/handle_gateway.go`\n\n**Acceptance Criteria:**\n- setCredentialsHeaders function exists with correct behavior per resolver type\n- buildUpstreamRequest uses resolver int32 instead of authType\n- Gateway passes endpoint.CredentialsResolver to buildUpstreamRequest\n- generalApiKey-only guard removed\n- Client auth validation preserved (validateClientAuth)\n\n**Verify:** `go build ./...`\n\n```json:metadata\n{\"files\": [\"pkg/server/gateway_helpers.go\", \"pkg/server/handle_gateway.go\"], \"verifyCommand\": \"go build ./...\", \"acceptanceCriteria\": [\"setCredentialsHeaders function exists\", \"buildUpstreamRequest accepts resolver int32\", \"gateway uses endpoint.CredentialsResolver\", \"go build passes\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 3: Add fetch-models API endpoint",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Add POST /provider-endpoints/fetch-models API with handler.\n\n**Files:**\n- Modify: `db/queries/provider_endpoint.sql`\n- Modify: `pkg/contract/provider_endpoint.go`\n- Modify: `pkg/server/handle_provider_endpoint.go`\n- Modify: `pkg/server/server.go`\n- Generated: `pkg/db/` (via sqlc generate)\n\n**Acceptance Criteria:**\n- FetchModelsRequest/Response types and operation defined\n- Handler fetches provider, binding, endpoint from DB\n- Handler makes GET with setCredentialsHeaders and 10s timeout\n- Response parsed with priority chain\n- provider.provider_models updated on success\n- 404/502/422 errors handled\n- Operation registered\n\n**Verify:** `go build ./...`\n\n```json:metadata\n{\"files\": [\"db/queries/provider_endpoint.sql\", \"pkg/contract/provider_endpoint.go\", \"pkg/server/handle_provider_endpoint.go\", \"pkg/server/server.go\"], \"verifyCommand\": \"go build ./...\", \"acceptanceCriteria\": [\"FetchModelsRequest/Response types exist\", \"handleFetchModels registered\", \"handler uses setCredentialsHeaders\", \"parseModelsResponse implements priority chain\", \"go build passes\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 4: Regenerate OpenAPI spec and dashboard types",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Regenerate openapi.yaml and dashboard API types.\n\n**Files:**\n- Modify: `openapi.yaml` (regenerated)\n- Modify: `dashboard/src/api.d.ts` (regenerated)\n\n**Acceptance Criteria:**\n- openapi.yaml includes fetchModels operation\n- api.d.ts includes FetchModels types\n- Dashboard type-check passes\n\n**Verify:** `pnpm --dir dashboard type-check`\n\n```json:metadata\n{\"files\": [\"openapi.yaml\", \"dashboard/src/api.d.ts\"], \"verifyCommand\": \"pnpm --dir dashboard type-check\", \"acceptanceCriteria\": [\"openapi.yaml has fetchModels operation\", \"api.d.ts has FetchModels types\", \"dashboard type-check passes\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 5: Update endpoint form with new credentials resolver options",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Add bearerToken and xApiKey to endpoint form select.\n\n**Files:**\n- Modify: `dashboard/src/components/EndpointForm.vue`\n\n**Acceptance Criteria:**\n- Dropdown shows 通用 API Key, Bearer Token, X-Api-Key\n- Default is generalApiKey\n- Dashboard builds\n\n**Verify:** `pnpm --dir dashboard type-check`\n\n```json:metadata\n{\"files\": [\"dashboard/src/components/EndpointForm.vue\"], \"verifyCommand\": \"pnpm --dir dashboard type-check\", \"acceptanceCriteria\": [\"Select has three resolver options\", \"dashboard type-check passes\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 6: Add fetch-models icons and UI to binding panel",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Add icons and implement fetch-models button in ProviderEndpointsPanel.\n\n**Files:**\n- Modify: `dashboard/src/ui/icons/paths.ts`\n- Modify: `dashboard/src/components/ProviderEndpointsPanel.vue`\n\n**Acceptance Criteria:**\n- cloud-download, loader, check icons available\n- Button appears only for /models paths\n- Tabler icons for all states\n- Loading/success/failure states work\n- modelsFetched event emitted\n\n**Verify:** `pnpm --dir dashboard type-check`\n\n```json:metadata\n{\"files\": [\"dashboard/src/ui/icons/paths.ts\", \"dashboard/src/components/ProviderEndpointsPanel.vue\"], \"verifyCommand\": \"pnpm --dir dashboard type-check\", \"acceptanceCriteria\": [\"Three new icons in paths.ts\", \"fetch button conditional on path ending /models\", \"three visual states work\", \"modelsFetched event emitted\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 7: End-to-end verification",
+      "status": "pending",
+      "blockedBy": [5],
+      "description": "**Goal:** Verify full feature works — backend and frontend both build.\n\n**Files:** None (verification only)\n\n**Verify:** `go build ./... && pnpm --dir dashboard build`\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"go build ./... && pnpm --dir dashboard build\", \"acceptanceCriteria\": [\"go build passes\", \"pnpm build passes\", \"type-check passes\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-04-27T00:00:00Z"
+}
