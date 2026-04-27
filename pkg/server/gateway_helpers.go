@@ -43,6 +43,29 @@ type gatewayError struct {
 
 func (e *gatewayError) Error() string { return e.message }
 
+// isRouteNotFound reports whether err is a gatewayError signalling that no
+// configured LLM endpoint matches the requested path.
+func isRouteNotFound(err error) bool {
+	var gw *gatewayError
+	return errors.As(err, &gw) && gw.code == errorx.RouteNotFound.Error()
+}
+
+// looksLikeBrowserNav reports whether the request is a safe navigation that
+// can fall through to the dashboard SPA when no LLM endpoint matches.
+// API clients (POST, Accept: application/json) are excluded so they receive
+// the structured gateway 404 they expect.
+func looksLikeBrowserNav(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	accept := r.Header.Get("Accept")
+	if accept == "" {
+		return true
+	}
+	lower := strings.ToLower(accept)
+	return strings.Contains(lower, "text/html") || strings.Contains(lower, "*/*")
+}
+
 // writeGatewayError writes a structured error response in the format:
 // {"message":"...","code":"...","details":[]}.
 // Returns the bytes written to the body (for artifact capture).
@@ -81,6 +104,9 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 				code:    errorx.RouteNotFound.Error(),
 			}
 		}
+		// Real DB error (not "no row matched"). The early-fail path skips the
+		// request log, so make sure these stay visible.
+		logx.WithContext(ctx).WithError(err).WithField("path", path).Error("endpoint lookup failed")
 		return db.Endpoint{}, &gatewayError{
 			status:  http.StatusInternalServerError,
 			message: "failed to query endpoint",

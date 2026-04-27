@@ -11,6 +11,7 @@ import (
 	"picotera/pkg/db"
 	"picotera/pkg/jsx"
 	"picotera/pkg/logx"
+	"picotera/pkg/server/static"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -22,13 +23,14 @@ import (
 )
 
 type Server struct {
-	queries    *db.Queries
-	router     *chi.Mux
-	api        huma.API
-	config     *configx.Config
-	httpClient *http.Client
-	artifacts  artifacts.Sink
-	jsxEngine  *jsx.Engine
+	queries       *db.Queries
+	router        *chi.Mux
+	api           huma.API
+	config        *configx.Config
+	httpClient    *http.Client
+	artifacts     artifacts.Sink
+	jsxEngine     *jsx.Engine
+	staticHandler http.Handler
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -76,7 +78,16 @@ func NewServer(ctx context.Context) (*Server, error) {
 		MaxDelay:         config.JSMaxDelay,
 	}, queries)
 
-	server := &Server{config: config, queries: queries, router: router, api: api, httpClient: httpClient, artifacts: sink, jsxEngine: jsxEngine}
+	server := &Server{
+		config:        config,
+		queries:       queries,
+		router:        router,
+		api:           api,
+		httpClient:    httpClient,
+		artifacts:     sink,
+		jsxEngine:     jsxEngine,
+		staticHandler: static.Handler(),
+	}
 	server.registerOperations()
 	server.registerEndpoints()
 	logx.WithContext(ctx).Info("registered operations")

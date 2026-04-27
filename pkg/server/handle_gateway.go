@@ -31,7 +31,21 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gatewayStart := time.Now()
 	bgCtx := context.Background()
 
-	// 1. Read request body
+	// 1. Match endpoint by path. If no endpoint matches, we don't log the
+	// request at all — the request table tracks LLM gateway traffic, not
+	// every miss. Browser navigations get the dashboard SPA; everything else
+	// gets the structured JSON 404.
+	endpoint, err := h.resolveEndpoint(r.Context(), r.URL.Path)
+	if err != nil {
+		if isRouteNotFound(err) && looksLikeBrowserNav(r) {
+			h.staticHandler.ServeHTTP(w, r)
+			return
+		}
+		handleGatewayErr(w, err)
+		return
+	}
+
+	// 2. Read request body
 	body, err := io.ReadAll(r.Body)
 	r.Body.Close()
 	if err != nil {
@@ -39,7 +53,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Insert meta request immediately on arrival
+	// 3. Insert meta request now that we know the endpoint matched.
 	metaID := xid.New().String()
 	metaReqHeader := r.Header.Clone()
 	metaReqMethod := r.Method
@@ -85,19 +99,6 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		failMeta(int32(status), errMsg)
 		respBody := writeGatewayError(w, status, errMsg, errorx.UpstreamError.Error())
 		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody)
-	}
-
-	// 3. Match endpoint by path
-	endpoint, err := h.resolveEndpoint(r.Context(), r.URL.Path)
-	if err != nil {
-		var gwErr *gatewayError
-		if errors.As(err, &gwErr) {
-			failMeta(int32(gwErr.status), gwErr.message)
-		} else {
-			failMeta(http.StatusInternalServerError, "failed to query endpoint")
-		}
-		failMetaResponse(err)
-		return
 	}
 
 	// 4. Check credentials_resolver

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PicoTera — dashboard not bundled</title>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1.5rem; color: #1a1a1a; line-height: 1.5; }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  code { background: #f4f4f5; padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-size: 0.95em; }
+  pre { background: #f4f4f5; padding: 0.75rem 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.85rem; }
+  p { margin: 0.6rem 0; }
+</style>
+</head>
+<body>
+<h1>Dashboard not bundled into this binary</h1>
+<p>The PicoTera management API is running, but no dashboard build was embedded at compile time.</p>
+<p>To bundle the dashboard locally:</p>
+<pre>pnpm --dir dashboard build
+cp -r dashboard/dist/. pkg/server/static/dist/
+go build -o picotera ./cmd/picotera</pre>
+<p>Or run the dashboard's Vite dev server separately: <code>pnpm --dir dashboard dev</code>.</p>
+</body>
+</html>

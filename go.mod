@@ -18,6 +18,7 @@ require (
 )
 
 require (
+	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fastschema/qjs v0.0.6 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
