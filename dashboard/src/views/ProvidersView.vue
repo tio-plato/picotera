@@ -56,7 +56,7 @@ function openEdit(p: ProviderView) {
 function toggleBindings(p: ProviderView) {
   panel.toggle(
     ProviderEndpointsPanel,
-    { providerId: p.id, providerName: p.name },
+    { providerId: p.id, providerName: p.name, onModelsFetched: () => fetchProviders() },
     { key: bindingKey(p.id) },
   )
 }
