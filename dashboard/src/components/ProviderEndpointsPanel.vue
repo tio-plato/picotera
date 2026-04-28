@@ -189,18 +189,18 @@ function onDraftKeydown(e: KeyboardEvent, path: string) {
               v-if="isModelsEndpoint(pe.endpointPath)"
               type="button"
               class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs border cursor-pointer shrink-0"
-              :class="fetchState[pe.endpointPath]?.count !== null
+              :class="fetchState[pe.endpointPath]?.count != null
                 ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
                 : 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100'"
               :disabled="fetchState[pe.endpointPath]?.loading"
               @click="fetchModels(pe.endpointPath)"
             >
               <Icon
-                :name="fetchState[pe.endpointPath]?.loading ? 'loader' : fetchState[pe.endpointPath]?.count !== null ? 'check' : 'cloud-download'"
+                :name="fetchState[pe.endpointPath]?.loading ? 'loader' : fetchState[pe.endpointPath]?.count != null ? 'check' : 'cloud-download'"
                 :size="12"
                 :class="fetchState[pe.endpointPath]?.loading ? 'animate-spin' : ''"
               />
-              <span>{{ fetchState[pe.endpointPath]?.loading ? '拉取中…' : fetchState[pe.endpointPath]?.count !== null ? `${fetchState[pe.endpointPath]!.count} 个模型` : '拉取' }}</span>
+              <span>{{ fetchState[pe.endpointPath]?.loading ? '拉取中…' : fetchState[pe.endpointPath]?.count != null ? `${fetchState[pe.endpointPath]!.count} 个模型` : '拉取' }}</span>
             </button>
           </div>
           <div class="flex gap-2 items-center">
