@@ -228,6 +228,7 @@ func (s *Session) runHookExpr(name, expr string) (string, error) {
 			return
 		}
 
+		// Workaround: v.JSONStringify() is not working blocked by https://github.com/fastschema/qjs/issues/44, so we only accept string values from hooks and treat them as JSON strings.
 		jsonStr := v.String()
 		ch <- result{jsonStr: jsonStr}
 	}()

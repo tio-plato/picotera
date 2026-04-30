@@ -13,7 +13,6 @@ run = "go run ./cmd/picotera/main.go"
 [tasks.web]
 run = "pnpm dev"
 dir = "dashboard"
-sources = ["dashboard"]
 
 [tasks.openapi]
 run = "go run ./cmd/picotera/main.go openapi > openapi.yaml"
