@@ -359,40 +359,80 @@ func candidateUpstreamModel(c jsx.Candidate) string {
 	return ""
 }
 
-// applyRewrite mutates req and reqBody based on the JS rewrite hook output.
-// Nil pointer fields and empty Body mean "leave unchanged".
-func applyRewrite(req *http.Request, reqBody *[]byte, rw jsx.RewriteOutput) {
-	if rw.URL != nil {
-		if parsed, perr := http.NewRequestWithContext(req.Context(), req.Method, *rw.URL, nil); perr == nil {
-			req.URL = parsed.URL
-			req.Host = parsed.Host
+// isJSONContentType reports whether the given Content-Type header value
+// (possibly with parameters like "; charset=utf-8") names application/json.
+func isJSONContentType(ct string) bool {
+	ct = strings.TrimSpace(ct)
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(ct), "application/json")
+}
+
+// jsonBodyOrNil returns body wrapped as json.RawMessage when headers signal
+// application/json and body is itself valid JSON; otherwise nil so the field
+// is omitted from the JS-visible shape.
+func jsonBodyOrNil(headers http.Header, body []byte) json.RawMessage {
+	if !isJSONContentType(headers.Get("Content-Type")) {
+		return nil
+	}
+	if !json.Valid(body) {
+		return nil
+	}
+	return json.RawMessage(body)
+}
+
+// serializePendingRequest captures the upstream request as a PendingRequestShape
+// for the rewriteRequest hook. Headers are lower-cased; body follows the
+// content-type rule (only application/json bodies are exposed to JS).
+func serializePendingRequest(req *http.Request, body []byte) jsx.PendingRequestShape {
+	return jsx.PendingRequestShape{
+		URL:     req.URL.String(),
+		Method:  req.Method,
+		Headers: mapLowerKeys(req.Header.Clone()),
+		Body:    jsonBodyOrNil(req.Header, body),
+	}
+}
+
+// serializeClientRequest captures the inbound client request as a RequestShape
+// for the JS hooks. Same body rule as serializePendingRequest.
+func serializeClientRequest(r *http.Request, body []byte, model string) jsx.RequestShape {
+	return jsx.RequestShape{
+		Path:    r.URL.Path,
+		Method:  r.Method,
+		Headers: mapLowerKeys(r.Header.Clone()),
+		Model:   model,
+		Body:    jsonBodyOrNil(r.Header, body),
+	}
+}
+
+// buildRequestFromPending constructs a fresh *http.Request from the rewrite
+// hook's returned PendingRequestShape. fallbackBody is used when p.Body is
+// absent (non-JSON content-type / hidden from JS) — those bytes are sent as
+// the request body verbatim. When p.Body is present it carries a JSON string
+// token (the SDK stringifies object bodies before they reach Go); the inner
+// string contents become the outgoing body bytes.
+func buildRequestFromPending(ctx context.Context, p jsx.PendingRequestShape, fallbackBody []byte) (*http.Request, []byte, error) {
+	outBody := fallbackBody
+	if p.Body != nil {
+		var s string
+		if err := json.Unmarshal(p.Body, &s); err != nil {
+			return nil, nil, fmt.Errorf("rewriteRequest: decode body: %w", err)
+		}
+		outBody = []byte(s)
+	}
+	req, err := http.NewRequestWithContext(ctx, p.Method, p.URL, bytes.NewReader(outBody))
+	if err != nil {
+		return nil, nil, fmt.Errorf("rewriteRequest: build request: %w", err)
+	}
+	req.Header = http.Header{}
+	for k, vv := range p.Headers {
+		for _, v := range vv {
+			req.Header.Add(k, v)
 		}
 	}
-	if rw.Method != nil {
-		req.Method = *rw.Method
-	}
-	if rw.Headers != nil {
-		req.Header = http.Header{}
-		for k, vv := range *rw.Headers {
-			for _, v := range vv {
-				req.Header.Add(k, v)
-			}
-		}
-	}
-	if len(rw.Body) > 0 {
-		// rw.Body is JSON-encoded. If it's a JSON string, unwrap to its
-		// contents; otherwise pass the raw JSON through (object/array bodies
-		// are already JSON.stringify'd by the SDK, so they too land as
-		// JSON strings — this branch is for safety).
-		var asString string
-		if jerr := json.Unmarshal(rw.Body, &asString); jerr == nil {
-			*reqBody = []byte(asString)
-		} else {
-			*reqBody = []byte(rw.Body)
-		}
-		req.Body = io.NopCloser(bytes.NewReader(*reqBody))
-		req.ContentLength = int64(len(*reqBody))
-	}
+	req.ContentLength = int64(len(outBody))
+	return req, outBody, nil
 }
 
 // completeFailedAttempt is a small wrapper around updateRequestOnComplete for the

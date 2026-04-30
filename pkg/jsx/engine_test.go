@@ -2,6 +2,7 @@ package jsx
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -195,34 +196,129 @@ func TestSession_Hooks_BeforeRequest_NextAndDelay(t *testing.T) {
 	}
 }
 
-func TestSession_Hooks_Rewrite_BodyObjectStringified(t *testing.T) {
-	s := newTestSession(t, db.Script{ID: "a", Source: `
-		picotera.hooks.rewriteRequest.tap("a", function () {
-			return { body: { hello: "world" } };
-		});
-	`})
-	out, err := s.RunRewriteHook(RewriteInput{
-		UpstreamRequest: UpstreamRequestShape{URL: "https://x", Method: "POST"},
-	})
-	if err != nil {
-		t.Fatalf("RunRewriteHook: %v", err)
-	}
-	want := `"{\"hello\":\"world\"}"`
-	if string(out.Body) != want {
-		t.Errorf("want body=%s, got %s", want, string(out.Body))
-	}
-}
-
 func TestSession_Hooks_Rewrite_Passthrough(t *testing.T) {
 	s := newTestSession(t, db.Script{ID: "a", Source: `
 		picotera.hooks.rewriteRequest.tap("a", function () {});
 	`})
-	out, err := s.RunRewriteHook(RewriteInput{})
+	in := PendingRequestShape{
+		URL:     "https://x/v1/chat",
+		Method:  "POST",
+		Headers: map[string][]string{"content-type": {"application/json"}},
+		Body:    json.RawMessage(`{"a":1}`),
+	}
+	out, err := s.RunRewriteHook(RewriteInput{PendingRequest: in})
 	if err != nil {
 		t.Fatalf("RunRewriteHook: %v", err)
 	}
-	if out.URL != nil || out.Method != nil || out.Headers != nil || len(out.Body) > 0 {
-		t.Errorf("want all-nil passthrough, got %+v", out)
+	if out.URL != in.URL || out.Method != in.Method {
+		t.Errorf("passthrough should preserve URL/Method, got %+v", out)
+	}
+	if got, want := len(out.Headers["content-type"]), 1; got != want || out.Headers["content-type"][0] != "application/json" {
+		t.Errorf("passthrough should preserve headers, got %+v", out.Headers)
+	}
+	// Body is round-tripped through JS as an object then JSON.stringify'd:
+	// expect the inner string == original JSON.
+	var s1 string
+	if err := json.Unmarshal(out.Body, &s1); err != nil {
+		t.Fatalf("body should be JSON string token, got %s: %v", string(out.Body), err)
+	}
+	if s1 != `{"a":1}` {
+		t.Errorf("body content mismatch: got %q", s1)
+	}
+}
+
+func TestSession_Hooks_Rewrite_FullReplace(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, pending) {
+			return Object.assign({}, pending, { url: "https://y" });
+		});
+	`})
+	out, err := s.RunRewriteHook(RewriteInput{
+		PendingRequest: PendingRequestShape{
+			URL:    "https://x",
+			Method: "POST",
+			Headers: map[string][]string{
+				"x-keep": {"yes"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RunRewriteHook: %v", err)
+	}
+	if out.URL != "https://y" {
+		t.Errorf("want URL=https://y, got %q", out.URL)
+	}
+	if out.Method != "POST" {
+		t.Errorf("want Method preserved, got %q", out.Method)
+	}
+	if got := out.Headers["x-keep"]; len(got) != 1 || got[0] != "yes" {
+		t.Errorf("want x-keep header preserved, got %+v", out.Headers)
+	}
+}
+
+func TestSession_Hooks_Rewrite_BodyJSON_Roundtrip(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, pending) {
+			pending.body.b = 2;
+			return pending;
+		});
+	`})
+	out, err := s.RunRewriteHook(RewriteInput{
+		PendingRequest: PendingRequestShape{
+			URL:     "https://x",
+			Method:  "POST",
+			Headers: map[string][]string{"content-type": {"application/json"}},
+			Body:    json.RawMessage(`{"a":1}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RunRewriteHook: %v", err)
+	}
+	// out.Body is a JSON-encoded string containing the new JSON text.
+	var inner string
+	if err := json.Unmarshal(out.Body, &inner); err != nil {
+		t.Fatalf("body should be JSON string token: %v", err)
+	}
+	var got map[string]int
+	if err := json.Unmarshal([]byte(inner), &got); err != nil {
+		t.Fatalf("inner body should be JSON object: %v (raw=%q)", err, inner)
+	}
+	if got["a"] != 1 || got["b"] != 2 {
+		t.Errorf("want {a:1,b:2}, got %+v", got)
+	}
+}
+
+func TestSession_Hooks_Rewrite_BodyHidden_NonJSON(t *testing.T) {
+	// Hook tries to read & set body, but Go-side serialization omitted body
+	// because content-type was text/plain. The returned PendingRequest.Body
+	// reflects whatever the script wrote (SDK stringifies it), but the
+	// server layer is responsible for ignoring it via fallbackBody — that
+	// behavior is exercised in the gateway, not here. Verify the hook
+	// receives no body and that the return roundtrips.
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, pending) {
+			globalThis.__sawBody = (typeof pending.body !== 'undefined');
+			pending.body = "evil";
+			return pending;
+		});
+	`})
+	_, err := s.RunRewriteHook(RewriteInput{
+		PendingRequest: PendingRequestShape{
+			URL:     "https://x",
+			Method:  "POST",
+			Headers: map[string][]string{"content-type": {"text/plain"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RunRewriteHook: %v", err)
+	}
+	v, err := s.evalWithTimeout("probe.js", "globalThis.__sawBody")
+	if err != nil {
+		t.Fatalf("probe: %v", err)
+	}
+	defer v.Free()
+	if v.Bool() {
+		t.Errorf("hook should not see body when content-type is non-JSON")
 	}
 }
 

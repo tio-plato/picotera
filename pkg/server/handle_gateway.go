@@ -185,13 +185,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 8b. The JS-visible client request shape (read-only).
-	jsClientRequest := jsx.RequestShape{
-		Path:    r.URL.Path,
-		Method:  r.Method,
-		Headers: mapLowerKeys(r.Header.Clone()),
-		Body:    string(body),
-		Model:   modelName,
-	}
+	jsClientRequest := serializeClientRequest(r, body, modelName)
 
 	// 8c. sortProviders — once before the loop.
 	sortedCandidates, err := session.RunSortHook(jsx.SortInput{
@@ -297,29 +291,31 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// rewriteRequest hook.
-		rw, rerr := session.RunRewriteHook(jsx.RewriteInput{
+		// rewriteRequest hook. Serialize the upstream request, hand it to JS,
+		// then rebuild a fresh *http.Request from whatever the hook returns —
+		// no mutate-in-place, so the outgoing request is exactly the JSON
+		// shape JS produced.
+		newPending, rerr := session.RunRewriteHook(jsx.RewriteInput{
 			Endpoint:          endpoint,
 			Model:             nil,
-			Request:           jsClientRequest,
 			Provider:          cand.Provider,
 			MPE:               cand.MPE,
 			CurrentRetryCount: currentRetryCount,
 			TotalAttemptCount: totalAttemptCount,
-			UpstreamRequest: jsx.UpstreamRequestShape{
-				URL:     req.URL.String(),
-				Method:  req.Method,
-				Headers: req.Header.Clone(),
-				Body:    string(reqBody),
-			},
-			ClientRequest: jsClientRequest,
+			ClientRequest:     jsClientRequest,
+			PendingRequest:    serializePendingRequest(req, reqBody),
 		})
 		if rerr != nil {
 			cancel()
 			failHook(rerr)
 			return
 		}
-		applyRewrite(req, &reqBody, rw)
+		req, reqBody, rerr = buildRequestFromPending(ctx, newPending, reqBody)
+		if rerr != nil {
+			cancel()
+			failHook(rerr)
+			return
+		}
 
 		// Upload upstream request artifact AFTER rewrite so it reflects what was sent.
 		h.uploadRequestArtifact(bgCtx, upstreamID, upstreamCreatedAt, req.Method, req.URL.String(), req.Header.Clone(), reqBody)

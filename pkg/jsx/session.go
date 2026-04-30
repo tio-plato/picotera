@@ -159,23 +159,29 @@ func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDeci
 	return dec, nil
 }
 
-// RunRewriteHook calls the rewriteRequest waterfall. Passthrough returns an
-// empty RewriteOutput (all fields nil). If a tap returned `{body: <object>}`,
-// the body is JSON-stringified at the JS boundary before reaching Go.
-func (s *Session) RunRewriteHook(in RewriteInput) (RewriteOutput, error) {
-	var out RewriteOutput
+// RunRewriteHook calls the rewriteRequest waterfall. The hook input value is
+// ctx.pendingRequest; passthrough yields the input pendingRequest unchanged.
+// The hook must return a complete PendingRequest object — partial overrides
+// are not supported.
+//
+// Body roundtrip: if a tap leaves `body` as a non-string (object/array/...),
+// it is JSON.stringify'd at the JS boundary so Go always receives a JSON
+// string token in PendingRequestShape.Body when the field is present.
+func (s *Session) RunRewriteHook(in RewriteInput) (PendingRequestShape, error) {
+	out := in.PendingRequest
 	lit, err := marshalToJSLiteral(in)
 	if err != nil {
 		return out, err
 	}
 	expr := fmt.Sprintf(`(async () => {
 		const ctx = %s;
-		const r = await picotera.hooks.rewriteRequest.runWaterfall(ctx, null);
-		if (r === ctx || typeof r === 'undefined' || r === null) return null;
-		if (r && typeof r.body === 'object' && r.body !== null) {
-			return Object.assign({}, r, { body: JSON.stringify(r.body) });
+		const initial = ctx.pendingRequest;
+		const r = await picotera.hooks.rewriteRequest.runWaterfall(ctx, initial);
+		const v = (typeof r === 'undefined' || r === null) ? initial : r;
+		if (v && typeof v.body !== 'undefined' && typeof v.body !== 'string') {
+			v.body = JSON.stringify(v.body);
 		}
-		return JSON.stringify(r);
+		return JSON.stringify(v);
 	})()`, lit)
 	jsonStr, err := s.runHookExpr("rewriteRequest.js", expr)
 	if err != nil {

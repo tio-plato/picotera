@@ -36,12 +36,15 @@ type Candidate struct {
 }
 
 // RequestShape is the JS-visible shape of the incoming client request.
+// Body is included as a parsed JSON value (json.RawMessage) only when the
+// content-type is application/json and the body parses; otherwise omitted
+// so JS scripts cannot read it.
 type RequestShape struct {
 	Path    string              `json:"path"`
 	Method  string              `json:"method"`
 	Headers map[string][]string `json:"headers"`
-	Body    string              `json:"body"`
 	Model   string              `json:"model"`
+	Body    json.RawMessage     `json:"body,omitempty"`
 }
 
 // SortInput is the ctx passed to the sortProviders waterfall.
@@ -78,36 +81,25 @@ type BeforeRequestDecision struct {
 	Delay int  `json:"delay"`
 }
 
-// UpstreamRequestShape mirrors the upstream request that will be sent
-// after rewriteRequest applies overrides.
-type UpstreamRequestShape struct {
+// PendingRequestShape mirrors the upstream request that is about to be sent.
+// Body is a parsed JSON value (json.RawMessage) only when content-type is
+// application/json; otherwise omitted, and the Go side keeps using the
+// pre-hook bytes verbatim.
+type PendingRequestShape struct {
 	URL     string              `json:"url"`
 	Method  string              `json:"method"`
 	Headers map[string][]string `json:"headers"`
-	Body    string              `json:"body"`
+	Body    json.RawMessage     `json:"body,omitempty"`
 }
 
 // RewriteInput is the ctx passed to the rewriteRequest waterfall.
 type RewriteInput struct {
-	Endpoint          any                  `json:"endpoint"`
-	Model             any                  `json:"model"`
-	Request           RequestShape         `json:"request"`
-	Provider          any                  `json:"provider"`
-	MPE               any                  `json:"mpe"`
-	CurrentRetryCount int                  `json:"currentRetryCount"`
-	TotalAttemptCount int                  `json:"totalAttemptCount"`
-	UpstreamRequest   UpstreamRequestShape `json:"upstreamRequest"`
-	ClientRequest     RequestShape         `json:"clientRequest"`
-}
-
-// RewriteOutput holds JS-side overrides. Nil pointers / empty Body mean
-// "leave the corresponding upstream request field unchanged."
-type RewriteOutput struct {
-	URL     *string              `json:"url"`
-	Method  *string              `json:"method"`
-	Headers *map[string][]string `json:"headers"`
-	// Body is left as raw JSON to support both string and object inputs;
-	// the SDK wrapper (sdk.js) ensures objects are JSON.stringify'd before
-	// reaching Go, so this is always a JSON-encoded string when present.
-	Body json.RawMessage `json:"body"`
+	Endpoint          any                 `json:"endpoint"`
+	Model             any                 `json:"model"`
+	Provider          any                 `json:"provider"`
+	MPE               any                 `json:"mpe"`
+	CurrentRetryCount int                 `json:"currentRetryCount"`
+	TotalAttemptCount int                 `json:"totalAttemptCount"`
+	ClientRequest     RequestShape        `json:"clientRequest"`
+	PendingRequest    PendingRequestShape `json:"pendingRequest"`
 }
