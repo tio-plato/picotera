@@ -21,7 +21,7 @@ func registerHelpers(s *Session) {
 	c := s.rt.Context()
 	registerFetch(c)
 	registerSetTimeout(c)
-	registerConsole(c, s.requestID)
+	registerConsole(s)
 }
 
 // registerFetch exposes picotera.fetch via __picotera_fetch (async).
@@ -105,8 +105,10 @@ func registerSetTimeout(c *qjs.Context) {
 }
 
 // registerConsole wires console.{log,info,warn,error} through __picotera_console
-// to logx, tagged with the session's requestID.
-func registerConsole(c *qjs.Context, requestID string) {
+// to logx (tagged with the session's requestID) and appends a structured
+// entry to the session's log buffer for inclusion in the meta response artifact.
+func registerConsole(s *Session) {
+	c := s.rt.Context()
 	c.SetFunc("__picotera_console", func(this *qjs.This) (*qjs.Value, error) {
 		args := this.Args()
 		var level, msg string
@@ -116,7 +118,7 @@ func registerConsole(c *qjs.Context, requestID string) {
 		if len(args) > 1 {
 			msg = args[1].String()
 		}
-		entry := logx.New().WithField("source", "jsx").WithField("request_id", requestID)
+		entry := logx.New().WithField("source", "jsx").WithField("request_id", s.requestID)
 		switch level {
 		case "error":
 			entry.Error(msg)
@@ -127,6 +129,7 @@ func registerConsole(c *qjs.Context, requestID string) {
 		default:
 			entry.Info(msg)
 		}
+		s.appendLog(level, msg)
 		return this.Context().NewUndefined(), nil
 	})
 }

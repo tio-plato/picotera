@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"picotera/pkg/logx"
+	"sync"
 	"time"
 
 	"github.com/fastschema/qjs"
@@ -15,6 +16,22 @@ import (
 // session is then tainted and unusable for subsequent hooks.
 var ErrHookTimeout = errors.New("jsx: hook timeout")
 
+// LogEntry is a single console.{log,info,warn,error,debug} call captured
+// during a session. Times are UTC RFC3339Nano. debug is normalized to info.
+type LogEntry struct {
+	Level   string    `json:"level"`
+	Message string    `json:"message"`
+	Ts      time.Time `json:"ts"`
+}
+
+const (
+	maxLogEntries    = 1000
+	maxLogBytes      = 256 * 1024
+	maxLogMessageLen = 8 * 1024
+	logTruncSuffix   = "... [truncated]"
+	logSentinelMsg   = "[picotera] log buffer truncated"
+)
+
 type Session struct {
 	engine    *Engine
 	rt        *qjs.Runtime
@@ -22,6 +39,55 @@ type Session struct {
 	requestID string
 	closed    bool
 	tainted   bool
+
+	logsMu    sync.Mutex
+	logs      []LogEntry
+	logsBytes int
+	logsTrunc bool
+}
+
+func (s *Session) appendLog(level, message string) {
+	switch level {
+	case "info", "warn", "error":
+	default:
+		level = "info"
+	}
+	if len(message) > maxLogMessageLen {
+		message = message[:maxLogMessageLen-len(logTruncSuffix)] + logTruncSuffix
+	}
+	s.logsMu.Lock()
+	defer s.logsMu.Unlock()
+	if s.logsTrunc {
+		return
+	}
+	if len(s.logs) >= maxLogEntries || s.logsBytes+len(message) > maxLogBytes {
+		s.logs = append(s.logs, LogEntry{
+			Level:   "warn",
+			Message: logSentinelMsg,
+			Ts:      time.Now().UTC(),
+		})
+		s.logsTrunc = true
+		return
+	}
+	s.logs = append(s.logs, LogEntry{
+		Level:   level,
+		Message: message,
+		Ts:      time.Now().UTC(),
+	})
+	s.logsBytes += len(message)
+}
+
+// Logs returns a snapshot copy of the captured log entries. Safe to call
+// concurrently with appendLog. Must be called before Close.
+func (s *Session) Logs() []LogEntry {
+	s.logsMu.Lock()
+	defer s.logsMu.Unlock()
+	if len(s.logs) == 0 {
+		return nil
+	}
+	out := make([]LogEntry, len(s.logs))
+	copy(out, s.logs)
+	return out
 }
 
 func newSession(ctx context.Context, eng *Engine, requestID string) (*Session, error) {

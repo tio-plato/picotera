@@ -75,6 +75,25 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, metaReqMethod, metaReqURL, metaReqHeader, body)
 
+	// session is created at step 8 but the failure-path closures below need
+	// to read its log buffer. Declare here so the nil check is the same
+	// before and after creation.
+	var session *jsx.Session
+	collectLogs := func() []artifacts.LogEntry {
+		if session == nil {
+			return nil
+		}
+		raw := session.Logs()
+		if len(raw) == 0 {
+			return nil
+		}
+		out := make([]artifacts.LogEntry, len(raw))
+		for i, l := range raw {
+			out[i] = artifacts.LogEntry{Level: l.Level, Message: l.Message, Ts: l.Ts}
+		}
+		return out
+	}
+
 	failMeta := func(statusCode int32, errMsg string) {
 		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 			ID:           metaID,
@@ -87,7 +106,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	failMetaResponse := func(err error) {
 		statusCode, respBody := handleGatewayErr(w, err)
-		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, statusCode, w.Header().Clone(), respBody)
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, statusCode, w.Header().Clone(), respBody, collectLogs())
 	}
 
 	failHook := func(err error) {
@@ -98,7 +117,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errMsg := err.Error()
 		failMeta(int32(status), errMsg)
 		respBody := writeGatewayError(w, status, errMsg, errorx.UpstreamError.Error())
-		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody)
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody, collectLogs())
 	}
 
 	// 4. Validate client auth
@@ -142,12 +161,12 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 8. Build jsx session and run hooks. The session loads enabled scripts from
 	// the DB; if no scripts are enabled this is essentially a no-op pass-through.
-	session, err := h.jsxEngine.NewSession(r.Context(), metaID)
+	session, err = h.jsxEngine.NewSession(r.Context(), metaID)
 	if err != nil {
 		errMsg := "failed to load js hooks: " + err.Error()
 		failMeta(http.StatusBadGateway, errMsg)
 		respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
-		h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody)
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, nil)
 		return
 	}
 	defer session.Close()
@@ -333,7 +352,8 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, modelName, endpoint.Path, upstreamStartTime, bgCtx)
+			metaLogs := collectLogs()
+			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, modelName, endpoint.Path, upstreamStartTime, bgCtx, metaLogs)
 			return
 		}
 
@@ -363,7 +383,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	failMeta(http.StatusBadGateway, errMsg)
 	respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
-	h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody)
+	h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, collectLogs())
 }
 
 func mapLowerKeys(header http.Header) http.Header {
@@ -400,6 +420,20 @@ func (h *gatewayHandler) uploadResponseArtifact(ctx context.Context, id string, 
 	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
 }
 
+// uploadMetaResponseArtifact is uploadResponseArtifact for the meta request,
+// embedding any captured JSX console output. Only meta artifacts carry logs.
+func (h *gatewayHandler) uploadMetaResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildResponseWithLogs(statusCode, header, body, logs)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build meta response failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
+}
+
 // streamSuccess writes the upstream 200 response back to the client and
 // completes both the upstream and meta request rows. Pulled out of the main
 // handler so the retry loop body stays scannable.
@@ -411,6 +445,7 @@ func (h *gatewayHandler) streamSuccess(
 	providerID int32, modelName, endpointPath string,
 	upstreamStartTime time.Time,
 	bgCtx context.Context,
+	metaLogs []artifacts.LogEntry,
 ) {
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:           metaID,
@@ -463,7 +498,7 @@ func (h *gatewayHandler) streamSuccess(
 
 	respBytes := captureBuf.Bytes()
 	h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes)
-	h.uploadResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes)
+	h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes, metaLogs)
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens := metricsToPG(m)

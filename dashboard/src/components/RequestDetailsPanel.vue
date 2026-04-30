@@ -4,6 +4,7 @@ import { useApi } from '@/composables/useApi'
 import type { RequestView, ProviderView } from '@/api'
 import { SidePanel, StateText, Field, Tag, IconButton, Icon, Tabs } from '@/ui'
 import RawArtifactView from './RawArtifactView.vue'
+import LogsArtifactView from './LogsArtifactView.vue'
 
 const props = defineProps<{ requestId: string; providers?: ProviderView[] }>()
 const emit = defineEmits<{ close: [] }>()
@@ -112,15 +113,27 @@ function statusLabel(s: number) {
   }
 }
 
-type DetailTab = 'overview' | 'request' | 'response'
+type DetailTab = 'overview' | 'request' | 'response' | 'logs'
 const detailTab = ref<DetailTab>('overview')
-const detailTabs = [
-  { value: 'overview', label: '概览' },
-  { value: 'request', label: '原始请求' },
-  { value: 'response', label: '原始响应' },
-]
+const isMeta = computed(
+  () => !!selected.value && selected.value.id === selected.value.spanId,
+)
+const detailTabs = computed(() => {
+  const base: { value: DetailTab; label: string }[] = [
+    { value: 'overview', label: '概览' },
+    { value: 'request', label: '原始请求' },
+    { value: 'response', label: '原始响应' },
+  ]
+  if (isMeta.value) base.push({ value: 'logs', label: '日志' })
+  return base
+})
 watch(selectedId, () => {
   detailTab.value = 'overview'
+})
+watch(detailTabs, tabs => {
+  if (!tabs.find(t => t.value === detailTab.value)) {
+    detailTab.value = 'overview'
+  }
 })
 </script>
 
@@ -272,6 +285,10 @@ watch(selectedId, () => {
           v-else-if="detailTab === 'response'"
           :url="selected.responseArtifactUrl"
           kind="response"
+        />
+        <LogsArtifactView
+          v-else-if="detailTab === 'logs'"
+          :url="selected.responseArtifactUrl"
         />
       </template>
     </template>

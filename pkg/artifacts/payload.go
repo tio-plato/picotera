@@ -6,10 +6,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 	"unicode/utf8"
 
 	"github.com/klauspost/compress/zstd"
 )
+
+// LogEntry mirrors jsx.LogEntry — duplicated here so artifacts doesn't depend
+// on jsx. The gateway converts between the two with a one-line copy loop.
+type LogEntry struct {
+	Level   string    `json:"level"`
+	Message string    `json:"message"`
+	Ts      time.Time `json:"ts"`
+}
 
 type Payload struct {
 	Method       string      `json:"method,omitempty"`
@@ -18,6 +27,7 @@ type Payload struct {
 	Headers      http.Header `json:"headers"`
 	Body         string      `json:"body"`
 	BodyEncoding string      `json:"bodyEncoding"`
+	Logs         []LogEntry  `json:"logs,omitempty"`
 }
 
 func BuildRequest(method, url string, header http.Header, body []byte) ([]byte, error) {
@@ -34,6 +44,18 @@ func BuildResponse(statusCode int, header http.Header, body []byte) ([]byte, err
 	p := Payload{
 		StatusCode: statusCode,
 		Headers:    normalizeHeader(header),
+	}
+	encodeBody(&p, body)
+	return marshalAndCompress(&p)
+}
+
+// BuildResponseWithLogs is BuildResponse plus a logs array — used for meta
+// response artifacts so JSX console output is visible in the dashboard.
+func BuildResponseWithLogs(statusCode int, header http.Header, body []byte, logs []LogEntry) ([]byte, error) {
+	p := Payload{
+		StatusCode: statusCode,
+		Headers:    normalizeHeader(header),
+		Logs:       logs,
 	}
 	encodeBody(&p, body)
 	return marshalAndCompress(&p)
