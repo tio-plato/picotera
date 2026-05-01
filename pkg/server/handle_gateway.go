@@ -19,6 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/xid"
+	"github.com/tidwall/sjson"
 )
 
 type gatewayHandler struct {
@@ -75,7 +76,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, metaReqMethod, metaReqURL, metaReqHeader, body)
 
-	// session is created at step 8 but the failure-path closures below need
+	// session is created at step 6 but the failure-path closures below need
 	// to read its log buffer. Declare here so the nil check is the same
 	// before and after creation.
 	var session *jsx.Session
@@ -146,7 +147,45 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 7. Resolve providers
+	// 6. Build jsx session up front so the rewriteModel hook can run before
+	// MPE resolution. The session loads enabled scripts from the DB; if no
+	// scripts are enabled this is essentially a no-op pass-through.
+	session, err = h.jsxEngine.NewSession(r.Context(), metaID)
+	if err != nil {
+		errMsg := "failed to load js hooks: " + err.Error()
+		failMeta(http.StatusBadGateway, errMsg)
+		respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, nil)
+		return
+	}
+	defer session.Close()
+
+	// 6a. rewriteModel hook — once before MPE lookup. ctx is a snapshot of the
+	// raw client request (modelName as extracted). If the hook returns a new
+	// modelName, body.model is rewritten in lockstep so downstream hooks see
+	// a consistent client-request shape.
+	initialClientReq := serializeClientRequest(r, body, modelName)
+	newModel, err := session.RunRewriteModelHook(jsx.RewriteModelInput{
+		Request: initialClientReq,
+	}, modelName)
+	if err != nil {
+		failHook(err)
+		return
+	}
+	if newModel != modelName {
+		updated, serr := sjson.SetBytes(body, "model", newModel)
+		if serr != nil {
+			errMsg := "failed to set model in body: " + serr.Error()
+			failMeta(http.StatusInternalServerError, errMsg)
+			respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
+			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs())
+			return
+		}
+		body = updated
+		modelName = newModel
+	}
+
+	// 7. Resolve providers using the (possibly rewritten) modelName.
 	providers, err := h.resolveProviders(r.Context(), endpoint.Path, modelName)
 	if err != nil {
 		var gwErr *gatewayError
@@ -158,18 +197,6 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		failMetaResponse(err)
 		return
 	}
-
-	// 8. Build jsx session and run hooks. The session loads enabled scripts from
-	// the DB; if no scripts are enabled this is essentially a no-op pass-through.
-	session, err = h.jsxEngine.NewSession(r.Context(), metaID)
-	if err != nil {
-		errMsg := "failed to load js hooks: " + err.Error()
-		failMeta(http.StatusBadGateway, errMsg)
-		respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
-		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, nil)
-		return
-	}
-	defer session.Close()
 
 	// 8a. Build candidate list and a sidecar map for fields not exposed to JS
 	// (upstream URL, credentials). The hooks see {provider, mpe}; we look up
@@ -297,7 +324,17 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TimeSpentMs:  pgtype.Int4{Valid: false},
 		})
 
-		upstreamModel := candidateUpstreamModel(cand)
+		// Compute the model name to write into the upstream body.
+		// Preference: hook-supplied upstreamModel → MPE.upstreamModelName → modelName.
+		// buildUpstreamRequest still gates on non-empty, but with this fallback
+		// chain we always pass it a real value.
+		upstreamModel := dec.UpstreamModel
+		if upstreamModel == "" {
+			upstreamModel = candidateUpstreamModel(cand)
+		}
+		if upstreamModel == "" {
+			upstreamModel = modelName
+		}
 
 		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, endpoint.CredentialsResolver)
 		if berr != nil {

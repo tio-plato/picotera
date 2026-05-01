@@ -195,8 +195,10 @@ func (s *Session) RunSortHook(in SortInput) ([]Candidate, error) {
 }
 
 // RunBeforeRequestHook calls the beforeRequest waterfall and decodes the
-// returned `{next, delay}` shape. Passthrough or a return that doesn't carry
-// either key collapses to `Next=false, Delay=0`.
+// returned `{next, delay, upstreamModel}` shape. Passthrough or a return that
+// doesn't carry these keys collapses to `Next=false, Delay=0, UpstreamModel=""`.
+// A non-string upstreamModel is dropped at the JS boundary (treated as "" =
+// keep default).
 func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDecision, error) {
 	var dec BeforeRequestDecision
 	lit, err := marshalToJSLiteral(in)
@@ -207,7 +209,8 @@ func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDeci
 		const ctx = %s;
 		const r = await picotera.hooks.beforeRequest.runWaterfall(ctx, { next: ctx.currentRetryCount > 0, delay: 0 });
 		if (r === ctx || typeof r === 'undefined' || r === null) return null;
-		return JSON.stringify({ next: !!r.next, delay: r.delay || 0 });
+		const um = (typeof r.upstreamModel === 'string') ? r.upstreamModel : '';
+		return JSON.stringify({ next: !!r.next, delay: r.delay || 0, upstreamModel: um });
 	})()`, lit)
 	jsonStr, err := s.runHookExpr("beforeRequest.js", expr)
 	if err != nil {
@@ -223,6 +226,41 @@ func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDeci
 		return dec, fmt.Errorf("jsx: beforeRequest decode: %w", err)
 	}
 	return dec, nil
+}
+
+// RunRewriteModelHook calls the rewriteModel waterfall once before MPE
+// resolution. Returns the (possibly rewritten) model name. If no tap mutated
+// the value, or a tap returned a non-string, the original modelName is
+// returned. Equality with the input means the caller should skip body rewriting
+// and re-resolution.
+func (s *Session) RunRewriteModelHook(in RewriteModelInput, modelName string) (string, error) {
+	ctxLit, err := marshalToJSLiteral(in)
+	if err != nil {
+		return modelName, err
+	}
+	initLit, err := marshalToJSLiteral(modelName)
+	if err != nil {
+		return modelName, err
+	}
+	expr := fmt.Sprintf(`(async () => {
+		const ctx = %s;
+		const initial = %s;
+		const r = await picotera.hooks.rewriteModel.runWaterfall(ctx, initial);
+		if (typeof r !== 'string') return null;
+		return JSON.stringify(r);
+	})()`, ctxLit, initLit)
+	jsonStr, err := s.runHookExpr("rewriteModel.js", expr)
+	if err != nil {
+		return modelName, err
+	}
+	if jsonStr == "" || jsonStr == "null" {
+		return modelName, nil
+	}
+	var out string
+	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+		return modelName, fmt.Errorf("jsx: rewriteModel decode: %w", err)
+	}
+	return out, nil
 }
 
 // RunRewriteHook calls the rewriteRequest waterfall. The hook input value is

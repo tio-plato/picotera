@@ -76,9 +76,19 @@ type BeforeRequestInput struct {
 }
 
 // BeforeRequestDecision is the JS-returned shape from the beforeRequest hook.
+// UpstreamModel, when non-empty, replaces the model name written into the
+// upstream request body for this attempt.
 type BeforeRequestDecision struct {
-	Next  bool `json:"next"`
-	Delay int  `json:"delay"`
+	Next          bool   `json:"next"`
+	Delay         int    `json:"delay"`
+	UpstreamModel string `json:"upstreamModel"`
+}
+
+// RewriteModelInput is the ctx passed to the rewriteModel waterfall. The
+// hook fires once between extractModel and resolveProviders, so only the
+// raw client request snapshot is in scope.
+type RewriteModelInput struct {
+	Request RequestShape `json:"request"`
 }
 
 // PendingRequestShape mirrors the upstream request that is about to be sent.

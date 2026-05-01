@@ -196,6 +196,61 @@ func TestSession_Hooks_BeforeRequest_NextAndDelay(t *testing.T) {
 	}
 }
 
+func TestSession_Hooks_RewriteModel_Passthrough(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteModel.tap("a", function () {});
+	`})
+	out, err := s.RunRewriteModelHook(RewriteModelInput{}, "claude-3-haiku")
+	if err != nil {
+		t.Fatalf("RunRewriteModelHook: %v", err)
+	}
+	if out != "claude-3-haiku" {
+		t.Errorf("want passthrough modelName, got %q", out)
+	}
+}
+
+func TestSession_Hooks_RewriteModel_Replace(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteModel.tap("a", function (ctx, m) { return "new-model"; });
+	`})
+	out, err := s.RunRewriteModelHook(RewriteModelInput{}, "old-model")
+	if err != nil {
+		t.Fatalf("RunRewriteModelHook: %v", err)
+	}
+	if out != "new-model" {
+		t.Errorf("want new-model, got %q", out)
+	}
+}
+
+func TestSession_Hooks_BeforeRequest_UpstreamModel(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.beforeRequest.tap("a", function () { return { upstreamModel: "foo" }; });
+	`})
+	dec, err := s.RunBeforeRequestHook(BeforeRequestInput{})
+	if err != nil {
+		t.Fatalf("RunBeforeRequestHook: %v", err)
+	}
+	if dec.UpstreamModel != "foo" {
+		t.Errorf("want UpstreamModel=foo, got %q", dec.UpstreamModel)
+	}
+	if dec.Next || dec.Delay != 0 {
+		t.Errorf("want {Next:false, Delay:0}, got %+v", dec)
+	}
+}
+
+func TestSession_Hooks_BeforeRequest_UpstreamModel_NonString(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.beforeRequest.tap("a", function () { return { upstreamModel: 42 }; });
+	`})
+	dec, err := s.RunBeforeRequestHook(BeforeRequestInput{})
+	if err != nil {
+		t.Fatalf("RunBeforeRequestHook: %v", err)
+	}
+	if dec.UpstreamModel != "" {
+		t.Errorf("non-string upstreamModel should be dropped, got %q", dec.UpstreamModel)
+	}
+}
+
 func TestSession_Hooks_Rewrite_Passthrough(t *testing.T) {
 	s := newTestSession(t, db.Script{ID: "a", Source: `
 		picotera.hooks.rewriteRequest.tap("a", function () {});
