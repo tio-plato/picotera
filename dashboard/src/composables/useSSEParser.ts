@@ -156,7 +156,7 @@ function aggregateAnthropic(events: SSEEvent[]): Record<string, unknown> | null 
   let model = "";
   let role = "assistant";
   let stopReason: string | null = null;
-  const contentBlocks: Array<{ type: string; text?: string; thinking?: string }> = [];
+  const contentBlocks: Array<{ type: string; text?: string; thinking?: string; partial_json?: string; input?: unknown }> = [];
   let currentBlockIndex = -1;
   let usage: Record<string, unknown> | null = null;
 
@@ -176,7 +176,8 @@ function aggregateAnthropic(events: SSEEvent[]): Record<string, unknown> | null 
     } else if (type === "content_block_start") {
       const block = parsed.content_block as Record<string, unknown> | undefined;
       if (block) {
-        contentBlocks.push({ type: block.type as string });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        contentBlocks.push(block as any);
         currentBlockIndex = contentBlocks.length - 1;
       }
     } else if (type === "content_block_delta") {
@@ -188,6 +189,21 @@ function aggregateAnthropic(events: SSEEvent[]): Record<string, unknown> | null 
             block.text = (block.text || "") + (delta.text as string);
           } else if (delta.type === "thinking_delta" && delta.thinking) {
             block.thinking = (block.thinking || "") + (delta.thinking as string);
+          } else if (delta.type === 'input_json_delta' && delta.partial_json) {
+            block.partial_json = (block.partial_json || "") + (delta.partial_json as string);
+          }
+        }
+      }
+    } else if (type === 'content_block_stop') {
+      const block = contentBlocks[currentBlockIndex]
+      if (block) {
+        if (block.partial_json) {
+          try {
+            const parsedJson = JSON.parse(block.partial_json);
+            block.partial_json = undefined;
+            block.input = parsedJson
+          } catch {
+            // do nothing
           }
         }
       }
