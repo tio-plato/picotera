@@ -246,6 +246,20 @@ func (q *Queries) UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMet
 	return err
 }
 
+const updateRequestModel = `-- name: UpdateRequestModel :exec
+UPDATE request SET model = $2 WHERE id = $1
+`
+
+type UpdateRequestModelParams struct {
+	ID    string      `json:"id"`
+	Model pgtype.Text `json:"model"`
+}
+
+func (q *Queries) UpdateRequestModel(ctx context.Context, arg UpdateRequestModelParams) error {
+	_, err := q.db.Exec(ctx, updateRequestModel, arg.ID, arg.Model)
+	return err
+}
+
 const updateRequestOnComplete = `-- name: UpdateRequestOnComplete :exec
 UPDATE request
 SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,

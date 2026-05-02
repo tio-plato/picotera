@@ -200,6 +200,13 @@ function statusVariant(code: number | undefined): 'ok' | 'warn' | 'err' {
   return 'err'
 }
 
+type RequestState = 'pending' | 'ok' | 'warn' | 'err'
+function requestState(r: RequestView): RequestState {
+  // status: 0=Pending 1=HeaderReceived 2=Completed 3=Failed
+  if (r.status === 0 || r.status === 1) return 'pending'
+  return statusVariant(r.statusCode)
+}
+
 function formatTimeSpent(ms: number | undefined): string {
   if (ms === undefined) return '—'
   if (ms < 1000) return `${ms}ms`
@@ -312,13 +319,18 @@ function resetCursorAndReload() {
         <template #cell-status="{ row }">
           <div class="inline-flex items-center gap-1.5">
             <span
+              v-if="requestState(row) === 'pending'"
+              class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2] bg-surface-100 text-ink-muted border border-line-soft"
+            >...</span>
+            <span
+              v-else
               class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2] border border-transparent"
               :class="{
-                'bg-ok-faint text-ok-ink': statusVariant(row.statusCode) === 'ok',
-                'bg-warn-faint text-warn-ink': statusVariant(row.statusCode) === 'warn',
-                'bg-err-faint text-err-ink': statusVariant(row.statusCode) === 'err',
+                'bg-ok-faint text-ok-ink': requestState(row) === 'ok',
+                'bg-warn-faint text-warn-ink': requestState(row) === 'warn',
+                'bg-err-faint text-err-ink': requestState(row) === 'err',
               }"
-            >{{ row.statusCode || 'ERR' }}</span>
+            >{{ row.statusCode }}</span>
           </div>
         </template>
         <template #cell-tokens="{ row }">

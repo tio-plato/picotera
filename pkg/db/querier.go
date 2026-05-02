@@ -40,6 +40,7 @@ type Querier interface {
 	ListScripts(ctx context.Context) ([]Script, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
 	UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error
+	UpdateRequestModel(ctx context.Context, arg UpdateRequestModelParams) error
 	UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error
 	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)

@@ -106,6 +106,21 @@ function statusCodeClass(code: number | undefined | null) {
   return 'bg-err-faint text-err-ink'
 }
 
+type RequestState = 'pending' | 'ok' | 'warn' | 'err'
+function requestState(r: RequestView): RequestState {
+  // status: 0=Pending 1=HeaderReceived 2=Completed 3=Failed
+  if (r.status === 0 || r.status === 1) return 'pending'
+  if (r.statusCode === undefined || r.statusCode === null) return 'err'
+  if (r.statusCode >= 200 && r.statusCode < 300) return 'ok'
+  if (r.statusCode >= 400 && r.statusCode < 500) return 'warn'
+  return 'err'
+}
+
+function statusBadgeClass(r: RequestView): string {
+  if (requestState(r) === 'pending') return 'bg-surface-100 text-ink-muted border-line-soft'
+  return statusCodeClass(r.statusCode)
+}
+
 function typeLabel(t: number) {
   return t === 0 ? 'META' : 'UPSTREAM'
 }
@@ -165,8 +180,8 @@ watch(detailTabs, tabs => {
               <span class="text-2xs font-semibold text-accent-ink uppercase tracking-[0.04em]">meta</span>
               <span
                 class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2]"
-                :class="statusCodeClass(meta.statusCode)"
-              >{{ meta.statusCode || '—' }}</span>
+                :class="requestState(meta) === 'pending' ? 'bg-surface-100 text-ink-muted border border-line-soft' : statusCodeClass(meta.statusCode)"
+              >{{ requestState(meta) === 'pending' ? '处理中' : meta.statusCode }}</span>
             </div>
             <div class="font-mono tabular-nums text-2xs text-ink-faint">
               {{ formatTimeSpent(meta.timeSpentMs) }}
@@ -189,8 +204,8 @@ watch(detailTabs, tabs => {
               {{ providerLabel(s.providerId) }}</span>
               <span
                 class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2]"
-                :class="statusCodeClass(s.statusCode)"
-              >{{ s.statusCode || '—' }}</span>
+                :class="requestState(s) === 'pending' ? 'bg-surface-100 text-ink-muted border border-line-soft' : statusCodeClass(s.statusCode)"
+              >{{ requestState(s) === 'pending' ? '处理中' : s.statusCode }}</span>
             </div>
             <div class="font-mono tabular-nums text-2xs text-ink-faint">
               {{ formatTimeSpent(s.timeSpentMs) }}
@@ -219,7 +234,7 @@ watch(detailTabs, tabs => {
               <Tag :variant="selected.type === 0 ? 'accent' : 'muted'">{{ typeLabel(selected.type) }}</Tag>
             </Field>
             <Field label="状态" as="div">
-              <Tag :variant="statusVariantTag(selected.statusCode)">{{ statusLabel(selected.status) }}</Tag>
+              <Tag :variant="requestState(selected) === 'pending' ? 'muted' : statusVariantTag(selected.statusCode)">{{ statusLabel(selected.status) }}</Tag>
             </Field>
             <Field v-if="selected.spanId" label="Span" as="div">
               <span class="font-mono text-xs text-ink break-all">{{ selected.spanId }}</span>
@@ -238,9 +253,14 @@ watch(detailTabs, tabs => {
             </Field>
             <Field label="状态码" as="div">
               <span
+                v-if="requestState(selected) === 'pending'"
+                class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-xs bg-surface-100 text-ink-muted border border-line-soft w-fit"
+              >处理中</span>
+              <span
+                v-else
                 class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-xs border border-transparent w-fit"
                 :class="statusCodeClass(selected.statusCode)"
-              >{{ selected.statusCode || '—' }}</span>
+              >{{ selected.statusCode }}</span>
             </Field>
             <Field label="时间" as="div">
               <span class="font-mono text-xs">{{ formatTime(selected.createdAt) }}</span>

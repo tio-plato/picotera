@@ -66,7 +66,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Type:          db.RequestTypeMeta,
 		Status:        db.RequestStatusPending,
 		ProviderID:    pgtype.Int4{Valid: false},
-		EndpointPath:  pgtype.Text{Valid: false},
+		EndpointPath:  pgtype.Text{String: endpoint.Path, Valid: true},
 		ApiKeyID:      pgtype.Int4{Valid: false},
 		Model:         pgtype.Text{Valid: false},
 		UpstreamModel: pgtype.Text{Valid: false},
@@ -147,6 +147,11 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		failMetaResponse(err)
 		return
 	}
+
+	h.updateRequestModel(bgCtx, db.UpdateRequestModelParams{
+		ID:    metaID,
+		Model: pgtype.Text{String: modelName, Valid: modelName != ""},
+	})
 
 	// 6. Build jsx session up front so the rewriteModel hook can run before
 	// MPE resolution. The session loads enabled scripts from the DB; if no

@@ -294,6 +294,13 @@ func (s *Server) updateRequestOnHeader(ctx context.Context, arg db.UpdateRequest
 	}
 }
 
+// updateRequestModel backfills the model field early. Errors are logged but do not affect the response.
+func (s *Server) updateRequestModel(ctx context.Context, arg db.UpdateRequestModelParams) {
+	if err := s.queries.UpdateRequestModel(ctx, arg); err != nil {
+		logx.WithContext(ctx).WithError(err).Error("failed to update request model")
+	}
+}
+
 // updateRequestOnComplete backfills result fields. Errors are logged but do not affect the response.
 func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateRequestOnCompleteParams) {
 	if err := s.queries.UpdateRequestOnComplete(ctx, arg); err != nil {

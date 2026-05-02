@@ -43,6 +43,9 @@ SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     cache_read_tokens = $9, cache_write_tokens = $10
 WHERE id = $1;
 
+-- name: UpdateRequestModel :exec
+UPDATE request SET model = $2 WHERE id = $1;
+
 -- name: UpdateRequestMetrics :exec
 UPDATE request
 SET ttft_ms = $2, input_tokens = $3, output_tokens = $4,
