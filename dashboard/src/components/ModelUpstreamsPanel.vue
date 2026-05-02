@@ -34,15 +34,6 @@ const emit = defineEmits<{ close: [] }>()
             <Tag variant="accent">{{ u.upstreamModelName }}</Tag>
             <Tag v-if="u.priority > 0" variant="more">P{{ u.priority }}</Tag>
           </div>
-          <div class="flex items-center gap-1.5 flex-wrap">
-            <TagList v-if="u.endpointPaths.length">
-              <Tag v-for="path in u.endpointPaths" :key="path">{{ path }}</Tag>
-            </TagList>
-            <span v-else class="text-2xs text-ink-faint">无端点</span>
-            <span v-if="u.expandedFromProvider && u.endpointPaths.length" class="text-2xs text-ink-faint">
-              全部端点
-            </span>
-          </div>
         </li>
       </ul>
     </section>
