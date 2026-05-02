@@ -262,24 +262,18 @@ function resetCursorAndReload() {
           />
         </template>
         <template #header-model>
-          <div class="flex -my-1.5 divide-x divide-surface-200">
-            <div class="flex-1 pr-2">
-              <ColumnFilter
-                v-model="filters.upstreamModel"
-                label="实际模型"
-                :options="upstreamModelOptions"
-                placeholder="过滤实际模型…"
-              />
-            </div>
-            <div class="flex-1 pl-2">
-              <ColumnFilter
-                v-model="filters.model"
-                label="请求模型"
-                :options="modelOptions"
-                placeholder="过滤请求模型…"
-              />
-            </div>
-          </div>
+          <ColumnFilter
+            v-model="filters.upstreamModel"
+            label="模型"
+            :options="upstreamModelOptions"
+            placeholder="过滤实际上游请求模型…"
+          />
+          <ColumnFilter
+            v-model="filters.model"
+            label="上游"
+            :options="modelOptions"
+            placeholder="过滤客户端请求模型…"
+          />
         </template>
         <template #cell-createdAt="{ row }">
           <div class="flex flex-col leading-tight">
