@@ -77,7 +77,7 @@ function formatTimeSpent(ms: number | undefined | null) {
 }
 
 function fmtNum(n: number | undefined | null) {
-  return n === undefined || n === null ? '—' : String(n)
+  return n === undefined || n === null ? '—' : n.toLocaleString()
 }
 
 function providerLabel(id: number | undefined | null) {

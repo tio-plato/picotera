@@ -317,7 +317,7 @@ function resetCursorAndReload() {
         <template #cell-tokens="{ row }">
           <div class="text-xs">
             <span class="font-mono tabular-nums text-ink">
-              {{ (row.inputTokens || 0 ) + (row.outputTokens || 0) + (row.cacheReadTokens || 0) + (row.cacheWriteTokens || 0) }}
+              {{ ((row.inputTokens || 0 ) + (row.outputTokens || 0) + (row.cacheReadTokens || 0) + (row.cacheWriteTokens || 0)).toLocaleString() }}
             </span>
             <div v-if="row.cacheReadTokens || row.cacheWriteTokens" class="flex items-center gap-1.5 mt-0.5 text-ink-faint text-2xs">
               <span v-if="row.cacheReadTokens" >{{ parseFloat((row.cacheReadTokens / (((row.inputTokens || 0) + row.cacheReadTokens + (row.cacheWriteTokens || 0)) || 1) * 100).toFixed(2)) }}%</span>
