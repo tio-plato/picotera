@@ -138,12 +138,7 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
     {
       key: 'model',
       header: '模型',
-      headerClass: filters.model ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
-    },
-    {
-      key: 'upstreamModel',
-      header: '上游模型',
-      headerClass: filters.upstreamModel ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
+      headerClass: (filters.model || filters.upstreamModel) ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
     },
     { key: 'status', header: '状态' },
     { key: 'tokens', header: 'Token' },
@@ -268,20 +263,24 @@ function resetCursorAndReload() {
           />
         </template>
         <template #header-model>
-          <ColumnFilter
-            v-model="filters.model"
-            label="模型"
-            :options="modelOptions"
-            placeholder="过滤模型…"
-          />
-        </template>
-        <template #header-upstreamModel>
-          <ColumnFilter
-            v-model="filters.upstreamModel"
-            label="上游模型"
-            :options="upstreamModelOptions"
-            placeholder="过滤上游模型…"
-          />
+          <div class="flex -my-1.5 divide-x divide-surface-200">
+            <div class="flex-1 pr-2">
+              <ColumnFilter
+                v-model="filters.upstreamModel"
+                label="实际模型"
+                :options="upstreamModelOptions"
+                placeholder="过滤实际模型…"
+              />
+            </div>
+            <div class="flex-1 pl-2">
+              <ColumnFilter
+                v-model="filters.model"
+                label="请求模型"
+                :options="modelOptions"
+                placeholder="过滤请求模型…"
+              />
+            </div>
+          </div>
         </template>
         <template #cell-createdAt="{ row }">
           <div class="flex flex-col leading-tight">
@@ -300,12 +299,15 @@ function resetCursorAndReload() {
           <span class="font-mono text-ink-faint">{{ row.endpointPath }}</span>
         </template>
         <template #cell-model="{ row }">
-          <span v-if="row.model" class="font-mono">{{ row.model }}</span>
-          <span v-else class="text-ink-faint">—</span>
-        </template>
-        <template #cell-upstreamModel="{ row }">
-          <span v-if="row.upstreamModel" class="font-mono text-ink-faint">{{ row.upstreamModel }}</span>
-          <span v-else class="text-ink-faint">—</span>
+          <div class="flex flex-col leading-tight">
+            <span v-if="row.upstreamModel" class="font-mono text-ink">{{ row.upstreamModel }}</span>
+            <span v-else-if="row.model" class="font-mono text-ink">{{ row.model }}</span>
+            <span v-else class="text-ink-faint">—</span>
+            <span
+              v-if="row.model && row.upstreamModel && row.model !== row.upstreamModel"
+              class="font-mono text-2xs text-ink-faint"
+            >{{ row.model }}</span>
+          </div>
         </template>
         <template #cell-status="{ row }">
           <div class="inline-flex items-center gap-1.5">
