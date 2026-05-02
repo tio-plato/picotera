@@ -30,8 +30,8 @@ const emit = defineEmits<{ close: [] }>()
       <StateText v-if="!upstreams.length" compact>该模型暂无上游</StateText>
       <ul v-else class="list-none m-0 p-0 flex flex-col gap-2">
         <li
-          v-for="u in upstreams"
-          :key="u.providerId"
+          v-for="(u, i) in upstreams"
+          :key="`${u.providerId}:${i}`"
           class="flex flex-col gap-1.5 px-2.5 py-2 border border-line rounded-md bg-surface-0"
           :class="(u.providerDisabled || u.entryDisabled) ? 'opacity-55' : ''"
         >

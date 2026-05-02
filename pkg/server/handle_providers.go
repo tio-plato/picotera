@@ -51,6 +51,9 @@ func (s *Server) handleGetProvider(ctx context.Context, input *contract.GetProvi
 }
 
 func (s *Server) handleCreateProvider(ctx context.Context, input *contract.CreateProviderRequest) (*contract.CreateProviderResponse, error) {
+	if input.Body.ProviderModels == nil {
+		input.Body.ProviderModels = []contract.ProviderModelEntry{}
+	}
 
 	providerModelsBytes, err := json.Marshal(input.Body.ProviderModels)
 	if err != nil {
@@ -84,6 +87,9 @@ func (s *Server) handleCreateProvider(ctx context.Context, input *contract.Creat
 }
 
 func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.UpsertProviderRequest) (*contract.UpsertProviderResponse, error) {
+	if input.Body.ProviderModels == nil {
+		input.Body.ProviderModels = []contract.ProviderModelEntry{}
+	}
 	providerModelsBytes, err := json.Marshal(input.Body.ProviderModels)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to marshal provider models", err)

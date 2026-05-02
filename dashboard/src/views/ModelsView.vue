@@ -62,9 +62,11 @@ const providerEndpointMap = computed(() => {
 const upstreamIndex = computed<Record<string, Upstream[]>>(() => {
   const out: Record<string, Upstream[]> = {}
   for (const provider of providers.value) {
-    const obj = (provider.providerModels ?? {}) as Record<string, ProviderModelEntry>
-    for (const [modelName, entry] of Object.entries(obj)) {
-      const entryEndpoints = entry?.endpoints ?? []
+    const list = (provider.providerModels ?? []) as ProviderModelEntry[]
+    for (const entry of list) {
+      const modelName = entry.model
+      if (!modelName) continue
+      const entryEndpoints = entry.endpoints ?? []
       const expandedFromProvider = !entryEndpoints.length
       const endpointPaths = expandedFromProvider
         ? providerEndpointMap.value[provider.id] ?? []
@@ -72,12 +74,12 @@ const upstreamIndex = computed<Record<string, Upstream[]>>(() => {
       const upstream: Upstream = {
         providerId: provider.id,
         providerName: provider.name,
-        upstreamModelName: entry?.upstreamModelName?.trim() || modelName,
+        upstreamModelName: entry.upstreamModelName?.trim() || modelName,
         endpointPaths,
-        priority: entry?.priority ?? 0,
+        priority: entry.priority ?? 0,
         expandedFromProvider,
         providerDisabled: provider.disabled ?? false,
-        entryDisabled: entry?.disabled ?? false,
+        entryDisabled: entry.disabled ?? false,
       }
       ;(out[modelName] ??= []).push(upstream)
     }
@@ -91,7 +93,7 @@ const orphanRows = computed<{ name: string; providerNames: string[] }[]>(() => {
   const out: { name: string; providerNames: string[] }[] = []
   for (const [name, list] of Object.entries(upstreamIndex.value)) {
     if (registeredNames.value.has(name)) continue
-    out.push({ name, providerNames: list.map((u) => u.providerName) })
+    out.push({ name, providerNames: Array.from(new Set(list.map((u) => u.providerName))) })
   }
   out.sort((a, b) => a.name.localeCompare(b.name))
   return out

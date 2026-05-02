@@ -9,6 +9,7 @@ import (
 )
 
 type ProviderModelEntry struct {
+	Model             string            `json:"model"`
 	UpstreamModelName string            `json:"upstreamModelName,omitempty"`
 	Endpoints         []string          `json:"endpoints,omitempty"`
 	Priority          int32             `json:"priority,omitempty"`
@@ -25,7 +26,7 @@ type ProviderView struct {
 	Name           string                        `json:"name"`
 	Credentials    string                        `json:"credentials"`
 	Priority       int32                         `json:"priority"`
-	ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
+	ProviderModels []ProviderModelEntry          `json:"providerModels"`
 	Annotations    map[string]string             `json:"annotations"`
 	Disabled       bool                          `json:"disabled"`
 }
@@ -39,7 +40,7 @@ type CreateProviderRequest struct {
 		Name           string                        `json:"name"`
 		Credentials    string                        `json:"credentials"`
 		Priority       int32                         `json:"priority"`
-		ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
+		ProviderModels []ProviderModelEntry          `json:"providerModels"`
 		Annotations    map[string]string             `json:"annotations"`
 		Disabled       bool                          `json:"disabled"`
 	}
@@ -55,7 +56,7 @@ type UpsertProviderRequest struct {
 		Name           string                        `json:"name"`
 		Credentials    string                        `json:"credentials"`
 		Priority       int32                         `json:"priority"`
-		ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
+		ProviderModels []ProviderModelEntry          `json:"providerModels"`
 		Annotations    map[string]string             `json:"annotations"`
 		Disabled       bool                          `json:"disabled"`
 	}
@@ -72,11 +73,14 @@ type DeleteProviderRequest struct {
 }
 
 func ToProviderView(provider *db.Provider) (*ProviderView, error) {
-	providerModels := map[string]ProviderModelEntry{}
+	providerModels := []ProviderModelEntry{}
 	if len(provider.ProviderModels) > 0 {
 		if err := json.Unmarshal(provider.ProviderModels, &providerModels); err != nil {
 			return nil, err
 		}
+	}
+	if providerModels == nil {
+		providerModels = []ProviderModelEntry{}
 	}
 
 	annotations := map[string]string{}
@@ -98,7 +102,11 @@ func ToProviderView(provider *db.Provider) (*ProviderView, error) {
 }
 
 func FromProviderView(providerView *ProviderView) (*db.Provider, error) {
-	providerModels, err := json.Marshal(providerView.ProviderModels)
+	models := providerView.ProviderModels
+	if models == nil {
+		models = []ProviderModelEntry{}
+	}
+	providerModels, err := json.Marshal(models)
 	if err != nil {
 		return nil, err
 	}

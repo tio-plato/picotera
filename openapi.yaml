@@ -23,9 +23,10 @@ components:
           format: int32
           type: integer
         providerModels:
-          additionalProperties:
+          items:
             $ref: "#/components/schemas/ProviderModelEntry"
-          type: object
+          nullable: true
+          type: array
       required:
         - name
         - credentials
@@ -290,11 +291,15 @@ components:
             type: string
           nullable: true
           type: array
+        model:
+          type: string
         priority:
           format: int32
           type: integer
         upstreamModelName:
           type: string
+      required:
+        - model
       type: object
     ProviderView:
       additionalProperties: false
@@ -322,9 +327,10 @@ components:
           format: int32
           type: integer
         providerModels:
-          additionalProperties:
+          items:
             $ref: "#/components/schemas/ProviderModelEntry"
-          type: object
+          nullable: true
+          type: array
       required:
         - id
         - name
@@ -476,9 +482,10 @@ components:
           format: int32
           type: integer
         providerModels:
-          additionalProperties:
+          items:
             $ref: "#/components/schemas/ProviderModelEntry"
-          type: object
+          nullable: true
+          type: array
       required:
         - name
         - credentials

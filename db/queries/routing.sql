@@ -6,9 +6,9 @@ SELECT
   sqlc.arg('model_name')::text AS model_name,
   p.id AS provider_id,
   pe.endpoint_path,
-  COALESCE(sub.pm ->> 'upstreamModelName', '')::text AS upstream_model_name,
-  COALESCE((sub.pm ->> 'priority')::int, 0)::int AS priority,
-  (COALESCE(sub.pm -> 'annotations', '{}'::jsonb))::jsonb AS annotations,
+  COALESCE(elem ->> 'upstreamModelName', '')::text AS upstream_model_name,
+  COALESCE((elem ->> 'priority')::int, 0)::int AS priority,
+  (COALESCE(elem -> 'annotations', '{}'::jsonb))::jsonb AS annotations,
   p.name AS provider_name,
   p.credentials AS provider_credentials,
   p.priority AS provider_priority,
@@ -17,18 +17,18 @@ SELECT
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id
 JOIN model AS m ON m.name = sqlc.arg('model_name')::text
-CROSS JOIN LATERAL (SELECT p.provider_models -> sqlc.arg('model_name')::text AS pm) sub
+CROSS JOIN LATERAL jsonb_array_elements(p.provider_models) AS elem
 WHERE pe.endpoint_path = sqlc.arg('endpoint_path')::text
-  AND p.provider_models ? sqlc.arg('model_name')::text
-  AND sub.pm IS NOT NULL
+  AND p.provider_models @> jsonb_build_array(jsonb_build_object('model', sqlc.arg('model_name')::text))
+  AND elem ->> 'model' = sqlc.arg('model_name')::text
   AND p.disabled = FALSE
   AND m.disabled = FALSE
-  AND COALESCE((sub.pm ->> 'disabled')::boolean, false) = false
+  AND COALESCE((elem ->> 'disabled')::boolean, false) = false
   AND (
-    sub.pm -> 'endpoints' IS NULL
-    OR jsonb_typeof(sub.pm -> 'endpoints') <> 'array'
-    OR jsonb_array_length(sub.pm -> 'endpoints') = 0
-    OR sub.pm -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
+    elem -> 'endpoints' IS NULL
+    OR jsonb_typeof(elem -> 'endpoints') <> 'array'
+    OR jsonb_array_length(elem -> 'endpoints') = 0
+    OR elem -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
   );
 
 -- name: GetApiKeyByHash :one

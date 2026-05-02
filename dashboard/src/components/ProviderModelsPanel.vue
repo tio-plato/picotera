@@ -45,38 +45,55 @@ const pendingDeletions = ref<Record<string, boolean>>({})
 
 let nextUid = 0
 
-function entryToRow(modelName: string, entry: ProviderModelEntry | undefined): Row {
+function entryToRow(entry: ProviderModelEntry): Row {
+  return {
+    uid: nextUid++,
+    modelName: entry.model ?? '',
+    upstreamModelName: entry.upstreamModelName ?? '',
+    endpoints: [...(entry.endpoints ?? [])],
+    priority: entry.priority ?? 0,
+    annotations: { ...entry.annotations },
+    disabled: entry.disabled ?? false,
+    expanded: false,
+  }
+}
+
+function emptyRow(modelName: string): Row {
   return {
     uid: nextUid++,
     modelName,
-    upstreamModelName: entry?.upstreamModelName ?? '',
-    endpoints: [...(entry?.endpoints ?? [])],
-    priority: entry?.priority ?? 0,
-    annotations: { ...entry?.annotations },
-    disabled: entry?.disabled ?? false,
+    upstreamModelName: '',
+    endpoints: [],
+    priority: 0,
+    annotations: {},
+    disabled: false,
     expanded: false,
   }
 }
 
 function rowsFromProvider(p: ProviderView): Row[] {
-  const obj = (p.providerModels ?? {}) as Record<string, ProviderModelEntry>
-  return Object.keys(obj)
-    .sort()
-    .map((name) => entryToRow(name, obj[name]))
+  const list = (p.providerModels ?? []) as ProviderModelEntry[]
+  return list
+    .map((entry) => entryToRow(entry))
+    .sort((a, b) => {
+      const cmp = a.modelName.localeCompare(b.modelName)
+      if (cmp !== 0) return cmp
+      return b.priority - a.priority
+    })
 }
 
-function rowsToObject(list: Row[]): Record<string, ProviderModelEntry> {
-  const out: Record<string, ProviderModelEntry> = {}
+function rowsToList(list: Row[]): ProviderModelEntry[] {
+  const out: ProviderModelEntry[] = []
   for (const row of list) {
     const name = row.modelName.trim()
     if (!name) continue
-    const entry: ProviderModelEntry = {}
+    const entry: ProviderModelEntry = { model: name }
     if (row.upstreamModelName.trim()) entry.upstreamModelName = row.upstreamModelName.trim()
     if (row.endpoints.length) entry.endpoints = [...row.endpoints]
     if (row.priority) entry.priority = row.priority
     if (row.disabled) entry.disabled = true
     if (Object.keys(row.annotations).length) entry.annotations = { ...row.annotations }
-    out[name] = entry
+    out.push(entry)
   }
   return out
 }
@@ -115,11 +132,7 @@ watch(() => props.providerId, load)
 function addModel() {
   const name = newModelName.value.trim()
   if (!name) return
-  if (rows.value.some((r) => r.modelName === name)) {
-    error.value = `模型「${name}」已存在`
-    return
-  }
-  rows.value.unshift(entryToRow(name, undefined))
+  rows.value.unshift(emptyRow(name))
   newModelName.value = ''
   error.value = ''
 }
@@ -167,13 +180,19 @@ async function fetchFromUpstream() {
   let added = 0
   for (const name of upstream) {
     if (!localNames.has(name)) {
-      rows.value.push(entryToRow(name, undefined))
+      rows.value.push(emptyRow(name))
       added++
     }
   }
-  rows.value.sort((a, b) => a.modelName.localeCompare(b.modelName))
+  rows.value.sort((a, b) => {
+    const cmp = a.modelName.localeCompare(b.modelName)
+    if (cmp !== 0) return cmp
+    return b.priority - a.priority
+  })
 
-  const missing = rows.value.map((r) => r.modelName).filter((n) => !upstreamSet.has(n))
+  const missing = Array.from(new Set(rows.value.map((r) => r.modelName))).filter(
+    (n) => !upstreamSet.has(n),
+  )
   fetchSummary.value = { added, missing }
 }
 
@@ -205,7 +224,7 @@ async function save() {
     name: provider.value.name,
     credentials: provider.value.credentials,
     priority: provider.value.priority,
-    providerModels: rowsToObject(rows.value),
+    providerModels: rowsToList(rows.value),
     annotations: provider.value.annotations,
     disabled: provider.value.disabled,
   }

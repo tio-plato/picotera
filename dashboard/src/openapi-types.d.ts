@@ -315,12 +315,11 @@ export interface components {
                 [key: string]: string;
             };
             credentials: string;
+            disabled: boolean;
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: {
-                [key: string]: components["schemas"]["ProviderModelEntry"];
-            };
+            providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
         DeleteEndpointRequestBody: {
             /**
@@ -413,6 +412,7 @@ export interface components {
              */
             readonly $schema?: string;
             developer: string;
+            disabled: boolean;
             name: string;
             series: string;
             title: string;
@@ -458,7 +458,9 @@ export interface components {
             annotations?: {
                 [key: string]: string;
             };
+            disabled?: boolean;
             endpoints?: string[] | null;
+            model: string;
             /** Format: int32 */
             priority?: number;
             upstreamModelName?: string;
@@ -474,14 +476,13 @@ export interface components {
                 [key: string]: string;
             };
             credentials: string;
+            disabled: boolean;
             /** Format: int32 */
             id: number;
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: {
-                [key: string]: components["schemas"]["ProviderModelEntry"];
-            };
+            providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
         RequestView: {
             /**
@@ -559,14 +560,13 @@ export interface components {
                 [key: string]: string;
             };
             credentials: string;
+            disabled: boolean;
             /** Format: int32 */
             id?: number;
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: {
-                [key: string]: components["schemas"]["ProviderModelEntry"];
-            };
+            providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
     };
     responses: never;

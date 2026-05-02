@@ -319,9 +319,7 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: {
-                [key: string]: components["schemas"]["ProviderModelEntry"];
-            };
+            providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
         DeleteEndpointRequestBody: {
             /**
@@ -462,6 +460,7 @@ export interface components {
             };
             disabled?: boolean;
             endpoints?: string[] | null;
+            model: string;
             /** Format: int32 */
             priority?: number;
             upstreamModelName?: string;
@@ -483,9 +482,7 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: {
-                [key: string]: components["schemas"]["ProviderModelEntry"];
-            };
+            providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
         RequestView: {
             /**
@@ -569,9 +566,7 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: {
-                [key: string]: components["schemas"]["ProviderModelEntry"];
-            };
+            providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
     };
     responses: never;

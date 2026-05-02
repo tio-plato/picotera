@@ -28,7 +28,7 @@ async function submit() {
     name: form.value.name,
     credentials: form.value.credentials,
     priority: form.value.priority,
-    providerModels: props.provider?.providerModels ?? {},
+    providerModels: props.provider?.providerModels ?? [],
     annotations: form.value.annotations,
     disabled: form.value.disabled,
   }

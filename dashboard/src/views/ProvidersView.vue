@@ -50,7 +50,8 @@ function modelsKey(id: number) {
 }
 
 function modelNames(p: ProviderView): string[] {
-  return Object.keys(p.providerModels ?? {})
+  const list = (p.providerModels ?? []) as { model?: string }[]
+  return Array.from(new Set(list.map((e) => e.model).filter((m): m is string => !!m)))
 }
 
 function openCreate() {
