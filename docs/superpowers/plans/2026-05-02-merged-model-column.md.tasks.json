@@ -1,0 +1,12 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-02-merged-model-column.md",
+  "tasks": [
+    {
+      "id": 9,
+      "subject": "Task 1: Merge model columns in RequestsView",
+      "status": "completed",
+      "description": "**Goal:** Replace the two separate model/upstreamModel columns with a single merged column.\n\n**Files:**\n- Modify: `dashboard/src/views/RequestsView.vue`\n\n**Acceptance Criteria:**\n- [x] Only one model column exists\n- [x] Two ColumnFilters side-by-side in header\n- [x] Cell shows upstreamModel top, model small below when different\n\n```json:metadata\n{\"files\": [\"dashboard/src/views/RequestsView.vue\"], \"verifyCommand\": \"pnpm --dir dashboard type-check\", \"acceptanceCriteria\": [\"Only one model column\", \"Two ColumnFilters side-by-side in header\", \"Cell shows upstreamModel top, model small below when different\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-02T12:00:00Z"
+}
