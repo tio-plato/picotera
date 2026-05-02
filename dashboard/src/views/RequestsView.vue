@@ -203,7 +203,14 @@ function statusVariant(code: number | undefined): 'ok' | 'warn' | 'err' {
 function formatTimeSpent(ms: number | undefined): string {
   if (ms === undefined) return '—'
   if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
+  return `${parseFloat((ms / 1000).toFixed(1))}s`
+}
+
+function outputSpeed(r: RequestView): string | null {
+  if (!r.outputTokens || !r.timeSpentMs) return null
+  const seconds = r.timeSpentMs / 1000
+  if (seconds <= 0) return null
+  return (r.outputTokens / seconds).toFixed(0)
 }
 
 function resetCursorAndReload() {
@@ -325,7 +332,14 @@ function resetCursorAndReload() {
           </div>
         </template>
         <template #cell-timeSpentMs="{ row }">
-          <span class="font-mono tabular-nums text-ink">{{ formatTimeSpent(row.timeSpentMs) }}</span>
+          <div class="flex flex-col items-end leading-tight">
+            <span class="font-mono tabular-nums text-ink">{{ formatTimeSpent(row.timeSpentMs) }}</span>
+            <span v-if="row.ttftMs != null || outputSpeed(row)" class="font-mono text-2xs text-ink-faint tabular-nums">
+              <span v-if="row.ttftMs != null" title="TTFT">{{ formatTimeSpent(row.ttftMs) }}</span>
+              <span v-if="row.ttftMs != null && outputSpeed(row)" class="px-0.5">&middot;</span>
+              <span v-if="outputSpeed(row)" title="输出速度">{{ outputSpeed(row) }}<span class="pl-0.5">tps</span></span>
+            </span>
+          </div>
         </template>
         <template #empty>
           <span v-if="loading">加载中…</span>

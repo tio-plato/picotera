@@ -76,6 +76,13 @@ function formatTimeSpent(ms: number | undefined | null) {
   return `${(ms / 1000).toFixed(2)} s`
 }
 
+function outputSpeed(r: RequestView | null): string {
+  if (!r || !r.outputTokens || !r.timeSpentMs) return '—'
+  const seconds = r.timeSpentMs / 1000
+  if (seconds <= 0) return '—'
+  return `${(r.outputTokens / seconds).toFixed(0)} tok/s`
+}
+
 function fmtNum(n: number | undefined | null) {
   return n === undefined || n === null ? '—' : n.toLocaleString()
 }
@@ -249,6 +256,9 @@ watch(detailTabs, tabs => {
             </Field>
             <Field label="总耗时" as="div">
               <span class="font-mono tabular-nums text-sm">{{ formatTimeSpent(selected.timeSpentMs) }}</span>
+            </Field>
+            <Field label="输出速度" as="div">
+              <span class="font-mono tabular-nums text-sm">{{ outputSpeed(selected) }}</span>
             </Field>
           </div>
         </section>
