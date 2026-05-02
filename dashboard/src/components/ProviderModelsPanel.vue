@@ -126,6 +126,14 @@ function removeRow(uid: number) {
   if (i >= 0) rows.value.splice(i, 1)
 }
 
+function onLocalModelNameChange(row: Row, newName: string) {
+  const trimmed = newName.trim()
+  if (row.upstreamModelName.trim() === '' && row.modelName.trim() !== '' && trimmed !== row.modelName) {
+    row.upstreamModelName = row.modelName
+  }
+  row.modelName = trimmed
+}
+
 function toggleEndpoint(row: Row, path: string) {
   const idx = row.endpoints.indexOf(path)
   if (idx >= 0) row.endpoints.splice(idx, 1)
@@ -325,6 +333,9 @@ async function save() {
               </IconButton>
             </div>
             <div v-if="row.expanded" class="flex flex-col gap-3 pl-4">
+              <Field label="本地模型名">
+                <Input :model-value="row.modelName" size="sm" @update:model-value="onLocalModelNameChange(row, $event)" />
+              </Field>
               <Field label="上游模型名（可选）">
                 <Input v-model="row.upstreamModelName" size="sm" placeholder="保留为空 = 与本地名一致" />
               </Field>
