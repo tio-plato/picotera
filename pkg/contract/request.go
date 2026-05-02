@@ -19,6 +19,7 @@ type RequestView struct {
 	EndpointPath     string  `json:"endpointPath,omitempty"`
 	ApiKeyID         *int32  `json:"apiKeyId,omitempty"`
 	Model            string  `json:"model,omitempty"`
+	UpstreamModel    string  `json:"upstreamModel,omitempty"`
 	InputTokens      *int32  `json:"inputTokens,omitempty"`
 	CacheReadTokens  *int32  `json:"cacheReadTokens,omitempty"`
 	OutputTokens     *int32  `json:"outputTokens,omitempty"`
@@ -42,6 +43,7 @@ type requestLike struct {
 	EndpointPath     pgtype.Text
 	ApiKeyID         pgtype.Int4
 	Model            pgtype.Text
+	UpstreamModel    pgtype.Text
 	InputTokens      pgtype.Int4
 	CacheReadTokens  pgtype.Int4
 	OutputTokens     pgtype.Int4
@@ -78,6 +80,9 @@ func toRequestView(r requestLike) *RequestView {
 	}
 	if r.Model.Valid {
 		view.Model = r.Model.String
+	}
+	if r.UpstreamModel.Valid {
+		view.UpstreamModel = r.UpstreamModel.String
 	}
 	if r.InputTokens.Valid {
 		v := r.InputTokens.Int32
@@ -127,6 +132,7 @@ func ToRequestView(r *db.Request) *RequestView {
 		EndpointPath:     r.EndpointPath,
 		ApiKeyID:         r.ApiKeyID,
 		Model:            r.Model,
+		UpstreamModel:    r.UpstreamModel,
 		InputTokens:      r.InputTokens,
 		CacheReadTokens:  r.CacheReadTokens,
 		OutputTokens:     r.OutputTokens,
@@ -150,6 +156,7 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		EndpointPath:     r.EndpointPath,
 		ApiKeyID:         r.ApiKeyID,
 		Model:            r.Model,
+		UpstreamModel:    r.UpstreamModel,
 		InputTokens:      r.InputTokens,
 		CacheReadTokens:  r.CacheReadTokens,
 		OutputTokens:     r.OutputTokens,
@@ -173,6 +180,7 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		EndpointPath:     r.EndpointPath,
 		ApiKeyID:         r.ApiKeyID,
 		Model:            r.Model,
+		UpstreamModel:    r.UpstreamModel,
 		InputTokens:      r.InputTokens,
 		CacheReadTokens:  r.CacheReadTokens,
 		OutputTokens:     r.OutputTokens,
@@ -191,6 +199,7 @@ type ListRequestsRequest struct {
 	ProviderID   int32  `query:"providerId,omitempty"`
 	EndpointPath string `query:"endpointPath,omitempty"`
 	Model        string `query:"model,omitempty"`
+	UpstreamModel string `query:"upstreamModel,omitempty"`
 }
 
 type ListRequestsResponse = PaginatedResponse[RequestView]

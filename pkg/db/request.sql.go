@@ -12,7 +12,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status FROM request WHERE id = $1
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model FROM request WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
@@ -37,13 +37,14 @@ func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
 		&i.CreatedAt,
 		&i.Type,
 		&i.Status,
+		&i.UpstreamModel,
 	)
 	return i, err
 }
 
 const listRequests = `-- name: ListRequests :many
 SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
-       input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
+       upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
        status_code, error_message, ttft_ms, time_spent_ms, created_at
 FROM request
 WHERE
@@ -51,12 +52,13 @@ WHERE
   AND ($2::int IS NULL OR provider_id = $2)
   AND ($3::text IS NULL OR endpoint_path = $3)
   AND ($4::text IS NULL OR model = $4)
+  AND ($5::text IS NULL OR upstream_model = $5)
   AND (
-    $5::timestamp IS NULL
-    OR (created_at, id) < ($5::timestamp, $6::text)
+    $6::timestamp IS NULL
+    OR (created_at, id) < ($6::timestamp, $7::text)
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $7::int
+LIMIT $8::int
 `
 
 type ListRequestsParams struct {
@@ -64,6 +66,7 @@ type ListRequestsParams struct {
 	ProviderID      pgtype.Int4      `json:"providerId"`
 	EndpointPath    pgtype.Text      `json:"endpointPath"`
 	Model           pgtype.Text      `json:"model"`
+	UpstreamModel   pgtype.Text      `json:"upstreamModel"`
 	CursorCreatedAt pgtype.Timestamp `json:"cursorCreatedAt"`
 	CursorID        pgtype.Text      `json:"cursorId"`
 	Limit           pgtype.Int4      `json:"limit"`
@@ -79,6 +82,7 @@ type ListRequestsRow struct {
 	EndpointPath     pgtype.Text      `json:"endpointPath"`
 	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
 	Model            pgtype.Text      `json:"model"`
+	UpstreamModel    pgtype.Text      `json:"upstreamModel"`
 	InputTokens      pgtype.Int4      `json:"inputTokens"`
 	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
 	OutputTokens     pgtype.Int4      `json:"outputTokens"`
@@ -96,6 +100,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 		arg.ProviderID,
 		arg.EndpointPath,
 		arg.Model,
+		arg.UpstreamModel,
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.Limit,
@@ -117,6 +122,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 			&i.EndpointPath,
 			&i.ApiKeyID,
 			&i.Model,
+			&i.UpstreamModel,
 			&i.InputTokens,
 			&i.CacheReadTokens,
 			&i.OutputTokens,
@@ -142,7 +148,7 @@ WITH anchor AS (
   SELECT request.span_id FROM request WHERE request.id = $1
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
-       r.api_key_id, r.model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
+       r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
        r.cache_write_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at
 FROM request r, anchor
@@ -160,6 +166,7 @@ type ListRequestsBySpanRow struct {
 	EndpointPath     pgtype.Text      `json:"endpointPath"`
 	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
 	Model            pgtype.Text      `json:"model"`
+	UpstreamModel    pgtype.Text      `json:"upstreamModel"`
 	InputTokens      pgtype.Int4      `json:"inputTokens"`
 	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
 	OutputTokens     pgtype.Int4      `json:"outputTokens"`
@@ -190,6 +197,7 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequ
 			&i.EndpointPath,
 			&i.ApiKeyID,
 			&i.Model,
+			&i.UpstreamModel,
 			&i.InputTokens,
 			&i.CacheReadTokens,
 			&i.OutputTokens,
@@ -277,17 +285,18 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 
 const updateRequestOnHeader = `-- name: UpdateRequestOnHeader :exec
 UPDATE request
-SET provider_id = $2, model = $3, endpoint_path = $4, api_key_id = $5, status = $6
+SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7
 WHERE id = $1
 `
 
 type UpdateRequestOnHeaderParams struct {
-	ID           string      `json:"id"`
-	ProviderID   pgtype.Int4 `json:"providerId"`
-	Model        pgtype.Text `json:"model"`
-	EndpointPath pgtype.Text `json:"endpointPath"`
-	ApiKeyID     pgtype.Int4 `json:"apiKeyId"`
-	Status       int32       `json:"status"`
+	ID            string      `json:"id"`
+	ProviderID    pgtype.Int4 `json:"providerId"`
+	Model         pgtype.Text `json:"model"`
+	UpstreamModel pgtype.Text `json:"upstreamModel"`
+	EndpointPath  pgtype.Text `json:"endpointPath"`
+	ApiKeyID      pgtype.Int4 `json:"apiKeyId"`
+	Status        int32       `json:"status"`
 }
 
 func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error {
@@ -295,6 +304,7 @@ func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOn
 		arg.ID,
 		arg.ProviderID,
 		arg.Model,
+		arg.UpstreamModel,
 		arg.EndpointPath,
 		arg.ApiKeyID,
 		arg.Status,

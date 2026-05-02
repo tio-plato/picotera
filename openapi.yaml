@@ -440,6 +440,8 @@ components:
         type:
           format: int32
           type: integer
+        upstreamModel:
+          type: string
       required:
         - id
         - type
@@ -1045,6 +1047,11 @@ paths:
         - explode: false
           in: query
           name: model
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
           schema:
             type: string
       responses:

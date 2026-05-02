@@ -106,14 +106,14 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 const insertRequest = `-- name: InsertRequest :one
 INSERT INTO request (
   id, span_id, parent_span_id, type, status,
-  provider_id, endpoint_path, api_key_id, model,
+  provider_id, endpoint_path, api_key_id, model, upstream_model,
   input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
   status_code, error_message, ttft_ms, time_spent_ms
 ) VALUES (
   $1, $2, $3, $4, $5,
-  $6, $7, $8, $9,
-  $10, $11, $12, $13,
-  $14, $15, $16, $17
+  $6, $7, $8, $9, $10,
+  $11, $12, $13, $14,
+  $15, $16, $17, $18
 )
 RETURNING created_at
 `
@@ -128,6 +128,7 @@ type InsertRequestParams struct {
 	EndpointPath     pgtype.Text `json:"endpointPath"`
 	ApiKeyID         pgtype.Int4 `json:"apiKeyId"`
 	Model            pgtype.Text `json:"model"`
+	UpstreamModel    pgtype.Text `json:"upstreamModel"`
 	InputTokens      pgtype.Int4 `json:"inputTokens"`
 	CacheReadTokens  pgtype.Int4 `json:"cacheReadTokens"`
 	OutputTokens     pgtype.Int4 `json:"outputTokens"`
@@ -149,6 +150,7 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (p
 		arg.EndpointPath,
 		arg.ApiKeyID,
 		arg.Model,
+		arg.UpstreamModel,
 		arg.InputTokens,
 		arg.CacheReadTokens,
 		arg.OutputTokens,

@@ -73,6 +73,7 @@ type Request struct {
 	CreatedAt        pgtype.Timestamp `json:"createdAt"`
 	Type             int32            `json:"type"`
 	Status           int32            `json:"status"`
+	UpstreamModel    pgtype.Text      `json:"upstreamModel"`
 }
 
 type Script struct {

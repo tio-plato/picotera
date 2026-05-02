@@ -76,12 +76,17 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 	if input.Model != "" {
 		filterModel = pgtype.Text{String: input.Model, Valid: true}
 	}
+	var filterUpstreamModel pgtype.Text
+	if input.UpstreamModel != "" {
+		filterUpstreamModel = pgtype.Text{String: input.UpstreamModel, Valid: true}
+	}
 
 	rows, err := s.queries.ListRequests(ctx, db.ListRequestsParams{
 		Type:            filterType,
 		ProviderID:      filterProviderID,
 		EndpointPath:    filterEndpointPath,
 		Model:           filterModel,
+		UpstreamModel:   filterUpstreamModel,
 		CursorCreatedAt: cursorCreatedAt,
 		CursorID:        cursorID,
 		Limit:           pgtype.Int4{Int32: fetchLimit, Valid: true},

@@ -1,6 +1,6 @@
 -- name: ListRequests :many
 SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
-       input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
+       upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
        status_code, error_message, ttft_ms, time_spent_ms, created_at
 FROM request
 WHERE
@@ -8,6 +8,7 @@ WHERE
   AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id'))
   AND (sqlc.narg('endpoint_path')::text IS NULL OR endpoint_path = sqlc.narg('endpoint_path'))
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model'))
+  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model'))
   AND (
     sqlc.narg('cursor_created_at')::timestamp IS NULL
     OR (created_at, id) < (sqlc.narg('cursor_created_at')::timestamp, sqlc.narg('cursor_id')::text)
@@ -23,7 +24,7 @@ WITH anchor AS (
   SELECT request.span_id FROM request WHERE request.id = $1
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
-       r.api_key_id, r.model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
+       r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
        r.cache_write_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at
 FROM request r, anchor
@@ -32,7 +33,7 @@ ORDER BY r.created_at ASC, r.id ASC;
 
 -- name: UpdateRequestOnHeader :exec
 UPDATE request
-SET provider_id = $2, model = $3, endpoint_path = $4, api_key_id = $5, status = $6
+SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7
 WHERE id = $1;
 
 -- name: UpdateRequestOnComplete :exec

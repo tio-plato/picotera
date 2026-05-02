@@ -89,6 +89,7 @@ type BeforeRequestDecision struct {
 // raw client request snapshot is in scope.
 type RewriteModelInput struct {
 	Request RequestShape `json:"request"`
+	Model string `json:"model"`
 }
 
 // PendingRequestShape mirrors the upstream request that is about to be sent.

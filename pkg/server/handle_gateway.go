@@ -60,18 +60,19 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metaReqMethod := r.Method
 	metaReqURL := r.URL.String()
 	metaCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
-		ID:           metaID,
-		SpanID:       pgtype.Text{String: metaID, Valid: true},
-		ParentSpanID: pgtype.Text{Valid: false},
-		Type:         db.RequestTypeMeta,
-		Status:       db.RequestStatusPending,
-		ProviderID:   pgtype.Int4{Valid: false},
-		EndpointPath: pgtype.Text{Valid: false},
-		ApiKeyID:     pgtype.Int4{Valid: false},
-		Model:        pgtype.Text{Valid: false},
-		StatusCode:   pgtype.Int4{Valid: false},
-		ErrorMessage: pgtype.Text{Valid: false},
-		TimeSpentMs:  pgtype.Int4{Valid: false},
+		ID:            metaID,
+		SpanID:        pgtype.Text{String: metaID, Valid: true},
+		ParentSpanID:  pgtype.Text{Valid: false},
+		Type:          db.RequestTypeMeta,
+		Status:        db.RequestStatusPending,
+		ProviderID:    pgtype.Int4{Valid: false},
+		EndpointPath:  pgtype.Text{Valid: false},
+		ApiKeyID:      pgtype.Int4{Valid: false},
+		Model:         pgtype.Text{Valid: false},
+		UpstreamModel: pgtype.Text{Valid: false},
+		StatusCode:    pgtype.Int4{Valid: false},
+		ErrorMessage:  pgtype.Text{Valid: false},
+		TimeSpentMs:   pgtype.Int4{Valid: false},
 	})
 
 	h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, metaReqMethod, metaReqURL, metaReqHeader, body)
@@ -164,9 +165,11 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// raw client request (modelName as extracted). If the hook returns a new
 	// modelName, body.model is rewritten in lockstep so downstream hooks see
 	// a consistent client-request shape.
+	originalModelName := modelName
 	initialClientReq := serializeClientRequest(r, body, modelName)
 	newModel, err := session.RunRewriteModelHook(jsx.RewriteModelInput{
 		Request: initialClientReq,
+		Model: originalModelName,
 	}, modelName)
 	if err != nil {
 		failHook(err)
@@ -308,22 +311,6 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		attemptStart := time.Now()
 		ctx, cancel := context.WithCancel(r.Context())
 
-		upstreamID := xid.New().String()
-		upstreamCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
-			ID:           upstreamID,
-			SpanID:       pgtype.Text{String: metaID, Valid: true},
-			ParentSpanID: pgtype.Text{Valid: false},
-			Type:         db.RequestTypeUpstream,
-			Status:       db.RequestStatusPending,
-			ProviderID:   pgtype.Int4{Int32: providerID, Valid: true},
-			EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
-			ApiKeyID:     pgtype.Int4{Valid: false},
-			Model:        pgtype.Text{String: modelName, Valid: true},
-			StatusCode:   pgtype.Int4{Valid: false},
-			ErrorMessage: pgtype.Text{Valid: false},
-			TimeSpentMs:  pgtype.Int4{Valid: false},
-		})
-
 		// Compute the model name to write into the upstream body.
 		// Preference: hook-supplied upstreamModel → MPE.upstreamModelName → modelName.
 		// buildUpstreamRequest still gates on non-empty, but with this fallback
@@ -335,6 +322,23 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if upstreamModel == "" {
 			upstreamModel = modelName
 		}
+
+		upstreamID := xid.New().String()
+		upstreamCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
+			ID:            upstreamID,
+			SpanID:        pgtype.Text{String: metaID, Valid: true},
+			ParentSpanID:  pgtype.Text{Valid: false},
+			Type:          db.RequestTypeUpstream,
+			Status:        db.RequestStatusPending,
+			ProviderID:    pgtype.Int4{Int32: providerID, Valid: true},
+			EndpointPath:  pgtype.Text{String: endpoint.Path, Valid: true},
+			ApiKeyID:      pgtype.Int4{Valid: false},
+			Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
+			UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
+			StatusCode:    pgtype.Int4{Valid: false},
+			ErrorMessage:  pgtype.Text{Valid: false},
+			TimeSpentMs:   pgtype.Int4{Valid: false},
+		})
 
 		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, endpoint.CredentialsResolver)
 		if berr != nil {
@@ -390,7 +394,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if resp.StatusCode == http.StatusOK {
 			metaLogs := collectLogs()
-			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, modelName, endpoint.Path, upstreamStartTime, bgCtx, metaLogs)
+			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, originalModelName, upstreamModel, endpoint.Path, upstreamStartTime, bgCtx, metaLogs)
 			return
 		}
 
@@ -479,26 +483,28 @@ func (h *gatewayHandler) streamSuccess(
 	ctx context.Context, cancel context.CancelFunc, resp *http.Response,
 	upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time,
 	metaID string, metaCreatedAt time.Time, gatewayStart time.Time,
-	providerID int32, modelName, endpointPath string,
+	providerID int32, originalModelName, upstreamModel, endpointPath string,
 	upstreamStartTime time.Time,
 	bgCtx context.Context,
 	metaLogs []artifacts.LogEntry,
 ) {
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
-		ID:           metaID,
-		ProviderID:   pgtype.Int4{Int32: providerID, Valid: true},
-		Model:        pgtype.Text{String: modelName, Valid: true},
-		EndpointPath: pgtype.Text{String: endpointPath, Valid: true},
-		ApiKeyID:     pgtype.Int4{Valid: false},
-		Status:       db.RequestStatusHeaderReceived,
+		ID:            metaID,
+		ProviderID:    pgtype.Int4{Int32: providerID, Valid: true},
+		Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
+		UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
+		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
+		ApiKeyID:      pgtype.Int4{Valid: false},
+		Status:        db.RequestStatusHeaderReceived,
 	})
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
-		ID:           upstreamID,
-		ProviderID:   pgtype.Int4{Int32: providerID, Valid: true},
-		Model:        pgtype.Text{String: modelName, Valid: true},
-		EndpointPath: pgtype.Text{String: endpointPath, Valid: true},
-		ApiKeyID:     pgtype.Int4{Valid: false},
-		Status:       db.RequestStatusHeaderReceived,
+		ID:            upstreamID,
+		ProviderID:    pgtype.Int4{Int32: providerID, Valid: true},
+		Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
+		UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
+		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
+		ApiKeyID:      pgtype.Int4{Valid: false},
+		Status:        db.RequestStatusHeaderReceived,
 	})
 
 	for key, values := range resp.Header {

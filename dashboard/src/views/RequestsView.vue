@@ -42,6 +42,7 @@ const filters = reactive({
   providerId: 0,
   endpointPath: '',
   model: '',
+  upstreamModel: '',
 })
 
 const typeOptions: { value: RequestKind; label: string }[] = [
@@ -71,6 +72,7 @@ async function fetchRequests(cursor?: string) {
   if (filters.providerId) query.providerId = filters.providerId
   if (filters.endpointPath) query.endpointPath = filters.endpointPath
   if (filters.model) query.model = filters.model
+  if (filters.upstreamModel) query.upstreamModel = filters.upstreamModel
 
   const { data, error } = await api.GET('/api/picotera/requests', {
     params: { query: query as never },
@@ -93,7 +95,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => [filters.type, filters.providerId, filters.endpointPath, filters.model],
+  () => [filters.type, filters.providerId, filters.endpointPath, filters.model, filters.upstreamModel],
   () => {
     fetchRequests()
   },
@@ -138,6 +140,11 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
       header: '模型',
       headerClass: filters.model ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
     },
+    {
+      key: 'upstreamModel',
+      header: '上游模型',
+      headerClass: filters.upstreamModel ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
+    },
     { key: 'status', header: '状态' },
     { key: 'tokens', header: 'Token' },
     { key: 'timeSpentMs', header: '耗时', align: 'right' },
@@ -154,12 +161,24 @@ const endpointOptions = computed<ColumnFilterOption<string>[]>(() =>
 const modelOptions = computed<ColumnFilterOption<string>[]>(() =>
   models.value.map((m) => ({ value: m.name, label: m.name })),
 )
+const upstreamModelOptions = computed<ColumnFilterOption<string>[]>(() => {
+  const seen = new Set<string>()
+  const opts: ColumnFilterOption<string>[] = []
+  for (const r of requests.value) {
+    if (r.upstreamModel && !seen.has(r.upstreamModel)) {
+      seen.add(r.upstreamModel)
+      opts.push({ value: r.upstreamModel, label: r.upstreamModel })
+    }
+  }
+  return opts
+})
 
 function activeFilterCount(): number {
   let n = 0
   if (filters.providerId) n++
   if (filters.endpointPath) n++
   if (filters.model) n++
+  if (filters.upstreamModel) n++
   return n
 }
 
@@ -167,6 +186,7 @@ function clearAllFilters() {
   filters.providerId = 0
   filters.endpointPath = ''
   filters.model = ''
+  filters.upstreamModel = ''
 }
 
 function formatTimeParts(iso: string | undefined): { time: string; date: string } {
@@ -255,6 +275,14 @@ function resetCursorAndReload() {
             placeholder="过滤模型…"
           />
         </template>
+        <template #header-upstreamModel>
+          <ColumnFilter
+            v-model="filters.upstreamModel"
+            label="上游模型"
+            :options="upstreamModelOptions"
+            placeholder="过滤上游模型…"
+          />
+        </template>
         <template #cell-createdAt="{ row }">
           <div class="flex flex-col leading-tight">
             <span class="font-mono tabular-nums text-ink">{{ formatTimeParts(row.createdAt).time }}</span>
@@ -273,6 +301,10 @@ function resetCursorAndReload() {
         </template>
         <template #cell-model="{ row }">
           <span v-if="row.model" class="font-mono">{{ row.model }}</span>
+          <span v-else class="text-ink-faint">—</span>
+        </template>
+        <template #cell-upstreamModel="{ row }">
+          <span v-if="row.upstreamModel" class="font-mono text-ink-faint">{{ row.upstreamModel }}</span>
           <span v-else class="text-ink-faint">—</span>
         </template>
         <template #cell-status="{ row }">
