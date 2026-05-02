@@ -198,7 +198,7 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 	// Filter out providers without upstream URLs or credentials
 	valid := make([]db.GetProvidersByEndpointAndModelRow, 0, len(rows))
 	for _, row := range rows {
-		if row.UpstreamUrl.Valid && row.UpstreamUrl.String != "" && row.ProviderCredentials.Valid {
+		if row.UpstreamUrl != "" && row.ProviderCredentials != "" {
 			valid = append(valid, row)
 		}
 	}
@@ -211,17 +211,10 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 		}
 	}
 
-	// Sort by combined priority (provider_priority + mpe.priority) descending.
-	// ProviderPriority is pgtype.Int4 (nullable from LEFT JOIN); treat NULL as 0.
+	// Sort by combined priority (provider_priority + per-model priority) descending.
 	sort.Slice(valid, func(i, j int) bool {
-		pi := int(valid[i].Priority)
-		if valid[i].ProviderPriority.Valid {
-			pi += int(valid[i].ProviderPriority.Int32)
-		}
-		pj := int(valid[j].Priority)
-		if valid[j].ProviderPriority.Valid {
-			pj += int(valid[j].ProviderPriority.Int32)
-		}
+		pi := int(valid[i].Priority) + int(valid[i].ProviderPriority)
+		pj := int(valid[j].Priority) + int(valid[j].ProviderPriority)
 		return pi > pj
 	})
 

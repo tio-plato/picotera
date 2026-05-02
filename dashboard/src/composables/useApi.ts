@@ -1,6 +1,5 @@
 import { inject } from 'vue'
 import type { ApiClient } from '@/api/plugin'
-import type { ProviderView, ModelView, EndpointView, ModelProviderEndpointView, PaginatedBody } from '@/api'
 
 export function useApi(): ApiClient {
   const api = inject<ApiClient>('api')
@@ -8,4 +7,4 @@ export function useApi(): ApiClient {
   return api
 }
 
-export type { ProviderView, CreateProviderRequestBody, ModelView, EndpointView, ModelProviderEndpointView, ProviderEndpointView, PaginatedBody, RequestView } from '@/api'
+export type { ProviderView, ProviderModelEntry, CreateProviderRequestBody, ModelView, EndpointView, ProviderEndpointView, RequestView } from '@/api'

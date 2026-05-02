@@ -14,7 +14,7 @@ import {
 } from '@/ui'
 
 const props = defineProps<{ providerId: number; providerName: string }>()
-const emit = defineEmits<{ close: []; modelsFetched: [payload: { providerId: number }] }>()
+const emit = defineEmits<{ close: [] }>()
 const api = useApi()
 
 const providerEndpoints = ref<ProviderEndpointView[]>([])
@@ -24,7 +24,6 @@ const error = ref('')
 const form = ref({ endpointPath: '', upstreamUrl: '' })
 const drafts = reactive<Record<string, string>>({})
 const saving = ref(false)
-const fetchState = reactive<Record<string, { loading: boolean; count: number | null }>>({})
 
 const availableEndpoints = computed(() =>
   endpoints.value.filter(
@@ -128,31 +127,6 @@ async function deleteBinding(path: string) {
   await fetchBindings()
 }
 
-function isModelsEndpoint(path: string): boolean {
-  return path.endsWith('/models')
-}
-
-async function fetchModels(endpointPath: string) {
-  fetchState[endpointPath] = { loading: true, count: null }
-  error.value = ''
-  const { data, error: err } = await api.POST('/api/picotera/provider-endpoints/fetch-models', {
-    body: { providerId: props.providerId, endpointPath },
-  })
-  if (err) {
-    error.value = err.message ?? '拉取模型失败'
-    fetchState[endpointPath] = { loading: false, count: null }
-    return
-  }
-  const count = (data as any)?.models?.length ?? 0
-  fetchState[endpointPath] = { loading: false, count }
-  emit('modelsFetched', { providerId: props.providerId })
-  setTimeout(() => {
-    if (fetchState[endpointPath]) {
-      fetchState[endpointPath].count = null
-    }
-  }, 2000)
-}
-
 function onDraftKeydown(e: KeyboardEvent, path: string) {
   if (e.key === 'Enter') {
     e.preventDefault()
@@ -185,23 +159,6 @@ function onDraftKeydown(e: KeyboardEvent, path: string) {
             <span class="font-mono text-sm text-ink overflow-hidden text-ellipsis whitespace-nowrap">
               {{ pe.endpointPath }}
             </span>
-            <button
-              v-if="isModelsEndpoint(pe.endpointPath)"
-              type="button"
-              class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs border cursor-pointer shrink-0"
-              :class="fetchState[pe.endpointPath]?.count != null
-                ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
-                : 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100'"
-              :disabled="fetchState[pe.endpointPath]?.loading"
-              @click="fetchModels(pe.endpointPath)"
-            >
-              <Icon
-                :name="fetchState[pe.endpointPath]?.loading ? 'loader' : fetchState[pe.endpointPath]?.count != null ? 'check' : 'cloud-download'"
-                :size="12"
-                :class="fetchState[pe.endpointPath]?.loading ? 'animate-spin' : ''"
-              />
-              <span>{{ fetchState[pe.endpointPath]?.loading ? '拉取中…' : fetchState[pe.endpointPath]?.count != null ? `${fetchState[pe.endpointPath]!.count} 个模型` : '拉取' }}</span>
-            </button>
           </div>
           <div class="flex gap-2 items-center">
             <Input

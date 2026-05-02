@@ -109,24 +109,6 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 		return nil, huma.Error422UnprocessableEntity(err.Error())
 	}
 
-	modelsJSON, err := json.Marshal(models)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to marshal models", err)
-	}
-
-	_, err = s.queries.UpdateProvider(ctx, db.UpdateProviderParams{
-		ID:                provider.ID,
-		SetName:           false,
-		SetCredentials:    false,
-		SetPriority:       false,
-		SetProviderModels: true,
-		ProviderModels:    modelsJSON,
-		SetAnnotations:    false,
-	})
-	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to update provider models", err)
-	}
-
 	out := &contract.FetchModelsResponse{}
 	out.Body.ProviderID = input.Body.ProviderID
 	out.Body.Models = models

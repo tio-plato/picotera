@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import { useApi } from '@/composables/useApi'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
-import ModelListEditor from '@/components/ModelListEditor.vue'
 import { SidePanel, Button, Input, Field } from '@/ui'
 import type { ProviderView } from '@/api'
 
@@ -15,7 +14,6 @@ const form = ref({
   name: props.provider?.name ?? '',
   credentials: props.provider?.credentials ?? '',
   priority: props.provider?.priority ?? 0,
-  providerModels: [...(props.provider?.providerModels ?? [])] as string[],
   annotations: { ...props.provider?.annotations } as Record<string, string>,
 })
 const saving = ref(false)
@@ -29,7 +27,7 @@ async function submit() {
     name: form.value.name,
     credentials: form.value.credentials,
     priority: form.value.priority,
-    providerModels: form.value.providerModels,
+    providerModels: props.provider?.providerModels ?? {},
     annotations: form.value.annotations,
   }
   const { error: err } = await api.PUT('/api/picotera/providers', { body })
@@ -59,12 +57,12 @@ async function submit() {
       <Field label="优先级">
         <Input v-model.number="form.priority" type="number" required />
       </Field>
-      <Field label="模型列表" as="div">
-        <ModelListEditor v-model="form.providerModels" />
-      </Field>
       <Field label="标注" as="div">
         <AnnotationsEditor v-model="form.annotations" />
       </Field>
+      <p v-if="!isEdit" class="text-xs text-ink-faint">
+        保存后请在「模型」面板配置该渠道的模型列表。
+      </p>
     </form>
 
     <template v-if="error" #error>{{ error }}</template>

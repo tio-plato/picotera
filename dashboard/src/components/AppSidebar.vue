@@ -10,7 +10,6 @@ const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'providers', label: '渠道', icon: 'db' },
   { name: 'models', label: '模型', icon: 'cpu' },
   { name: 'endpoints', label: '端点', icon: 'plug' },
-  { name: 'mappings', label: '映射', icon: 'branch' },
   { name: 'requests', label: '请求', icon: 'activity' },
   { name: 'scripts', label: '脚本', icon: 'braces' },
 ]

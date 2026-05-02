@@ -2,11 +2,30 @@
 SELECT * FROM endpoint WHERE path = $1 LIMIT 1;
 
 -- name: GetProvidersByEndpointAndModel :many
-SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials, p.priority AS provider_priority, pe.upstream_url, p.annotations AS provider_annotations
-  FROM model_provider_endpoint AS mpe
-  LEFT JOIN provider AS p ON mpe.provider_id = p.id
-  LEFT JOIN provider_endpoint AS pe ON mpe.provider_id = pe.provider_id AND mpe.endpoint_path = pe.endpoint_path
-  WHERE mpe.endpoint_path = $1 AND mpe.model_name = $2;
+SELECT
+  sqlc.arg('model_name')::text AS model_name,
+  p.id AS provider_id,
+  pe.endpoint_path,
+  COALESCE(sub.pm ->> 'upstreamModelName', '')::text AS upstream_model_name,
+  COALESCE((sub.pm ->> 'priority')::int, 0)::int AS priority,
+  (COALESCE(sub.pm -> 'annotations', '{}'::jsonb))::jsonb AS annotations,
+  p.name AS provider_name,
+  p.credentials AS provider_credentials,
+  p.priority AS provider_priority,
+  pe.upstream_url,
+  p.annotations AS provider_annotations
+FROM provider AS p
+JOIN provider_endpoint AS pe ON pe.provider_id = p.id
+CROSS JOIN LATERAL (SELECT p.provider_models -> sqlc.arg('model_name')::text AS pm) sub
+WHERE pe.endpoint_path = sqlc.arg('endpoint_path')::text
+  AND p.provider_models ? sqlc.arg('model_name')::text
+  AND sub.pm IS NOT NULL
+  AND (
+    sub.pm -> 'endpoints' IS NULL
+    OR jsonb_typeof(sub.pm -> 'endpoints') <> 'array'
+    OR jsonb_array_length(sub.pm -> 'endpoints') = 0
+    OR sub.pm -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
+  );
 
 -- name: GetApiKeyByHash :one
 SELECT * FROM api_key WHERE api_key_hash = $1 LIMIT 1;

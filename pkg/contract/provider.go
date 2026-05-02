@@ -8,17 +8,24 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
+type ProviderModelEntry struct {
+	UpstreamModelName string            `json:"upstreamModelName,omitempty"`
+	Endpoints         []string          `json:"endpoints,omitempty"`
+	Priority          int32             `json:"priority,omitempty"`
+	Annotations       map[string]string `json:"annotations,omitempty"`
+}
+
 type GetProviderRequest struct {
 	ID int32 `path:"id" example:"1"`
 }
 
 type ProviderView struct {
-	ID             int32             `json:"id"`
-	Name           string            `json:"name"`
-	Credentials    string            `json:"credentials"`
-	Priority       int32             `json:"priority"`
-	ProviderModels []string          `json:"providerModels"`
-	Annotations    map[string]string `json:"annotations"`
+	ID             int32                         `json:"id"`
+	Name           string                        `json:"name"`
+	Credentials    string                        `json:"credentials"`
+	Priority       int32                         `json:"priority"`
+	ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
+	Annotations    map[string]string             `json:"annotations"`
 }
 
 type GetProviderResponse struct {
@@ -27,11 +34,11 @@ type GetProviderResponse struct {
 
 type CreateProviderRequest struct {
 	Body struct {
-		Name           string            `json:"name"`
-		Credentials    string            `json:"credentials"`
-		Priority       int32             `json:"priority"`
-		ProviderModels []string          `json:"providerModels"`
-		Annotations    map[string]string `json:"annotations"`
+		Name           string                        `json:"name"`
+		Credentials    string                        `json:"credentials"`
+		Priority       int32                         `json:"priority"`
+		ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
+		Annotations    map[string]string             `json:"annotations"`
 	}
 }
 
@@ -41,12 +48,12 @@ type CreateProviderResponse struct {
 
 type UpsertProviderRequest struct {
 	Body struct {
-		ID             int32             `json:"id,omitempty"`
-		Name           string            `json:"name"`
-		Credentials    string            `json:"credentials"`
-		Priority       int32             `json:"priority"`
-		ProviderModels []string          `json:"providerModels"`
-		Annotations    map[string]string `json:"annotations"`
+		ID             int32                         `json:"id,omitempty"`
+		Name           string                        `json:"name"`
+		Credentials    string                        `json:"credentials"`
+		Priority       int32                         `json:"priority"`
+		ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
+		Annotations    map[string]string             `json:"annotations"`
 	}
 }
 
@@ -61,16 +68,18 @@ type DeleteProviderRequest struct {
 }
 
 func ToProviderView(provider *db.Provider) (*ProviderView, error) {
-	var providerModels []string
-	err := json.Unmarshal(provider.ProviderModels, &providerModels)
-	if err != nil {
-		return nil, err
+	providerModels := map[string]ProviderModelEntry{}
+	if len(provider.ProviderModels) > 0 {
+		if err := json.Unmarshal(provider.ProviderModels, &providerModels); err != nil {
+			return nil, err
+		}
 	}
 
-	var annotations map[string]string
-	err = json.Unmarshal(provider.Annotations, &annotations)
-	if err != nil {
-		return nil, err
+	annotations := map[string]string{}
+	if len(provider.Annotations) > 0 {
+		if err := json.Unmarshal(provider.Annotations, &annotations); err != nil {
+			return nil, err
+		}
 	}
 
 	return &ProviderView{

@@ -30,15 +30,6 @@ type Model struct {
 	Series    pgtype.Text `json:"series"`
 }
 
-type ModelProviderEndpoint struct {
-	ModelName         string      `json:"modelName"`
-	ProviderID        int32       `json:"providerId"`
-	EndpointPath      string      `json:"endpointPath"`
-	UpstreamModelName pgtype.Text `json:"upstreamModelName"`
-	Priority          int32       `json:"priority"`
-	Annotations       []byte      `json:"annotations"`
-}
-
 type Provider struct {
 	ID             int32  `json:"id"`
 	Name           string `json:"name"`

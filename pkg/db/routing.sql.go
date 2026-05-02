@@ -45,34 +45,53 @@ func (q *Queries) GetEndpointByPath(ctx context.Context, path string) (Endpoint,
 }
 
 const getProvidersByEndpointAndModel = `-- name: GetProvidersByEndpointAndModel :many
-SELECT mpe.model_name, mpe.provider_id, mpe.endpoint_path, mpe.upstream_model_name, mpe.priority, mpe.annotations, p.name AS provider_name, p.credentials AS provider_credentials, p.priority AS provider_priority, pe.upstream_url, p.annotations AS provider_annotations
-  FROM model_provider_endpoint AS mpe
-  LEFT JOIN provider AS p ON mpe.provider_id = p.id
-  LEFT JOIN provider_endpoint AS pe ON mpe.provider_id = pe.provider_id AND mpe.endpoint_path = pe.endpoint_path
-  WHERE mpe.endpoint_path = $1 AND mpe.model_name = $2
+SELECT
+  $1::text AS model_name,
+  p.id AS provider_id,
+  pe.endpoint_path,
+  COALESCE(sub.pm ->> 'upstreamModelName', '')::text AS upstream_model_name,
+  COALESCE((sub.pm ->> 'priority')::int, 0)::int AS priority,
+  (COALESCE(sub.pm -> 'annotations', '{}'::jsonb))::jsonb AS annotations,
+  p.name AS provider_name,
+  p.credentials AS provider_credentials,
+  p.priority AS provider_priority,
+  pe.upstream_url,
+  p.annotations AS provider_annotations
+FROM provider AS p
+JOIN provider_endpoint AS pe ON pe.provider_id = p.id
+CROSS JOIN LATERAL (SELECT p.provider_models -> $1::text AS pm) sub
+WHERE pe.endpoint_path = $2::text
+  AND p.provider_models ? $1::text
+  AND sub.pm IS NOT NULL
+  AND (
+    sub.pm -> 'endpoints' IS NULL
+    OR jsonb_typeof(sub.pm -> 'endpoints') <> 'array'
+    OR jsonb_array_length(sub.pm -> 'endpoints') = 0
+    OR sub.pm -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
+  )
 `
 
 type GetProvidersByEndpointAndModelParams struct {
-	EndpointPath string `json:"endpointPath"`
 	ModelName    string `json:"modelName"`
+	EndpointPath string `json:"endpointPath"`
 }
 
 type GetProvidersByEndpointAndModelRow struct {
-	ModelName           string      `json:"modelName"`
-	ProviderID          int32       `json:"providerId"`
-	EndpointPath        string      `json:"endpointPath"`
-	UpstreamModelName   pgtype.Text `json:"upstreamModelName"`
-	Priority            int32       `json:"priority"`
-	Annotations         []byte      `json:"annotations"`
-	ProviderName        pgtype.Text `json:"providerName"`
-	ProviderCredentials pgtype.Text `json:"providerCredentials"`
-	ProviderPriority    pgtype.Int4 `json:"providerPriority"`
-	UpstreamUrl         pgtype.Text `json:"upstreamUrl"`
-	ProviderAnnotations []byte      `json:"providerAnnotations"`
+	ModelName           string `json:"modelName"`
+	ProviderID          int32  `json:"providerId"`
+	EndpointPath        string `json:"endpointPath"`
+	UpstreamModelName   string `json:"upstreamModelName"`
+	Priority            int32  `json:"priority"`
+	Annotations         []byte `json:"annotations"`
+	ProviderName        string `json:"providerName"`
+	ProviderCredentials string `json:"providerCredentials"`
+	ProviderPriority    int32  `json:"providerPriority"`
+	UpstreamUrl         string `json:"upstreamUrl"`
+	ProviderAnnotations []byte `json:"providerAnnotations"`
 }
 
 func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error) {
-	rows, err := q.db.Query(ctx, getProvidersByEndpointAndModel, arg.EndpointPath, arg.ModelName)
+	rows, err := q.db.Query(ctx, getProvidersByEndpointAndModel, arg.ModelName, arg.EndpointPath)
 	if err != nil {
 		return nil, err
 	}

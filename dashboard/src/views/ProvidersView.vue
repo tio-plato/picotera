@@ -5,6 +5,7 @@ import { useApi } from '@/composables/useApi'
 import type { ProviderView } from '@/api'
 import ProviderForm from '@/components/ProviderForm.vue'
 import ProviderEndpointsPanel from '@/components/ProviderEndpointsPanel.vue'
+import ProviderModelsPanel from '@/components/ProviderModelsPanel.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
 import {
   Button,
@@ -44,6 +45,13 @@ function editKey(id: number) {
 function bindingKey(id: number) {
   return `provider:${id}:bindings`
 }
+function modelsKey(id: number) {
+  return `provider:${id}:models`
+}
+
+function modelNames(p: ProviderView): string[] {
+  return Object.keys(p.providerModels ?? {})
+}
 
 function openCreate() {
   panel.open(ProviderForm, { onSave: fetchProviders }, { key: 'provider:new' })
@@ -56,8 +64,16 @@ function openEdit(p: ProviderView) {
 function toggleBindings(p: ProviderView) {
   panel.toggle(
     ProviderEndpointsPanel,
-    { providerId: p.id, providerName: p.name, onModelsFetched: () => fetchProviders() },
+    { providerId: p.id, providerName: p.name },
     { key: bindingKey(p.id) },
+  )
+}
+
+function toggleModels(p: ProviderView) {
+  panel.toggle(
+    ProviderModelsPanel,
+    { providerId: p.id, providerName: p.name, onSave: fetchProviders },
+    { key: modelsKey(p.id) },
   )
 }
 
@@ -66,14 +82,23 @@ function confirmDelete(_event: Event, p: ProviderView) {
     message: `确定要删除渠道「${p.name}」吗？此操作不可撤销。`,
     accept: async () => {
       await api.POST('/api/picotera/providers/delete', { body: { id: p.id } })
-      if (panel.isActive(editKey(p.id)) || panel.isActive(bindingKey(p.id))) panel.close()
+      if (
+        panel.isActive(editKey(p.id)) ||
+        panel.isActive(bindingKey(p.id)) ||
+        panel.isActive(modelsKey(p.id))
+      )
+        panel.close()
       fetchProviders()
     },
   })
 }
 
 function rowSelected(id: number) {
-  return panel.isActive(editKey(id)) || panel.isActive(bindingKey(id))
+  return (
+    panel.isActive(editKey(id)) ||
+    panel.isActive(bindingKey(id)) ||
+    panel.isActive(modelsKey(id))
+  )
 }
 </script>
 
@@ -97,7 +122,7 @@ function rowSelected(id: number) {
             <Th>名称</Th>
             <Th>凭证</Th>
             <Th>优先级</Th>
-            <Th>上游模型</Th>
+            <Th>模型</Th>
             <Th actions />
           </tr>
         </thead>
@@ -110,18 +135,27 @@ function rowSelected(id: number) {
             <Td>
               <TagList>
                 <Tag
-                  v-for="m in (p.providerModels ?? []).slice(0, 3)"
+                  v-for="m in modelNames(p).slice(0, 3)"
                   :key="m"
                   variant="accent"
                 >{{ m }}</Tag>
                 <Tag
-                  v-if="(p.providerModels ?? []).length > 3"
+                  v-if="modelNames(p).length > 3"
                   variant="more"
-                >+{{ (p.providerModels ?? []).length - 3 }}</Tag>
+                >+{{ modelNames(p).length - 3 }}</Tag>
               </TagList>
             </Td>
             <Td actions>
               <div class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity">
+                <IconButton
+                  :active="panel.isActive(modelsKey(p.id))"
+                  title="模型"
+                  aria-label="模型"
+                  :aria-pressed="panel.isActive(modelsKey(p.id))"
+                  @click="toggleModels(p)"
+                >
+                  <Icon name="cpu" :size="13" />
+                </IconButton>
                 <IconButton
                   :active="panel.isActive(bindingKey(p.id))"
                   title="端点绑定"

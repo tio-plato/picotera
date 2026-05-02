@@ -217,21 +217,21 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	candidates := make([]jsx.Candidate, 0, len(providers))
 	for _, row := range providers {
 		sidecar[row.ProviderID] = providerSidecar{
-			upstreamURL: row.UpstreamUrl.String,
-			credentials: row.ProviderCredentials.String,
+			upstreamURL: row.UpstreamUrl,
+			credentials: row.ProviderCredentials,
 		}
 		candidates = append(candidates, jsx.Candidate{
 			Provider: map[string]any{
-				"id":       row.ProviderID,
-				"name":     row.ProviderName.String,
-				"priority": row.ProviderPriority.Int32,
+				"id":          row.ProviderID,
+				"name":        row.ProviderName,
+				"priority":    row.ProviderPriority,
 				"annotations": json.RawMessage(row.ProviderAnnotations),
 			},
 			MPE: map[string]any{
 				"modelName":         row.ModelName,
 				"providerId":        row.ProviderID,
 				"endpointPath":      row.EndpointPath,
-				"upstreamModelName": row.UpstreamModelName.String,
+				"upstreamModelName": row.UpstreamModelName,
 				"priority":          row.Priority,
 				"annotations":       json.RawMessage(row.Annotations),
 			},

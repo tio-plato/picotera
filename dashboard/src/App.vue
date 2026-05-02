@@ -12,7 +12,6 @@ const pageMeta = computed(() => {
     providers: { title: '渠道', hint: '上游模型提供方与凭证' },
     models: { title: '模型', hint: '对外暴露的模型标识' },
     endpoints: { title: '端点', hint: 'HTTP 入口与请求形状' },
-    mappings: { title: '映射', hint: '模型 × 渠道 × 端点的路由' },
     requests: { title: '请求', hint: '推理请求历史与状态' },
     scripts: { title: '脚本', hint: '自定义钩子脚本与执行逻辑' },
   }

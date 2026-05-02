@@ -39,58 +39,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/picotera/model-provider-endpoints": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List model provider endpoints */
-        get: operations["listModelProviderEndpoints"];
-        /** Upsert a model provider endpoint */
-        put: operations["upsertModelProviderEndpoint"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/picotera/model-provider-endpoints/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Delete a model provider endpoint */
-        post: operations["deleteModelProviderEndpoint"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/picotera/model-provider-endpoints/get": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a model provider endpoint */
-        get: operations["getModelProviderEndpoint"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/picotera/models": {
         parameters: {
             query?: never;
@@ -370,7 +318,9 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: string[] | null;
+            providerModels: {
+                [key: string]: components["schemas"]["ProviderModelEntry"];
+            };
         };
         DeleteEndpointRequestBody: {
             /**
@@ -380,18 +330,6 @@ export interface components {
              */
             readonly $schema?: string;
             path: string;
-        };
-        DeleteModelProviderEndpointRequestBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/DeleteModelProviderEndpointRequestBody.json
-             */
-            readonly $schema?: string;
-            endpointPath: string;
-            modelName: string;
-            /** Format: int32 */
-            providerId: number;
         };
         DeleteModelRequestBody: {
             /**
@@ -467,24 +405,6 @@ export interface components {
             /** Format: int32 */
             providerId: number;
         };
-        ModelProviderEndpointView: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/ModelProviderEndpointView.json
-             */
-            readonly $schema?: string;
-            annotations: {
-                [key: string]: string;
-            };
-            endpointPath: string;
-            modelName: string;
-            /** Format: int32 */
-            priority: number;
-            /** Format: int32 */
-            providerId: number;
-            upstreamModelName?: string;
-        };
         ModelView: {
             /**
              * Format: uri
@@ -496,16 +416,6 @@ export interface components {
             name: string;
             series: string;
             title: string;
-        };
-        PaginatedBodyModelProviderEndpointView: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/PaginatedBodyModelProviderEndpointView.json
-             */
-            readonly $schema?: string;
-            items: components["schemas"]["ModelProviderEndpointView"][] | null;
-            pagination: components["schemas"]["PaginationInfo"];
         };
         PaginatedBodyRequestView: {
             /**
@@ -544,6 +454,15 @@ export interface components {
             providerId: number;
             upstreamUrl: string;
         };
+        ProviderModelEntry: {
+            annotations?: {
+                [key: string]: string;
+            };
+            endpoints?: string[] | null;
+            /** Format: int32 */
+            priority?: number;
+            upstreamModelName?: string;
+        };
         ProviderView: {
             /**
              * Format: uri
@@ -560,7 +479,9 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: string[] | null;
+            providerModels: {
+                [key: string]: components["schemas"]["ProviderModelEntry"];
+            };
         };
         RequestView: {
             /**
@@ -600,6 +521,7 @@ export interface components {
             ttftMs?: number;
             /** Format: int32 */
             type: number;
+            upstreamModel?: string;
         };
         ScriptMutateBody: {
             /**
@@ -642,7 +564,9 @@ export interface components {
             name: string;
             /** Format: int32 */
             priority: number;
-            providerModels: string[] | null;
+            providerModels: {
+                [key: string]: components["schemas"]["ProviderModelEntry"];
+            };
         };
     };
     responses: never;
@@ -734,138 +658,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PicoTeraError"];
-                };
-            };
-        };
-    };
-    listModelProviderEndpoints: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string;
-                modelName?: string;
-                providerId?: number;
-                endpointPath?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedBodyModelProviderEndpointView"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PicoTeraError"];
-                };
-            };
-        };
-    };
-    upsertModelProviderEndpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ModelProviderEndpointView"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelProviderEndpointView"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PicoTeraError"];
-                };
-            };
-        };
-    };
-    deleteModelProviderEndpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeleteModelProviderEndpointRequestBody"];
-            };
-        };
-        responses: {
-            /** @description No Content */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PicoTeraError"];
-                };
-            };
-        };
-    };
-    getModelProviderEndpoint: {
-        parameters: {
-            query?: {
-                modelName?: string;
-                providerId?: number;
-                endpointPath?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelProviderEndpointView"];
-                };
             };
             /** @description Error */
             default: {
@@ -1296,6 +1088,7 @@ export interface operations {
                 providerId?: number;
                 endpointPath?: string;
                 model?: string;
+                upstreamModel?: string;
             };
             header?: never;
             path?: never;
