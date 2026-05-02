@@ -123,8 +123,10 @@ func (e *ResponseExtractor) extractOpenAISSE(payload string) {
 	// TTFT: first content or tool_calls delta
 	if !e.ttftRecorded {
 		content := result.Get("choices.0.delta.content")
+		reasoning := result.Get("choices.0.delta.reasoning")
+		reasoningContent := result.Get("choices.0.delta.reasoning_content")
 		toolCalls := result.Get("choices.0.delta.tool_calls")
-		if (content.Exists() && content.String() != "") || toolCalls.Exists() {
+		if (content.Exists() && content.String() != "") || (reasoning.Exists() && reasoning.String() != "") || (reasoningContent.Exists() && reasoningContent.String() != "") || toolCalls.Exists() {
 			ttft := time.Since(e.startTime).Milliseconds()
 			e.metrics.TTFTMs = &ttft
 			e.ttftRecorded = true
@@ -195,7 +197,8 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 	if !e.ttftRecorded {
 		if eventType == "content_block_delta" {
 			deltaType := result.Get("delta.type").String()
-			if deltaType == "text_delta" {
+			text := result.Get("delta.text").String()
+			if deltaType == "text_delta" && text != "" {
 				ttft := time.Since(e.startTime).Milliseconds()
 				e.metrics.TTFTMs = &ttft
 				e.ttftRecorded = true
@@ -203,7 +206,8 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 		}
 		if eventType == "content_block_start" {
 			blockType := result.Get("content_block.type").String()
-			if blockType == "tool_use" {
+			text := result.Get("content_block.text").String()
+			if blockType == "tool_use" || (blockType == "text" && text != "") {
 				ttft := time.Since(e.startTime).Milliseconds()
 				e.metrics.TTFTMs = &ttft
 				e.ttftRecorded = true
