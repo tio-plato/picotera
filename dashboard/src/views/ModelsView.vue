@@ -77,6 +77,7 @@ const upstreamIndex = computed<Record<string, Upstream[]>>(() => {
         upstreamModelName: entry.upstreamModelName?.trim() || modelName,
         endpointPaths,
         priority: entry.priority ?? 0,
+        providerPriority: provider.priority ?? 0,
         expandedFromProvider,
         providerDisabled: provider.disabled ?? false,
         entryDisabled: entry.disabled ?? false,

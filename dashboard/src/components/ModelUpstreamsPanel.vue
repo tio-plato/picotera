@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { SidePanel, Button, StateText, Tag, Icon } from '@/ui'
 
 export type Upstream = {
@@ -7,13 +8,18 @@ export type Upstream = {
   upstreamModelName: string
   endpointPaths: string[]
   priority: number
+  providerPriority: number
   expandedFromProvider: boolean
   providerDisabled: boolean
   entryDisabled: boolean
 }
 
-defineProps<{ modelName: string; modelDisabled: boolean; upstreams: Upstream[] }>()
+const props = defineProps<{ modelName: string; modelDisabled: boolean; upstreams: Upstream[] }>()
 const emit = defineEmits<{ close: [] }>()
+
+const sorted = computed(() =>
+  [...props.upstreams].sort((a, b) => (b.priority + b.providerPriority) - (a.priority + a.providerPriority)),
+)
 </script>
 
 <template>
@@ -30,7 +36,7 @@ const emit = defineEmits<{ close: [] }>()
       <StateText v-if="!upstreams.length" compact>该模型暂无上游</StateText>
       <ul v-else class="list-none m-0 p-0 flex flex-col gap-2">
         <li
-          v-for="(u, i) in upstreams"
+          v-for="(u, i) in sorted"
           :key="`${u.providerId}:${i}`"
           class="flex flex-col gap-1.5 px-2.5 py-2 border border-line rounded-md bg-surface-0"
           :class="(u.providerDisabled || u.entryDisabled) ? 'opacity-55' : ''"
@@ -40,7 +46,7 @@ const emit = defineEmits<{ close: [] }>()
             <Tag v-if="u.providerDisabled" variant="muted">渠道已禁用</Tag>
             <Icon name="chevron-down" :size="12" class="-rotate-90 text-ink-faint" />
             <Tag variant="accent">{{ u.upstreamModelName }}</Tag>
-            <Tag v-if="u.priority > 0" variant="more">P{{ u.priority }}</Tag>
+            <Tag v-if="u.providerPriority > 0 || u.priority > 0" variant="more">P{{ u.providerPriority + u.priority }}</Tag>
             <Tag v-if="u.entryDisabled" variant="muted">上游已禁用</Tag>
           </div>
         </li>
