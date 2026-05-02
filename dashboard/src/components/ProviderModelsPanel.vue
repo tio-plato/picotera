@@ -23,6 +23,7 @@ type Row = {
   endpoints: string[]
   priority: number
   annotations: Record<string, string>
+  disabled: boolean
   expanded: boolean
 }
 
@@ -52,6 +53,7 @@ function entryToRow(modelName: string, entry: ProviderModelEntry | undefined): R
     endpoints: [...(entry?.endpoints ?? [])],
     priority: entry?.priority ?? 0,
     annotations: { ...entry?.annotations },
+    disabled: entry?.disabled ?? false,
     expanded: false,
   }
 }
@@ -72,6 +74,7 @@ function rowsToObject(list: Row[]): Record<string, ProviderModelEntry> {
     if (row.upstreamModelName.trim()) entry.upstreamModelName = row.upstreamModelName.trim()
     if (row.endpoints.length) entry.endpoints = [...row.endpoints]
     if (row.priority) entry.priority = row.priority
+    if (row.disabled) entry.disabled = true
     if (Object.keys(row.annotations).length) entry.annotations = { ...row.annotations }
     out[name] = entry
   }
@@ -204,6 +207,7 @@ async function save() {
     priority: provider.value.priority,
     providerModels: rowsToObject(rows.value),
     annotations: provider.value.annotations,
+    disabled: provider.value.disabled,
   }
   const { error: err } = await api.PUT('/api/picotera/providers', { body })
   saving.value = false
@@ -308,6 +312,7 @@ async function save() {
             v-for="row in rows"
             :key="row.uid"
             class="flex flex-col gap-2 px-2.5 py-2 border border-line rounded-md bg-surface-0"
+            :class="row.disabled ? 'opacity-55' : ''"
           >
             <div class="flex items-center gap-2">
               <button
@@ -322,7 +327,15 @@ async function save() {
                 <Tag v-if="row.upstreamModelName" variant="accent">→ {{ row.upstreamModelName }}</Tag>
                 <Tag v-if="row.priority" variant="more">P{{ row.priority }}</Tag>
                 <Tag v-if="row.endpoints.length" variant="more">{{ row.endpoints.length }} 端点</Tag>
+                <Tag v-if="row.disabled" variant="muted">已禁用</Tag>
               </TagList>
+              <IconButton
+                :title="row.disabled ? '启用此模型' : '禁用此模型'"
+                :aria-label="row.disabled ? '启用此模型' : '禁用此模型'"
+                @click="row.disabled = !row.disabled"
+              >
+                <Icon :name="row.disabled ? 'eye-off' : 'eye'" :size="13" />
+              </IconButton>
               <IconButton
                 variant="danger"
                 title="删除"
@@ -365,6 +378,12 @@ async function save() {
               </Field>
               <Field label="标注" as="div">
                 <AnnotationsEditor v-model="row.annotations" />
+              </Field>
+              <Field label="状态" as="div">
+                <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+                  <input v-model="row.disabled" type="checkbox" class="cursor-pointer" />
+                  <span>禁用此模型（不参与调度）</span>
+                </label>
               </Field>
             </div>
           </li>

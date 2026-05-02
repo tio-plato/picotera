@@ -15,6 +15,8 @@ components:
           type: object
         credentials:
           type: string
+        disabled:
+          type: boolean
         name:
           type: string
         priority:
@@ -30,6 +32,7 @@ components:
         - priority
         - providerModels
         - annotations
+        - disabled
       type: object
     DeleteEndpointRequestBody:
       additionalProperties: false
@@ -184,6 +187,8 @@ components:
           type: string
         developer:
           type: string
+        disabled:
+          type: boolean
         name:
           type: string
         series:
@@ -195,6 +200,7 @@ components:
         - title
         - developer
         - series
+        - disabled
       type: object
     PaginatedBodyRequestView:
       additionalProperties: false
@@ -277,6 +283,8 @@ components:
           additionalProperties:
             type: string
           type: object
+        disabled:
+          type: boolean
         endpoints:
           items:
             type: string
@@ -303,6 +311,8 @@ components:
           type: object
         credentials:
           type: string
+        disabled:
+          type: boolean
         id:
           format: int32
           type: integer
@@ -322,6 +332,7 @@ components:
         - priority
         - providerModels
         - annotations
+        - disabled
       type: object
     RequestView:
       additionalProperties: false
@@ -454,6 +465,8 @@ components:
           type: object
         credentials:
           type: string
+        disabled:
+          type: boolean
         id:
           format: int32
           type: integer
@@ -472,6 +485,7 @@ components:
         - priority
         - providerModels
         - annotations
+        - disabled
       type: object
 info:
   title: PicoTera Management API

@@ -101,6 +101,7 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 			Priority:       input.Body.Priority,
 			ProviderModels: providerModelsBytes,
 			Annotations:    annotationsBytes,
+			Disabled:       input.Body.Disabled,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create provider", err)
@@ -124,6 +125,8 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 		ProviderModels:    providerModelsBytes,
 		SetAnnotations:    true,
 		Annotations:       annotationsBytes,
+		SetDisabled:       true,
+		Disabled:          input.Body.Disabled,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

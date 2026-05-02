@@ -10,7 +10,7 @@ import (
 )
 
 const createProvider = `-- name: CreateProvider :one
-INSERT INTO provider (name, credentials, priority, provider_models, annotations) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, credentials, priority, provider_models, annotations
+INSERT INTO provider (name, credentials, priority, provider_models, annotations, disabled) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, credentials, priority, provider_models, annotations, disabled
 `
 
 type CreateProviderParams struct {
@@ -19,6 +19,7 @@ type CreateProviderParams struct {
 	Priority       int32  `json:"priority"`
 	ProviderModels []byte `json:"providerModels"`
 	Annotations    []byte `json:"annotations"`
+	Disabled       bool   `json:"disabled"`
 }
 
 func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error) {
@@ -28,6 +29,7 @@ func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) 
 		arg.Priority,
 		arg.ProviderModels,
 		arg.Annotations,
+		arg.Disabled,
 	)
 	var i Provider
 	err := row.Scan(
@@ -37,6 +39,7 @@ func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) 
 		&i.Priority,
 		&i.ProviderModels,
 		&i.Annotations,
+		&i.Disabled,
 	)
 	return i, err
 }
@@ -51,7 +54,7 @@ func (q *Queries) DeleteProvider(ctx context.Context, id int32) error {
 }
 
 const getProviderByID = `-- name: GetProviderByID :one
-SELECT id, name, credentials, priority, provider_models, annotations FROM provider WHERE id = $1 LIMIT 1
+SELECT id, name, credentials, priority, provider_models, annotations, disabled FROM provider WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetProviderByID(ctx context.Context, id int32) (Provider, error) {
@@ -64,12 +67,13 @@ func (q *Queries) GetProviderByID(ctx context.Context, id int32) (Provider, erro
 		&i.Priority,
 		&i.ProviderModels,
 		&i.Annotations,
+		&i.Disabled,
 	)
 	return i, err
 }
 
 const getProviders = `-- name: GetProviders :many
-SELECT id, name, credentials, priority, provider_models, annotations FROM provider
+SELECT id, name, credentials, priority, provider_models, annotations, disabled FROM provider
 `
 
 func (q *Queries) GetProviders(ctx context.Context) ([]Provider, error) {
@@ -88,6 +92,7 @@ func (q *Queries) GetProviders(ctx context.Context) ([]Provider, error) {
 			&i.Priority,
 			&i.ProviderModels,
 			&i.Annotations,
+			&i.Disabled,
 		); err != nil {
 			return nil, err
 		}
@@ -106,9 +111,10 @@ UPDATE provider
     credentials = CASE WHEN $3::bool THEN $4::text ELSE credentials END,
     priority = CASE WHEN $5::bool THEN $6::int ELSE priority END,
     provider_models = CASE WHEN $7::bool THEN $8::jsonb ELSE provider_models END,
-    annotations = CASE WHEN $9::bool THEN $10::jsonb ELSE annotations END
-  WHERE id = $11::int
-  RETURNING id, name, credentials, priority, provider_models, annotations
+    annotations = CASE WHEN $9::bool THEN $10::jsonb ELSE annotations END,
+    disabled = CASE WHEN $11::bool THEN $12::bool ELSE disabled END
+  WHERE id = $13::int
+  RETURNING id, name, credentials, priority, provider_models, annotations, disabled
 `
 
 type UpdateProviderParams struct {
@@ -122,6 +128,8 @@ type UpdateProviderParams struct {
 	ProviderModels    []byte `json:"providerModels"`
 	SetAnnotations    bool   `json:"setAnnotations"`
 	Annotations       []byte `json:"annotations"`
+	SetDisabled       bool   `json:"setDisabled"`
+	Disabled          bool   `json:"disabled"`
 	ID                int32  `json:"id"`
 }
 
@@ -137,6 +145,8 @@ func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) 
 		arg.ProviderModels,
 		arg.SetAnnotations,
 		arg.Annotations,
+		arg.SetDisabled,
+		arg.Disabled,
 		arg.ID,
 	)
 	var i Provider
@@ -147,6 +157,7 @@ func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) 
 		&i.Priority,
 		&i.ProviderModels,
 		&i.Annotations,
+		&i.Disabled,
 	)
 	return i, err
 }

@@ -16,6 +16,7 @@ type ModelView struct {
 	Title     string `json:"title"`
 	Developer string `json:"developer"`
 	Series    string `json:"series"`
+	Disabled  bool   `json:"disabled"`
 }
 
 type GetModelResponse struct {
@@ -70,5 +71,6 @@ func ToModelView(model *db.Model) (*ModelView, error) {
 		Title:     model.Title.String,
 		Developer: model.Developer.String,
 		Series:    model.Series.String,
+		Disabled:  model.Disabled,
 	}, nil
 }

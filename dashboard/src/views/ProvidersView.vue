@@ -77,6 +77,20 @@ function toggleModels(p: ProviderView) {
   )
 }
 
+async function toggleDisabled(p: ProviderView) {
+  const body = {
+    id: p.id,
+    name: p.name,
+    credentials: p.credentials,
+    priority: p.priority,
+    providerModels: p.providerModels,
+    annotations: p.annotations,
+    disabled: !p.disabled,
+  }
+  const { error } = await api.PUT('/api/picotera/providers', { body })
+  if (!error) fetchProviders()
+}
+
 function confirmDelete(_event: Event, p: ProviderView) {
   confirm.require({
     message: `确定要删除渠道「${p.name}」吗？此操作不可撤销。`,
@@ -127,9 +141,12 @@ function rowSelected(id: number) {
           </tr>
         </thead>
         <tbody>
-          <Tr v-for="p in providers" :key="p.id" :selected="rowSelected(p.id)">
+          <Tr v-for="p in providers" :key="p.id" :selected="rowSelected(p.id)" :class="p.disabled ? 'opacity-55' : ''">
             <Td><span class="font-mono text-ink-faint">{{ p.id }}</span></Td>
-            <Td><span class="font-medium">{{ p.name }}</span></Td>
+            <Td>
+              <span class="font-medium">{{ p.name }}</span>
+              <Tag v-if="p.disabled" variant="muted" class="ml-1.5">已禁用</Tag>
+            </Td>
             <Td><span class="font-mono text-ink-faint">{{ p.credentials.slice(0, 12) }}…</span></Td>
             <Td><Badge>{{ p.priority }}</Badge></Td>
             <Td>
@@ -147,6 +164,13 @@ function rowSelected(id: number) {
             </Td>
             <Td actions>
               <div class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity">
+                <IconButton
+                  :title="p.disabled ? '启用渠道' : '禁用渠道'"
+                  :aria-label="p.disabled ? '启用渠道' : '禁用渠道'"
+                  @click="toggleDisabled(p)"
+                >
+                  <Icon :name="p.disabled ? 'eye-off' : 'eye'" :size="13" />
+                </IconButton>
                 <IconButton
                   :active="panel.isActive(modelsKey(p.id))"
                   title="模型"

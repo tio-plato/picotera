@@ -76,6 +76,8 @@ const upstreamIndex = computed<Record<string, Upstream[]>>(() => {
         endpointPaths,
         priority: entry?.priority ?? 0,
         expandedFromProvider,
+        providerDisabled: provider.disabled ?? false,
+        entryDisabled: entry?.disabled ?? false,
       }
       ;(out[modelName] ??= []).push(upstream)
     }
@@ -110,9 +112,21 @@ function openUpstreams(m: ModelView) {
   if (!list.length) return
   panel.open(
     ModelUpstreamsPanel,
-    { modelName: m.name, upstreams: list },
+    { modelName: m.name, modelDisabled: m.disabled ?? false, upstreams: list },
     { key: `model-upstreams:${m.name}` },
   )
+}
+
+async function toggleDisabled(m: ModelView) {
+  const body = {
+    name: m.name,
+    title: m.title,
+    developer: m.developer,
+    series: m.series,
+    disabled: !m.disabled,
+  }
+  const { error } = await api.PUT('/api/picotera/models', { body })
+  if (!error) fetchAll()
 }
 
 function openCreateFromOrphan(name: string) {
@@ -160,8 +174,11 @@ function confirmDelete(_event: Event, m: ModelView) {
             </tr>
           </thead>
           <tbody>
-            <Tr v-for="m in models" :key="m.name" :selected="panel.isActive(`model:${m.name}`)">
-              <Td><span class="font-mono font-medium">{{ m.name }}</span></Td>
+            <Tr v-for="m in models" :key="m.name" :selected="panel.isActive(`model:${m.name}`)" :class="m.disabled ? 'opacity-55' : ''">
+              <Td>
+	                <span class="font-mono font-medium">{{ m.name }}</span>
+	                <span v-if="m.disabled" class="text-ink-faint ml-1.5">（已禁用）</span>
+	              </Td>
               <Td>{{ m.title }}</Td>
               <Td><span class="text-ink-faint">{{ m.developer }}</span></Td>
               <Td><Tag>{{ m.series }}</Tag></Td>
@@ -174,6 +191,13 @@ function confirmDelete(_event: Event, m: ModelView) {
               </Td>
               <Td actions>
                 <div class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity">
+                  <IconButton
+                    :title="m.disabled ? '启用模型' : '禁用模型'"
+                    :aria-label="m.disabled ? '启用模型' : '禁用模型'"
+                    @click="toggleDisabled(m)"
+                  >
+                    <Icon :name="m.disabled ? 'eye-off' : 'eye'" :size="13" />
+                  </IconButton>
                   <IconButton
                     :active="panel.isActive(`model-upstreams:${m.name}`)"
                     :disabled="(upstreamIndex[m.name]?.length ?? 0) === 0"

@@ -15,6 +15,7 @@ const form = ref({
   credentials: props.provider?.credentials ?? '',
   priority: props.provider?.priority ?? 0,
   annotations: { ...props.provider?.annotations } as Record<string, string>,
+  disabled: props.provider?.disabled ?? false,
 })
 const saving = ref(false)
 const error = ref('')
@@ -29,6 +30,7 @@ async function submit() {
     priority: form.value.priority,
     providerModels: props.provider?.providerModels ?? {},
     annotations: form.value.annotations,
+    disabled: form.value.disabled,
   }
   const { error: err } = await api.PUT('/api/picotera/providers', { body })
   if (err) {
@@ -56,6 +58,12 @@ async function submit() {
       </Field>
       <Field label="优先级">
         <Input v-model.number="form.priority" type="number" required />
+      </Field>
+      <Field label="状态" as="div">
+        <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+          <input v-model="form.disabled" type="checkbox" class="cursor-pointer" />
+          <span>禁用此渠道（不参与调度）</span>
+        </label>
       </Field>
       <Field label="标注" as="div">
         <AnnotationsEditor v-model="form.annotations" />

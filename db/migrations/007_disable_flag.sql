@@ -1,0 +1,7 @@
+-- +goose Up
+ALTER TABLE provider ADD COLUMN disabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE model ADD COLUMN disabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- +goose Down
+ALTER TABLE model DROP COLUMN disabled;
+ALTER TABLE provider DROP COLUMN disabled;

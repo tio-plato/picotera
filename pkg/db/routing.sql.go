@@ -59,10 +59,14 @@ SELECT
   p.annotations AS provider_annotations
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id
+JOIN model AS m ON m.name = $1::text
 CROSS JOIN LATERAL (SELECT p.provider_models -> $1::text AS pm) sub
 WHERE pe.endpoint_path = $2::text
   AND p.provider_models ? $1::text
   AND sub.pm IS NOT NULL
+  AND p.disabled = FALSE
+  AND m.disabled = FALSE
+  AND COALESCE((sub.pm ->> 'disabled')::boolean, false) = false
   AND (
     sub.pm -> 'endpoints' IS NULL
     OR jsonb_typeof(sub.pm -> 'endpoints') <> 'array'

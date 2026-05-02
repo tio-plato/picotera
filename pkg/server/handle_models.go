@@ -31,6 +31,7 @@ func (s *Server) handlePutModel(ctx context.Context, input *contract.PutModelReq
 		Title:     pgtype.Text{String: input.Body.Title, Valid: true},
 		Developer: pgtype.Text{String: input.Body.Developer, Valid: true},
 		Series:    pgtype.Text{String: input.Body.Series, Valid: true},
+		Disabled:  input.Body.Disabled,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to upsert model", err)

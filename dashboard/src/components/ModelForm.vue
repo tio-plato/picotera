@@ -19,6 +19,7 @@ const form = ref({
   title: props.model?.title ?? '',
   developer: props.model?.developer ?? '',
   series: props.model?.series ?? '',
+  disabled: props.model?.disabled ?? false,
 })
 const saving = ref(false)
 const error = ref('')
@@ -60,6 +61,12 @@ async function submit() {
       </Field>
       <Field label="系列">
         <Input v-model="form.series" required placeholder="例如 GPT" />
+      </Field>
+      <Field label="状态" as="div">
+        <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+          <input v-model="form.disabled" type="checkbox" class="cursor-pointer" />
+          <span>禁用此模型（不参与调度）</span>
+        </label>
       </Field>
     </form>
 

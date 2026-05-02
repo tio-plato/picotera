@@ -28,6 +28,7 @@ type Model struct {
 	Title     pgtype.Text `json:"title"`
 	Developer pgtype.Text `json:"developer"`
 	Series    pgtype.Text `json:"series"`
+	Disabled  bool        `json:"disabled"`
 }
 
 type Provider struct {
@@ -37,6 +38,7 @@ type Provider struct {
 	Priority       int32  `json:"priority"`
 	ProviderModels []byte `json:"providerModels"`
 	Annotations    []byte `json:"annotations"`
+	Disabled       bool   `json:"disabled"`
 }
 
 type ProviderEndpoint struct {

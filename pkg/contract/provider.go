@@ -13,6 +13,7 @@ type ProviderModelEntry struct {
 	Endpoints         []string          `json:"endpoints,omitempty"`
 	Priority          int32             `json:"priority,omitempty"`
 	Annotations       map[string]string `json:"annotations,omitempty"`
+	Disabled          bool              `json:"disabled,omitempty"`
 }
 
 type GetProviderRequest struct {
@@ -26,6 +27,7 @@ type ProviderView struct {
 	Priority       int32                         `json:"priority"`
 	ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
 	Annotations    map[string]string             `json:"annotations"`
+	Disabled       bool                          `json:"disabled"`
 }
 
 type GetProviderResponse struct {
@@ -39,6 +41,7 @@ type CreateProviderRequest struct {
 		Priority       int32                         `json:"priority"`
 		ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
 		Annotations    map[string]string             `json:"annotations"`
+		Disabled       bool                          `json:"disabled"`
 	}
 }
 
@@ -54,6 +57,7 @@ type UpsertProviderRequest struct {
 		Priority       int32                         `json:"priority"`
 		ProviderModels map[string]ProviderModelEntry `json:"providerModels"`
 		Annotations    map[string]string             `json:"annotations"`
+		Disabled       bool                          `json:"disabled"`
 	}
 }
 
@@ -89,6 +93,7 @@ func ToProviderView(provider *db.Provider) (*ProviderView, error) {
 		Priority:       provider.Priority,
 		ProviderModels: providerModels,
 		Annotations:    annotations,
+		Disabled:       provider.Disabled,
 	}, nil
 }
 
@@ -110,6 +115,7 @@ func FromProviderView(providerView *ProviderView) (*db.Provider, error) {
 		Priority:       providerView.Priority,
 		ProviderModels: providerModels,
 		Annotations:    annotations,
+		Disabled:       providerView.Disabled,
 	}, nil
 }
 

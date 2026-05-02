@@ -10,6 +10,8 @@ import {
   IconCpu,
   IconDatabase,
   IconEdit,
+  IconEye,
+  IconEyeOff,
   IconGitBranch,
   IconLink,
   IconList,
@@ -46,6 +48,8 @@ export type IconName =
   | 'cloud-upload'
   | 'loader'
   | 'check'
+  | 'eye'
+  | 'eye-off'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -70,4 +74,6 @@ export const iconComponents: Record<IconName, Component> = {
   'cloud-upload': IconCloudUpload,
   loader: IconLoader2,
   check: IconCheck,
+  eye: IconEye,
+  'eye-off': IconEyeOff,
 }
