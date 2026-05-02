@@ -137,7 +137,6 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
     },
     {
       key: 'model',
-      header: '模型',
       headerClass: (filters.model || filters.upstreamModel) ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
     },
     { key: 'status', header: '状态' },
