@@ -37,24 +37,14 @@ const orphanExpanded = ref(false)
 
 async function fetchAll() {
   loading.value = true
-  const [m, p] = await Promise.all([
+  const [m, p, pe] = await Promise.all([
     api.GET('/api/picotera/models'),
     api.GET('/api/picotera/providers'),
+    api.GET('/api/picotera/provider-endpoints'),
   ])
   if (!m.error && m.data) models.value = m.data as ModelView[]
-  const providerList = !p.error && p.data ? (p.data as ProviderView[]) : []
-  providers.value = providerList
-
-  const peResults = await Promise.all(
-    providerList.map((pv) =>
-      api.GET('/api/picotera/provider-endpoints', { params: { query: { providerId: pv.id } } }),
-    ),
-  )
-  const merged: ProviderEndpointView[] = []
-  for (const r of peResults) {
-    if (!r.error && r.data) merged.push(...(r.data as ProviderEndpointView[]))
-  }
-  providerEndpoints.value = merged
+  if (!p.error && p.data) providers.value = p.data as ProviderView[]
+  if (!pe.error && pe.data) providerEndpoints.value = pe.data as ProviderEndpointView[]
   loading.value = false
 }
 
