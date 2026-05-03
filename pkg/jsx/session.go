@@ -300,6 +300,40 @@ func (s *Session) RunRewriteHook(in RewriteInput) (PendingRequestShape, error) {
 	return out, nil
 }
 
+// RunRewriteProviderModelsHook calls the rewriteProviderModels waterfall after
+// default aggregation. Returns the hook-processed model list, falling back to
+// the input if the hook returns a non-array, returns undefined, or if
+// json.Unmarshal of the result fails.
+func (s *Session) RunRewriteProviderModelsHook(in RewriteProviderModelsInput, models []ProviderModelEntry) ([]ProviderModelEntry, error) {
+	ctxLit, err := marshalToJSLiteral(in)
+	if err != nil {
+		return models, err
+	}
+	initLit, err := marshalToJSLiteral(models)
+	if err != nil {
+		return models, err
+	}
+	expr := fmt.Sprintf(`(async () => {
+		const ctx = %s;
+		const initial = %s;
+		const r = await picotera.hooks.rewriteProviderModels.runWaterfall(ctx, initial);
+		if (typeof r === 'undefined' || r === null || !Array.isArray(r)) return null;
+		return JSON.stringify(r);
+	})()`, ctxLit, initLit)
+	jsonStr, err := s.runHookExpr("rewriteProviderModels.js", expr)
+	if err != nil {
+		return models, err
+	}
+	if jsonStr == "" || jsonStr == "null" {
+		return models, nil
+	}
+	var out []ProviderModelEntry
+	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+		return models, nil
+	}
+	return out, nil
+}
+
 // runHookExpr evaluates the JS expression with HookTimeout, then
 // JSON-serializes the resolved value (inside the same goroutine as the
 // eval — fastschema/qjs values are not safe to use across goroutines).

@@ -27,6 +27,7 @@
       beforeRequest: new Waterfall(),
       rewriteRequest: new Waterfall(),
       rewriteModel: new Waterfall(),
+      rewriteProviderModels: new Waterfall(),
     },
     fetch: function (url, init) {
       var initJSON = init ? JSON.stringify(init) : ''

@@ -114,3 +114,32 @@ type RewriteInput struct {
 	ClientRequest     RequestShape        `json:"clientRequest"`
 	PendingRequest    PendingRequestShape `json:"pendingRequest"`
 }
+
+// ProviderModelEntry mirrors the JSON shape of contract.ProviderModelEntry.
+// Declared here to avoid a reverse dependency from jsx → contract.
+type ProviderModelEntry struct {
+	Model             string            `json:"model"`
+	UpstreamModelName string            `json:"upstreamModelName,omitempty"`
+	Endpoints         []string          `json:"endpoints,omitempty"`
+	Priority          int32             `json:"priority,omitempty"`
+	Annotations       map[string]string `json:"annotations,omitempty"`
+	Disabled          bool              `json:"disabled,omitempty"`
+}
+
+// ProviderSummary is the shape of ctx.provider in rewriteProviderModels.
+// Credentials are intentionally omitted for security.
+type ProviderSummary struct {
+	ID             int32                `json:"id"`
+	Name           string               `json:"name"`
+	Priority       int32                `json:"priority"`
+	ProviderModels []ProviderModelEntry `json:"providerModels"`
+	Annotations    map[string]string    `json:"annotations"`
+	Disabled       bool                 `json:"disabled"`
+}
+
+// RewriteProviderModelsInput is the ctx passed to the rewriteProviderModels waterfall.
+type RewriteProviderModelsInput struct {
+	Provider         ProviderSummary `json:"provider"`
+	EndpointPath     string          `json:"endpointPath"`
+	UpstreamResponse json.RawMessage `json:"upstreamResponse"`
+}

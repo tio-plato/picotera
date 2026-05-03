@@ -408,6 +408,79 @@ func TestSession_Helpers_SetTimeout(t *testing.T) {
 	}
 }
 
+func TestSession_Hooks_RewriteProviderModels_Passthrough(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteProviderModels.tap("a", function () {});
+	`})
+	in := []ProviderModelEntry{
+		{Model: "gpt-4o"},
+		{Model: "my-mini", UpstreamModelName: "gpt-4o-mini"},
+	}
+	out, err := s.RunRewriteProviderModelsHook(RewriteProviderModelsInput{}, in)
+	if err != nil {
+		t.Fatalf("RunRewriteProviderModelsHook: %v", err)
+	}
+	if len(out) != 2 || out[0].Model != "gpt-4o" || out[1].Model != "my-mini" {
+		t.Errorf("want passthrough preserves input, got %+v", out)
+	}
+}
+
+func TestSession_Hooks_RewriteProviderModels_Replace(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteProviderModels.tap("a", function (ctx, models) {
+			return [{model: 'a'}, {model: 'b', upstreamModelName: 'B', priority: 7, annotations: {x: 'y'}}];
+		});
+	`})
+	out, err := s.RunRewriteProviderModelsHook(RewriteProviderModelsInput{}, nil)
+	if err != nil {
+		t.Fatalf("RunRewriteProviderModelsHook: %v", err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("want 2 entries, got %d", len(out))
+	}
+	if out[0].Model != "a" {
+		t.Errorf("want first model=a, got %q", out[0].Model)
+	}
+	if out[1].Model != "b" || out[1].UpstreamModelName != "B" || out[1].Priority != 7 {
+		t.Errorf("want second entry b/B/7, got %+v", out[1])
+	}
+	if out[1].Annotations["x"] != "y" {
+		t.Errorf("want annotations x=y, got %v", out[1].Annotations)
+	}
+}
+
+func TestSession_Hooks_RewriteProviderModels_NonArray(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteProviderModels.tap("a", function (ctx, models) {
+			return 42;
+		});
+	`})
+	in := []ProviderModelEntry{{Model: "keep-me"}}
+	out, err := s.RunRewriteProviderModelsHook(RewriteProviderModelsInput{}, in)
+	if err != nil {
+		t.Fatalf("RunRewriteProviderModelsHook: %v", err)
+	}
+	if len(out) != 1 || out[0].Model != "keep-me" {
+		t.Errorf("want fallback to input, got %+v", out)
+	}
+}
+
+func TestSession_Hooks_RewriteProviderModels_FieldTypeMismatch(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteProviderModels.tap("a", function (ctx, models) {
+			return [{model: 'a', priority: 'bad'}];
+		});
+	`})
+	in := []ProviderModelEntry{{Model: "fallback"}}
+	out, err := s.RunRewriteProviderModelsHook(RewriteProviderModelsInput{}, in)
+	if err != nil {
+		t.Fatalf("RunRewriteProviderModelsHook: %v", err)
+	}
+	if len(out) != 1 || out[0].Model != "fallback" {
+		t.Errorf("want fallback to input on type mismatch, got %+v", out)
+	}
+}
+
 func contains(s, substr string) bool {
 	for i := 0; i+len(substr) <= len(s); i++ {
 		if s[i:i+len(substr)] == substr {

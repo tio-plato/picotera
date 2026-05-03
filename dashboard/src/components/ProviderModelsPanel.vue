@@ -41,8 +41,10 @@ const error = ref('')
 const newModelName = ref('')
 const fetchEndpointPath = ref('')
 const fetching = ref(false)
-const fetchSummary = ref<{ added: number; missing: string[] } | null>(null)
-const pendingDeletions = ref<Record<string, boolean>>({})
+type MissingRow = { uid: number; modelName: string; upstreamModelName: string }
+
+const fetchSummary = ref<{ added: number; missing: MissingRow[]; removedHint: string[] } | null>(null)
+const pendingDeletions = ref<Record<number, boolean>>({})
 
 let nextUid = 0
 
@@ -83,6 +85,10 @@ function rowsFromProvider(p: ProviderView): Row[] {
     })
 }
 
+function pairKey(model: string, upstream: string): string {
+  return `${model}\u0000${upstream ?? ''}`
+}
+
 function rowsToList(list: Row[]): ProviderModelEntry[] {
   const out: ProviderModelEntry[] = []
   for (const row of list) {
@@ -96,7 +102,13 @@ function rowsToList(list: Row[]): ProviderModelEntry[] {
     if (Object.keys(row.annotations).length) entry.annotations = { ...row.annotations }
     out.push(entry)
   }
-  return out
+  const seen = new Set<string>()
+  return out.filter((e) => {
+    const k = pairKey(e.model, e.upstreamModelName ?? '')
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
 }
 
 const modelCount = computed(() => rows.value.length)
@@ -193,39 +205,48 @@ async function fetchFromUpstream() {
     error.value = err.message ?? '拉取模型失败'
     return
   }
-  const upstream = ((data as { models?: string[] })?.models ?? []).slice().sort()
-  const localNames = new Set(rows.value.map((r) => r.modelName))
-  const upstreamSet = new Set(upstream)
+
+  const serverList = (data?.providerModels ?? []) as ProviderModelEntry[]
+  const removedHint = (data?.removedModels ?? []) as string[]
+
+  const rowPairs = new Set(rows.value.map((r) => pairKey(r.modelName, r.upstreamModelName)))
+  const serverPairs = new Set(serverList.map((e) => pairKey(e.model, e.upstreamModelName ?? '')))
 
   let added = 0
-  for (const name of upstream) {
-    if (!localNames.has(name)) {
-      rows.value.push(emptyRow(name))
+  for (const entry of serverList) {
+    const key = pairKey(entry.model, entry.upstreamModelName ?? '')
+    if (!rowPairs.has(key)) {
+      rows.value.push(entryToRow(entry))
+      rowPairs.add(key)
       added++
     }
   }
+
   rows.value.sort((a, b) => {
     const cmp = a.modelName.localeCompare(b.modelName)
     if (cmp !== 0) return cmp
     return b.priority - a.priority
   })
 
-  const missing = Array.from(new Set(rows.value.map((r) => r.modelName))).filter(
-    (n) => !upstreamSet.has(n),
-  )
-  fetchSummary.value = { added, missing }
+  const missing: MissingRow[] = rows.value
+    .filter((r) => !serverPairs.has(pairKey(r.modelName, r.upstreamModelName)))
+    .map((r) => ({ uid: r.uid, modelName: r.modelName, upstreamModelName: r.upstreamModelName }))
+
+  fetchSummary.value = { added, missing, removedHint }
 }
 
 function applyDeletions() {
-  const toDelete = Object.entries(pendingDeletions.value)
-    .filter(([, v]) => v)
-    .map(([k]) => k)
-  if (!toDelete.length) {
+  const toDelete = new Set(
+    Object.entries(pendingDeletions.value)
+      .filter(([, v]) => v)
+      .map(([k]) => Number(k)),
+  )
+  if (!toDelete.size) {
     fetchSummary.value = null
     pendingDeletions.value = {}
     return
   }
-  rows.value = rows.value.filter((r) => !toDelete.includes(r.modelName))
+  rows.value = rows.value.filter((r) => !toDelete.has(r.uid))
   fetchSummary.value = null
   pendingDeletions.value = {}
 }
@@ -307,17 +328,17 @@ async function save() {
             <div class="text-2xs text-ink-muted">勾选要删除的模型：</div>
             <ul class="list-none m-0 p-0 flex flex-col gap-1 max-h-40 overflow-y-auto">
               <li
-                v-for="name in fetchSummary.missing"
-                :key="name"
+                v-for="row in fetchSummary.missing"
+                :key="row.uid"
                 class="flex items-center gap-2 text-xs"
               >
                 <input
-                  :id="`del-${name}`"
-                  v-model="pendingDeletions[name]"
+                  :id="`del-${row.uid}`"
+                  v-model="pendingDeletions[row.uid]"
                   type="checkbox"
                   class="cursor-pointer"
                 />
-                <label :for="`del-${name}`" class="font-mono text-ink cursor-pointer">{{ name }}</label>
+                <label :for="`del-${row.uid}`" class="font-mono text-ink cursor-pointer">{{ row.modelName }}<span v-if="row.upstreamModelName"> → {{ row.upstreamModelName }}</span></label>
               </li>
             </ul>
             <div class="flex gap-2 justify-end">

@@ -402,9 +402,10 @@ export interface components {
              * @example https://example.com/schemas/FetchModelsResponseBody.json
              */
             readonly $schema?: string;
-            models: string[] | null;
             /** Format: int32 */
             providerId: number;
+            providerModels: components["schemas"]["ProviderModelEntry"][] | null;
+            removedModels: string[] | null;
         };
         ModelView: {
             /**

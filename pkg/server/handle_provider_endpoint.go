@@ -8,10 +8,12 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
+	"picotera/pkg/jsx"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
@@ -104,14 +106,73 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 		return nil, huma.Error502BadGateway("failed to read upstream response: " + err.Error())
 	}
 
-	models, err := parseModelsResponse(body)
+	upstreamNames, err := parseModelsResponse(body)
 	if err != nil {
 		return nil, huma.Error422UnprocessableEntity(err.Error())
 	}
 
+	var upstreamRaw any
+	if jerr := json.Unmarshal(body, &upstreamRaw); jerr != nil {
+		upstreamRaw = nil
+	}
+
+	oldList := make([]contract.ProviderModelEntry, 0)
+	if len(provider.ProviderModels) > 0 {
+		_ = json.Unmarshal(provider.ProviderModels, &oldList)
+	}
+
+	var annotations map[string]string
+	if len(provider.Annotations) > 0 {
+		if jerr := json.Unmarshal(provider.Annotations, &annotations); jerr != nil {
+			annotations = nil
+		}
+	}
+
+	aggregated, removed := aggregateProviderModels(oldList, upstreamNames)
+
+	sess, serr := s.jsxEngine.NewSession(ctx, fmt.Sprintf("fetch-models:%d:%d", input.Body.ProviderID, time.Now().UnixNano()))
+	if serr != nil {
+		return nil, huma.Error502BadGateway("failed to load js hooks: " + serr.Error())
+	}
+	defer sess.Close()
+
+	upstreamRawJSON, _ := json.Marshal(upstreamRaw)
+
+	processed, herr := sess.RunRewriteProviderModelsHook(jsx.RewriteProviderModelsInput{
+		Provider: jsx.ProviderSummary{
+			ID:             provider.ID,
+			Name:           provider.Name,
+			Priority:       provider.Priority,
+			ProviderModels: contractToJsxEntries(oldList),
+			Annotations:    annotations,
+			Disabled:       provider.Disabled,
+		},
+		EndpointPath:     input.Body.EndpointPath,
+		UpstreamResponse: upstreamRawJSON,
+	}, contractToJsxEntries(aggregated))
+	if herr != nil {
+		status := http.StatusBadGateway
+		if errors.Is(herr, jsx.ErrHookTimeout) {
+			status = http.StatusServiceUnavailable
+		}
+		return nil, huma.NewError(status, herr.Error())
+	}
+
+	converted := jsxToContractEntries(processed)
+	var final []contract.ProviderModelEntry
+	for _, e := range converted {
+		e.Model = strings.TrimSpace(e.Model)
+		if e.Model == "" {
+			continue
+		}
+		final = append(final, e)
+	}
+	final = dedupProviderModelsByPair(final)
+
 	out := &contract.FetchModelsResponse{}
 	out.Body.ProviderID = input.Body.ProviderID
-	out.Body.Models = models
+	out.Body.ProviderModels = final
+	out.Body.RemovedModels = removed
 	return out, nil
 }
 
@@ -180,4 +241,83 @@ func extractStrings(arr []any, field string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+// aggregateProviderModels applies the default merge rule: retain old entries
+// whose actualUpstream is still in upstreamNames, append new-only names as
+// {model: name}, and dedup. Returns the merged list and the list of removed
+// actualUpstream names.
+func aggregateProviderModels(
+	old []contract.ProviderModelEntry,
+	upstreamNames []string,
+) ([]contract.ProviderModelEntry, []string) {
+	upstreamSet := make(map[string]bool, len(upstreamNames))
+	for _, n := range upstreamNames {
+		upstreamSet[n] = true
+	}
+
+	var result []contract.ProviderModelEntry
+	seenActual := make(map[string]bool)
+	var removed []string
+
+	for _, e := range old {
+		actual := e.UpstreamModelName
+		if actual == "" {
+			actual = e.Model
+		}
+		if upstreamSet[actual] {
+			result = append(result, e)
+			seenActual[actual] = true
+		} else {
+			removed = append(removed, actual)
+		}
+	}
+
+	for _, name := range upstreamNames {
+		if !seenActual[name] {
+			result = append(result, contract.ProviderModelEntry{Model: name})
+		}
+	}
+
+	return dedupProviderModelsByPair(result), removed
+}
+
+// dedupProviderModelsByPair deduplicates by (Model, UpstreamModelName), keeping
+// the first occurrence. Other fields are not used as keys.
+func dedupProviderModelsByPair(in []contract.ProviderModelEntry) []contract.ProviderModelEntry {
+	type key struct{ model, upstream string }
+	seen := make(map[key]bool, len(in))
+	out := make([]contract.ProviderModelEntry, 0, len(in))
+	for _, e := range in {
+		k := key{e.Model, e.UpstreamModelName}
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// contractToJsxEntries converts contract.ProviderModelEntry slice to
+// jsx.ProviderModelEntry slice via JSON round-trip (identical JSON shapes).
+func contractToJsxEntries(in []contract.ProviderModelEntry) []jsx.ProviderModelEntry {
+	if in == nil {
+		return nil
+	}
+	b, _ := json.Marshal(in)
+	var out []jsx.ProviderModelEntry
+	_ = json.Unmarshal(b, &out)
+	return out
+}
+
+// jsxToContractEntries converts jsx.ProviderModelEntry slice to
+// contract.ProviderModelEntry slice via JSON round-trip (identical JSON shapes).
+func jsxToContractEntries(in []jsx.ProviderModelEntry) []contract.ProviderModelEntry {
+	if in == nil {
+		return nil
+	}
+	b, _ := json.Marshal(in)
+	var out []contract.ProviderModelEntry
+	_ = json.Unmarshal(b, &out)
+	return out
 }

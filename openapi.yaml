@@ -176,17 +176,23 @@ components:
           format: uri
           readOnly: true
           type: string
-        models:
+        providerId:
+          format: int32
+          type: integer
+        providerModels:
+          items:
+            $ref: "#/components/schemas/ProviderModelEntry"
+          nullable: true
+          type: array
+        removedModels:
           items:
             type: string
           nullable: true
           type: array
-        providerId:
-          format: int32
-          type: integer
       required:
         - providerId
-        - models
+        - providerModels
+        - removedModels
       type: object
     ModelView:
       additionalProperties: false

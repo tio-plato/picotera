@@ -82,8 +82,9 @@ type FetchModelsRequest struct {
 
 type FetchModelsResponse struct {
 	Body struct {
-		ProviderID int32    `json:"providerId"`
-		Models     []string `json:"models"`
+		ProviderID     int32                `json:"providerId"`
+		ProviderModels []ProviderModelEntry `json:"providerModels"`
+		RemovedModels  []string             `json:"removedModels"`
 	}
 }
 
