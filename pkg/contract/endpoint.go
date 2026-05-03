@@ -17,13 +17,15 @@ const (
 )
 
 const (
-	EndpointType_Unknown               int32 = 0
-	EndpointType_General               int32 = 1
-	EndpointType_OpenAIChatCompletions int32 = 2
-	EndpointType_OpenAIResponses       int32 = 3
-	EndpointType_AnthropicMessages     int32 = 4
-	EndpointType_AnthropicCountTokens  int32 = 5
-	EndpointType_GeneralListModels     int32 = 6
+	EndpointType_Unknown                     int32 = 0
+	EndpointType_General                     int32 = 1
+	EndpointType_OpenAIChatCompletions       int32 = 2
+	EndpointType_OpenAIResponses             int32 = 3
+	EndpointType_AnthropicMessages           int32 = 4
+	EndpointType_AnthropicCountTokens        int32 = 5
+	EndpointType_GeneralListModels           int32 = 6
+	EndpointType_GeminiGenerateContent       int32 = 7
+	EndpointType_GeminiStreamGenerateContent int32 = 8
 )
 
 func ToEndpointType(s string) int32 {
@@ -42,6 +44,10 @@ func ToEndpointType(s string) int32 {
 		return EndpointType_AnthropicCountTokens
 	case "generalListModels":
 		return EndpointType_GeneralListModels
+	case "geminiGenerateContent":
+		return EndpointType_GeminiGenerateContent
+	case "geminiStreamGenerateContent":
+		return EndpointType_GeminiStreamGenerateContent
 	default:
 		return EndpointType_Unknown
 	}
@@ -63,6 +69,10 @@ func FromEndpointType(t int32) string {
 		return "anthropicCountTokens"
 	case EndpointType_GeneralListModels:
 		return "generalListModels"
+	case EndpointType_GeminiGenerateContent:
+		return "geminiGenerateContent"
+	case EndpointType_GeminiStreamGenerateContent:
+		return "geminiStreamGenerateContent"
 	default:
 		return "unknown"
 	}
@@ -111,7 +121,7 @@ type EndpointView struct {
 	Path                string `json:"path"`
 	ModelPath           string `json:"modelPath"`
 	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,bearerToken,xApiKey,searchKey,googApiKey,unknown"`
-	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,generalListModels,unknown"`
+	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,generalListModels,geminiGenerateContent,geminiStreamGenerateContent,unknown"`
 }
 
 func ToEndpointView(endpoint *db.Endpoint) (*EndpointView, error) {

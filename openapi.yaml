@@ -136,6 +136,8 @@ components:
             - anthropicMessages
             - anthropicCountTokens
             - generalListModels
+            - geminiGenerateContent
+            - geminiStreamGenerateContent
             - unknown
           type: string
         modelPath:

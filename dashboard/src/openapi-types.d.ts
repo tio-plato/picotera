@@ -377,9 +377,9 @@ export interface components {
              */
             readonly $schema?: string;
             /** @enum {string} */
-            credentialsResolver: "generalApiKey" | "bearerToken" | "xApiKey" | "unknown";
+            credentialsResolver: "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey" | "unknown";
             /** @enum {string} */
-            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "generalListModels" | "unknown";
+            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "generalListModels" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "unknown";
             modelPath: string;
             name: string;
             path: string;
