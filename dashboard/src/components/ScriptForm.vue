@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useApi } from '@/composables/useApi'
-import { SidePanel, Button, Input, Field, Textarea } from '@/ui'
+import { SidePanel, Button, Input, Field, CodeEditor } from '@/ui'
 import type { ScriptView } from '@/api'
 
 const emit = defineEmits<{ close: [] }>()
@@ -58,7 +58,7 @@ async function submit() {
         </label>
       </Field>
       <Field label="源代码">
-        <Textarea v-model="form.source" :rows="20" class="font-mono text-sm" required />
+        <CodeEditor v-model="form.source" language="javascript" min-height="400px" max-height="70vh" />
       </Field>
     </form>
 

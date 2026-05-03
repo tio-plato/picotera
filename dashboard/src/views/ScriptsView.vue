@@ -36,11 +36,11 @@ async function fetchScripts() {
 onMounted(fetchScripts)
 
 function openCreate() {
-  panel.open(ScriptForm, { onSave: fetchScripts }, { key: 'script:new' })
+  panel.open(ScriptForm, { onSave: fetchScripts }, { key: 'script:new', width: '600px' })
 }
 
 function openEdit(s: ScriptView) {
-  panel.open(ScriptForm, { script: s, onSave: fetchScripts }, { key: `script:${s.id}` })
+  panel.open(ScriptForm, { script: s, onSave: fetchScripts }, { key: `script:${s.id}`, width: '600px' })
 }
 
 function confirmDelete(_event: Event, id: string) {
@@ -80,8 +80,6 @@ async function toggle(s: ScriptView) {
           <tr>
             <Th>名称</Th>
             <Th>状态</Th>
-            <Th>创建时间</Th>
-            <Th>更新时间</Th>
             <Th actions />
           </tr>
         </thead>
@@ -103,8 +101,6 @@ async function toggle(s: ScriptView) {
                 </Tag>
               </button>
             </Td>
-            <Td><span class="font-mono text-ink-faint">{{ s.createdAt }}</span></Td>
-            <Td><span class="font-mono text-ink-faint">{{ s.updatedAt }}</span></Td>
             <Td actions>
               <div class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity">
                 <IconButton
