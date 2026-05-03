@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"picotera/pkg/jsx"
 	"picotera/pkg/logx"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -84,27 +84,28 @@ func handleGatewayErr(w http.ResponseWriter, err error) (int, []byte) {
 	return http.StatusInternalServerError, writeGatewayError(w, http.StatusInternalServerError, "internal error", errorx.InternalError.Error())
 }
 
-// resolveEndpoint matches the request path to an endpoint in the database.
-func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint, error) {
-	endpoint, err := s.queries.GetEndpointByPath(ctx, path)
+// resolveEndpoint matches the request path to an endpoint using the in-memory
+// router (see endpoint_router.go). Returns the matched endpoint, any extracted
+// path variables, and a gatewayError on miss or load failure.
+func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint, map[string]string, error) {
+	endpoint, pathVars, ok, err := s.endpointRouter.Match(ctx, path)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return db.Endpoint{}, &gatewayError{
-				status:  http.StatusNotFound,
-				message: "route not found",
-				code:    errorx.RouteNotFound.Error(),
-			}
-		}
-		// Real DB error (not "no row matched"). The early-fail path skips the
-		// request log, so make sure these stay visible.
+		// Load/compile error — keep it visible.
 		logx.WithContext(ctx).WithError(err).WithField("path", path).Error("endpoint lookup failed")
-		return db.Endpoint{}, &gatewayError{
+		return db.Endpoint{}, nil, &gatewayError{
 			status:  http.StatusInternalServerError,
 			message: "failed to query endpoint",
 			code:    errorx.InternalError.Error(),
 		}
 	}
-	return endpoint, nil
+	if !ok {
+		return db.Endpoint{}, nil, &gatewayError{
+			status:  http.StatusNotFound,
+			message: "route not found",
+			code:    errorx.RouteNotFound.Error(),
+		}
+	}
+	return endpoint, pathVars, nil
 }
 
 // validateClientAuth checks that the client request includes credentials.
@@ -160,12 +161,29 @@ func setCredentialsHeaders(headers http.Header, credentials string, resolver int
 	}
 }
 
-// extractModel extracts the model name from the request body using the given JSON path.
-func extractModel(body []byte, modelPath string) (string, error) {
+// pathVarRe matches a modelPath that is exactly one {name} token, indicating
+// the model should be read from the matched path variable rather than the body.
+var pathVarRe = regexp.MustCompile(`^\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
+
+// extractModel extracts the model name from the request body or, when
+// modelPath is exactly "{name}", from the matched path variables.
+func extractModel(body []byte, modelPath string, pathVars map[string]string) (string, error) {
 	if modelPath == "" {
 		return "", &gatewayError{
 			status:  http.StatusBadRequest,
 			message: "endpoint has no model path configured",
+			code:    errorx.ModelNotFound.Error(),
+		}
+	}
+	if m := pathVarRe.FindStringSubmatch(modelPath); m != nil {
+		// modelPath is "{name}" — take value from the path variable.
+		name := m[1]
+		if v := pathVars[name]; v != "" {
+			return v, nil
+		}
+		return "", &gatewayError{
+			status:  http.StatusBadRequest,
+			message: fmt.Sprintf("model variable %q not set", name),
 			code:    errorx.ModelNotFound.Error(),
 		}
 	}
@@ -178,6 +196,26 @@ func extractModel(body []byte, modelPath string) (string, error) {
 		}
 	}
 	return result.Str, nil
+}
+
+// substitutePathVars replaces every {name} token in url with the corresponding
+// value from vars. Returns an error if any {…} token remains after substitution
+// (indicating a misconfigured upstream URL).
+func substitutePathVars(url string, vars map[string]string) (string, error) {
+	if len(vars) == 0 {
+		return url, nil
+	}
+	result := tokenRe.ReplaceAllStringFunc(url, func(tok string) string {
+		name := tok[1 : len(tok)-1] // strip { and }
+		if v, ok := vars[name]; ok {
+			return v
+		}
+		return tok // leave unreplaced — caught below
+	})
+	if strings.Contains(result, "{") {
+		return "", fmt.Errorf("upstream URL %q has unresolved path variable tokens after substitution", url)
+	}
+	return result, nil
 }
 
 // resolveProviders gets providers for the given endpoint and model, filters out
@@ -230,14 +268,21 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 
 // buildUpstreamRequest constructs the upstream HTTP request.
 // It copies headers from the original request, replaces the model name in the body
-// if upstreamModel differs, and sets credentials based on the auth type.
+// if upstreamModel differs, substitutes path variables in upstreamURL, and sets
+// credentials based on the auth type.
 // The provided ctx is used for the request context, enabling cancellation of
 // upstream reads (e.g., by the idle timeout reader).
-func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, resolver int32) (*http.Request, []byte, error) {
+func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, resolver int32, pathVars map[string]string) (*http.Request, []byte, error) {
+	// Substitute path variables in the upstream URL.
+	var err error
+	upstreamURL, err = substitutePathVars(upstreamURL, pathVars)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// Replace model name if upstream_model_name is set
 	reqBody := body
 	if upstreamModel != "" {
-		var err error
 		reqBody, err = sjson.SetBytes(body, "model", upstreamModel)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set model in request body: %w", err)
@@ -403,13 +448,14 @@ func serializePendingRequest(req *http.Request, body []byte) jsx.PendingRequestS
 
 // serializeClientRequest captures the inbound client request as a RequestShape
 // for the JS hooks. Same body rule as serializePendingRequest.
-func serializeClientRequest(r *http.Request, body []byte, model string) jsx.RequestShape {
+func serializeClientRequest(r *http.Request, body []byte, model string, pathVars map[string]string) jsx.RequestShape {
 	return jsx.RequestShape{
-		Path:    r.URL.Path,
-		Method:  r.Method,
-		Headers: mapLowerKeys(r.Header.Clone()),
-		Model:   model,
-		Body:    jsonBodyOrNil(r.Header, body),
+		Path:     r.URL.Path,
+		Method:   r.Method,
+		Headers:  mapLowerKeys(r.Header.Clone()),
+		Model:    model,
+		PathVars: pathVars,
+		Body:     jsonBodyOrNil(r.Header, body),
 	}
 }
 

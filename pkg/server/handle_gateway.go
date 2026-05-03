@@ -36,7 +36,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// request at all — the request table tracks LLM gateway traffic, not
 	// every miss. Browser navigations get the dashboard SPA; everything else
 	// gets the structured JSON 404.
-	endpoint, err := h.resolveEndpoint(r.Context(), r.URL.Path)
+	endpoint, pathVars, err := h.resolveEndpoint(r.Context(), r.URL.Path)
 	if err != nil {
 		if isRouteNotFound(err) && looksLikeBrowserNav(r) {
 			h.staticHandler.ServeHTTP(w, r)
@@ -136,7 +136,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. Extract model name
-	modelName, err := extractModel(body, endpoint.ModelPath)
+	modelName, err := extractModel(body, endpoint.ModelPath, pathVars)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
@@ -171,7 +171,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// modelName, body.model is rewritten in lockstep so downstream hooks see
 	// a consistent client-request shape.
 	originalModelName := modelName
-	initialClientReq := serializeClientRequest(r, body, modelName)
+	initialClientReq := serializeClientRequest(r, body, modelName, pathVars)
 	newModel, err := session.RunRewriteModelHook(jsx.RewriteModelInput{
 		Request: initialClientReq,
 		Model: originalModelName,
@@ -239,7 +239,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 8b. The JS-visible client request shape (read-only).
-	jsClientRequest := serializeClientRequest(r, body, modelName)
+	jsClientRequest := serializeClientRequest(r, body, modelName, pathVars)
 
 	// 8c. sortProviders — once before the loop.
 	sortedCandidates, err := session.RunSortHook(jsx.SortInput{
@@ -345,7 +345,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TimeSpentMs:   pgtype.Int4{Valid: false},
 		})
 
-		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, endpoint.CredentialsResolver)
+		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, endpoint.CredentialsResolver, pathVars)
 		if berr != nil {
 			cancel()
 			h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, berr.Error())

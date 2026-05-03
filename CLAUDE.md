@@ -83,6 +83,7 @@ Hooks are run as priority-sorted waterfalls (higher priority first); each tap ma
 
 ### Key Patterns
 
+- **Endpoint matching**: request paths are matched against `endpoint.path` patterns (which may contain `{name}` placeholders matching any non-empty string, including `/`). The matcher is an in-memory cache (`pkg/server/endpoint_router.go`) loaded lazily from `GetEndpoints` and sorted by literal-character specificity. Any mutation of the `endpoint` table **must** call `Server.endpointRouter.Invalidate()`. Do not reintroduce `GetEndpointByPath` for gateway routing — it only remains for exact-path validation in `handle_provider_endpoint.go`.
 - **sqlc workflow**: Write queries in `db/queries/*.sql` → run `sqlc generate` → use generated code in `pkg/db/`. The `Querier` interface in `pkg/db/querier.go` lists all available DB methods. sqlc is configured in `sqlc.yaml` (pgx/v5 driver, `emit_interface: true`, camelCase JSON tags).
 - **Adding an API operation**: Define operation + request/response types in `pkg/contract/`, add handler method on `*Server` in `pkg/server/`, register in `registerOperations()`. After the change, regenerate `openapi.yaml` so the dashboard's typed client picks it up.
 - **Config**: All settings via env vars with `PICOTERA_` prefix (e.g., `PICOTERA_DATABASE_URL`, `PICOTERA_PORT`). Default port is 9898.

@@ -23,14 +23,15 @@ import (
 )
 
 type Server struct {
-	queries       *db.Queries
-	router        *chi.Mux
-	api           huma.API
-	config        *configx.Config
-	httpClient    *http.Client
-	artifacts     artifacts.Sink
-	jsxEngine     *jsx.Engine
-	staticHandler http.Handler
+	queries        *db.Queries
+	router         *chi.Mux
+	api            huma.API
+	config         *configx.Config
+	httpClient     *http.Client
+	artifacts      artifacts.Sink
+	jsxEngine      *jsx.Engine
+	staticHandler  http.Handler
+	endpointRouter *endpointRouter
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -56,6 +57,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	logx.WithContext(ctx).Info("connected to database")
 
+
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			ResponseHeaderTimeout: config.GatewayReadTimeout,
@@ -79,14 +81,15 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}, queries)
 
 	server := &Server{
-		config:        config,
-		queries:       queries,
-		router:        router,
-		api:           api,
-		httpClient:    httpClient,
-		artifacts:     sink,
-		jsxEngine:     jsxEngine,
-		staticHandler: static.Handler(),
+		config:         config,
+		queries:        queries,
+		router:         router,
+		api:            api,
+		httpClient:     httpClient,
+		artifacts:      sink,
+		jsxEngine:      jsxEngine,
+		staticHandler:  static.Handler(),
+		endpointRouter: newEndpointRouter(queries),
 	}
 	server.registerOperations()
 	server.registerEndpoints()

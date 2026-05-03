@@ -40,11 +40,15 @@ type Candidate struct {
 // content-type is application/json and the body parses; otherwise omitted
 // so JS scripts cannot read it.
 type RequestShape struct {
-	Path    string              `json:"path"`
-	Method  string              `json:"method"`
-	Headers map[string][]string `json:"headers"`
-	Model   string              `json:"model"`
-	Body    json.RawMessage     `json:"body,omitempty"`
+	Path     string              `json:"path"`
+	Method   string              `json:"method"`
+	Headers  map[string][]string `json:"headers"`
+	Model    string              `json:"model"`
+	// PathVars holds path variables extracted from the matched endpoint pattern
+	// (e.g. {model} in /v1beta/models/{model}:generateContent). Omitted when
+	// the endpoint has no variables.
+	PathVars map[string]string   `json:"pathVars,omitempty"`
+	Body     json.RawMessage     `json:"body,omitempty"`
 }
 
 // SortInput is the ctx passed to the sortProviders waterfall.

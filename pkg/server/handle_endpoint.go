@@ -43,6 +43,8 @@ func (s *Server) handleUpsertEndpoint(ctx context.Context, input *contract.Upser
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to convert endpoint to view", err)
 	}
+	// endpoint router caches compiled paths; invalidate so the next request reloads.
+	s.endpointRouter.Invalidate()
 	return &contract.UpsertEndpointResponse{
 		Body: *endpointView,
 	}, nil
@@ -53,5 +55,7 @@ func (s *Server) handleDeleteEndpoint(ctx context.Context, input *contract.Delet
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to delete endpoint", err)
 	}
+	// endpoint router caches compiled paths; invalidate so the next request reloads.
+	s.endpointRouter.Invalidate()
 	return &struct{}{}, nil
 }
