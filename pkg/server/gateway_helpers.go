@@ -161,6 +161,28 @@ func setCredentialsHeaders(headers http.Header, credentials string, resolver int
 	}
 }
 
+// extractParentSpanID returns the external session identifier carried on the
+// inbound request, used as the meta/upstream rows' parent_span_id. Recognizes
+// X-Claude-Code-Session-Id (preferred) and the non-canonical conversation_id
+// header (matched case-insensitively via map iteration to bypass http.Header's
+// MIME normalization, which would mangle the underscore).
+func extractParentSpanID(h http.Header) string {
+	if v := strings.TrimSpace(h.Get("X-Claude-Code-Session-Id")); v != "" {
+		return v
+	}
+	for k, vs := range h {
+		if !strings.EqualFold(k, "conversation_id") {
+			continue
+		}
+		for _, v := range vs {
+			if s := strings.TrimSpace(v); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 // pathVarRe matches a modelPath that is exactly one {name} token, indicating
 // the model should be read from the matched path variable rather than the body.
 var pathVarRe = regexp.MustCompile(`^\{([A-Za-z_][A-Za-z0-9_]*)\}$`)

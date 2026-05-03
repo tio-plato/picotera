@@ -57,12 +57,14 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 3. Insert meta request now that we know the endpoint matched.
 	metaID := xid.New().String()
 	metaReqHeader := r.Header.Clone()
+	parentSpanID := extractParentSpanID(metaReqHeader)
+	parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
 	metaReqMethod := r.Method
 	metaReqURL := r.URL.String()
 	metaCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
 		ID:            metaID,
 		SpanID:        pgtype.Text{String: metaID, Valid: true},
-		ParentSpanID:  pgtype.Text{Valid: false},
+		ParentSpanID:  parentSpanIDPg,
 		Type:          db.RequestTypeMeta,
 		Status:        db.RequestStatusPending,
 		ProviderID:    pgtype.Int4{Valid: false},
@@ -332,7 +334,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		upstreamCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
 			ID:            upstreamID,
 			SpanID:        pgtype.Text{String: metaID, Valid: true},
-			ParentSpanID:  pgtype.Text{Valid: false},
+			ParentSpanID:  parentSpanIDPg,
 			Type:          db.RequestTypeUpstream,
 			Status:        db.RequestStatusPending,
 			ProviderID:    pgtype.Int4{Int32: providerID, Valid: true},
