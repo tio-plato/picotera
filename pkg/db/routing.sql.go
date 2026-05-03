@@ -11,23 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getApiKeyByHash = `-- name: GetApiKeyByHash :one
-SELECT id, name, api_key_hash, api_key_masked, annotations FROM api_key WHERE api_key_hash = $1 LIMIT 1
-`
-
-func (q *Queries) GetApiKeyByHash(ctx context.Context, apiKeyHash []byte) (ApiKey, error) {
-	row := q.db.QueryRow(ctx, getApiKeyByHash, apiKeyHash)
-	var i ApiKey
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.ApiKeyHash,
-		&i.ApiKeyMasked,
-		&i.Annotations,
-	)
-	return i, err
-}
-
 const getEndpointByPath = `-- name: GetEndpointByPath :one
 SELECT path, name, model_path, credentials_resolver, endpoint_type FROM endpoint WHERE path = $1 LIMIT 1
 `

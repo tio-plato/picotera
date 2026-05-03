@@ -51,12 +51,23 @@ type RequestShape struct {
 	Body     json.RawMessage     `json:"body,omitempty"`
 }
 
+// ApiKeySummary is the JS-visible shape of the API key that authorized the
+// inbound request. The raw key string is intentionally omitted so scripts
+// cannot leak it; only metadata is exposed.
+type ApiKeySummary struct {
+	ID          int32             `json:"id"`
+	Name        string            `json:"name"`
+	Annotations map[string]string `json:"annotations"`
+	Disabled    bool              `json:"disabled"`
+}
+
 // SortInput is the ctx passed to the sortProviders waterfall.
 type SortInput struct {
-	Endpoint  any          `json:"endpoint"`
-	Model     any          `json:"model"`
-	Request   RequestShape `json:"request"`
-	Providers []Candidate  `json:"providers"`
+	Endpoint  any            `json:"endpoint"`
+	Model     any            `json:"model"`
+	Request   RequestShape   `json:"request"`
+	Providers []Candidate    `json:"providers"`
+	ApiKey    *ApiKeySummary `json:"apiKey"`
 }
 
 // LastError describes the outcome of the last upstream attempt, exposed to
@@ -69,14 +80,15 @@ type LastError struct {
 
 // BeforeRequestInput is the ctx passed to the beforeRequest waterfall.
 type BeforeRequestInput struct {
-	Endpoint          any          `json:"endpoint"`
-	Model             any          `json:"model"`
-	Request           RequestShape `json:"request"`
-	Provider          any          `json:"provider"`
-	MPE               any          `json:"mpe"`
-	CurrentRetryCount int          `json:"currentRetryCount"`
-	TotalAttemptCount int          `json:"totalAttemptCount"`
-	LastError         *LastError   `json:"lastError"`
+	Endpoint          any            `json:"endpoint"`
+	Model             any            `json:"model"`
+	Request           RequestShape   `json:"request"`
+	Provider          any            `json:"provider"`
+	MPE               any            `json:"mpe"`
+	CurrentRetryCount int            `json:"currentRetryCount"`
+	TotalAttemptCount int            `json:"totalAttemptCount"`
+	LastError         *LastError     `json:"lastError"`
+	ApiKey            *ApiKeySummary `json:"apiKey"`
 }
 
 // BeforeRequestDecision is the JS-returned shape from the beforeRequest hook.
@@ -92,8 +104,9 @@ type BeforeRequestDecision struct {
 // hook fires once between extractModel and resolveProviders, so only the
 // raw client request snapshot is in scope.
 type RewriteModelInput struct {
-	Request RequestShape `json:"request"`
-	Model string `json:"model"`
+	Request RequestShape   `json:"request"`
+	Model   string         `json:"model"`
+	ApiKey  *ApiKeySummary `json:"apiKey"`
 }
 
 // PendingRequestShape mirrors the upstream request that is about to be sent.
@@ -117,6 +130,7 @@ type RewriteInput struct {
 	TotalAttemptCount int                 `json:"totalAttemptCount"`
 	ClientRequest     RequestShape        `json:"clientRequest"`
 	PendingRequest    PendingRequestShape `json:"pendingRequest"`
+	ApiKey            *ApiKeySummary      `json:"apiKey"`
 }
 
 // ProviderModelEntry mirrors the JSON shape of contract.ProviderModelEntry.

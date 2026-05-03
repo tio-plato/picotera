@@ -12,13 +12,15 @@ import (
 
 type Querier interface {
 	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
+	DeleteApiKey(ctx context.Context, id int32) error
 	DeleteEndpoint(ctx context.Context, path string) error
 	DeleteExchangeRate(ctx context.Context, code string) error
 	DeleteModel(ctx context.Context, name string) error
 	DeleteProvider(ctx context.Context, id int32) error
 	DeleteProviderEndpoint(ctx context.Context, arg DeleteProviderEndpointParams) error
 	DeleteScript(ctx context.Context, id string) error
-	GetApiKeyByHash(ctx context.Context, apiKeyHash []byte) (ApiKey, error)
+	GetApiKey(ctx context.Context, id int32) (ApiKey, error)
+	GetApiKeyByKey(ctx context.Context, key string) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
 	GetEndpoints(ctx context.Context) ([]Endpoint, error)
 	GetExchangeRateByCode(ctx context.Context, code string) (ExchangeRate, error)
@@ -31,13 +33,16 @@ type Querier interface {
 	GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error)
 	GetRequest(ctx context.Context, id string) (Request, error)
 	GetScript(ctx context.Context, id string) (Script, error)
+	InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error)
 	InsertRequest(ctx context.Context, arg InsertRequestParams) (pgtype.Timestamp, error)
 	InsertScript(ctx context.Context, arg InsertScriptParams) (Script, error)
+	ListApiKeys(ctx context.Context) ([]ApiKey, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
 	ListProviderEndpoints(ctx context.Context, providerID int32) ([]ProviderEndpoint, error)
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
 	ListRequestsBySpan(ctx context.Context, id string) ([]ListRequestsBySpanRow, error)
 	ListScripts(ctx context.Context) ([]Script, error)
+	UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (ApiKey, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
 	UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error
 	UpdateRequestModel(ctx context.Context, arg UpdateRequestModelParams) error

@@ -124,8 +124,9 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody, collectLogs())
 	}
 
-	// 4. Validate client auth
-	err = validateClientAuth(r, endpoint.CredentialsResolver)
+	// 4. Authenticate client. Returns the matched api_key row when the
+	// supplied credentials are valid and the key is not disabled.
+	apiKey, err := h.authenticateClient(r.Context(), r, endpoint.CredentialsResolver)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
@@ -136,6 +137,17 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		failMetaResponse(err)
 		return
 	}
+	apiKeyID := pgtype.Int4{Int32: apiKey.ID, Valid: true}
+	apiKeyJS := apiKeySummaryFromRow(apiKey)
+	// Backfill the meta row's api_key_id now that we have it. Other fields
+	// (provider, model) get filled later in streamSuccess; here we only set
+	// what we know and keep status pending.
+	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
+		ID:           metaID,
+		EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
+		ApiKeyID:     apiKeyID,
+		Status:       db.RequestStatusPending,
+	})
 
 	// 5. Extract model name
 	modelName, err := extractModel(body, endpoint.ModelPath, pathVars)
@@ -176,7 +188,8 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	initialClientReq := serializeClientRequest(r, body, modelName, pathVars)
 	newModel, err := session.RunRewriteModelHook(jsx.RewriteModelInput{
 		Request: initialClientReq,
-		Model: originalModelName,
+		Model:   originalModelName,
+		ApiKey:  apiKeyJS,
 	}, modelName)
 	if err != nil {
 		failHook(err)
@@ -249,6 +262,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Model:     nil, // model row lookup is out of scope for v1
 		Request:   jsClientRequest,
 		Providers: candidates,
+		ApiKey:    apiKeyJS,
 	})
 	if err != nil {
 		failHook(err)
@@ -296,6 +310,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			CurrentRetryCount: currentRetryCount,
 			TotalAttemptCount: totalAttemptCount,
 			LastError:         lastJSErr,
+			ApiKey:            apiKeyJS,
 		})
 		if err != nil {
 			failHook(err)
@@ -339,7 +354,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Status:        db.RequestStatusPending,
 			ProviderID:    pgtype.Int4{Int32: providerID, Valid: true},
 			EndpointPath:  pgtype.Text{String: endpoint.Path, Valid: true},
-			ApiKeyID:      pgtype.Int4{Valid: false},
+			ApiKeyID:      apiKeyID,
 			Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
 			UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
 			StatusCode:    pgtype.Int4{Valid: false},
@@ -371,6 +386,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TotalAttemptCount: totalAttemptCount,
 			ClientRequest:     jsClientRequest,
 			PendingRequest:    serializePendingRequest(req, reqBody),
+			ApiKey:            apiKeyJS,
 		})
 		if rerr != nil {
 			cancel()
@@ -401,7 +417,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if resp.StatusCode == http.StatusOK {
 			metaLogs := collectLogs()
-			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, originalModelName, upstreamModel, endpoint.Path, upstreamStartTime, bgCtx, metaLogs)
+			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, originalModelName, upstreamModel, endpoint.Path, upstreamStartTime, bgCtx, metaLogs, apiKeyID)
 			return
 		}
 
@@ -494,6 +510,7 @@ func (h *gatewayHandler) streamSuccess(
 	upstreamStartTime time.Time,
 	bgCtx context.Context,
 	metaLogs []artifacts.LogEntry,
+	apiKeyID pgtype.Int4,
 ) {
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            metaID,
@@ -501,7 +518,7 @@ func (h *gatewayHandler) streamSuccess(
 		Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
 		UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
 		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
-		ApiKeyID:      pgtype.Int4{Valid: false},
+		ApiKeyID:      apiKeyID,
 		Status:        db.RequestStatusHeaderReceived,
 	})
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
@@ -510,7 +527,7 @@ func (h *gatewayHandler) streamSuccess(
 		Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
 		UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
 		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
-		ApiKeyID:      pgtype.Int4{Valid: false},
+		ApiKeyID:      apiKeyID,
 		Status:        db.RequestStatusHeaderReceived,
 	})
 

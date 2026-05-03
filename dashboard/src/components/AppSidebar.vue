@@ -11,6 +11,7 @@ const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'models', label: '模型', icon: 'cpu' },
   { name: 'endpoints', label: '端点', icon: 'plug' },
   { name: 'requests', label: '请求', icon: 'activity' },
+  { name: 'apiKeys', label: 'API Key', icon: 'key' },
   { name: 'scripts', label: '脚本', icon: 'braces' },
   { name: 'rates', label: '汇率', icon: 'currency-dollar' },
 ]

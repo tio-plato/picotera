@@ -13,7 +13,7 @@
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
     "format": "oxfmt src/",
-    "generate-openapi": "openapi-typescript --output src/api/openapi.ts ../api/openapi.yaml"
+    "generate-openapi": "openapi-typescript --output src/openapi-types.d.ts ../openapi.yaml"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",

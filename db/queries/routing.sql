@@ -31,9 +31,6 @@ WHERE pe.endpoint_path = sqlc.arg('endpoint_path')::text
     OR elem -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
   );
 
--- name: GetApiKeyByHash :one
-SELECT * FROM api_key WHERE api_key_hash = $1 LIMIT 1;
-
 -- name: InsertRequest :one
 INSERT INTO request (
   id, span_id, parent_span_id, type, status,

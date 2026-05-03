@@ -14,6 +14,8 @@ var RequestNotFound = ErrorCode("REQUEST_NOT_FOUND")
 
 var Unauthorized = ErrorCode("UNAUTHORIZED")
 
+var Forbidden = ErrorCode("FORBIDDEN")
+
 var UpstreamError = ErrorCode("UPSTREAM_ERROR")
 
 var InternalError = ErrorCode("INTERNAL_ERROR")

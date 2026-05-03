@@ -14,6 +14,8 @@ import {
   IconEye,
   IconEyeOff,
   IconGitBranch,
+  IconKey,
+  IconCopy,
   IconLink,
   IconList,
   IconLoader2,
@@ -56,6 +58,8 @@ export type IconName =
   | 'puzzle'
   | 'puzzle-off'
   | 'currency-dollar'
+  | 'key'
+  | 'copy'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -85,4 +89,6 @@ export const iconComponents: Record<IconName, Component> = {
   puzzle: IconPuzzle,
   'puzzle-off': IconPuzzleOff,
   'currency-dollar': IconCurrencyDollar,
+  key: IconKey,
+  copy: IconCopy,
 }

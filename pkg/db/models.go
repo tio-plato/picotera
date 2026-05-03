@@ -9,11 +9,13 @@ import (
 )
 
 type ApiKey struct {
-	ID           int32  `json:"id"`
-	Name         string `json:"name"`
-	ApiKeyHash   []byte `json:"apiKeyHash"`
-	ApiKeyMasked string `json:"apiKeyMasked"`
-	Annotations  []byte `json:"annotations"`
+	ID          int32              `json:"id"`
+	Name        string             `json:"name"`
+	Annotations []byte             `json:"annotations"`
+	Key         string             `json:"key"`
+	Disabled    bool               `json:"disabled"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
 }
 
 type Endpoint struct {

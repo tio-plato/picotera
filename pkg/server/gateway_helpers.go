@@ -19,6 +19,7 @@ import (
 	"picotera/pkg/jsx"
 	"picotera/pkg/logx"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -108,40 +109,93 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 	return endpoint, pathVars, nil
 }
 
-// validateClientAuth checks that the client request includes credentials in a
-// position accepted by the given resolver. Returns a gatewayError if missing.
-func validateClientAuth(r *http.Request, resolver int32) error {
-	hasBearer := strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
-	hasXApi := r.Header.Get("X-Api-Key") != ""
-	hasQuery := r.URL.Query().Get("key") != ""
-	hasGoog := r.Header.Get("X-Goog-Api-Key") != ""
+// extractClientToken pulls the client-supplied API key/token from the
+// inbound request, restricted to the positions allowed by the given resolver.
+// Empty string means no acceptable position was filled.
+func extractClientToken(r *http.Request, resolver int32) string {
+	bearer := ""
+	if v := r.Header.Get("Authorization"); strings.HasPrefix(v, "Bearer ") {
+		bearer = strings.TrimPrefix(v, "Bearer ")
+	}
+	xApi := r.Header.Get("X-Api-Key")
+	query := r.URL.Query().Get("key")
+	goog := r.Header.Get("X-Goog-Api-Key")
+
+	pickFirst := func(vs ...string) string {
+		for _, v := range vs {
+			if v != "" {
+				return v
+			}
+		}
+		return ""
+	}
 
 	switch resolver {
 	case contract.CredentialsResolver_BearerToken:
-		if hasBearer {
-			return nil
-		}
+		return bearer
 	case contract.CredentialsResolver_XApiKey:
-		if hasXApi {
-			return nil
-		}
+		return xApi
 	case contract.CredentialsResolver_SearchKey:
-		if hasQuery {
-			return nil
-		}
+		return query
 	case contract.CredentialsResolver_GoogApiKey:
-		if hasGoog {
-			return nil
-		}
+		return goog
 	default: // GeneralApiKey / Unknown / others
-		if hasBearer || hasXApi || hasQuery || hasGoog {
-			return nil
+		return pickFirst(bearer, xApi, query, goog)
+	}
+}
+
+// authenticateClient extracts the client token (per resolver), looks up the
+// matching api_key row, and returns it. The returned *db.ApiKey is the
+// authenticated identity; callers persist `ApiKeyID` from `ID` and feed
+// metadata into JS hooks.
+func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolver int32) (*db.ApiKey, error) {
+	token := extractClientToken(r, resolver)
+	if token == "" {
+		return nil, &gatewayError{
+			status:  http.StatusUnauthorized,
+			message: "missing credentials",
+			code:    errorx.Unauthorized.Error(),
 		}
 	}
-	return &gatewayError{
-		status:  http.StatusUnauthorized,
-		message: "missing credentials",
-		code:    errorx.Unauthorized.Error(),
+	row, err := s.queries.GetApiKeyByKey(ctx, token)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, &gatewayError{
+				status:  http.StatusUnauthorized,
+				message: "invalid api key",
+				code:    errorx.Unauthorized.Error(),
+			}
+		}
+		logx.WithContext(ctx).WithError(err).Error("api key lookup failed")
+		return nil, &gatewayError{
+			status:  http.StatusInternalServerError,
+			message: "failed to query api key",
+			code:    errorx.InternalError.Error(),
+		}
+	}
+	if row.Disabled {
+		return nil, &gatewayError{
+			status:  http.StatusForbidden,
+			message: "api key disabled",
+			code:    errorx.Forbidden.Error(),
+		}
+	}
+	return &row, nil
+}
+
+// apiKeySummaryFromRow converts a db.ApiKey row into the JS-visible summary.
+// Annotations is decoded from JSONB; on decode failure, returns an empty map
+// rather than nil so scripts always see an object.
+func apiKeySummaryFromRow(row *db.ApiKey) *jsx.ApiKeySummary {
+	annotations := map[string]string{}
+	if len(row.Annotations) > 0 {
+		_ = json.Unmarshal(row.Annotations, &annotations)
+	}
+	return &jsx.ApiKeySummary{
+		ID:          row.ID,
+		Name:        row.Name,
+		Annotations: annotations,
+		Disabled:    row.Disabled,
 	}
 }
 
