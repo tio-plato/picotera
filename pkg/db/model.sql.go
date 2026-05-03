@@ -21,7 +21,7 @@ func (q *Queries) DeleteModel(ctx context.Context, name string) error {
 }
 
 const getModelByName = `-- name: GetModelByName :one
-SELECT name, title, developer, series, disabled FROM model WHERE name = $1 LIMIT 1
+SELECT name, title, developer, series, disabled, pricing FROM model WHERE name = $1 LIMIT 1
 `
 
 func (q *Queries) GetModelByName(ctx context.Context, name string) (Model, error) {
@@ -33,12 +33,13 @@ func (q *Queries) GetModelByName(ctx context.Context, name string) (Model, error
 		&i.Developer,
 		&i.Series,
 		&i.Disabled,
+		&i.Pricing,
 	)
 	return i, err
 }
 
 const getModels = `-- name: GetModels :many
-SELECT name, title, developer, series, disabled FROM model
+SELECT name, title, developer, series, disabled, pricing FROM model
 `
 
 func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
@@ -56,6 +57,7 @@ func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
 			&i.Developer,
 			&i.Series,
 			&i.Disabled,
+			&i.Pricing,
 		); err != nil {
 			return nil, err
 		}
@@ -68,7 +70,7 @@ func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
 }
 
 const upsertModel = `-- name: UpsertModel :one
-INSERT INTO model (name, title, developer, series, disabled) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (name) DO UPDATE SET title = $2, developer = $3, series = $4, disabled = $5 RETURNING name, title, developer, series, disabled
+INSERT INTO model (name, title, developer, series, disabled, pricing) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (name) DO UPDATE SET title = $2, developer = $3, series = $4, disabled = $5, pricing = $6 RETURNING name, title, developer, series, disabled, pricing
 `
 
 type UpsertModelParams struct {
@@ -77,6 +79,7 @@ type UpsertModelParams struct {
 	Developer pgtype.Text `json:"developer"`
 	Series    pgtype.Text `json:"series"`
 	Disabled  bool        `json:"disabled"`
+	Pricing   []byte      `json:"pricing"`
 }
 
 func (q *Queries) UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error) {
@@ -86,6 +89,7 @@ func (q *Queries) UpsertModel(ctx context.Context, arg UpsertModelParams) (Model
 		arg.Developer,
 		arg.Series,
 		arg.Disabled,
+		arg.Pricing,
 	)
 	var i Model
 	err := row.Scan(
@@ -94,6 +98,7 @@ func (q *Queries) UpsertModel(ctx context.Context, arg UpsertModelParams) (Model
 		&i.Developer,
 		&i.Series,
 		&i.Disabled,
+		&i.Pricing,
 	)
 	return i, err
 }

@@ -1,12 +1,23 @@
 <script setup lang="ts">
-import { ref, useTemplateRef, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, useTemplateRef, watch, onBeforeUnmount } from 'vue'
 import { useFloating, offset, flip, shift, autoUpdate } from '@floating-ui/vue'
+import { storeToRefs } from 'pinia'
 import { usePreferencesStore } from '@/stores/preferences'
 import type { Theme, PanelMode, FontSize } from '@/stores/preferences'
+import { useExchangeRatesStore } from '@/stores/exchangeRates'
 import Icon from '@/ui/icons/Icon.vue'
 import SegmentedControl from '@/ui/SegmentedControl.vue'
+import Select from '@/ui/Select.vue'
 
 const prefs = usePreferencesStore()
+const exchange = useExchangeRatesStore()
+const { rates } = storeToRefs(exchange)
+const currencyValue = computed({
+  get: () => prefs.displayCurrency ?? '',
+  set: (v: string) => {
+    prefs.displayCurrency = v ? v : null
+  },
+})
 const open = ref(false)
 const triggerRef = useTemplateRef<HTMLElement>('triggerRef')
 const floatingRef = useTemplateRef<HTMLElement>('floatingRef')
@@ -150,6 +161,18 @@ const fontSizes: { value: FontSize; label: string }[] = [
       <section class="px-1 pt-1.5 pb-2">
         <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">字体大小</h3>
         <SegmentedControl v-model="prefs.fontSize" :options="fontSizes" :columns="4" />
+      </section>
+
+      <hr class="m-0 h-px border-0 bg-line-soft" />
+
+      <section class="px-1 pt-1.5 pb-2">
+        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">主要货币</h3>
+        <Select v-model="currencyValue" size="sm" class="w-full">
+          <option value="">原始货币</option>
+          <option v-for="r in rates" :key="r.code" :value="r.code">
+            {{ r.code }} {{ r.symbol }} · {{ r.name }}
+          </option>
+        </Select>
       </section>
     </div>
   </Teleport>

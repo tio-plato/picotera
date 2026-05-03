@@ -23,6 +23,7 @@ import {
   Tag,
   TagList,
   Icon,
+  MoneyDisplay,
 } from '@/ui'
 
 const panel = useSidePanel()
@@ -127,6 +128,7 @@ async function toggleDisabled(m: ModelView) {
     developer: m.developer,
     series: m.series,
     disabled: !m.disabled,
+    ...(m.pricing ? { pricing: m.pricing } : {}),
   }
   const { error } = await api.PUT('/api/picotera/models', { body })
   if (!error) fetchAll()
@@ -172,6 +174,7 @@ function confirmDelete(_event: Event, m: ModelView) {
               <Th>标题</Th>
               <Th>开发者</Th>
               <Th>系列</Th>
+              <Th>价格</Th>
               <Th>上游</Th>
               <Th actions />
             </tr>
@@ -185,6 +188,22 @@ function confirmDelete(_event: Event, m: ModelView) {
               <Td>{{ m.title }}</Td>
               <Td><span class="text-ink-faint">{{ m.developer }}</span></Td>
               <Td><Tag>{{ m.series }}</Tag></Td>
+              <Td>
+                <template v-if="!m.pricing || !m.pricing.tiers || m.pricing.tiers.length === 0">
+                  <span class="text-ink-faint">—</span>
+                </template>
+                <template v-else-if="m.pricing.tiers.length === 1">
+                  <span class="inline-flex items-baseline gap-1.5 text-xs">
+                    <MoneyDisplay :amount="m.pricing.tiers[0]?.input ?? null" :currency="m.pricing.currency" :max-digits="2" />
+                    <span class="text-ink-faint">/</span>
+                    <MoneyDisplay :amount="m.pricing.tiers[0]?.output ?? null" :currency="m.pricing.currency" :max-digits="2" />
+                    <span class="text-2xs text-ink-faint">/1M</span>
+                  </span>
+                </template>
+                <template v-else>
+                  <Tag variant="accent">分级 {{ m.pricing.tiers.length }}</Tag>
+                </template>
+              </Td>
               <Td>
                 <span
                   v-if="(upstreamIndex[m.name]?.length ?? 0) > 0"

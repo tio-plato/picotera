@@ -19,6 +19,7 @@ import {
   Icon,
   SegmentedControl,
   ColumnFilter,
+  MoneyDisplay,
   type AutoDataTableColumn,
   type ColumnFilterOption,
 } from '@/ui'
@@ -141,6 +142,7 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
     },
     { key: 'status', header: '状态' },
     { key: 'tokens', header: 'Token' },
+    { key: 'cost', header: '成本', align: 'right' },
     { key: 'timeSpentMs', header: '耗时', align: 'right' },
   )
   return base
@@ -341,6 +343,14 @@ function resetCursorAndReload() {
             <div v-if="row.cacheReadTokens || row.cacheWriteTokens" class="flex items-center gap-1.5 mt-0.5 text-ink-faint text-2xs">
               <span v-if="row.cacheReadTokens" >{{ parseFloat((row.cacheReadTokens / (((row.inputTokens || 0) + row.cacheReadTokens + (row.cacheWriteTokens || 0)) || 1) * 100).toFixed(2)) }}%</span>
             </div>
+          </div>
+        </template>
+        <template #cell-cost="{ row }">
+          <div class="flex justify-end">
+            <MoneyDisplay
+              :amount="row.upstreamCost ?? row.modelCost ?? null"
+              :currency="row.upstreamCostCurrency || row.modelCostCurrency || ''"
+            />
           </div>
         </template>
         <template #cell-timeSpentMs="{ row }">

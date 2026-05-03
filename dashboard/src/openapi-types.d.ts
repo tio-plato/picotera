@@ -39,6 +39,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/exchange-rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all exchange rates */
+        get: operations["listExchangeRates"];
+        /** Upsert an exchange rate */
+        put: operations["putExchangeRate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/exchange-rates/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete an exchange rate */
+        post: operations["deleteExchangeRate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/exchange-rates/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an exchange rate by code */
+        get: operations["getExchangeRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/models": {
         parameters: {
             query?: never;
@@ -330,6 +382,15 @@ export interface components {
             readonly $schema?: string;
             path: string;
         };
+        DeleteExchangeRateRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteExchangeRateRequestBody.json
+             */
+            readonly $schema?: string;
+            code: string;
+        };
         DeleteModelRequestBody: {
             /**
              * Format: uri
@@ -384,6 +445,19 @@ export interface components {
             name: string;
             path: string;
         };
+        ExchangeRateView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ExchangeRateView.json
+             */
+            readonly $schema?: string;
+            code: string;
+            name: string;
+            symbol: string;
+            /** Format: double */
+            unitsPerUsd: number;
+        };
         FetchModelsRequestBody: {
             /**
              * Format: uri
@@ -417,6 +491,7 @@ export interface components {
             developer: string;
             disabled: boolean;
             name: string;
+            pricing?: components["schemas"]["Pricing"];
             series: string;
             title: string;
         };
@@ -445,6 +520,26 @@ export interface components {
             details: string[] | null;
             message: string;
         };
+        Pricing: {
+            currency: string;
+            tiers: components["schemas"]["PricingTier"][] | null;
+        };
+        PricingTier: {
+            /** Format: double */
+            cacheRead: number;
+            /** Format: double */
+            cacheWrite: number;
+            /** Format: double */
+            cacheWrite1h: number;
+            /** Format: double */
+            implicitCacheRead: number;
+            /** Format: double */
+            input: number;
+            /** Format: int64 */
+            minInputTokens: number;
+            /** Format: double */
+            output: number;
+        };
         ProviderEndpointView: {
             /**
              * Format: uri
@@ -464,6 +559,7 @@ export interface components {
             disabled?: boolean;
             endpoints?: string[] | null;
             model: string;
+            pricing?: components["schemas"]["Pricing"];
             /** Format: int32 */
             priority?: number;
             upstreamModelName?: string;
@@ -507,6 +603,9 @@ export interface components {
             /** Format: int32 */
             inputTokens?: number;
             model?: string;
+            /** Format: double */
+            modelCost?: number;
+            modelCostCurrency?: string;
             /** Format: int32 */
             outputTokens?: number;
             parentSpanId?: string;
@@ -525,6 +624,9 @@ export interface components {
             ttftMs?: number;
             /** Format: int32 */
             type: number;
+            /** Format: double */
+            upstreamCost?: number;
+            upstreamCostCurrency?: string;
             upstreamModel?: string;
         };
         ScriptMutateBody: {
@@ -661,6 +763,130 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    listExchangeRates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExchangeRateView"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    putExchangeRate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExchangeRateView"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExchangeRateView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    deleteExchangeRate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteExchangeRateRequestBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getExchangeRate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExchangeRateView"];
+                };
             };
             /** @description Error */
             default: {

@@ -8,6 +8,7 @@ import {
   IconCloudDownload,
   IconCloudUpload,
   IconCpu,
+  IconCurrencyDollar,
   IconDatabase,
   IconEdit,
   IconEye,
@@ -54,6 +55,7 @@ export type IconName =
   | 'eye-off'
   | 'puzzle'
   | 'puzzle-off'
+  | 'currency-dollar'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -82,4 +84,5 @@ export const iconComponents: Record<IconName, Component> = {
   'eye-off': IconEyeOff,
   puzzle: IconPuzzle,
   'puzzle-off': IconPuzzleOff,
+  'currency-dollar': IconCurrencyDollar,
 }

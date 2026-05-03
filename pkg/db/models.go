@@ -24,12 +24,20 @@ type Endpoint struct {
 	EndpointType        int32  `json:"endpointType"`
 }
 
+type ExchangeRate struct {
+	Code        string         `json:"code"`
+	Name        string         `json:"name"`
+	Symbol      string         `json:"symbol"`
+	UnitsPerUsd pgtype.Numeric `json:"unitsPerUsd"`
+}
+
 type Model struct {
 	Name      string      `json:"name"`
 	Title     pgtype.Text `json:"title"`
 	Developer pgtype.Text `json:"developer"`
 	Series    pgtype.Text `json:"series"`
 	Disabled  bool        `json:"disabled"`
+	Pricing   []byte      `json:"pricing"`
 }
 
 type Provider struct {
@@ -49,25 +57,29 @@ type ProviderEndpoint struct {
 }
 
 type Request struct {
-	ID               string           `json:"id"`
-	SpanID           pgtype.Text      `json:"spanId"`
-	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
-	ProviderID       pgtype.Int4      `json:"providerId"`
-	EndpointPath     pgtype.Text      `json:"endpointPath"`
-	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
-	Model            pgtype.Text      `json:"model"`
-	InputTokens      pgtype.Int4      `json:"inputTokens"`
-	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
-	OutputTokens     pgtype.Int4      `json:"outputTokens"`
-	CacheWriteTokens pgtype.Int4      `json:"cacheWriteTokens"`
-	StatusCode       pgtype.Int4      `json:"statusCode"`
-	ErrorMessage     pgtype.Text      `json:"errorMessage"`
-	TtftMs           pgtype.Int4      `json:"ttftMs"`
-	TimeSpentMs      pgtype.Int4      `json:"timeSpentMs"`
-	CreatedAt        pgtype.Timestamp `json:"createdAt"`
-	Type             int32            `json:"type"`
-	Status           int32            `json:"status"`
-	UpstreamModel    pgtype.Text      `json:"upstreamModel"`
+	ID                   string           `json:"id"`
+	SpanID               pgtype.Text      `json:"spanId"`
+	ParentSpanID         pgtype.Text      `json:"parentSpanId"`
+	ProviderID           pgtype.Int4      `json:"providerId"`
+	EndpointPath         pgtype.Text      `json:"endpointPath"`
+	ApiKeyID             pgtype.Int4      `json:"apiKeyId"`
+	Model                pgtype.Text      `json:"model"`
+	InputTokens          pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens      pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens         pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens     pgtype.Int4      `json:"cacheWriteTokens"`
+	StatusCode           pgtype.Int4      `json:"statusCode"`
+	ErrorMessage         pgtype.Text      `json:"errorMessage"`
+	TtftMs               pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs          pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt            pgtype.Timestamp `json:"createdAt"`
+	Type                 int32            `json:"type"`
+	Status               int32            `json:"status"`
+	UpstreamModel        pgtype.Text      `json:"upstreamModel"`
+	ModelCost            pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency    pgtype.Text      `json:"modelCostCurrency"`
+	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
+	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
 }
 
 type Script struct {

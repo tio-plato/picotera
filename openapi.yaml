@@ -49,6 +49,20 @@ components:
       required:
         - path
       type: object
+    DeleteExchangeRateRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/DeleteExchangeRateRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        code:
+          type: string
+      required:
+        - code
+      type: object
     DeleteModelRequestBody:
       additionalProperties: false
       properties:
@@ -153,6 +167,30 @@ components:
         - credentialsResolver
         - endpointType
       type: object
+    ExchangeRateView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/ExchangeRateView.json
+          format: uri
+          readOnly: true
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        unitsPerUsd:
+          format: double
+          type: number
+      required:
+        - code
+        - name
+        - symbol
+        - unitsPerUsd
+      type: object
     FetchModelsRequestBody:
       additionalProperties: false
       properties:
@@ -213,6 +251,8 @@ components:
           type: boolean
         name:
           type: string
+        pricing:
+          $ref: "#/components/schemas/Pricing"
         series:
           type: string
         title:
@@ -277,6 +317,53 @@ components:
         - code
         - details
       type: object
+    Pricing:
+      additionalProperties: false
+      properties:
+        currency:
+          type: string
+        tiers:
+          items:
+            $ref: "#/components/schemas/PricingTier"
+          nullable: true
+          type: array
+      required:
+        - currency
+        - tiers
+      type: object
+    PricingTier:
+      additionalProperties: false
+      properties:
+        cacheRead:
+          format: double
+          type: number
+        cacheWrite:
+          format: double
+          type: number
+        cacheWrite1h:
+          format: double
+          type: number
+        implicitCacheRead:
+          format: double
+          type: number
+        input:
+          format: double
+          type: number
+        minInputTokens:
+          format: int64
+          type: integer
+        output:
+          format: double
+          type: number
+      required:
+        - minInputTokens
+        - input
+        - output
+        - cacheRead
+        - cacheWrite
+        - cacheWrite1h
+        - implicitCacheRead
+      type: object
     ProviderEndpointView:
       additionalProperties: false
       properties:
@@ -314,6 +401,8 @@ components:
           type: array
         model:
           type: string
+        pricing:
+          $ref: "#/components/schemas/Pricing"
         priority:
           format: int32
           type: integer
@@ -392,6 +481,11 @@ components:
           type: integer
         model:
           type: string
+        modelCost:
+          format: double
+          type: number
+        modelCostCurrency:
+          type: string
         outputTokens:
           format: int32
           type: integer
@@ -421,6 +515,11 @@ components:
         type:
           format: int32
           type: integer
+        upstreamCost:
+          format: double
+          type: number
+        upstreamCostCurrency:
+          type: string
         upstreamModel:
           type: string
       required:
@@ -581,6 +680,91 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Delete an endpoint
+  /api/picotera/exchange-rates:
+    get:
+      operationId: listExchangeRates
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ExchangeRateView"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List all exchange rates
+    put:
+      operationId: putExchangeRate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExchangeRateView"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeRateView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Upsert an exchange rate
+  /api/picotera/exchange-rates/delete:
+    post:
+      operationId: deleteExchangeRate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteExchangeRateRequestBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Delete an exchange rate
+  /api/picotera/exchange-rates/{code}:
+    get:
+      operationId: getExchangeRate
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema:
+            example: USD
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeRateView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get an exchange rate by code
   /api/picotera/models:
     get:
       operationId: listModels

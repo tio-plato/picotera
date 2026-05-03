@@ -12,11 +12,12 @@ type GetModelRequest struct {
 }
 
 type ModelView struct {
-	Name      string `json:"name"`
-	Title     string `json:"title"`
-	Developer string `json:"developer"`
-	Series    string `json:"series"`
-	Disabled  bool   `json:"disabled"`
+	Name      string   `json:"name"`
+	Title     string   `json:"title"`
+	Developer string   `json:"developer"`
+	Series    string   `json:"series"`
+	Disabled  bool     `json:"disabled"`
+	Pricing   *Pricing `json:"pricing,omitempty"`
 }
 
 type GetModelResponse struct {
@@ -66,11 +67,16 @@ var OperationDeleteModel = huma.Operation{
 }
 
 func ToModelView(model *db.Model) (*ModelView, error) {
+	pricing, err := PricingFromJSONB(model.Pricing)
+	if err != nil {
+		return nil, err
+	}
 	return &ModelView{
 		Name:      model.Name,
 		Title:     model.Title.String,
 		Developer: model.Developer.String,
 		Series:    model.Series.String,
 		Disabled:  model.Disabled,
+		Pricing:   pricing,
 	}, nil
 }

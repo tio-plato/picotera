@@ -10,49 +10,57 @@ import (
 )
 
 type RequestView struct {
-	ID               string  `json:"id"`
-	SpanID           string  `json:"spanId,omitempty"`
-	ParentSpanID     string  `json:"parentSpanId,omitempty"`
-	Type             int32   `json:"type"`
-	Status           int32   `json:"status"`
-	ProviderID       *int32  `json:"providerId,omitempty"`
-	EndpointPath     string  `json:"endpointPath,omitempty"`
-	ApiKeyID         *int32  `json:"apiKeyId,omitempty"`
-	Model            string  `json:"model,omitempty"`
-	UpstreamModel    string  `json:"upstreamModel,omitempty"`
-	InputTokens      *int32  `json:"inputTokens,omitempty"`
-	CacheReadTokens  *int32  `json:"cacheReadTokens,omitempty"`
-	OutputTokens     *int32  `json:"outputTokens,omitempty"`
-	CacheWriteTokens *int32  `json:"cacheWriteTokens,omitempty"`
-	StatusCode       *int32  `json:"statusCode,omitempty"`
-	ErrorMessage     string  `json:"errorMessage,omitempty"`
-	TtftMs           *int32  `json:"ttftMs,omitempty"`
-	TimeSpentMs      *int32  `json:"timeSpentMs,omitempty"`
-	CreatedAt        string  `json:"createdAt,omitempty"`
-	RequestArtifactUrl  string `json:"requestArtifactUrl,omitempty"`
-	ResponseArtifactUrl string `json:"responseArtifactUrl,omitempty"`
+	ID                   string   `json:"id"`
+	SpanID               string   `json:"spanId,omitempty"`
+	ParentSpanID         string   `json:"parentSpanId,omitempty"`
+	Type                 int32    `json:"type"`
+	Status               int32    `json:"status"`
+	ProviderID           *int32   `json:"providerId,omitempty"`
+	EndpointPath         string   `json:"endpointPath,omitempty"`
+	ApiKeyID             *int32   `json:"apiKeyId,omitempty"`
+	Model                string   `json:"model,omitempty"`
+	UpstreamModel        string   `json:"upstreamModel,omitempty"`
+	InputTokens          *int32   `json:"inputTokens,omitempty"`
+	CacheReadTokens      *int32   `json:"cacheReadTokens,omitempty"`
+	OutputTokens         *int32   `json:"outputTokens,omitempty"`
+	CacheWriteTokens     *int32   `json:"cacheWriteTokens,omitempty"`
+	StatusCode           *int32   `json:"statusCode,omitempty"`
+	ErrorMessage         string   `json:"errorMessage,omitempty"`
+	TtftMs               *int32   `json:"ttftMs,omitempty"`
+	TimeSpentMs          *int32   `json:"timeSpentMs,omitempty"`
+	CreatedAt            string   `json:"createdAt,omitempty"`
+	RequestArtifactUrl   string   `json:"requestArtifactUrl,omitempty"`
+	ResponseArtifactUrl  string   `json:"responseArtifactUrl,omitempty"`
+	ModelCost            *float64 `json:"modelCost,omitempty"`
+	ModelCostCurrency    string   `json:"modelCostCurrency,omitempty"`
+	UpstreamCost         *float64 `json:"upstreamCost,omitempty"`
+	UpstreamCostCurrency string   `json:"upstreamCostCurrency,omitempty"`
 }
 
 type requestLike struct {
-	ID               string
-	SpanID           pgtype.Text
-	ParentSpanID     pgtype.Text
-	Type             int32
-	Status           int32
-	ProviderID       pgtype.Int4
-	EndpointPath     pgtype.Text
-	ApiKeyID         pgtype.Int4
-	Model            pgtype.Text
-	UpstreamModel    pgtype.Text
-	InputTokens      pgtype.Int4
-	CacheReadTokens  pgtype.Int4
-	OutputTokens     pgtype.Int4
-	CacheWriteTokens pgtype.Int4
-	StatusCode       pgtype.Int4
-	ErrorMessage     pgtype.Text
-	TtftMs           pgtype.Int4
-	TimeSpentMs      pgtype.Int4
-	CreatedAt        pgtype.Timestamp
+	ID                   string
+	SpanID               pgtype.Text
+	ParentSpanID         pgtype.Text
+	Type                 int32
+	Status               int32
+	ProviderID           pgtype.Int4
+	EndpointPath         pgtype.Text
+	ApiKeyID             pgtype.Int4
+	Model                pgtype.Text
+	UpstreamModel        pgtype.Text
+	InputTokens          pgtype.Int4
+	CacheReadTokens      pgtype.Int4
+	OutputTokens         pgtype.Int4
+	CacheWriteTokens     pgtype.Int4
+	StatusCode           pgtype.Int4
+	ErrorMessage         pgtype.Text
+	TtftMs               pgtype.Int4
+	TimeSpentMs          pgtype.Int4
+	CreatedAt            pgtype.Timestamp
+	ModelCost            pgtype.Numeric
+	ModelCostCurrency    pgtype.Text
+	UpstreamCost         pgtype.Numeric
+	UpstreamCostCurrency pgtype.Text
 }
 
 func toRequestView(r requestLike) *RequestView {
@@ -118,87 +126,115 @@ func toRequestView(r requestLike) *RequestView {
 	if r.CreatedAt.Valid {
 		view.CreatedAt = r.CreatedAt.Time.UTC().Format(time.RFC3339Nano)
 	}
+	if r.ModelCost.Valid {
+		if f, err := numericToFloat(r.ModelCost); err == nil {
+			view.ModelCost = &f
+		}
+	}
+	if r.ModelCostCurrency.Valid {
+		view.ModelCostCurrency = r.ModelCostCurrency.String
+	}
+	if r.UpstreamCost.Valid {
+		if f, err := numericToFloat(r.UpstreamCost); err == nil {
+			view.UpstreamCost = &f
+		}
+	}
+	if r.UpstreamCostCurrency.Valid {
+		view.UpstreamCostCurrency = r.UpstreamCostCurrency.String
+	}
 	return view
 }
 
 func ToRequestView(r *db.Request) *RequestView {
 	return toRequestView(requestLike{
-		ID:               r.ID,
-		SpanID:           r.SpanID,
-		ParentSpanID:     r.ParentSpanID,
-		Type:             r.Type,
-		Status:           r.Status,
-		ProviderID:       r.ProviderID,
-		EndpointPath:     r.EndpointPath,
-		ApiKeyID:         r.ApiKeyID,
-		Model:            r.Model,
-		UpstreamModel:    r.UpstreamModel,
-		InputTokens:      r.InputTokens,
-		CacheReadTokens:  r.CacheReadTokens,
-		OutputTokens:     r.OutputTokens,
-		CacheWriteTokens: r.CacheWriteTokens,
-		StatusCode:       r.StatusCode,
-		ErrorMessage:     r.ErrorMessage,
-		TtftMs:           r.TtftMs,
-		TimeSpentMs:      r.TimeSpentMs,
-		CreatedAt:        r.CreatedAt,
+		ID:                   r.ID,
+		SpanID:               r.SpanID,
+		ParentSpanID:         r.ParentSpanID,
+		Type:                 r.Type,
+		Status:               r.Status,
+		ProviderID:           r.ProviderID,
+		EndpointPath:         r.EndpointPath,
+		ApiKeyID:             r.ApiKeyID,
+		Model:                r.Model,
+		UpstreamModel:        r.UpstreamModel,
+		InputTokens:          r.InputTokens,
+		CacheReadTokens:      r.CacheReadTokens,
+		OutputTokens:         r.OutputTokens,
+		CacheWriteTokens:     r.CacheWriteTokens,
+		StatusCode:           r.StatusCode,
+		ErrorMessage:         r.ErrorMessage,
+		TtftMs:               r.TtftMs,
+		TimeSpentMs:          r.TimeSpentMs,
+		CreatedAt:            r.CreatedAt,
+		ModelCost:            r.ModelCost,
+		ModelCostCurrency:    r.ModelCostCurrency,
+		UpstreamCost:         r.UpstreamCost,
+		UpstreamCostCurrency: r.UpstreamCostCurrency,
 	})
 }
 
 func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 	return toRequestView(requestLike{
-		ID:               r.ID,
-		SpanID:           r.SpanID,
-		ParentSpanID:     r.ParentSpanID,
-		Type:             r.Type,
-		Status:           r.Status,
-		ProviderID:       r.ProviderID,
-		EndpointPath:     r.EndpointPath,
-		ApiKeyID:         r.ApiKeyID,
-		Model:            r.Model,
-		UpstreamModel:    r.UpstreamModel,
-		InputTokens:      r.InputTokens,
-		CacheReadTokens:  r.CacheReadTokens,
-		OutputTokens:     r.OutputTokens,
-		CacheWriteTokens: r.CacheWriteTokens,
-		StatusCode:       r.StatusCode,
-		ErrorMessage:     r.ErrorMessage,
-		TtftMs:           r.TtftMs,
-		TimeSpentMs:      r.TimeSpentMs,
-		CreatedAt:        r.CreatedAt,
+		ID:                   r.ID,
+		SpanID:               r.SpanID,
+		ParentSpanID:         r.ParentSpanID,
+		Type:                 r.Type,
+		Status:               r.Status,
+		ProviderID:           r.ProviderID,
+		EndpointPath:         r.EndpointPath,
+		ApiKeyID:             r.ApiKeyID,
+		Model:                r.Model,
+		UpstreamModel:        r.UpstreamModel,
+		InputTokens:          r.InputTokens,
+		CacheReadTokens:      r.CacheReadTokens,
+		OutputTokens:         r.OutputTokens,
+		CacheWriteTokens:     r.CacheWriteTokens,
+		StatusCode:           r.StatusCode,
+		ErrorMessage:         r.ErrorMessage,
+		TtftMs:               r.TtftMs,
+		TimeSpentMs:          r.TimeSpentMs,
+		CreatedAt:            r.CreatedAt,
+		ModelCost:            r.ModelCost,
+		ModelCostCurrency:    r.ModelCostCurrency,
+		UpstreamCost:         r.UpstreamCost,
+		UpstreamCostCurrency: r.UpstreamCostCurrency,
 	})
 }
 
 func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 	return toRequestView(requestLike{
-		ID:               r.ID,
-		SpanID:           r.SpanID,
-		ParentSpanID:     r.ParentSpanID,
-		Type:             r.Type,
-		Status:           r.Status,
-		ProviderID:       r.ProviderID,
-		EndpointPath:     r.EndpointPath,
-		ApiKeyID:         r.ApiKeyID,
-		Model:            r.Model,
-		UpstreamModel:    r.UpstreamModel,
-		InputTokens:      r.InputTokens,
-		CacheReadTokens:  r.CacheReadTokens,
-		OutputTokens:     r.OutputTokens,
-		CacheWriteTokens: r.CacheWriteTokens,
-		StatusCode:       r.StatusCode,
-		ErrorMessage:     r.ErrorMessage,
-		TtftMs:           r.TtftMs,
-		TimeSpentMs:      r.TimeSpentMs,
-		CreatedAt:        r.CreatedAt,
+		ID:                   r.ID,
+		SpanID:               r.SpanID,
+		ParentSpanID:         r.ParentSpanID,
+		Type:                 r.Type,
+		Status:               r.Status,
+		ProviderID:           r.ProviderID,
+		EndpointPath:         r.EndpointPath,
+		ApiKeyID:             r.ApiKeyID,
+		Model:                r.Model,
+		UpstreamModel:        r.UpstreamModel,
+		InputTokens:          r.InputTokens,
+		CacheReadTokens:      r.CacheReadTokens,
+		OutputTokens:         r.OutputTokens,
+		CacheWriteTokens:     r.CacheWriteTokens,
+		StatusCode:           r.StatusCode,
+		ErrorMessage:         r.ErrorMessage,
+		TtftMs:               r.TtftMs,
+		TimeSpentMs:          r.TimeSpentMs,
+		CreatedAt:            r.CreatedAt,
+		ModelCost:            r.ModelCost,
+		ModelCostCurrency:    r.ModelCostCurrency,
+		UpstreamCost:         r.UpstreamCost,
+		UpstreamCostCurrency: r.UpstreamCostCurrency,
 	})
 }
 
 type ListRequestsRequest struct {
 	PaginationRequest
-	Type         int32  `query:"type,omitempty" default:"-1"`
-	ProviderID   int32  `query:"providerId,omitempty"`
-	EndpointPath string `query:"endpointPath,omitempty"`
-	Model        string `query:"model,omitempty"`
+	Type          int32  `query:"type,omitempty" default:"-1"`
+	ProviderID    int32  `query:"providerId,omitempty"`
+	EndpointPath  string `query:"endpointPath,omitempty"`
+	Model         string `query:"model,omitempty"`
 	UpstreamModel string `query:"upstreamModel,omitempty"`
 }
 

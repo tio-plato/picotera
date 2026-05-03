@@ -405,6 +405,48 @@ func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateReque
 	}
 }
 
+// costsFor computes per-request cost snapshots for both the model.pricing and
+// the matching provider.providerModels[].pricing entries. Either side may be
+// absent — its two columns are returned as invalid pgtype values in that case.
+// providerID == 0 / model == "" short-circuits the corresponding side.
+func (s *Server) costsFor(ctx context.Context, model string, providerID int32, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens pgtype.Int4) (modelCost pgtype.Numeric, modelCcy pgtype.Text, upstreamCost pgtype.Numeric, upstreamCcy pgtype.Text) {
+	in := pgInt4ToPtr(inputTokens)
+	out := pgInt4ToPtr(outputTokens)
+	cr := pgInt4ToPtr(cacheReadTokens)
+	cw := pgInt4ToPtr(cacheWriteTokens)
+
+	if model != "" {
+		row, err := s.queries.GetModelByName(ctx, model)
+		if err == nil {
+			if pricing, perr := contract.PricingFromJSONB(row.Pricing); perr == nil && pricing != nil {
+				if num, ccy, ok := computeCost(pricing, in, out, cr, cw); ok {
+					modelCost, modelCcy = num, ccy
+				}
+			}
+		}
+	}
+
+	if providerID > 0 && model != "" {
+		prov, err := s.queries.GetProviderByID(ctx, providerID)
+		if err == nil {
+			if pricing, perr := providerEntryPricing(prov.ProviderModels, model); perr == nil && pricing != nil {
+				if num, ccy, ok := computeCost(pricing, in, out, cr, cw); ok {
+					upstreamCost, upstreamCcy = num, ccy
+				}
+			}
+		}
+	}
+	return
+}
+
+func pgInt4ToPtr(v pgtype.Int4) *int32 {
+	if !v.Valid {
+		return nil
+	}
+	x := v.Int32
+	return &x
+}
+
 // metricsToPG converts ResponseMetrics to pgtype fields for DB queries.
 func metricsToPG(m ResponseMetrics) (ttftMs pgtype.Int4, inputTokens pgtype.Int4, outputTokens pgtype.Int4, cacheReadTokens pgtype.Int4, cacheWriteTokens pgtype.Int4) {
 	if m.TTFTMs != nil {

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import SidePanelHost from '@/components/SidePanelHost.vue'
 import ConfirmDialog from '@/ui/ConfirmDialog.vue'
+import { useExchangeRatesStore } from '@/stores/exchangeRates'
 
 const route = useRoute()
 
@@ -14,8 +15,15 @@ const pageMeta = computed(() => {
     endpoints: { title: '端点', hint: 'HTTP 入口与请求形状' },
     requests: { title: '请求', hint: '推理请求历史与状态' },
     scripts: { title: '脚本', hint: '自定义钩子脚本与执行逻辑' },
+    rates: { title: '汇率', hint: '管理币种与换算' },
   }
   return map[route.name as string] ?? { title: '', hint: '' }
+})
+
+onMounted(() => {
+  useExchangeRatesStore().fetch().catch(() => {
+    // surfaced inside any consumer that needs the rates
+  })
 })
 </script>
 

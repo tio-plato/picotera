@@ -2,7 +2,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useApi } from '@/composables/useApi'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
-import type { ProviderView, ProviderModelEntry, ProviderEndpointView, EndpointView } from '@/api'
+import PricingEditor from '@/components/PricingEditor.vue'
+import type { ProviderView, ProviderModelEntry, ProviderEndpointView, EndpointView, Pricing } from '@/api'
 import {
   SidePanel,
   Button,
@@ -25,6 +26,7 @@ type Row = {
   annotations: Record<string, string>
   disabled: boolean
   expanded: boolean
+  pricing: Pricing | null
 }
 
 const props = defineProps<{ providerId: number; providerName: string; onSave?: () => void }>()
@@ -58,6 +60,7 @@ function entryToRow(entry: ProviderModelEntry): Row {
     annotations: { ...entry.annotations },
     disabled: entry.disabled ?? false,
     expanded: false,
+    pricing: entry.pricing ? structuredClone(entry.pricing) : null,
   }
 }
 
@@ -71,6 +74,7 @@ function emptyRow(modelName: string): Row {
     annotations: {},
     disabled: false,
     expanded: false,
+    pricing: null,
   }
 }
 
@@ -100,6 +104,9 @@ function rowsToList(list: Row[]): ProviderModelEntry[] {
     if (row.priority) entry.priority = row.priority
     if (row.disabled) entry.disabled = true
     if (Object.keys(row.annotations).length) entry.annotations = { ...row.annotations }
+    if (row.pricing && row.pricing.tiers && row.pricing.tiers.length > 0) {
+      entry.pricing = row.pricing
+    }
     out.push(entry)
   }
   const seen = new Set<string>()
@@ -481,6 +488,9 @@ async function save() {
               </Field>
               <Field label="标注" as="div">
                 <AnnotationsEditor v-model="row.annotations" />
+              </Field>
+              <Field label="定价" as="div">
+                <PricingEditor v-model="row.pricing" />
               </Field>
               <Field label="状态" as="div">
                 <label class="inline-flex items-center gap-2 text-sm cursor-pointer">

@@ -2,7 +2,7 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
 import type { RequestView, ProviderView } from '@/api'
-import { SidePanel, StateText, Field, Tag, IconButton, Icon, Tabs } from '@/ui'
+import { SidePanel, StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay } from '@/ui'
 import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
 
@@ -297,6 +297,31 @@ watch(detailTabs, tabs => {
             </Field>
             <Field label="缓存写入" as="div">
               <span class="font-mono tabular-nums text-sm">{{ fmtNum(selected.cacheWriteTokens) }}</span>
+            </Field>
+          </div>
+        </section>
+
+        <section
+          v-if="selected.modelCost != null || selected.upstreamCost != null"
+          class="flex flex-col gap-2.5"
+        >
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">成本</span>
+          <div class="grid grid-cols-2 gap-2.5">
+            <Field label="模型价" as="div">
+              <span class="font-mono tabular-nums text-sm">
+                <MoneyDisplay
+                  :amount="selected.modelCost ?? null"
+                  :currency="selected.modelCostCurrency ?? ''"
+                />
+              </span>
+            </Field>
+            <Field label="上游价" as="div">
+              <span class="font-mono tabular-nums text-sm">
+                <MoneyDisplay
+                  :amount="selected.upstreamCost ?? null"
+                  :currency="selected.upstreamCostCurrency ?? ''"
+                />
+              </span>
             </Field>
           </div>
         </section>

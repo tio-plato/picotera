@@ -10,6 +10,9 @@ export type RequestView = components['schemas']['RequestView']
 export type ScriptView = components['schemas']['ScriptView']
 export type FetchModelsRequestBody = components['schemas']['FetchModelsRequestBody']
 export type FetchModelsResponseBody = components['schemas']['FetchModelsResponseBody']
+export type ExchangeRateView = components['schemas']['ExchangeRateView']
+export type Pricing = components['schemas']['Pricing']
+export type PricingTier = components['schemas']['PricingTier']
 
 export type EndpointType = NonNullable<EndpointView['endpointType']>
 export const ENDPOINT_TYPES_MODEL_ROUTED: EndpointType[] = [

@@ -1,7 +1,8 @@
 -- name: ListRequests :many
 SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
        upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
-       status_code, error_message, ttft_ms, time_spent_ms, created_at
+       status_code, error_message, ttft_ms, time_spent_ms, created_at,
+       model_cost, model_cost_currency, upstream_cost, upstream_cost_currency
 FROM request
 WHERE
   (sqlc.narg('type')::int IS NULL OR type = sqlc.narg('type'))
@@ -26,7 +27,8 @@ WITH anchor AS (
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
        r.cache_write_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
-       r.created_at
+       r.created_at,
+       r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC;
@@ -40,7 +42,9 @@ WHERE id = $1;
 UPDATE request
 SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     ttft_ms = $6, input_tokens = $7, output_tokens = $8,
-    cache_read_tokens = $9, cache_write_tokens = $10
+    cache_read_tokens = $9, cache_write_tokens = $10,
+    model_cost = $11, model_cost_currency = $12,
+    upstream_cost = $13, upstream_cost_currency = $14
 WHERE id = $1;
 
 -- name: UpdateRequestModel :exec

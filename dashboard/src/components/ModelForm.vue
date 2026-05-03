@@ -2,7 +2,8 @@
 import { ref } from 'vue'
 import { useApi } from '@/composables/useApi'
 import { SidePanel, Button, Input, Field } from '@/ui'
-import type { ModelView } from '@/api'
+import PricingEditor from '@/components/PricingEditor.vue'
+import type { ModelView, Pricing } from '@/api'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{
@@ -20,6 +21,7 @@ const form = ref({
   developer: props.model?.developer ?? '',
   series: props.model?.series ?? '',
   disabled: props.model?.disabled ?? false,
+  pricing: (props.model?.pricing ?? null) as Pricing | null,
 })
 const saving = ref(false)
 const error = ref('')
@@ -27,7 +29,15 @@ const error = ref('')
 async function submit() {
   saving.value = true
   error.value = ''
-  const { error: err } = await api.PUT('/api/picotera/models', { body: form.value })
+  const body = {
+    name: form.value.name,
+    title: form.value.title,
+    developer: form.value.developer,
+    series: form.value.series,
+    disabled: form.value.disabled,
+    ...(form.value.pricing ? { pricing: form.value.pricing } : {}),
+  }
+  const { error: err } = await api.PUT('/api/picotera/models', { body })
   if (err) {
     error.value = err.message ?? '操作失败'
   } else {
@@ -61,6 +71,9 @@ async function submit() {
       </Field>
       <Field label="系列">
         <Input v-model="form.series" required placeholder="例如 GPT" />
+      </Field>
+      <Field label="定价" as="div">
+        <PricingEditor v-model="form.pricing" />
       </Field>
       <Field label="状态" as="div">
         <label class="inline-flex items-center gap-2 text-sm cursor-pointer">

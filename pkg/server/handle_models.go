@@ -26,12 +26,21 @@ func (s *Server) handleGetModel(ctx context.Context, input *contract.GetModelReq
 }
 
 func (s *Server) handlePutModel(ctx context.Context, input *contract.PutModelRequest) (*contract.GetModelResponse, error) {
+	if err := input.Body.Pricing.Validate(); err != nil {
+		return nil, huma.Error400BadRequest(err.Error())
+	}
+	pricingBytes, err := contract.PricingToJSONB(input.Body.Pricing)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to encode pricing", err)
+	}
+
 	model, err := s.queries.UpsertModel(ctx, db.UpsertModelParams{
 		Name:      input.Body.Name,
 		Title:     pgtype.Text{String: input.Body.Title, Valid: true},
 		Developer: pgtype.Text{String: input.Body.Developer, Valid: true},
 		Series:    pgtype.Text{String: input.Body.Series, Valid: true},
 		Disabled:  input.Body.Disabled,
+		Pricing:   pricingBytes,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to upsert model", err)

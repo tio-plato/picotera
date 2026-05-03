@@ -12,6 +12,7 @@ const DEFAULTS = {
   theme: 'light' as Theme,
   panelMode: 'auto' as PanelMode,
   fontSize: 'tall' as FontSize,
+  displayCurrency: null as string | null,
 }
 
 const THEME_VALUES: Theme[] = ['light', 'solarized-light', 'solarized-dark', 'dark']
@@ -35,6 +36,9 @@ function load() {
       theme: THEME_VALUES.includes(parsed.theme as Theme) ? (parsed.theme as Theme) : DEFAULTS.theme,
       panelMode: PANEL_MODE_VALUES.includes(parsed.panelMode as PanelMode) ? (parsed.panelMode as PanelMode) : DEFAULTS.panelMode,
       fontSize: FONT_SIZE_VALUES.includes(parsed.fontSize as FontSize) ? (parsed.fontSize as FontSize) : DEFAULTS.fontSize,
+      displayCurrency: typeof parsed.displayCurrency === 'string' && parsed.displayCurrency.length > 0
+        ? parsed.displayCurrency
+        : DEFAULTS.displayCurrency,
     }
   } catch {
     return { ...DEFAULTS }
@@ -46,6 +50,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const theme = ref<Theme>(initial.theme)
   const panelMode = ref<PanelMode>(initial.panelMode)
   const fontSize = ref<FontSize>(initial.fontSize)
+  const displayCurrency = ref<string | null>(initial.displayCurrency)
 
   function apply() {
     const root = document.documentElement
@@ -59,14 +64,19 @@ export const usePreferencesStore = defineStore('preferences', () => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ theme: theme.value, panelMode: panelMode.value, fontSize: fontSize.value }),
+        JSON.stringify({
+          theme: theme.value,
+          panelMode: panelMode.value,
+          fontSize: fontSize.value,
+          displayCurrency: displayCurrency.value,
+        }),
       )
     } catch {
       // ignore quota / privacy-mode errors
     }
   }
 
-  watch([theme, panelMode, fontSize], () => {
+  watch([theme, panelMode, fontSize, displayCurrency], () => {
     apply()
     persist()
   })
@@ -75,5 +85,5 @@ export const usePreferencesStore = defineStore('preferences', () => {
     apply()
   }
 
-  return { theme, panelMode, fontSize, init }
+  return { theme, panelMode, fontSize, displayCurrency, init }
 })

@@ -12,7 +12,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model FROM request WHERE id = $1
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency FROM request WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
@@ -38,6 +38,10 @@ func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
 		&i.Type,
 		&i.Status,
 		&i.UpstreamModel,
+		&i.ModelCost,
+		&i.ModelCostCurrency,
+		&i.UpstreamCost,
+		&i.UpstreamCostCurrency,
 	)
 	return i, err
 }
@@ -45,7 +49,8 @@ func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
 const listRequests = `-- name: ListRequests :many
 SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
        upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
-       status_code, error_message, ttft_ms, time_spent_ms, created_at
+       status_code, error_message, ttft_ms, time_spent_ms, created_at,
+       model_cost, model_cost_currency, upstream_cost, upstream_cost_currency
 FROM request
 WHERE
   ($1::int IS NULL OR type = $1)
@@ -73,25 +78,29 @@ type ListRequestsParams struct {
 }
 
 type ListRequestsRow struct {
-	ID               string           `json:"id"`
-	SpanID           pgtype.Text      `json:"spanId"`
-	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
-	Type             int32            `json:"type"`
-	Status           int32            `json:"status"`
-	ProviderID       pgtype.Int4      `json:"providerId"`
-	EndpointPath     pgtype.Text      `json:"endpointPath"`
-	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
-	Model            pgtype.Text      `json:"model"`
-	UpstreamModel    pgtype.Text      `json:"upstreamModel"`
-	InputTokens      pgtype.Int4      `json:"inputTokens"`
-	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
-	OutputTokens     pgtype.Int4      `json:"outputTokens"`
-	CacheWriteTokens pgtype.Int4      `json:"cacheWriteTokens"`
-	StatusCode       pgtype.Int4      `json:"statusCode"`
-	ErrorMessage     pgtype.Text      `json:"errorMessage"`
-	TtftMs           pgtype.Int4      `json:"ttftMs"`
-	TimeSpentMs      pgtype.Int4      `json:"timeSpentMs"`
-	CreatedAt        pgtype.Timestamp `json:"createdAt"`
+	ID                   string           `json:"id"`
+	SpanID               pgtype.Text      `json:"spanId"`
+	ParentSpanID         pgtype.Text      `json:"parentSpanId"`
+	Type                 int32            `json:"type"`
+	Status               int32            `json:"status"`
+	ProviderID           pgtype.Int4      `json:"providerId"`
+	EndpointPath         pgtype.Text      `json:"endpointPath"`
+	ApiKeyID             pgtype.Int4      `json:"apiKeyId"`
+	Model                pgtype.Text      `json:"model"`
+	UpstreamModel        pgtype.Text      `json:"upstreamModel"`
+	InputTokens          pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens      pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens         pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens     pgtype.Int4      `json:"cacheWriteTokens"`
+	StatusCode           pgtype.Int4      `json:"statusCode"`
+	ErrorMessage         pgtype.Text      `json:"errorMessage"`
+	TtftMs               pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs          pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt            pgtype.Timestamp `json:"createdAt"`
+	ModelCost            pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency    pgtype.Text      `json:"modelCostCurrency"`
+	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
+	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
 }
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
@@ -132,6 +141,10 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 			&i.TtftMs,
 			&i.TimeSpentMs,
 			&i.CreatedAt,
+			&i.ModelCost,
+			&i.ModelCostCurrency,
+			&i.UpstreamCost,
+			&i.UpstreamCostCurrency,
 		); err != nil {
 			return nil, err
 		}
@@ -150,32 +163,37 @@ WITH anchor AS (
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
        r.cache_write_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
-       r.created_at
+       r.created_at,
+       r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC
 `
 
 type ListRequestsBySpanRow struct {
-	ID               string           `json:"id"`
-	SpanID           pgtype.Text      `json:"spanId"`
-	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
-	Type             int32            `json:"type"`
-	Status           int32            `json:"status"`
-	ProviderID       pgtype.Int4      `json:"providerId"`
-	EndpointPath     pgtype.Text      `json:"endpointPath"`
-	ApiKeyID         pgtype.Int4      `json:"apiKeyId"`
-	Model            pgtype.Text      `json:"model"`
-	UpstreamModel    pgtype.Text      `json:"upstreamModel"`
-	InputTokens      pgtype.Int4      `json:"inputTokens"`
-	CacheReadTokens  pgtype.Int4      `json:"cacheReadTokens"`
-	OutputTokens     pgtype.Int4      `json:"outputTokens"`
-	CacheWriteTokens pgtype.Int4      `json:"cacheWriteTokens"`
-	StatusCode       pgtype.Int4      `json:"statusCode"`
-	ErrorMessage     pgtype.Text      `json:"errorMessage"`
-	TtftMs           pgtype.Int4      `json:"ttftMs"`
-	TimeSpentMs      pgtype.Int4      `json:"timeSpentMs"`
-	CreatedAt        pgtype.Timestamp `json:"createdAt"`
+	ID                   string           `json:"id"`
+	SpanID               pgtype.Text      `json:"spanId"`
+	ParentSpanID         pgtype.Text      `json:"parentSpanId"`
+	Type                 int32            `json:"type"`
+	Status               int32            `json:"status"`
+	ProviderID           pgtype.Int4      `json:"providerId"`
+	EndpointPath         pgtype.Text      `json:"endpointPath"`
+	ApiKeyID             pgtype.Int4      `json:"apiKeyId"`
+	Model                pgtype.Text      `json:"model"`
+	UpstreamModel        pgtype.Text      `json:"upstreamModel"`
+	InputTokens          pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens      pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens         pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens     pgtype.Int4      `json:"cacheWriteTokens"`
+	StatusCode           pgtype.Int4      `json:"statusCode"`
+	ErrorMessage         pgtype.Text      `json:"errorMessage"`
+	TtftMs               pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs          pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt            pgtype.Timestamp `json:"createdAt"`
+	ModelCost            pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency    pgtype.Text      `json:"modelCostCurrency"`
+	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
+	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
 }
 
 func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequestsBySpanRow, error) {
@@ -207,6 +225,10 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequ
 			&i.TtftMs,
 			&i.TimeSpentMs,
 			&i.CreatedAt,
+			&i.ModelCost,
+			&i.ModelCostCurrency,
+			&i.UpstreamCost,
+			&i.UpstreamCostCurrency,
 		); err != nil {
 			return nil, err
 		}
@@ -264,21 +286,27 @@ const updateRequestOnComplete = `-- name: UpdateRequestOnComplete :exec
 UPDATE request
 SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     ttft_ms = $6, input_tokens = $7, output_tokens = $8,
-    cache_read_tokens = $9, cache_write_tokens = $10
+    cache_read_tokens = $9, cache_write_tokens = $10,
+    model_cost = $11, model_cost_currency = $12,
+    upstream_cost = $13, upstream_cost_currency = $14
 WHERE id = $1
 `
 
 type UpdateRequestOnCompleteParams struct {
-	ID               string      `json:"id"`
-	StatusCode       pgtype.Int4 `json:"statusCode"`
-	ErrorMessage     pgtype.Text `json:"errorMessage"`
-	TimeSpentMs      pgtype.Int4 `json:"timeSpentMs"`
-	Status           int32       `json:"status"`
-	TtftMs           pgtype.Int4 `json:"ttftMs"`
-	InputTokens      pgtype.Int4 `json:"inputTokens"`
-	OutputTokens     pgtype.Int4 `json:"outputTokens"`
-	CacheReadTokens  pgtype.Int4 `json:"cacheReadTokens"`
-	CacheWriteTokens pgtype.Int4 `json:"cacheWriteTokens"`
+	ID                   string         `json:"id"`
+	StatusCode           pgtype.Int4    `json:"statusCode"`
+	ErrorMessage         pgtype.Text    `json:"errorMessage"`
+	TimeSpentMs          pgtype.Int4    `json:"timeSpentMs"`
+	Status               int32          `json:"status"`
+	TtftMs               pgtype.Int4    `json:"ttftMs"`
+	InputTokens          pgtype.Int4    `json:"inputTokens"`
+	OutputTokens         pgtype.Int4    `json:"outputTokens"`
+	CacheReadTokens      pgtype.Int4    `json:"cacheReadTokens"`
+	CacheWriteTokens     pgtype.Int4    `json:"cacheWriteTokens"`
+	ModelCost            pgtype.Numeric `json:"modelCost"`
+	ModelCostCurrency    pgtype.Text    `json:"modelCostCurrency"`
+	UpstreamCost         pgtype.Numeric `json:"upstreamCost"`
+	UpstreamCostCurrency pgtype.Text    `json:"upstreamCostCurrency"`
 }
 
 func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error {
@@ -293,6 +321,10 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 		arg.OutputTokens,
 		arg.CacheReadTokens,
 		arg.CacheWriteTokens,
+		arg.ModelCost,
+		arg.ModelCostCurrency,
+		arg.UpstreamCost,
+		arg.UpstreamCostCurrency,
 	)
 	return err
 }

@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
 	DeleteEndpoint(ctx context.Context, path string) error
+	DeleteExchangeRate(ctx context.Context, code string) error
 	DeleteModel(ctx context.Context, name string) error
 	DeleteProvider(ctx context.Context, id int32) error
 	DeleteProviderEndpoint(ctx context.Context, arg DeleteProviderEndpointParams) error
@@ -20,6 +21,8 @@ type Querier interface {
 	GetApiKeyByHash(ctx context.Context, apiKeyHash []byte) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
 	GetEndpoints(ctx context.Context) ([]Endpoint, error)
+	GetExchangeRateByCode(ctx context.Context, code string) (ExchangeRate, error)
+	GetExchangeRates(ctx context.Context) ([]ExchangeRate, error)
 	GetModelByName(ctx context.Context, name string) (Model, error)
 	GetModels(ctx context.Context) ([]Model, error)
 	GetProviderByID(ctx context.Context, id int32) (Provider, error)
@@ -42,6 +45,7 @@ type Querier interface {
 	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
+	UpsertExchangeRate(ctx context.Context, arg UpsertExchangeRateParams) (ExchangeRate, error)
 	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
 	UpsertProviderEndpoint(ctx context.Context, arg UpsertProviderEndpointParams) (ProviderEndpoint, error)
 }
