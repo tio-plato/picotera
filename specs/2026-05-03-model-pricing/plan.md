@@ -2,7 +2,7 @@
 
 ### 阶段 1 — 数据库与共享类型
 
-1. **新增迁移 `db/migrations/010_pricing_and_exchange_rate.sql`**
+1. **新增迁移 `db/migrations/011_pricing_and_exchange_rate.sql`**（注意：010 被 api-key-management 占用）
    - `CREATE TABLE exchange_rate (code TEXT PK, name TEXT NOT NULL, symbol TEXT NOT NULL, units_per_usd NUMERIC NOT NULL)`。
    - `INSERT INTO exchange_rate (code, name, symbol, units_per_usd) VALUES ('USD', 'US Dollar', '$', 1)`。
    - `ALTER TABLE model ADD COLUMN pricing JSONB NOT NULL DEFAULT '{}'::jsonb`。

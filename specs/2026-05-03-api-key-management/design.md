@@ -41,10 +41,18 @@ CREATE UNIQUE INDEX api_key_key_idx ON api_key (key);
 
 ## 网关鉴权
 
-`pkg/server/gateway_helpers.go` 的 `validateClientAuth` 当前只在 header 里探测是否有凭证，不做内容比对。改造方向：
+> 前置依赖：`google-credential-resolvers` 已落地，`validateClientAuth(r *http.Request, resolver int32) error` 已经按 resolver 决定可接受的客户端凭证位置。本节在它的基础上替换为带 DB 查询的版本。
 
-1. 把它从纯函数改成 `*Server` 方法（或拆出 `(s *Server) authenticateClient(ctx, r)`），返回 `(*db.ApiKey, error)`。
-2. 复用现有 header 探测（`Authorization: Bearer …` 优先，其次 `X-Api-Key`）。两种都没有 → `401 unauthorized: missing credentials`。
+`pkg/server/gateway_helpers.go` 的 `validateClientAuth` 改造方向：
+
+1. 替换为 `(s *Server) authenticateClient(ctx context.Context, r *http.Request, resolver int32) (*db.ApiKey, error)`。
+2. **Token 提取位置跟随 resolver**，与 `google-credential-resolvers` 设计的「客户端凭证识别」表完全一致：
+   - `bearerToken`：仅从 `Authorization: Bearer <token>` 取。
+   - `xApiKey`：仅从 `X-Api-Key` 取。
+   - `searchKey`：仅从 URL 查询参数 `key` 取。
+   - `googApiKey`：仅从 `X-Goog-Api-Key` 取。
+   - `generalApiKey` / `unknown` / 其它：按嗅探优先级（Bearer → X-Api-Key → `?key=` → X-Goog-Api-Key）取第一个非空。
+   - 任一可接受位置都没填 → `401 unauthorized: missing credentials`。
 3. 提取出来的 token 用 `GetApiKeyByKey(ctx, token)` 查库：
    - `pgx.ErrNoRows` → `401 unauthorized: invalid api key`。
    - `disabled = TRUE` → `403 forbidden: api key disabled`。

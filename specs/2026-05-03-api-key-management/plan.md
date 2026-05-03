@@ -25,12 +25,21 @@
 
 ## 5. 网关鉴权改造
 
+> 前置：`google-credential-resolvers` 必须先合入，`validateClientAuth(r, resolver)` 已存在。
+
 1. `pkg/server/gateway_helpers.go`：
-   - 把 `validateClientAuth(r)` 重写为 `(s *Server) authenticateClient(ctx context.Context, r *http.Request) (*db.ApiKey, error)`。
-   - 沿用现有 header 探测，提取 token，调 `s.queries.GetApiKeyByKey(ctx, token)`。
+   - 把 `validateClientAuth(r, resolver)` 重写为 `(s *Server) authenticateClient(ctx context.Context, r *http.Request, resolver int32) (*db.ApiKey, error)`。
+   - **Token 提取位置跟随 resolver**，复用 google-credential-resolvers 中的「客户端凭证识别」表：
+     - `bearerToken` → 仅 `Authorization: Bearer <token>`。
+     - `xApiKey` → 仅 `X-Api-Key`。
+     - `searchKey` → 仅 URL `?key=`。
+     - `googApiKey` → 仅 `X-Goog-Api-Key`。
+     - `generalApiKey` / `unknown` / 其它 → 按嗅探优先级 Bearer → X-Api-Key → `?key=` → X-Goog-Api-Key 取第一个非空。
+   - 任一可接受位置都没填 → `401 missing credentials`。
+   - 提到 token 后调 `s.queries.GetApiKeyByKey(ctx, token)`。
    - 错误映射：`pgx.ErrNoRows → gatewayError{401, "invalid api key", Unauthorized}`，`disabled → gatewayError{403, "api key disabled", Forbidden}`，DB 错误 → 500。
 2. `pkg/server/handle_gateway.go` step 4：
-   - 把调用改为 `apiKey, err := h.authenticateClient(r.Context(), r)`。
+   - 把调用改为 `apiKey, err := h.authenticateClient(r.Context(), r, endpoint.CredentialsResolver)`（必须在 `resolveEndpoint` 之后）。
    - 之后 `insertRequest`、所有 `updateRequestOnHeader` 的 `ApiKeyID` 字段填 `pgtype.Int4{Int32: apiKey.ID, Valid: true}`。
    - 把 `apiKey.Annotations` JSONB 反序列化为 `map[string]string`，构造 `*jsx.ApiKeySummary`。
 

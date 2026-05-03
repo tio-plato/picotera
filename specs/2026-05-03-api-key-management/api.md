@@ -61,7 +61,7 @@ type ApiKeyView = {
 
 | 场景 | HTTP | code |
 | --- | --- | --- |
-| 没带 `Authorization: Bearer` 也没带 `X-Api-Key` | 401 | `UNAUTHORIZED` |
+| 该 endpoint 的 resolver 允许的位置中都没带 token（位置规则参考 `google-credential-resolvers`） | 401 | `UNAUTHORIZED` |
 | 带了但查不到匹配 key | 401 | `UNAUTHORIZED` |
 | 命中但 `disabled = true` | 403 | `FORBIDDEN` |
 | 查询 DB 出错 | 500 | `INTERNAL_ERROR` |
