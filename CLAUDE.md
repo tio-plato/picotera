@@ -18,7 +18,7 @@ docker compose up -d
 sqlc generate
 
 # OpenAPI spec (checked in at openapi.yaml, consumed by dashboard via openapi-typescript)
-mise run openapi                        # writes openapi.yaml
+mise run openapi                        # writes openapi.yaml from `picotera openapi` subcommand
 
 # Dashboard (pnpm workspace, Vue beta pinned in pnpm-workspace.yaml)
 mise run web                            # pnpm --dir dashboard dev
@@ -26,7 +26,18 @@ pnpm --dir dashboard build              # type-check + vite build
 pnpm --dir dashboard lint               # oxlint + eslint, both with --fix
 pnpm --dir dashboard type-check         # vue-tsc --build
 pnpm --dir dashboard format             # oxfmt src/
+pnpm --dir dashboard generate-openapi   # regenerate TS types from openapi.yaml
 ```
+
+### OpenAPI → TypeScript SDK workflow
+
+The dashboard does not call the API by hand-written client code; types and the fetch client are generated from the spec.
+
+1. Edit Huma operations / contract types in `pkg/contract/` (and any handlers in `pkg/server/`).
+2. Run `mise run openapi` — this invokes `go run ./cmd/picotera/main.go openapi` (the `openapi` subcommand on the `humacli` entry point) and writes the result to `openapi.yaml` at the repo root.
+3. Run `pnpm --dir dashboard generate-openapi` — `openapi-typescript` consumes the YAML and emits `dashboard/src/openapi-types.d.ts`. `dashboard/src/api/index.ts` re-exports the schema types; `dashboard/src/api/plugin.ts` wires `openapi-fetch` against those types and installs it on the Vue app.
+
+Always run both steps after touching a contract — backend changes are invisible to the dashboard until the TS types regenerate.
 
 No Go tests exist yet. No Go linter is configured. Dashboard lints via oxlint+eslint.
 
@@ -56,6 +67,19 @@ PicoTera is an API gateway that routes LLM inference requests across multiple pr
 - `pkg/configx/` — Viper config parsing (env vars with `PICOTERA_` prefix).
 - `pkg/errorx/` — Custom error types with structured codes.
 - `pkg/logx/` — logrus wrapper.
+- `pkg/jsx/` — embedded JavaScript runtime (built on `github.com/fastschema/qjs`) that runs user-supplied scripts as request-lifecycle hooks. See "Scripts" below.
+
+### Scripts (user JS hooks)
+
+Operators store JS source in the `script` table (CRUD via `/api/picotera/scripts`, dashboard at `ScriptsView.vue` + `ScriptForm.vue`). On each gateway request, `Server.jsxEngine` (configured in `pkg/server/server.go` from `PICOTERA_JS_*` env vars: hook timeout, memory limit, max total attempts, max delay) opens a per-request `jsx.Session`, loads the embedded `pkg/jsx/sdk.js` to install `globalThis.picotera`, then evaluates every enabled script. Scripts call `picotera.hooks.<name>.tap(name, fn, priority)` to register handlers on five waterfalls:
+
+- `sortProviders` — reorder/filter provider candidates before dispatch.
+- `rewriteModel` — rewrite the requested model name once, between extraction and provider resolution.
+- `beforeRequest` — inspect / delay / skip an attempt; can override `upstreamModel` for that attempt.
+- `rewriteRequest` — mutate the pending upstream URL/headers/body just before send.
+- `rewriteProviderModels` — rewrite a provider's `providerModels` array based on an upstream `/models` response (used by the "fetch models" flow in `ProviderForm`).
+
+Hooks are run as priority-sorted waterfalls (higher priority first); each tap may return a value that becomes the input to the next tap, or `undefined` to pass through. JS-visible context shapes are defined in `pkg/jsx/types.go` (`Candidate`, `RequestShape`, `BeforeRequestInput`, `RewriteInput`, `ProviderSummary`, etc.) — provider credentials are deliberately stripped before crossing the JS boundary. Scripts also get `picotera.fetch(url, init)` (host-side fetch returning parsed JSON) and a `console` shim that captures up to 1000 entries / 256 KiB per session into `LogEntry` records persisted alongside the request.
 
 ### Key Patterns
 
@@ -67,7 +91,7 @@ PicoTera is an API gateway that routes LLM inference requests across multiple pr
 
 ### Database Schema
 
-Seven tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request`. Uses JSONB for flexible fields (provider models, annotations). Upsert pattern via `ON CONFLICT DO UPDATE`.
+Eight tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request`, `script`. Uses JSONB for flexible fields (provider models, annotations). Upsert pattern via `ON CONFLICT DO UPDATE`.
 
 ## Dashboard
 
@@ -80,10 +104,10 @@ Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pini
 - `src/main.ts`, `src/App.vue` — app bootstrap; `AppSidebar` + router-view shell.
 - `src/router/` — Vue Router config.
 - `src/stores/` — Pinia stores (`preferences.ts` holds user-configurable UI state).
-- `src/views/` — route-level pages: `ProvidersView`, `EndpointsView`, `ModelsView`, `MappingsView`. One view per management resource.
-- `src/components/` — feature-level components: forms (`ProviderForm`, `EndpointForm`, `ModelForm`, `MappingForm`), editors (`AnnotationsEditor`, `ModelListEditor`), side panels (`SidePanelHost`, `ProviderEndpointsPanel`), chrome (`AppSidebar`, `PreferencesMenu`).
+- `src/views/` — route-level pages: `ProvidersView`, `EndpointsView`, `ModelsView`, `MappingsView`, `ScriptsView`, plus request history. One view per management resource.
+- `src/components/` — feature-level components: forms (`ProviderForm`, `EndpointForm`, `ModelForm`, `MappingForm`, `ScriptForm`), editors (`AnnotationsEditor`, `ModelListEditor`), side panels (`SidePanelHost`, `ProviderEndpointsPanel`), chrome (`AppSidebar`, `PreferencesMenu`).
 - `src/composables/` — `useApi` (typed fetch client), `useConfirm` (global confirm dialog), `useSidePanel` (global slide-over stack).
-- `src/api/` — `openapi-fetch` client wired to generated types in `src/api.d.ts` (produced by `openapi-typescript` from `openapi.yaml`). Plugin registers it on the app instance.
+- `src/api/` — `openapi-fetch` client (`plugin.ts`) plus re-exported schema types (`index.ts`). Generated types live at `src/openapi-types.d.ts` (output of `pnpm --dir dashboard generate-openapi`).
 - `src/ui/` — **local UI primitive library. No third-party UI kit. No variant-authoring libs (cva/tv).** Style with Tailwind classes directly inside each component.
 
 ### Local UI Primitives (`src/ui/`)
