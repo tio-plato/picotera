@@ -256,6 +256,25 @@ function dismissSummary() {
   pendingDeletions.value = {}
 }
 
+const allMissingSelected = computed(() => {
+  const m = fetchSummary.value?.missing ?? []
+  if (!m.length) return false
+  return m.every((r) => pendingDeletions.value[r.uid])
+})
+
+function toggleSelectAllMissing(checked: boolean) {
+  const m = fetchSummary.value?.missing ?? []
+  const next: Record<number, boolean> = {}
+  if (checked) for (const r of m) next[r.uid] = true
+  pendingDeletions.value = next
+}
+
+function removeAllRows() {
+  rows.value = []
+  fetchSummary.value = null
+  pendingDeletions.value = {}
+}
+
 async function save() {
   if (!provider.value) return
   saving.value = true
@@ -325,7 +344,18 @@ async function save() {
             新增 {{ fetchSummary.added }} 项<span v-if="fetchSummary.missing.length">，本地有但上游缺失 {{ fetchSummary.missing.length }} 项</span>
           </div>
           <div v-if="fetchSummary.missing.length" class="flex flex-col gap-1.5">
-            <div class="text-2xs text-ink-muted">勾选要删除的模型：</div>
+            <div class="flex items-center justify-between">
+              <div class="text-2xs text-ink-muted">勾选要删除的模型：</div>
+              <label class="inline-flex items-center gap-1.5 text-2xs text-ink-muted cursor-pointer">
+                <input
+                  type="checkbox"
+                  class="cursor-pointer"
+                  :checked="allMissingSelected"
+                  @change="toggleSelectAllMissing(($event.target as HTMLInputElement).checked)"
+                />
+                <span>全选</span>
+              </label>
+            </div>
             <ul class="list-none m-0 p-0 flex flex-col gap-1 max-h-40 overflow-y-auto">
               <li
                 v-for="row in fetchSummary.missing"
@@ -367,6 +397,16 @@ async function save() {
           <Button type="submit" size="sm" :disabled="!newModelName.trim()">
             <Icon name="plus" :size="13" />
             <span>添加</span>
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            :disabled="!rows.length"
+            @click="removeAllRows"
+          >
+            <Icon name="trash" :size="13" />
+            <span>清空</span>
           </Button>
         </form>
         <StateText v-if="!rows.length" compact>暂无模型，添加或从上游拉取</StateText>
