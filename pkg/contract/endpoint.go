@@ -12,6 +12,8 @@ const (
 	CredentialsResolver_GeneralApiKey int32 = 1
 	CredentialsResolver_BearerToken   int32 = 2
 	CredentialsResolver_XApiKey       int32 = 3
+	CredentialsResolver_SearchKey     int32 = 4
+	CredentialsResolver_GoogApiKey    int32 = 5
 )
 
 const (
@@ -76,6 +78,10 @@ func ToCredentialsResolver(s string) int32 {
 		return CredentialsResolver_BearerToken
 	case "xApiKey":
 		return CredentialsResolver_XApiKey
+	case "searchKey":
+		return CredentialsResolver_SearchKey
+	case "googApiKey":
+		return CredentialsResolver_GoogApiKey
 	default:
 		return CredentialsResolver_Unknown
 	}
@@ -91,6 +97,10 @@ func FromCredentialsResolver(cr int32) string {
 		return "bearerToken"
 	case CredentialsResolver_XApiKey:
 		return "xApiKey"
+	case CredentialsResolver_SearchKey:
+		return "searchKey"
+	case CredentialsResolver_GoogApiKey:
+		return "googApiKey"
 	default:
 		return "unknown"
 	}
@@ -100,7 +110,7 @@ type EndpointView struct {
 	Name                string `json:"name"`
 	Path                string `json:"path"`
 	ModelPath           string `json:"modelPath"`
-	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,bearerToken,xApiKey,unknown"`
+	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,bearerToken,xApiKey,searchKey,googApiKey,unknown"`
 	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,generalListModels,unknown"`
 }
 

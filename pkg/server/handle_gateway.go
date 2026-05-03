@@ -125,7 +125,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Validate client auth
-	err = validateClientAuth(r)
+	err = validateClientAuth(r, endpoint.CredentialsResolver)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {

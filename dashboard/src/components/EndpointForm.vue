@@ -82,6 +82,8 @@ async function submit() {
           <option value="generalApiKey">通用 API Key</option>
           <option value="bearerToken">Bearer Token</option>
           <option value="xApiKey">X-Api-Key</option>
+          <option value="searchKey">Search Key (?key=)</option>
+          <option value="googApiKey">X-Goog-Api-Key</option>
         </Select>
       </Field>
     </form>

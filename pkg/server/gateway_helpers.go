@@ -108,16 +108,35 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 	return endpoint, pathVars, nil
 }
 
-// validateClientAuth checks that the client request includes credentials.
-// Returns a gatewayError if credentials are missing.
-func validateClientAuth(r *http.Request) error {
-	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return nil
-	}
-	apiKey := r.Header.Get("X-Api-Key")
-	if apiKey != "" {
-		return nil
+// validateClientAuth checks that the client request includes credentials in a
+// position accepted by the given resolver. Returns a gatewayError if missing.
+func validateClientAuth(r *http.Request, resolver int32) error {
+	hasBearer := strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
+	hasXApi := r.Header.Get("X-Api-Key") != ""
+	hasQuery := r.URL.Query().Get("key") != ""
+	hasGoog := r.Header.Get("X-Goog-Api-Key") != ""
+
+	switch resolver {
+	case contract.CredentialsResolver_BearerToken:
+		if hasBearer {
+			return nil
+		}
+	case contract.CredentialsResolver_XApiKey:
+		if hasXApi {
+			return nil
+		}
+	case contract.CredentialsResolver_SearchKey:
+		if hasQuery {
+			return nil
+		}
+	case contract.CredentialsResolver_GoogApiKey:
+		if hasGoog {
+			return nil
+		}
+	default: // GeneralApiKey / Unknown / others
+		if hasBearer || hasXApi || hasQuery || hasGoog {
+			return nil
+		}
 	}
 	return &gatewayError{
 		status:  http.StatusUnauthorized,
@@ -126,38 +145,49 @@ func validateClientAuth(r *http.Request) error {
 	}
 }
 
-// setCredentialsHeaders sets the appropriate authentication headers based on the
-// credentials resolver type. For generalApiKey with a source request, it infers
-// the auth style from the source request (preserving existing gateway behavior).
-// For generalApiKey without a source request, both headers are sent as fallback.
-// For bearerToken and xApiKey, the source request is ignored.
-func setCredentialsHeaders(headers http.Header, credentials string, resolver int32, sourceRequest *http.Request) {
+// applyCredentials sets the appropriate authentication on the upstream request
+// based on the resolver type. Unlike the old setCredentialsHeaders, it can also
+// rewrite URL query parameters (needed for searchKey / ?key=).
+func applyCredentials(req *http.Request, credentials string, resolver int32, sourceRequest *http.Request) {
 	if credentials == "" {
 		return
 	}
 	switch resolver {
-	case contract.CredentialsResolver_GeneralApiKey:
-		if sourceRequest != nil {
-			auth := sourceRequest.Header.Get("Authorization")
-			if strings.HasPrefix(auth, "Bearer ") {
-				headers.Set("Authorization", "Bearer "+credentials)
-			} else {
-				apiKey := sourceRequest.Header.Get("X-Api-Key")
-				if apiKey != "" {
-					headers.Set("X-Api-Key", credentials)
-				} else {
-					headers.Set("Authorization", "Bearer "+credentials)
-					headers.Set("X-Api-Key", credentials)
-				}
-			}
-		} else {
-			headers.Set("Authorization", "Bearer "+credentials)
-			headers.Set("X-Api-Key", credentials)
-		}
 	case contract.CredentialsResolver_BearerToken:
-		headers.Set("Authorization", "Bearer "+credentials)
+		req.Header.Set("Authorization", "Bearer "+credentials)
 	case contract.CredentialsResolver_XApiKey:
-		headers.Set("X-Api-Key", credentials)
+		req.Header.Set("X-Api-Key", credentials)
+	case contract.CredentialsResolver_SearchKey:
+		q := req.URL.Query()
+		q.Set("key", credentials)
+		req.URL.RawQuery = q.Encode()
+	case contract.CredentialsResolver_GoogApiKey:
+		req.Header.Set("X-Goog-Api-Key", credentials)
+	default: // GeneralApiKey / Unknown / others
+		if sourceRequest != nil {
+			if strings.HasPrefix(sourceRequest.Header.Get("Authorization"), "Bearer ") {
+				req.Header.Set("Authorization", "Bearer "+credentials)
+				return
+			}
+			if sourceRequest.Header.Get("X-Api-Key") != "" {
+				req.Header.Set("X-Api-Key", credentials)
+				return
+			}
+			if sourceRequest.URL.Query().Get("key") != "" {
+				q := req.URL.Query()
+				q.Set("key", credentials)
+				req.URL.RawQuery = q.Encode()
+				return
+			}
+			if sourceRequest.Header.Get("X-Goog-Api-Key") != "" {
+				req.Header.Set("X-Goog-Api-Key", credentials)
+				return
+			}
+		}
+		// No clue from source request (or nil): write three headers as fallback.
+		req.Header.Set("Authorization", "Bearer "+credentials)
+		req.Header.Set("X-Api-Key", credentials)
+		req.Header.Set("X-Goog-Api-Key", credentials)
 	}
 }
 
@@ -319,7 +349,7 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 	// Copy headers from original request, excluding auth headers, Host, and Content-Length
 	for key, values := range original.Header {
 		lower := strings.ToLower(key)
-		if lower == "authorization" || lower == "x-api-key" || lower == "host" || lower == "content-length" {
+		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" || lower == "host" || lower == "content-length" {
 			continue
 		}
 		for _, value := range values {
@@ -328,7 +358,7 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 	}
 
 	// Set credentials based on resolver type
-	setCredentialsHeaders(req.Header, creds, resolver, original)
+	applyCredentials(req, creds, resolver, original)
 
 	req.ContentLength = int64(len(reqBody))
 

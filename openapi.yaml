@@ -124,6 +124,8 @@ components:
             - generalApiKey
             - bearerToken
             - xApiKey
+            - searchKey
+            - googApiKey
             - unknown
           type: string
         endpointType:
