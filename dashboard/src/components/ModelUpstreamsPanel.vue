@@ -30,7 +30,7 @@ const sorted = computed(() =>
         <span class="text-xs text-ink-faint tabular-nums">{{ upstreams.length }}</span>
       </div>
       <div v-if="modelDisabled" class="px-2.5 py-1.5 border border-line rounded-md bg-surface-50 flex items-center gap-1.5 text-xs text-ink-muted">
-        <Icon name="eye-off" :size="13" />
+        <Icon name="puzzle-off" :size="13" />
         <span>此模型已禁用，所有上游均不参与调度</span>
       </div>
       <StateText v-if="!upstreams.length" compact>该模型暂无上游</StateText>

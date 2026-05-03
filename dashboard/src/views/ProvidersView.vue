@@ -170,7 +170,7 @@ function rowSelected(id: number) {
                   :aria-label="p.disabled ? '启用渠道' : '禁用渠道'"
                   @click="toggleDisabled(p)"
                 >
-                  <Icon :name="p.disabled ? 'eye-off' : 'eye'" :size="13" />
+                  <Icon :name="p.disabled ? 'puzzle-off' : 'puzzle'" :size="13" />
                 </IconButton>
                 <IconButton
                   :active="panel.isActive(modelsKey(p.id))"

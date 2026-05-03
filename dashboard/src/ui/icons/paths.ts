@@ -18,6 +18,8 @@ import {
   IconLoader2,
   IconPlug,
   IconPlus,
+  IconPuzzle,
+  IconPuzzleOff,
   IconRefresh,
   IconSearch,
   IconSettings,
@@ -50,6 +52,8 @@ export type IconName =
   | 'check'
   | 'eye'
   | 'eye-off'
+  | 'puzzle'
+  | 'puzzle-off'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -76,4 +80,6 @@ export const iconComponents: Record<IconName, Component> = {
   check: IconCheck,
   eye: IconEye,
   'eye-off': IconEyeOff,
+  puzzle: IconPuzzle,
+  'puzzle-off': IconPuzzleOff,
 }

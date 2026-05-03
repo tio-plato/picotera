@@ -101,7 +101,7 @@ async function toggle(s: ScriptView) {
                   :aria-label="s.enabled ? '禁用脚本' : '启用脚本'"
                   @click="toggle(s)"
                 >
-                  <Icon :name="s.enabled ? 'eye' : 'eye-off'" :size="13" />
+                  <Icon :name="s.enabled ? 'puzzle' : 'puzzle-off'" :size="13" />
                 </IconButton>
                 <IconButton
                   :active="panel.isActive(`script:${s.id}`)"

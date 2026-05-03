@@ -437,7 +437,7 @@ async function save() {
                 :aria-label="row.disabled ? '启用此模型' : '禁用此模型'"
                 @click="row.disabled = !row.disabled"
               >
-                <Icon :name="row.disabled ? 'eye-off' : 'eye'" :size="13" />
+                <Icon :name="row.disabled ? 'puzzle-off' : 'puzzle'" :size="13" />
               </IconButton>
               <IconButton
                 variant="danger"

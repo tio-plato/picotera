@@ -199,7 +199,7 @@ function confirmDelete(_event: Event, m: ModelView) {
                     :aria-label="m.disabled ? '启用模型' : '禁用模型'"
                     @click="toggleDisabled(m)"
                   >
-                    <Icon :name="m.disabled ? 'eye-off' : 'eye'" :size="13" />
+                    <Icon :name="m.disabled ? 'puzzle-off' : 'puzzle'" :size="13" />
                   </IconButton>
                   <IconButton
                     :active="panel.isActive(`model-upstreams:${m.name}`)"
