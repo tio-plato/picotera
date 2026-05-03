@@ -104,11 +104,11 @@ export const ENDPOINT_TYPES_MODEL_ROUTED: EndpointType[] = [
 export const ENDPOINT_TYPES_DIRECT: EndpointType[] = ['general', 'generalListModels']
 export const ENDPOINT_TYPE_LABELS: Record<EndpointType, string> = {
   general: '通用',
-  openaiChatCompletions: 'OpenAI Chat Completions',
-  openaiResponses: 'OpenAI Responses',
-  anthropicMessages: 'Anthropic Messages',
-  anthropicCountTokens: 'Anthropic Count Tokens',
-  generalListModels: '通用 列表模型',
+  openaiChatCompletions: 'OpenAI 聊天补全',
+  openaiResponses: 'OpenAI 响应',
+  anthropicMessages: 'Anthropic 消息',
+  anthropicCountTokens: 'Anthropic Tokens 计数',
+  generalListModels: '模型列表',
   unknown: '未知',
 }
 ```
