@@ -12,7 +12,8 @@
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "oxfmt src/"
+    "format": "oxfmt src/",
+    "generate-openapi": "openapi-typescript --output src/api/openapi.ts ../api/openapi.yaml"
   },
   "dependencies": {
     "@floating-ui/vue": "^1.1.11",
