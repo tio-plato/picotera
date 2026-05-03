@@ -33,6 +33,7 @@ func (s *Server) handleUpsertEndpoint(ctx context.Context, input *contract.Upser
 		Path:                input.Body.Path,
 		ModelPath:           input.Body.ModelPath,
 		CredentialsResolver: contract.ToCredentialsResolver(input.Body.CredentialsResolver),
+		EndpointType:        contract.ToEndpointType(input.Body.EndpointType),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to upsert endpoint", err)

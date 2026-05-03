@@ -29,7 +29,7 @@ func (q *Queries) GetApiKeyByHash(ctx context.Context, apiKeyHash []byte) (ApiKe
 }
 
 const getEndpointByPath = `-- name: GetEndpointByPath :one
-SELECT path, name, model_path, credentials_resolver FROM endpoint WHERE path = $1 LIMIT 1
+SELECT path, name, model_path, credentials_resolver, endpoint_type FROM endpoint WHERE path = $1 LIMIT 1
 `
 
 func (q *Queries) GetEndpointByPath(ctx context.Context, path string) (Endpoint, error) {
@@ -40,6 +40,7 @@ func (q *Queries) GetEndpointByPath(ctx context.Context, path string) (Endpoint,
 		&i.Name,
 		&i.ModelPath,
 		&i.CredentialsResolver,
+		&i.EndpointType,
 	)
 	return i, err
 }

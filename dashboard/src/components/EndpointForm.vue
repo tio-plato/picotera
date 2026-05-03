@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
 import { SidePanel, Button, Input, Select, Field } from '@/ui'
 import type { EndpointView } from '@/api'
+import {
+  ENDPOINT_TYPES_MODEL_ROUTED,
+  ENDPOINT_TYPE_LABELS,
+} from '@/api'
+import type { EndpointType } from '@/api'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ endpoint?: EndpointView; onSave?: () => void }>()
@@ -14,11 +19,26 @@ const form = ref({
   path: props.endpoint?.path ?? '',
   modelPath: props.endpoint?.modelPath ?? '',
   credentialsResolver: props.endpoint?.credentialsResolver ?? ('generalApiKey' as const),
+  endpointType: (props.endpoint?.endpointType ?? 'general') as EndpointType,
 })
 const saving = ref(false)
 const error = ref('')
 
+const modelPathRequired = computed(() =>
+  ENDPOINT_TYPES_MODEL_ROUTED.includes(form.value.endpointType),
+)
+
+const endpointTypeOptions = computed(() => {
+  const entries = Object.entries(ENDPOINT_TYPE_LABELS).filter(([k]) => k !== 'unknown') as [EndpointType, string][]
+  if (form.value.endpointType === 'unknown') entries.push(['unknown', ENDPOINT_TYPE_LABELS.unknown])
+  return entries
+})
+
 async function submit() {
+  if (modelPathRequired.value && !form.value.modelPath.trim()) {
+    error.value = '该端点类型必须填写模型字段路径'
+    return
+  }
   saving.value = true
   error.value = ''
   const { error: err } = await api.PUT('/api/picotera/endpoints', { body: form.value })
@@ -45,8 +65,17 @@ async function submit() {
       <Field label="名称">
         <Input v-model="form.name" required placeholder="例如 Chat Completions" />
       </Field>
-      <Field label="模型字段路径">
-        <Input v-model="form.modelPath" required placeholder="例如 body.model" />
+      <Field label="类型">
+        <Select v-model="form.endpointType">
+          <option v-for="[value, label] in endpointTypeOptions" :key="value" :value="value">{{ label }}</option>
+        </Select>
+      </Field>
+      <Field label="模型字段路径" :required="modelPathRequired">
+        <Input
+          v-model="form.modelPath"
+          :required="modelPathRequired"
+          :placeholder="modelPathRequired ? '例如 body.model' : '可选'"
+        />
       </Field>
       <Field label="凭证解析">
         <Select v-model="form.credentialsResolver">

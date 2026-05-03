@@ -126,6 +126,16 @@ components:
             - xApiKey
             - unknown
           type: string
+        endpointType:
+          enum:
+            - general
+            - openaiChatCompletions
+            - openaiResponses
+            - anthropicMessages
+            - anthropicCountTokens
+            - generalListModels
+            - unknown
+          type: string
         modelPath:
           type: string
         name:
@@ -137,6 +147,7 @@ components:
         - path
         - modelPath
         - credentialsResolver
+        - endpointType
       type: object
     FetchModelsRequestBody:
       additionalProperties: false

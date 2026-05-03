@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useApi } from '@/composables/useApi'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
-import type { ProviderView, ProviderModelEntry, ProviderEndpointView } from '@/api'
+import type { ProviderView, ProviderModelEntry, ProviderEndpointView, EndpointView } from '@/api'
 import {
   SidePanel,
   Button,
@@ -33,6 +33,7 @@ const api = useApi()
 
 const provider = ref<ProviderView | null>(null)
 const providerEndpoints = ref<ProviderEndpointView[]>([])
+const endpoints = ref<EndpointView[]>([])
 const rows = ref<Row[]>([])
 const loading = ref(true)
 const saving = ref(false)
@@ -102,12 +103,25 @@ const modelCount = computed(() => rows.value.length)
 
 const availableEndpointPaths = computed(() => providerEndpoints.value.map((pe) => pe.endpointPath))
 
+const groupedFetchSources = computed(() => {
+  const epByPath = new Map(endpoints.value.map((e) => [e.path, e]))
+  const listModels: string[] = []
+  const general: string[] = []
+  for (const pe of providerEndpoints.value) {
+    const t = epByPath.get(pe.endpointPath)?.endpointType
+    if (t === 'generalListModels') listModels.push(pe.endpointPath)
+    else if (t === 'general') general.push(pe.endpointPath)
+  }
+  return { listModels, general }
+})
+
 async function load() {
   loading.value = true
   error.value = ''
-  const [{ data: pData, error: pErr }, { data: peData, error: peErr }] = await Promise.all([
+  const [{ data: pData, error: pErr }, { data: peData, error: peErr }, { data: epData, error: epErr }] = await Promise.all([
     api.GET('/api/picotera/providers/{id}', { params: { path: { id: props.providerId } } }),
     api.GET('/api/picotera/provider-endpoints', { params: { query: { providerId: props.providerId } } }),
+    api.GET('/api/picotera/endpoints'),
   ])
   loading.value = false
   if (pErr) {
@@ -118,11 +132,17 @@ async function load() {
     error.value = peErr.message ?? '加载端点失败'
     return
   }
+  if (epErr) {
+    error.value = epErr.message ?? '加载端点列表失败'
+    return
+  }
   provider.value = pData as ProviderView
   providerEndpoints.value = (peData as ProviderEndpointView[]) ?? []
+  endpoints.value = (epData as EndpointView[]) ?? []
   rows.value = rowsFromProvider(provider.value)
-  if (!fetchEndpointPath.value && providerEndpoints.value.length) {
-    fetchEndpointPath.value = providerEndpoints.value[0]!.endpointPath
+  if (!fetchEndpointPath.value) {
+    const { listModels, general } = groupedFetchSources.value
+    fetchEndpointPath.value = listModels[0] ?? general[0] ?? ''
   }
 }
 
@@ -142,8 +162,8 @@ function removeRow(uid: number) {
   if (i >= 0) rows.value.splice(i, 1)
 }
 
-function onLocalModelNameChange(row: Row, newName: string) {
-  const trimmed = newName.trim()
+function onLocalModelNameChange(row: Row, newName: string | number) {
+  const trimmed = String(newName).trim()
   if (row.upstreamModelName.trim() === '' && row.modelName.trim() !== '' && trimmed !== row.modelName) {
     row.upstreamModelName = row.modelName
   }
@@ -255,13 +275,16 @@ async function save() {
           <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">从上游拉取</span>
         </div>
         <div class="flex gap-2">
-          <Select v-model="fetchEndpointPath" size="sm" class="flex-1 min-w-0" :disabled="!providerEndpoints.length">
+          <Select v-model="fetchEndpointPath" size="sm" class="flex-1 min-w-0" :disabled="!groupedFetchSources.listModels.length && !groupedFetchSources.general.length">
             <option value="" disabled>
-              {{ providerEndpoints.length ? '选择来源端点' : '该渠道暂无已绑定端点' }}
+              {{ groupedFetchSources.listModels.length || groupedFetchSources.general.length ? '选择来源端点' : '无可用列表模型 / 通用端点' }}
             </option>
-            <option v-for="pe in providerEndpoints" :key="pe.endpointPath" :value="pe.endpointPath">
-              {{ pe.endpointPath }}
-            </option>
+            <optgroup v-if="groupedFetchSources.listModels.length" label="模型列表端点">
+              <option v-for="p in groupedFetchSources.listModels" :key="p" :value="p">{{ p }}</option>
+            </optgroup>
+            <optgroup v-if="groupedFetchSources.general.length" label="通用端点">
+              <option v-for="p in groupedFetchSources.general" :key="p" :value="p">{{ p }}</option>
+            </optgroup>
           </Select>
           <Button
             size="sm"

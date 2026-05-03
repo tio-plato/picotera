@@ -3,6 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { useApi } from '@/composables/useApi'
 import type { EndpointView } from '@/api'
+import { ENDPOINT_TYPE_LABELS, ENDPOINT_TYPES_MODEL_ROUTED, ENDPOINT_TYPES_DIRECT } from '@/api'
+import type { EndpointType } from '@/api'
 import EndpointForm from '@/components/EndpointForm.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
 import {
@@ -43,6 +45,12 @@ function openEdit(ep: EndpointView) {
   panel.open(EndpointForm, { endpoint: ep, onSave: fetchEndpoints }, { key: `endpoint:${ep.path}` })
 }
 
+function endpointTypeVariant(t: EndpointType): 'accent' | 'muted' | 'more' {
+  if (ENDPOINT_TYPES_MODEL_ROUTED.includes(t)) return 'accent'
+  if (ENDPOINT_TYPES_DIRECT.includes(t)) return 'muted'
+  return 'more'
+}
+
 function confirmDeleteEndpoint(_event: Event, path: string) {
   confirm.require({
     message: `确定要删除端点「${path}」吗？此操作不可撤销。`,
@@ -72,6 +80,7 @@ function confirmDeleteEndpoint(_event: Event, path: string) {
           <tr>
             <Th>路径</Th>
             <Th>名称</Th>
+            <Th>类型</Th>
             <Th>模型字段</Th>
             <Th>凭证解析</Th>
             <Th actions />
@@ -81,7 +90,10 @@ function confirmDeleteEndpoint(_event: Event, path: string) {
           <Tr v-for="e in endpoints" :key="e.path" :selected="panel.isActive(`endpoint:${e.path}`)">
             <Td><span class="font-mono font-medium">{{ e.path }}</span></Td>
             <Td>{{ e.name }}</Td>
-            <Td><span class="font-mono text-ink-faint">{{ e.modelPath }}</span></Td>
+            <Td>
+              <Tag :variant="endpointTypeVariant(e.endpointType)">{{ ENDPOINT_TYPE_LABELS[e.endpointType] }}</Tag>
+            </Td>
+            <Td><span class="font-mono text-ink-faint">{{ e.modelPath || '—' }}</span></Td>
             <Td>
               <Tag :variant="e.credentialsResolver === 'generalApiKey' ? 'ok' : 'muted'">
                 {{ e.credentialsResolver }}

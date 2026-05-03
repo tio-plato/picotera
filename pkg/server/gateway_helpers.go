@@ -162,6 +162,13 @@ func setCredentialsHeaders(headers http.Header, credentials string, resolver int
 
 // extractModel extracts the model name from the request body using the given JSON path.
 func extractModel(body []byte, modelPath string) (string, error) {
+	if modelPath == "" {
+		return "", &gatewayError{
+			status:  http.StatusBadRequest,
+			message: "endpoint has no model path configured",
+			code:    errorx.ModelNotFound.Error(),
+		}
+	}
 	result := gjson.GetBytes(body, modelPath)
 	if !result.Exists() || result.Str == "" {
 		return "", &gatewayError{

@@ -14,6 +14,58 @@ const (
 	CredentialsResolver_XApiKey       int32 = 3
 )
 
+const (
+	EndpointType_Unknown               int32 = 0
+	EndpointType_General               int32 = 1
+	EndpointType_OpenAIChatCompletions int32 = 2
+	EndpointType_OpenAIResponses       int32 = 3
+	EndpointType_AnthropicMessages     int32 = 4
+	EndpointType_AnthropicCountTokens  int32 = 5
+	EndpointType_GeneralListModels     int32 = 6
+)
+
+func ToEndpointType(s string) int32 {
+	switch s {
+	case "unknown":
+		return EndpointType_Unknown
+	case "general":
+		return EndpointType_General
+	case "openaiChatCompletions":
+		return EndpointType_OpenAIChatCompletions
+	case "openaiResponses":
+		return EndpointType_OpenAIResponses
+	case "anthropicMessages":
+		return EndpointType_AnthropicMessages
+	case "anthropicCountTokens":
+		return EndpointType_AnthropicCountTokens
+	case "generalListModels":
+		return EndpointType_GeneralListModels
+	default:
+		return EndpointType_Unknown
+	}
+}
+
+func FromEndpointType(t int32) string {
+	switch t {
+	case EndpointType_Unknown:
+		return "unknown"
+	case EndpointType_General:
+		return "general"
+	case EndpointType_OpenAIChatCompletions:
+		return "openaiChatCompletions"
+	case EndpointType_OpenAIResponses:
+		return "openaiResponses"
+	case EndpointType_AnthropicMessages:
+		return "anthropicMessages"
+	case EndpointType_AnthropicCountTokens:
+		return "anthropicCountTokens"
+	case EndpointType_GeneralListModels:
+		return "generalListModels"
+	default:
+		return "unknown"
+	}
+}
+
 func ToCredentialsResolver(s string) int32 {
 	switch s {
 	case "unknown":
@@ -49,6 +101,7 @@ type EndpointView struct {
 	Path                string `json:"path"`
 	ModelPath           string `json:"modelPath"`
 	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,bearerToken,xApiKey,unknown"`
+	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,generalListModels,unknown"`
 }
 
 func ToEndpointView(endpoint *db.Endpoint) (*EndpointView, error) {
@@ -57,6 +110,7 @@ func ToEndpointView(endpoint *db.Endpoint) (*EndpointView, error) {
 		Path:                endpoint.Path,
 		ModelPath:           endpoint.ModelPath,
 		CredentialsResolver: FromCredentialsResolver(endpoint.CredentialsResolver),
+		EndpointType:        FromEndpointType(endpoint.EndpointType),
 	}, nil
 }
 

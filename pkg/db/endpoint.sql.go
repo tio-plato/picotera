@@ -19,7 +19,7 @@ func (q *Queries) DeleteEndpoint(ctx context.Context, path string) error {
 }
 
 const getEndpoints = `-- name: GetEndpoints :many
-SELECT path, name, model_path, credentials_resolver FROM endpoint
+SELECT path, name, model_path, credentials_resolver, endpoint_type FROM endpoint
 `
 
 func (q *Queries) GetEndpoints(ctx context.Context) ([]Endpoint, error) {
@@ -36,6 +36,7 @@ func (q *Queries) GetEndpoints(ctx context.Context) ([]Endpoint, error) {
 			&i.Name,
 			&i.ModelPath,
 			&i.CredentialsResolver,
+			&i.EndpointType,
 		); err != nil {
 			return nil, err
 		}
@@ -48,7 +49,7 @@ func (q *Queries) GetEndpoints(ctx context.Context) ([]Endpoint, error) {
 }
 
 const upsertEndpoint = `-- name: UpsertEndpoint :one
-INSERT INTO endpoint (name, path, model_path, credentials_resolver) VALUES ($1, $2, $3, $4) ON CONFLICT (path) DO UPDATE SET model_path = $3, credentials_resolver = $4 RETURNING path, name, model_path, credentials_resolver
+INSERT INTO endpoint (name, path, model_path, credentials_resolver, endpoint_type) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (path) DO UPDATE SET model_path = $3, credentials_resolver = $4, endpoint_type = $5 RETURNING path, name, model_path, credentials_resolver, endpoint_type
 `
 
 type UpsertEndpointParams struct {
@@ -56,6 +57,7 @@ type UpsertEndpointParams struct {
 	Path                string `json:"path"`
 	ModelPath           string `json:"modelPath"`
 	CredentialsResolver int32  `json:"credentialsResolver"`
+	EndpointType        int32  `json:"endpointType"`
 }
 
 func (q *Queries) UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error) {
@@ -64,6 +66,7 @@ func (q *Queries) UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) 
 		arg.Path,
 		arg.ModelPath,
 		arg.CredentialsResolver,
+		arg.EndpointType,
 	)
 	var i Endpoint
 	err := row.Scan(
@@ -71,6 +74,7 @@ func (q *Queries) UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) 
 		&i.Name,
 		&i.ModelPath,
 		&i.CredentialsResolver,
+		&i.EndpointType,
 	)
 	return i, err
 }

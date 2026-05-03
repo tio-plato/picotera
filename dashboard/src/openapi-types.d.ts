@@ -378,6 +378,8 @@ export interface components {
             readonly $schema?: string;
             /** @enum {string} */
             credentialsResolver: "generalApiKey" | "bearerToken" | "xApiKey" | "unknown";
+            /** @enum {string} */
+            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "generalListModels" | "unknown";
             modelPath: string;
             name: string;
             path: string;

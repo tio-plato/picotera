@@ -21,6 +21,7 @@ type Endpoint struct {
 	Name                string `json:"name"`
 	ModelPath           string `json:"modelPath"`
 	CredentialsResolver int32  `json:"credentialsResolver"`
+	EndpointType        int32  `json:"endpointType"`
 }
 
 type Model struct {
