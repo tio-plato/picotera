@@ -79,30 +79,30 @@ async function toggle(s: ScriptView) {
         <thead>
           <tr>
             <Th>名称</Th>
-            <Th>状态</Th>
             <Th actions />
           </tr>
         </thead>
         <tbody>
-          <Tr v-for="s in scripts" :key="s.id" :selected="panel.isActive(`script:${s.id}`)">
+          <Tr
+            v-for="s in scripts"
+            :key="s.id"
+            :selected="panel.isActive(`script:${s.id}`)"
+            :class="!s.enabled ? 'opacity-55' : ''"
+          >
             <Td>
               <span class="font-medium">{{ s.name }}</span>
+              <Tag v-if="!s.enabled" variant="muted" class="ml-1.5">已禁用</Tag>
               <span class="block font-mono text-2xs text-ink-faint">{{ s.id }}</span>
-            </Td>
-            <Td>
-              <button
-                type="button"
-                class="cursor-pointer"
-                :title="s.enabled ? '已启用，点击禁用' : '已禁用，点击启用'"
-                @click="toggle(s)"
-              >
-                <Tag :variant="s.enabled ? 'ok' : 'muted'">
-                  {{ s.enabled ? '启用' : '禁用' }}
-                </Tag>
-              </button>
             </Td>
             <Td actions>
               <div class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity">
+                <IconButton
+                  :title="s.enabled ? '禁用脚本' : '启用脚本'"
+                  :aria-label="s.enabled ? '禁用脚本' : '启用脚本'"
+                  @click="toggle(s)"
+                >
+                  <Icon :name="s.enabled ? 'eye' : 'eye-off'" :size="13" />
+                </IconButton>
                 <IconButton
                   :active="panel.isActive(`script:${s.id}`)"
                   title="编辑"
