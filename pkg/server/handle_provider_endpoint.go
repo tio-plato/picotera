@@ -17,10 +17,15 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (s *Server) handleListProviderEndpoints(ctx context.Context, input *contract.ListProviderEndpointsRequest) (*contract.ListProviderEndpointsResponse, error) {
-	rows, err := s.queries.ListProviderEndpoints(ctx, input.ProviderID)
+	var providerID pgtype.Int4
+	if input.ProviderID > 0 {
+		providerID = pgtype.Int4{Int32: input.ProviderID, Valid: true}
+	}
+	rows, err := s.queries.ListProviderEndpoints(ctx, providerID)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list provider endpoints", err)
 	}

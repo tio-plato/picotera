@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const deleteProviderEndpoint = `-- name: DeleteProviderEndpoint :exec
@@ -48,11 +50,11 @@ func (q *Queries) GetProviderEndpoint(ctx context.Context, arg GetProviderEndpoi
 
 const listProviderEndpoints = `-- name: ListProviderEndpoints :many
 SELECT provider_id, endpoint_path, upstream_url, credentials_resolver FROM provider_endpoint
-WHERE provider_id = $1
-ORDER BY endpoint_path
+WHERE $1::int IS NULL OR provider_id = $1::int
+ORDER BY provider_id, endpoint_path
 `
 
-func (q *Queries) ListProviderEndpoints(ctx context.Context, providerID int32) ([]ProviderEndpoint, error) {
+func (q *Queries) ListProviderEndpoints(ctx context.Context, providerID pgtype.Int4) ([]ProviderEndpoint, error) {
 	rows, err := q.db.Query(ctx, listProviderEndpoints, providerID)
 	if err != nil {
 		return nil, err

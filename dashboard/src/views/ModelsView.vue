@@ -7,6 +7,7 @@ import type {
   ProviderView,
   ProviderModelEntry,
   ProviderEndpointView,
+  EndpointView,
 } from '@/api'
 import ModelForm from '@/components/ModelForm.vue'
 import ModelUpstreamsPanel, { type Upstream } from '@/components/ModelUpstreamsPanel.vue'
@@ -33,27 +34,46 @@ const api = useApi()
 const models = ref<ModelView[]>([])
 const providers = ref<ProviderView[]>([])
 const providerEndpoints = ref<ProviderEndpointView[]>([])
+const endpoints = ref<EndpointView[]>([])
 const loading = ref(true)
 const orphanExpanded = ref(false)
 
 async function fetchAll() {
   loading.value = true
-  const [m, p, pe] = await Promise.all([
+  const [m, p, pe, e] = await Promise.all([
     api.GET('/api/picotera/models'),
     api.GET('/api/picotera/providers'),
     api.GET('/api/picotera/provider-endpoints'),
+    api.GET('/api/picotera/endpoints'),
   ])
   if (!m.error && m.data) models.value = m.data as ModelView[]
   if (!p.error && p.data) providers.value = p.data as ProviderView[]
   if (!pe.error && pe.data) providerEndpoints.value = pe.data as ProviderEndpointView[]
+  if (!e.error && e.data) endpoints.value = e.data as EndpointView[]
   loading.value = false
 }
 
 onMounted(fetchAll)
 
+const routablePathSet = computed(
+  () =>
+    new Set(
+      endpoints.value
+        .filter((e) => e.endpointType !== 'generalListModels')
+        .map((e) => e.path),
+    ),
+)
+
+const endpointNameByPath = computed(() => {
+  const map: Record<string, string> = {}
+  for (const e of endpoints.value) map[e.path] = e.name
+  return map
+})
+
 const providerEndpointMap = computed(() => {
   const map: Record<number, string[]> = {}
   for (const pe of providerEndpoints.value) {
+    if (!routablePathSet.value.has(pe.endpointPath)) continue
     ;(map[pe.providerId] ??= []).push(pe.endpointPath)
   }
   for (const arr of Object.values(map)) arr.sort()
@@ -71,7 +91,7 @@ const upstreamIndex = computed<Record<string, Upstream[]>>(() => {
       const expandedFromProvider = !entryEndpoints.length
       const endpointPaths = expandedFromProvider
         ? providerEndpointMap.value[provider.id] ?? []
-        : [...entryEndpoints]
+        : entryEndpoints.filter((p) => routablePathSet.value.has(p))
       const upstream: Upstream = {
         providerId: provider.id,
         providerName: provider.name,
@@ -116,7 +136,12 @@ function openUpstreams(m: ModelView) {
   if (!list.length) return
   panel.open(
     ModelUpstreamsPanel,
-    { modelName: m.name, modelDisabled: m.disabled ?? false, upstreams: list },
+    {
+      modelName: m.name,
+      modelDisabled: m.disabled ?? false,
+      upstreams: list,
+      endpointNames: endpointNameByPath.value,
+    },
     { key: `model-upstreams:${m.name}` },
   )
 }

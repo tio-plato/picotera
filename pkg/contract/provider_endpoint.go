@@ -33,7 +33,7 @@ func FromProviderEndpointView(view *ProviderEndpointView) *db.UpsertProviderEndp
 }
 
 type ListProviderEndpointsRequest struct {
-	ProviderID int32 `query:"providerId"`
+	ProviderID int32 `query:"providerId,omitempty"`
 }
 
 type ListProviderEndpointsResponse struct {
