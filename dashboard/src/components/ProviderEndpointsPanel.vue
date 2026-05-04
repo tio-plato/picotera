@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useApi } from '@/composables/useApi'
 import type { EndpointView, ProviderEndpointView } from '@/api'
 import {
@@ -10,6 +10,7 @@ import {
   Select,
   Field,
   StateText,
+  Tag,
   Icon,
 } from '@/ui'
 
@@ -24,6 +25,10 @@ const RESOLVER_OPTIONS: ReadonlyArray<{ value: Resolver; label: string }> = [
   { value: 'googApiKey', label: 'X-Goog-Api-Key' },
 ]
 
+const RESOLVER_LABEL = Object.fromEntries(
+  RESOLVER_OPTIONS.map((o) => [o.value, o.label]),
+) as Record<Resolver, string>
+
 const props = defineProps<{ providerId: number; providerName: string }>()
 const emit = defineEmits<{ close: [] }>()
 const api = useApi()
@@ -37,9 +42,19 @@ const form = ref<{ endpointPath: string; upstreamUrl: string; credentialsResolve
   upstreamUrl: '',
   credentialsResolver: 'unknown',
 })
-const drafts = reactive<Record<string, string>>({})
-const resolverDrafts = reactive<Record<string, Resolver>>({})
 const saving = ref(false)
+
+const editingPath = ref<string | null>(null)
+const editDraft = ref<{ upstreamUrl: string; credentialsResolver: Resolver }>({
+  upstreamUrl: '',
+  credentialsResolver: 'unknown',
+})
+
+const endpointNameByPath = computed(() => {
+  const map = new Map<string, string>()
+  for (const e of endpoints.value) map.set(e.path, e.name)
+  return map
+})
 
 const availableEndpoints = computed(() =>
   endpoints.value.filter(
@@ -68,12 +83,6 @@ async function fetchBindings() {
     return
   }
   providerEndpoints.value = (data as ProviderEndpointView[]) ?? []
-  for (const key of Object.keys(drafts)) delete drafts[key]
-  for (const key of Object.keys(resolverDrafts)) delete resolverDrafts[key]
-  for (const pe of providerEndpoints.value) {
-    drafts[pe.endpointPath] = pe.upstreamUrl
-    resolverDrafts[pe.endpointPath] = (pe.credentialsResolver ?? 'unknown') as Resolver
-  }
 }
 
 onMounted(() => {
@@ -86,6 +95,7 @@ watch(
     form.value.endpointPath = ''
     form.value.upstreamUrl = ''
     form.value.credentialsResolver = 'unknown'
+    editingPath.value = null
     fetchBindings()
   },
 )
@@ -113,39 +123,47 @@ async function addBinding() {
   await fetchBindings()
 }
 
-function isDirty(path: string) {
-  const pe = providerEndpoints.value.find((p) => p.endpointPath === path)
-  if (!pe) return false
-  const nextUrl = drafts[path]
-  if (nextUrl === undefined || nextUrl === '') return false
-  const nextResolver = resolverDrafts[path] ?? 'unknown'
-  const currentResolver = (pe.credentialsResolver ?? 'unknown') as Resolver
-  return nextUrl !== pe.upstreamUrl || nextResolver !== currentResolver
+function startEdit(pe: ProviderEndpointView) {
+  editingPath.value = pe.endpointPath
+  editDraft.value = {
+    upstreamUrl: pe.upstreamUrl,
+    credentialsResolver: (pe.credentialsResolver ?? 'unknown') as Resolver,
+  }
 }
 
-async function saveDraft(path: string) {
-  const pe = providerEndpoints.value.find((p) => p.endpointPath === path)
-  if (!pe) return
-  if (!isDirty(path)) return
-  const nextUrl = drafts[path] ?? ''
-  if (!nextUrl) return
-  const nextResolver = resolverDrafts[path] ?? 'unknown'
+function cancelEdit() {
+  editingPath.value = null
+}
+
+function isEditDirty(pe: ProviderEndpointView) {
+  if (!editDraft.value.upstreamUrl) return false
   const currentResolver = (pe.credentialsResolver ?? 'unknown') as Resolver
+  return (
+    editDraft.value.upstreamUrl !== pe.upstreamUrl ||
+    editDraft.value.credentialsResolver !== currentResolver
+  )
+}
+
+async function saveEdit(pe: ProviderEndpointView) {
+  if (!editDraft.value.upstreamUrl) return
+  if (!isEditDirty(pe)) {
+    editingPath.value = null
+    return
+  }
   error.value = ''
   const { error: err } = await api.PUT('/api/picotera/provider-endpoints', {
     body: {
       providerId: props.providerId,
-      endpointPath: path,
-      upstreamUrl: nextUrl,
-      credentialsResolver: nextResolver,
+      endpointPath: pe.endpointPath,
+      upstreamUrl: editDraft.value.upstreamUrl,
+      credentialsResolver: editDraft.value.credentialsResolver,
     },
   })
   if (err) {
     error.value = err.message ?? '更新绑定失败'
-    drafts[path] = pe.upstreamUrl
-    resolverDrafts[path] = currentResolver
     return
   }
+  editingPath.value = null
   await fetchBindings()
 }
 
@@ -158,14 +176,17 @@ async function deleteBinding(path: string) {
     error.value = err.message ?? '删除绑定失败'
     return
   }
+  if (editingPath.value === path) editingPath.value = null
   await fetchBindings()
 }
 
-function onDraftKeydown(e: KeyboardEvent, path: string) {
+function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
   if (e.key === 'Enter') {
     e.preventDefault()
-    ;(e.target as HTMLInputElement).blur()
-    saveDraft(path)
+    saveEdit(pe)
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    cancelEdit()
   }
 }
 </script>
@@ -187,49 +208,99 @@ function onDraftKeydown(e: KeyboardEvent, path: string) {
         <li
           v-for="pe in providerEndpoints"
           :key="pe.endpointPath"
-          class="flex flex-col gap-1 px-2.5 py-2 border border-line rounded-md bg-surface-0"
+          class="px-2.5 py-2 border border-line rounded-md bg-surface-0"
         >
-          <div class="flex items-center gap-1.5">
-            <span class="font-mono text-sm text-ink overflow-hidden text-ellipsis whitespace-nowrap">
-              {{ pe.endpointPath }}
+          <div class="flex items-center gap-2 min-w-0">
+            <span
+              class="flex-1 min-w-0 text-sm font-semibold text-ink truncate"
+              :title="endpointNameByPath.get(pe.endpointPath) ?? pe.endpointPath"
+            >
+              {{ endpointNameByPath.get(pe.endpointPath) ?? pe.endpointPath }}
             </span>
+            <div class="flex items-center gap-1 shrink-0">
+              <template v-if="editingPath === pe.endpointPath">
+                <IconButton
+                  size="sm"
+                  title="保存修改"
+                  :aria-label="`保存 ${pe.endpointPath} 绑定`"
+                  :disabled="!isEditDirty(pe)"
+                  @click="saveEdit(pe)"
+                >
+                  <Icon name="check" :size="13" />
+                </IconButton>
+                <IconButton
+                  size="sm"
+                  title="取消编辑"
+                  :aria-label="`取消编辑 ${pe.endpointPath} 绑定`"
+                  @click="cancelEdit"
+                >
+                  <Icon name="close" :size="13" />
+                </IconButton>
+              </template>
+              <template v-else>
+                <IconButton
+                  size="sm"
+                  title="编辑绑定"
+                  :aria-label="`编辑 ${pe.endpointPath} 绑定`"
+                  @click="startEdit(pe)"
+                >
+                  <Icon name="edit" :size="13" />
+                </IconButton>
+                <IconButton
+                  size="sm"
+                  variant="danger"
+                  title="删除绑定"
+                  :aria-label="`删除 ${pe.endpointPath} 绑定`"
+                  @click="deleteBinding(pe.endpointPath)"
+                >
+                  <Icon name="trash" :size="13" />
+                </IconButton>
+              </template>
+            </div>
           </div>
-          <div class="flex gap-2 items-center">
-            <Input
-              v-model="drafts[pe.endpointPath]"
-              size="sm"
-              class="flex-1 min-w-0"
-              placeholder="上游 URL"
-              :title="drafts[pe.endpointPath]"
-              @keydown="onDraftKeydown($event, pe.endpointPath)"
-            />
-          </div>
-          <div class="flex gap-2 items-center">
-            <Select
-              v-model="resolverDrafts[pe.endpointPath]"
-              size="sm"
-              class="flex-1 min-w-0"
+
+          <template v-if="editingPath !== pe.endpointPath">
+            <div class="font-mono text-2xs text-ink-faint truncate mt-0.5" :title="pe.endpointPath">
+              {{ pe.endpointPath }}
+            </div>
+            <div class="font-mono text-xs text-ink-muted truncate mt-1" :title="pe.upstreamUrl">
+              {{ pe.upstreamUrl }}
+            </div>
+            <div
+              v-if="pe.credentialsResolver && pe.credentialsResolver !== 'unknown'"
+              class="mt-1.5"
             >
-              <option v-for="opt in RESOLVER_OPTIONS" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </Select>
-            <Button
-              v-if="isDirty(pe.endpointPath)"
-              size="sm"
-              @click="saveDraft(pe.endpointPath)"
-            >
-              保存
-            </Button>
-            <IconButton
-              variant="danger"
-              title="删除绑定"
-              :aria-label="`删除 ${pe.endpointPath} 绑定`"
-              @click="deleteBinding(pe.endpointPath)"
-            >
-              <Icon name="trash" :size="13" />
-            </IconButton>
-          </div>
+              <Tag variant="muted">{{ RESOLVER_LABEL[pe.credentialsResolver as Resolver] }}</Tag>
+            </div>
+          </template>
+
+          <template v-else>
+            <div class="font-mono text-2xs text-ink-faint truncate mt-0.5" :title="pe.endpointPath">
+              {{ pe.endpointPath }}
+            </div>
+            <div class="flex flex-col gap-2 mt-2">
+              <Field label="上游 URL">
+                <Input
+                  v-model="editDraft.upstreamUrl"
+                  size="sm"
+                  placeholder="https://api.example.com/v1/…"
+                  autofocus
+                  @keydown="onEditKeydown($event, pe)"
+                />
+              </Field>
+              <Field label="凭证发送方式">
+                <Select
+                  v-model="editDraft.credentialsResolver"
+                  size="sm"
+                  @keydown="onEditKeydown($event, pe)"
+                >
+                  <option v-for="opt in RESOLVER_OPTIONS" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </option>
+                </Select>
+              </Field>
+            </div>
+          </template>
         </li>
       </ul>
     </section>
