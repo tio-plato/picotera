@@ -166,6 +166,19 @@ const upstreamModelOptions = computed<ColumnFilterOption<string>[]>(() => {
       opts.push({ value: r.upstreamModel, label: r.upstreamModel })
     }
   }
+  for (const p of providers.value) {
+    if (!p.providerModels) continue
+    for (const m of p.providerModels) {
+      if (m.upstreamModelName && !seen.has(m.upstreamModelName)) {
+        seen.add(m.upstreamModelName)
+        opts.push({ value: m.upstreamModelName, label: m.upstreamModelName })
+      }
+      if (!m.upstreamModelName && m.model && !seen.has(m.model)) {
+        seen.add(m.model)
+        opts.push({ value: m.model, label: m.model })
+      }
+    }
+  }
   return opts
 })
 
@@ -286,7 +299,7 @@ function resetCursorAndReload() {
           />
           <ColumnFilter
             v-model="filters.model"
-            label="上游"
+            label="请求"
             :options="modelOptions"
             placeholder="过滤客户端请求模型…"
           />
