@@ -10,6 +10,7 @@ import (
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/jsx"
+	"picotera/pkg/llmbridge"
 	"picotera/pkg/logx"
 	"picotera/pkg/server/static"
 
@@ -143,6 +144,15 @@ func (s *Server) registerOperations() {
 }
 
 func (s *Server) registerEndpoints() {
+	// Unified generation routes. Registered BEFORE the catch-all gateway
+	// mount so chi resolves them as exact-match handlers, never reaching
+	// endpointRouter.Match. They route to handle_unified_gateway.go.
+	s.router.Post("/api/picotera/v1/messages", s.handleUnifiedGenerate(llmbridge.FormatAnthropicMessages))
+	s.router.Post("/api/picotera/v1/responses", s.handleUnifiedGenerate(llmbridge.FormatOpenAIResponses))
+	s.router.Post("/api/picotera/v1/chat/completions", s.handleUnifiedGenerate(llmbridge.FormatOpenAIChatCompletions))
+	s.router.Post("/api/picotera/v1beta/models/{model}:generateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiGenerateContent))
+	s.router.Post("/api/picotera/v1beta/models/{model}:streamGenerateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiStreamGenerateContent))
+
 	s.router.Mount("/", &gatewayHandler{s})
 }
 

@@ -32,6 +32,45 @@ WHERE pe.endpoint_path = sqlc.arg('endpoint_path')::text
     OR elem -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
   );
 
+-- name: GetProvidersByEndpointTypesAndModel :many
+-- Sister query to GetProvidersByEndpointAndModel that selects across a SET of
+-- endpoint types instead of a single endpoint path. The unified gateway
+-- routes (/v1/messages, /v1/responses, /v1/chat/completions, and the two
+-- Gemini variants) compute the type set from (source format, stream flag)
+-- and call this. Returns the same column shape as the path-based query plus
+-- e.endpoint_type so the handler can pick the right transformer per row.
+SELECT
+  sqlc.arg('model_name')::text AS model_name,
+  p.id AS provider_id,
+  pe.endpoint_path,
+  e.endpoint_type AS endpoint_type,
+  COALESCE(elem ->> 'upstreamModelName', '')::text AS upstream_model_name,
+  COALESCE((elem ->> 'priority')::int, 0)::int AS priority,
+  (COALESCE(elem -> 'annotations', '{}'::jsonb))::jsonb AS annotations,
+  p.name AS provider_name,
+  p.credentials AS provider_credentials,
+  p.priority AS provider_priority,
+  pe.upstream_url,
+  pe.credentials_resolver AS send_credentials_resolver,
+  p.annotations AS provider_annotations
+FROM provider AS p
+JOIN provider_endpoint AS pe ON pe.provider_id = p.id
+JOIN endpoint AS e ON e.path = pe.endpoint_path
+JOIN model AS m ON m.name = sqlc.arg('model_name')::text
+CROSS JOIN LATERAL jsonb_array_elements(p.provider_models) AS elem
+WHERE e.endpoint_type = ANY(sqlc.arg('endpoint_types')::int[])
+  AND p.provider_models @> jsonb_build_array(jsonb_build_object('model', sqlc.arg('model_name')::text))
+  AND elem ->> 'model' = sqlc.arg('model_name')::text
+  AND p.disabled = FALSE
+  AND m.disabled = FALSE
+  AND COALESCE((elem ->> 'disabled')::boolean, false) = false
+  AND (
+    elem -> 'endpoints' IS NULL
+    OR jsonb_typeof(elem -> 'endpoints') <> 'array'
+    OR jsonb_array_length(elem -> 'endpoints') = 0
+    OR elem -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
+  );
+
 -- name: InsertRequest :one
 INSERT INTO request (
   id, span_id, parent_span_id, type, status,

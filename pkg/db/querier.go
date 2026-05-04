@@ -31,6 +31,13 @@ type Querier interface {
 	GetProviderEndpoint(ctx context.Context, arg GetProviderEndpointParams) (ProviderEndpoint, error)
 	GetProviders(ctx context.Context) ([]Provider, error)
 	GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error)
+	// Sister query to GetProvidersByEndpointAndModel that selects across a SET of
+	// endpoint types instead of a single endpoint path. The unified gateway
+	// routes (/v1/messages, /v1/responses, /v1/chat/completions, and the two
+	// Gemini variants) compute the type set from (source format, stream flag)
+	// and call this. Returns the same column shape as the path-based query plus
+	// e.endpoint_type so the handler can pick the right transformer per row.
+	GetProvidersByEndpointTypesAndModel(ctx context.Context, arg GetProvidersByEndpointTypesAndModelParams) ([]GetProvidersByEndpointTypesAndModelRow, error)
 	GetRequest(ctx context.Context, id string) (Request, error)
 	GetScript(ctx context.Context, id string) (Script, error)
 	InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error)

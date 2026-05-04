@@ -113,6 +113,101 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 	return items, nil
 }
 
+const getProvidersByEndpointTypesAndModel = `-- name: GetProvidersByEndpointTypesAndModel :many
+SELECT
+  $1::text AS model_name,
+  p.id AS provider_id,
+  pe.endpoint_path,
+  e.endpoint_type AS endpoint_type,
+  COALESCE(elem ->> 'upstreamModelName', '')::text AS upstream_model_name,
+  COALESCE((elem ->> 'priority')::int, 0)::int AS priority,
+  (COALESCE(elem -> 'annotations', '{}'::jsonb))::jsonb AS annotations,
+  p.name AS provider_name,
+  p.credentials AS provider_credentials,
+  p.priority AS provider_priority,
+  pe.upstream_url,
+  pe.credentials_resolver AS send_credentials_resolver,
+  p.annotations AS provider_annotations
+FROM provider AS p
+JOIN provider_endpoint AS pe ON pe.provider_id = p.id
+JOIN endpoint AS e ON e.path = pe.endpoint_path
+JOIN model AS m ON m.name = $1::text
+CROSS JOIN LATERAL jsonb_array_elements(p.provider_models) AS elem
+WHERE e.endpoint_type = ANY($2::int[])
+  AND p.provider_models @> jsonb_build_array(jsonb_build_object('model', $1::text))
+  AND elem ->> 'model' = $1::text
+  AND p.disabled = FALSE
+  AND m.disabled = FALSE
+  AND COALESCE((elem ->> 'disabled')::boolean, false) = false
+  AND (
+    elem -> 'endpoints' IS NULL
+    OR jsonb_typeof(elem -> 'endpoints') <> 'array'
+    OR jsonb_array_length(elem -> 'endpoints') = 0
+    OR elem -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
+  )
+`
+
+type GetProvidersByEndpointTypesAndModelParams struct {
+	ModelName     string  `json:"modelName"`
+	EndpointTypes []int32 `json:"endpointTypes"`
+}
+
+type GetProvidersByEndpointTypesAndModelRow struct {
+	ModelName               string `json:"modelName"`
+	ProviderID              int32  `json:"providerId"`
+	EndpointPath            string `json:"endpointPath"`
+	EndpointType            int32  `json:"endpointType"`
+	UpstreamModelName       string `json:"upstreamModelName"`
+	Priority                int32  `json:"priority"`
+	Annotations             []byte `json:"annotations"`
+	ProviderName            string `json:"providerName"`
+	ProviderCredentials     string `json:"providerCredentials"`
+	ProviderPriority        int32  `json:"providerPriority"`
+	UpstreamUrl             string `json:"upstreamUrl"`
+	SendCredentialsResolver int32  `json:"sendCredentialsResolver"`
+	ProviderAnnotations     []byte `json:"providerAnnotations"`
+}
+
+// Sister query to GetProvidersByEndpointAndModel that selects across a SET of
+// endpoint types instead of a single endpoint path. The unified gateway
+// routes (/v1/messages, /v1/responses, /v1/chat/completions, and the two
+// Gemini variants) compute the type set from (source format, stream flag)
+// and call this. Returns the same column shape as the path-based query plus
+// e.endpoint_type so the handler can pick the right transformer per row.
+func (q *Queries) GetProvidersByEndpointTypesAndModel(ctx context.Context, arg GetProvidersByEndpointTypesAndModelParams) ([]GetProvidersByEndpointTypesAndModelRow, error) {
+	rows, err := q.db.Query(ctx, getProvidersByEndpointTypesAndModel, arg.ModelName, arg.EndpointTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProvidersByEndpointTypesAndModelRow
+	for rows.Next() {
+		var i GetProvidersByEndpointTypesAndModelRow
+		if err := rows.Scan(
+			&i.ModelName,
+			&i.ProviderID,
+			&i.EndpointPath,
+			&i.EndpointType,
+			&i.UpstreamModelName,
+			&i.Priority,
+			&i.Annotations,
+			&i.ProviderName,
+			&i.ProviderCredentials,
+			&i.ProviderPriority,
+			&i.UpstreamUrl,
+			&i.SendCredentialsResolver,
+			&i.ProviderAnnotations,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertRequest = `-- name: InsertRequest :one
 INSERT INTO request (
   id, span_id, parent_span_id, type, status,

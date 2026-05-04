@@ -39,7 +39,7 @@ The dashboard does not call the API by hand-written client code; types and the f
 
 Always run both steps after touching a contract — backend changes are invisible to the dashboard until the TS types regenerate.
 
-No Go tests exist yet. No Go linter is configured. Dashboard lints via oxlint+eslint.
+Limited Go tests live under `pkg/llmbridge/` and `pkg/server/` covering the bridge format conversions and unified-handler helper functions; the gateway proper still has no postgres-backed test harness. No Go linter is configured. Dashboard lints via oxlint+eslint.
 
 ## Bundling the dashboard
 
@@ -68,6 +68,7 @@ PicoTera is an API gateway that routes LLM inference requests across multiple pr
 - `pkg/errorx/` — Custom error types with structured codes.
 - `pkg/logx/` — logrus wrapper.
 - `pkg/jsx/` — embedded JavaScript runtime (built on `github.com/fastschema/qjs`) that runs user-supplied scripts as request-lifecycle hooks. See "Scripts" below.
+- `pkg/llmbridge/` — adapter over `github.com/looplj/axonhub/llm` that converts LLM request/response payloads between Anthropic Messages, OpenAI Chat Completions, OpenAI Responses, and Gemini GenerateContent formats. Used by the unified gateway routes (see "Unified generation routes" below). Axonhub's `llm/` sub-tree is LGPL-3.0; attribution lives in `THIRD_PARTY_NOTICES.md`.
 
 ### Scripts (user JS hooks)
 
@@ -89,6 +90,18 @@ Hooks are run as priority-sorted waterfalls (higher priority first); each tap ma
 - **Config**: All settings via env vars with `PICOTERA_` prefix (e.g., `PICOTERA_DATABASE_URL`, `PICOTERA_PORT`). Default port is 9898.
 - **API base path**: All management operations are under `/api/picotera`.
 - **Database**: PostgreSQL 17.5 on port 34052 via docker-compose. Migrations auto-run on startup. A KeyDB (Redis-compatible) service runs on 34051 but is not yet consumed by the backend.
+
+### Unified generation routes
+
+Five chi routes are registered as runtime constants in `server.go` BEFORE the catch-all gateway mount and back the cross-format dispatch:
+
+- `POST /api/picotera/v1/messages` — Anthropic Messages source.
+- `POST /api/picotera/v1/responses` — OpenAI Responses source.
+- `POST /api/picotera/v1/chat/completions` — OpenAI Chat Completions source.
+- `POST /api/picotera/v1beta/models/{model}:generateContent` — Gemini GenerateContent source (non-stream).
+- `POST /api/picotera/v1beta/models/{model}:streamGenerateContent` — Gemini GenerateContent source (stream).
+
+These are NOT rows in the `endpoint` table — operators only configure the underlying upstream `endpoint` rows (`anthropicMessages`, `openaiChatCompletions`, `openaiResponses`, `geminiGenerateContent`, `geminiStreamGenerateContent`). The unified handler (`pkg/server/handle_unified_gateway.go`) collects every candidate MPE that supports the requested model+stream tuple via `GetProvidersByEndpointTypesAndModel`, runs all five JS hooks (same shapes as the path-based gateway), and per attempt: if the chosen upstream's `endpoint_type` differs from the source format, runs the body through `pkg/llmbridge/` after `rewriteRequest` and the response back before writing to the client. Identity (1:1) attempts are byte-for-byte passthrough so token/TTFT extraction is unaffected.
 
 ### Database Schema
 

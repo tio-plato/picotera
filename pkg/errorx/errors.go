@@ -8,6 +8,8 @@ var RouteNotFound = ErrorCode("ROUTE_NOT_FOUND")
 
 var ModelNotFound = ErrorCode("MODEL_NOT_FOUND")
 
+var InvalidRequest = ErrorCode("INVALID_REQUEST")
+
 var NoProviderAvailable = ErrorCode("NO_PROVIDER_AVAILABLE")
 
 var RequestNotFound = ErrorCode("REQUEST_NOT_FOUND")
