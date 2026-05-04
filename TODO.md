@@ -1,0 +1,4 @@
+- [ ] unified 请求的时候，对同一个 providers 的 model 条目，如果对应的 model 条目展开成了多个 endpoints，只应该选择其中一个：优先选和客户端请求类型一致的 endpoint；其次是优先 anthropic 格式、然后是 chat completions 格式，最后按 endpoint id 排序。
+- [ ] 在面板里模型-上游这个界面，增加一个合并的上游列表，需要和 unified 请求 chat completions 的时候走一样的逻辑，方便用户看到走 unified 的时候的优先级（只需要返回 provider 和 modelName/upstreamModelName ，所以不管是请求 chat completions 还是请求哪个都是一样的，这里默认就选 chat completions）
+- [ ] jsx.Candidate 的 MPE 和 Providers 应该改为 struct 类型，不要用 any
+- [ ] unified 请求的时候，尝试读取 model 、 provider 、 provider models 的 annotations，优先级是 model < provider < provider models 越往后越优先，读取里面的 `ah.outbound.type` 值，如果是 `openrouter`，则 outbound transform 的时候使用 openrouter 包；`deepseek`, `fireworks` 同理。另外，也读取 `ah.outbound.config` 值，如果有，尝试解析为 json，并和对应的 Config 合并。
