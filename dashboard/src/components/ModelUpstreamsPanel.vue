@@ -95,7 +95,7 @@ const mergedUpstreams = computed(() =>
     <section v-if="mergedUpstreams.length" class="flex flex-col gap-2">
       <div class="flex items-baseline justify-between">
         <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">
-          Unified 路由优先级
+          聚合
         </span>
         <span class="text-xs text-ink-faint tabular-nums">{{ mergedUpstreams.length }} 上游</span>
       </div>
@@ -106,9 +106,6 @@ const mergedUpstreams = computed(() =>
           class="px-2.5 py-2 border-t border-line-soft first:border-t-0 flex items-center gap-1.5 flex-wrap"
           :class="(u.providerDisabled || u.entryDisabled) ? 'opacity-55' : ''"
         >
-          <span class="text-2xs text-ink-faint tabular-nums w-5 text-right flex-none">
-            {{ i + 1 }}
-          </span>
           <span class="text-sm font-semibold text-ink">{{ u.providerName }}</span>
           <Tag v-if="u.providerDisabled" variant="muted">渠道已禁用</Tag>
           <Icon name="chevron-down" :size="12" class="-rotate-90 text-ink-faint" />
@@ -124,7 +121,7 @@ const mergedUpstreams = computed(() =>
       <div class="flex items-baseline justify-between">
         <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">按端点分组</span>
         <span class="text-xs text-ink-faint tabular-nums">
-          {{ groups.length }} 组 · {{ visibleCount }} 上游
+          {{ groups.length }} 端点
         </span>
       </div>
       <div
