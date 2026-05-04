@@ -225,15 +225,17 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// (upstream URL, credentials). The hooks see {provider, mpe}; we look up
 	// the rest by providerID after the hook returns.
 	type providerSidecar struct {
-		upstreamURL string
-		credentials string
+		upstreamURL  string
+		credentials  string
+		sendResolver int32
 	}
 	sidecar := make(map[int32]providerSidecar, len(providers))
 	candidates := make([]jsx.Candidate, 0, len(providers))
 	for _, row := range providers {
 		sidecar[row.ProviderID] = providerSidecar{
-			upstreamURL: row.UpstreamUrl,
-			credentials: row.ProviderCredentials,
+			upstreamURL:  row.UpstreamUrl,
+			credentials:  row.ProviderCredentials,
+			sendResolver: effectiveSendResolver(endpoint.CredentialsResolver, row.SendCredentialsResolver),
 		}
 		candidates = append(candidates, jsx.Candidate{
 			Provider: map[string]any{
@@ -362,7 +364,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TimeSpentMs:   pgtype.Int4{Valid: false},
 		})
 
-		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, endpoint.CredentialsResolver, pathVars)
+		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, side.sendResolver, pathVars)
 		if berr != nil {
 			cancel()
 			h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, berr.Error())

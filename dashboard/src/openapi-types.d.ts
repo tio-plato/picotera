@@ -642,6 +642,8 @@ export interface components {
              * @example https://example.com/schemas/ProviderEndpointView.json
              */
             readonly $schema?: string;
+            /** @enum {string} */
+            credentialsResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
             endpointPath: string;
             /** Format: int32 */
             providerId: number;

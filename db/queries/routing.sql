@@ -13,6 +13,7 @@ SELECT
   p.credentials AS provider_credentials,
   p.priority AS provider_priority,
   pe.upstream_url,
+  pe.credentials_resolver AS send_credentials_resolver,
   p.annotations AS provider_annotations
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id

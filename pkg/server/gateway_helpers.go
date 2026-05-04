@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -110,7 +111,9 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 }
 
 // extractClientToken pulls the client-supplied API key/token from the
-// inbound request, restricted to the positions allowed by the given resolver.
+// inbound request. The endpoint's resolver names the preferred position; if
+// that position is empty we fall back to scanning all four locations in a
+// fixed order. GeneralApiKey/Unknown go straight to the fallback.
 // Empty string means no acceptable position was filled.
 func extractClientToken(r *http.Request, resolver int32) string {
 	bearer := ""
@@ -129,19 +132,59 @@ func extractClientToken(r *http.Request, resolver int32) string {
 		}
 		return ""
 	}
+	fallback := pickFirst(bearer, xApi, query, goog)
 
 	switch resolver {
 	case contract.CredentialsResolver_BearerToken:
-		return bearer
+		if bearer != "" {
+			return bearer
+		}
 	case contract.CredentialsResolver_XApiKey:
-		return xApi
+		if xApi != "" {
+			return xApi
+		}
 	case contract.CredentialsResolver_SearchKey:
-		return query
+		if query != "" {
+			return query
+		}
 	case contract.CredentialsResolver_GoogApiKey:
-		return goog
-	default: // GeneralApiKey / Unknown / others
-		return pickFirst(bearer, xApi, query, goog)
+		if goog != "" {
+			return goog
+		}
 	}
+	return fallback
+}
+
+// effectiveSendResolver picks which resolver to use when writing credentials
+// to the upstream request. provider_endpoint can override endpoint, but only
+// when its resolver is a concrete value (Unknown means inherit).
+func effectiveSendResolver(endpointResolver, peResolver int32) int32 {
+	if peResolver != contract.CredentialsResolver_Unknown {
+		return peResolver
+	}
+	return endpointResolver
+}
+
+// mergeClientQuery merges the inbound client URL's query parameters into
+// upstreamURL, dropping the credential parameter `key`. Keys already present
+// on upstreamURL win on conflict.
+func mergeClientQuery(upstreamURL *url.URL, clientRawQuery string) {
+	if clientRawQuery == "" {
+		return
+	}
+	clientValues, err := url.ParseQuery(clientRawQuery)
+	if err != nil {
+		return
+	}
+	clientValues.Del("key")
+	if len(clientValues) == 0 {
+		return
+	}
+	upstreamValues := upstreamURL.Query()
+	for k, vs := range upstreamValues {
+		clientValues[k] = vs
+	}
+	upstreamURL.RawQuery = clientValues.Encode()
 }
 
 // authenticateClient extracts the client token (per resolver), looks up the
@@ -378,7 +421,7 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 // credentials based on the auth type.
 // The provided ctx is used for the request context, enabling cancellation of
 // upstream reads (e.g., by the idle timeout reader).
-func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, resolver int32, pathVars map[string]string) (*http.Request, []byte, error) {
+func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, sendResolver int32, pathVars map[string]string) (*http.Request, []byte, error) {
 	// Substitute path variables in the upstream URL.
 	var err error
 	upstreamURL, err = substitutePathVars(upstreamURL, pathVars)
@@ -400,6 +443,9 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 		return nil, nil, fmt.Errorf("failed to create upstream request: %w", err)
 	}
 
+	// Forward non-credential client query params, with upstream-defined keys winning on conflict.
+	mergeClientQuery(req.URL, original.URL.RawQuery)
+
 	// Copy headers from original request, excluding auth headers, Host, and Content-Length
 	for key, values := range original.Header {
 		lower := strings.ToLower(key)
@@ -411,8 +457,8 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 		}
 	}
 
-	// Set credentials based on resolver type
-	applyCredentials(req, creds, resolver, original)
+	// Set credentials based on the effective send resolver.
+	applyCredentials(req, creds, sendResolver, original)
 
 	req.ContentLength = int64(len(reqBody))
 

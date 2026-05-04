@@ -40,6 +40,7 @@ SELECT
   p.credentials AS provider_credentials,
   p.priority AS provider_priority,
   pe.upstream_url,
+  pe.credentials_resolver AS send_credentials_resolver,
   p.annotations AS provider_annotations
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id
@@ -65,17 +66,18 @@ type GetProvidersByEndpointAndModelParams struct {
 }
 
 type GetProvidersByEndpointAndModelRow struct {
-	ModelName           string `json:"modelName"`
-	ProviderID          int32  `json:"providerId"`
-	EndpointPath        string `json:"endpointPath"`
-	UpstreamModelName   string `json:"upstreamModelName"`
-	Priority            int32  `json:"priority"`
-	Annotations         []byte `json:"annotations"`
-	ProviderName        string `json:"providerName"`
-	ProviderCredentials string `json:"providerCredentials"`
-	ProviderPriority    int32  `json:"providerPriority"`
-	UpstreamUrl         string `json:"upstreamUrl"`
-	ProviderAnnotations []byte `json:"providerAnnotations"`
+	ModelName               string `json:"modelName"`
+	ProviderID              int32  `json:"providerId"`
+	EndpointPath            string `json:"endpointPath"`
+	UpstreamModelName       string `json:"upstreamModelName"`
+	Priority                int32  `json:"priority"`
+	Annotations             []byte `json:"annotations"`
+	ProviderName            string `json:"providerName"`
+	ProviderCredentials     string `json:"providerCredentials"`
+	ProviderPriority        int32  `json:"providerPriority"`
+	UpstreamUrl             string `json:"upstreamUrl"`
+	SendCredentialsResolver int32  `json:"sendCredentialsResolver"`
+	ProviderAnnotations     []byte `json:"providerAnnotations"`
 }
 
 func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error) {
@@ -98,6 +100,7 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 			&i.ProviderCredentials,
 			&i.ProviderPriority,
 			&i.UpstreamUrl,
+			&i.SendCredentialsResolver,
 			&i.ProviderAnnotations,
 		); err != nil {
 			return nil, err

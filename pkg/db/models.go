@@ -53,9 +53,10 @@ type Provider struct {
 }
 
 type ProviderEndpoint struct {
-	ProviderID   int32  `json:"providerId"`
-	EndpointPath string `json:"endpointPath"`
-	UpstreamUrl  string `json:"upstreamUrl"`
+	ProviderID          int32  `json:"providerId"`
+	EndpointPath        string `json:"endpointPath"`
+	UpstreamUrl         string `json:"upstreamUrl"`
+	CredentialsResolver int32  `json:"credentialsResolver"`
 }
 
 type Request struct {

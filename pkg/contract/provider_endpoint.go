@@ -8,24 +8,27 @@ import (
 )
 
 type ProviderEndpointView struct {
-	ProviderID   int32  `json:"providerId"`
-	EndpointPath string `json:"endpointPath"`
-	UpstreamUrl  string `json:"upstreamUrl"`
+	ProviderID          int32  `json:"providerId"`
+	EndpointPath        string `json:"endpointPath"`
+	UpstreamUrl         string `json:"upstreamUrl"`
+	CredentialsResolver string `json:"credentialsResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
 }
 
 func ToProviderEndpointView(pe *db.ProviderEndpoint) *ProviderEndpointView {
 	return &ProviderEndpointView{
-		ProviderID:   pe.ProviderID,
-		EndpointPath: pe.EndpointPath,
-		UpstreamUrl:  pe.UpstreamUrl,
+		ProviderID:          pe.ProviderID,
+		EndpointPath:        pe.EndpointPath,
+		UpstreamUrl:         pe.UpstreamUrl,
+		CredentialsResolver: FromCredentialsResolver(pe.CredentialsResolver),
 	}
 }
 
 func FromProviderEndpointView(view *ProviderEndpointView) *db.UpsertProviderEndpointParams {
 	return &db.UpsertProviderEndpointParams{
-		ProviderID:   view.ProviderID,
-		EndpointPath: view.EndpointPath,
-		UpstreamUrl:  view.UpstreamUrl,
+		ProviderID:          view.ProviderID,
+		EndpointPath:        view.EndpointPath,
+		UpstreamUrl:         view.UpstreamUrl,
+		CredentialsResolver: ToCredentialsResolver(view.CredentialsResolver),
 	}
 }
 

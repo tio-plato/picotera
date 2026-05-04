@@ -445,6 +445,15 @@ components:
           format: uri
           readOnly: true
           type: string
+        credentialsResolver:
+          enum:
+            - unknown
+            - generalApiKey
+            - bearerToken
+            - xApiKey
+            - searchKey
+            - googApiKey
+          type: string
         endpointPath:
           type: string
         providerId:

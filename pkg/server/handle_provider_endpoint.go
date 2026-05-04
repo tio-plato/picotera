@@ -88,7 +88,7 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 		return nil, huma.Error500InternalServerError("failed to create upstream request", err)
 	}
 
-	applyCredentials(req, provider.Credentials, endpoint.CredentialsResolver, nil)
+	applyCredentials(req, provider.Credentials, effectiveSendResolver(endpoint.CredentialsResolver, pe.CredentialsResolver), nil)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {

@@ -13,6 +13,17 @@ import {
   Icon,
 } from '@/ui'
 
+type Resolver = NonNullable<ProviderEndpointView['credentialsResolver']>
+
+const RESOLVER_OPTIONS: ReadonlyArray<{ value: Resolver; label: string }> = [
+  { value: 'unknown', label: '继承端点设置' },
+  { value: 'generalApiKey', label: '通用 API Key' },
+  { value: 'bearerToken', label: 'Bearer Token' },
+  { value: 'xApiKey', label: 'X-Api-Key' },
+  { value: 'searchKey', label: 'Search Key (?key=)' },
+  { value: 'googApiKey', label: 'X-Goog-Api-Key' },
+]
+
 const props = defineProps<{ providerId: number; providerName: string }>()
 const emit = defineEmits<{ close: [] }>()
 const api = useApi()
@@ -21,8 +32,13 @@ const providerEndpoints = ref<ProviderEndpointView[]>([])
 const endpoints = ref<EndpointView[]>([])
 const loading = ref(false)
 const error = ref('')
-const form = ref({ endpointPath: '', upstreamUrl: '' })
+const form = ref<{ endpointPath: string; upstreamUrl: string; credentialsResolver: Resolver }>({
+  endpointPath: '',
+  upstreamUrl: '',
+  credentialsResolver: 'unknown',
+})
 const drafts = reactive<Record<string, string>>({})
+const resolverDrafts = reactive<Record<string, Resolver>>({})
 const saving = ref(false)
 
 const availableEndpoints = computed(() =>
@@ -53,7 +69,11 @@ async function fetchBindings() {
   }
   providerEndpoints.value = (data as ProviderEndpointView[]) ?? []
   for (const key of Object.keys(drafts)) delete drafts[key]
-  for (const pe of providerEndpoints.value) drafts[pe.endpointPath] = pe.upstreamUrl
+  for (const key of Object.keys(resolverDrafts)) delete resolverDrafts[key]
+  for (const pe of providerEndpoints.value) {
+    drafts[pe.endpointPath] = pe.upstreamUrl
+    resolverDrafts[pe.endpointPath] = (pe.credentialsResolver ?? 'unknown') as Resolver
+  }
 }
 
 onMounted(() => {
@@ -65,6 +85,7 @@ watch(
   () => {
     form.value.endpointPath = ''
     form.value.upstreamUrl = ''
+    form.value.credentialsResolver = 'unknown'
     fetchBindings()
   },
 )
@@ -78,6 +99,7 @@ async function addBinding() {
       providerId: props.providerId,
       endpointPath: form.value.endpointPath,
       upstreamUrl: form.value.upstreamUrl,
+      credentialsResolver: form.value.credentialsResolver,
     },
   })
   saving.value = false
@@ -87,29 +109,41 @@ async function addBinding() {
   }
   form.value.endpointPath = ''
   form.value.upstreamUrl = ''
+  form.value.credentialsResolver = 'unknown'
   await fetchBindings()
+}
+
+function isDirty(path: string) {
+  const pe = providerEndpoints.value.find((p) => p.endpointPath === path)
+  if (!pe) return false
+  const nextUrl = drafts[path]
+  if (nextUrl === undefined || nextUrl === '') return false
+  const nextResolver = resolverDrafts[path] ?? 'unknown'
+  const currentResolver = (pe.credentialsResolver ?? 'unknown') as Resolver
+  return nextUrl !== pe.upstreamUrl || nextResolver !== currentResolver
 }
 
 async function saveDraft(path: string) {
   const pe = providerEndpoints.value.find((p) => p.endpointPath === path)
   if (!pe) return
-  const next = drafts[path]
-  if (next === undefined || next === pe.upstreamUrl) return
-  if (!next) {
-    drafts[path] = pe.upstreamUrl
-    return
-  }
+  if (!isDirty(path)) return
+  const nextUrl = drafts[path] ?? ''
+  if (!nextUrl) return
+  const nextResolver = resolverDrafts[path] ?? 'unknown'
+  const currentResolver = (pe.credentialsResolver ?? 'unknown') as Resolver
   error.value = ''
   const { error: err } = await api.PUT('/api/picotera/provider-endpoints', {
     body: {
       providerId: props.providerId,
       endpointPath: path,
-      upstreamUrl: next,
+      upstreamUrl: nextUrl,
+      credentialsResolver: nextResolver,
     },
   })
   if (err) {
     error.value = err.message ?? '更新绑定失败'
     drafts[path] = pe.upstreamUrl
+    resolverDrafts[path] = currentResolver
     return
   }
   await fetchBindings()
@@ -168,8 +202,25 @@ function onDraftKeydown(e: KeyboardEvent, path: string) {
               placeholder="上游 URL"
               :title="drafts[pe.endpointPath]"
               @keydown="onDraftKeydown($event, pe.endpointPath)"
-              @blur="saveDraft(pe.endpointPath)"
             />
+          </div>
+          <div class="flex gap-2 items-center">
+            <Select
+              v-model="resolverDrafts[pe.endpointPath]"
+              size="sm"
+              class="flex-1 min-w-0"
+            >
+              <option v-for="opt in RESOLVER_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </Select>
+            <Button
+              v-if="isDirty(pe.endpointPath)"
+              size="sm"
+              @click="saveDraft(pe.endpointPath)"
+            >
+              保存
+            </Button>
             <IconButton
               variant="danger"
               title="删除绑定"
@@ -205,6 +256,17 @@ function onDraftKeydown(e: KeyboardEvent, path: string) {
             placeholder="https://api.example.com/v1/…"
             :disabled="!availableEndpoints.length"
           />
+        </Field>
+        <Field label="凭证发送方式">
+          <Select
+            v-model="form.credentialsResolver"
+            size="sm"
+            :disabled="!availableEndpoints.length"
+          >
+            <option v-for="opt in RESOLVER_OPTIONS" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </Select>
         </Field>
         <div class="flex justify-end">
           <Button
