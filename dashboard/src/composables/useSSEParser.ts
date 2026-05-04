@@ -156,7 +156,7 @@ function aggregateAnthropic(events: SSEEvent[]): Record<string, unknown> | null 
   let model = "";
   let role = "assistant";
   let stopReason: string | null = null;
-  const contentBlocks: Array<{ type: string; text?: string; thinking?: string; partial_json?: string; input?: unknown }> = [];
+  const contentBlocks: Array<{ type: string; text?: string; thinking?: string; partial_json?: string; input?: unknown; citations?: Array<unknown> }> = [];
   let currentBlockIndex = -1;
   let usage: Record<string, unknown> | null = null;
 
@@ -191,6 +191,9 @@ function aggregateAnthropic(events: SSEEvent[]): Record<string, unknown> | null 
             block.thinking = (block.thinking || "") + (delta.thinking as string);
           } else if (delta.type === 'input_json_delta' && delta.partial_json) {
             block.partial_json = (block.partial_json || "") + (delta.partial_json as string);
+          } else if (delta.type === 'citations_delta' && delta.citation) {
+            block.citations = block.citations || [];
+            block.citations.push(delta.citation);
           }
         }
       }
