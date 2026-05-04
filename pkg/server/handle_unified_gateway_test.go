@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"picotera/pkg/contract"
+	"picotera/pkg/db"
 	"picotera/pkg/llmbridge"
 
 	"github.com/go-chi/chi/v5"
@@ -142,5 +143,96 @@ func TestSetUnifiedModel(t *testing.T) {
 	}
 	if string(out) != string(body) {
 		t.Errorf("expected Gemini body unchanged, got %s", out)
+	}
+}
+
+func TestDedupeUnifiedRows(t *testing.T) {
+	row := func(providerID int32, et int32, path string) db.GetProvidersByEndpointTypesAndModelRow {
+		return db.GetProvidersByEndpointTypesAndModelRow{
+			ModelName:    "m",
+			ProviderID:   providerID,
+			EndpointType: et,
+			EndpointPath: path,
+		}
+	}
+	type want struct {
+		providerID int32
+		path       string
+	}
+	cases := []struct {
+		name    string
+		rows    []db.GetProvidersByEndpointTypesAndModelRow
+		srcType int32
+		want    []want
+	}{
+		{
+			name:    "single",
+			rows:    []db.GetProvidersByEndpointTypesAndModelRow{row(1, contract.EndpointType_OpenAIChatCompletions, "/v1/chat")},
+			srcType: contract.EndpointType_OpenAIChatCompletions,
+			want:    []want{{1, "/v1/chat"}},
+		},
+		{
+			name: "src match",
+			rows: []db.GetProvidersByEndpointTypesAndModelRow{
+				row(1, contract.EndpointType_AnthropicMessages, "/a"),
+				row(1, contract.EndpointType_OpenAIChatCompletions, "/c"),
+			},
+			srcType: contract.EndpointType_OpenAIChatCompletions,
+			want:    []want{{1, "/c"}},
+		},
+		{
+			name: "anthropic preferred",
+			rows: []db.GetProvidersByEndpointTypesAndModelRow{
+				row(1, contract.EndpointType_OpenAIResponses, "/r"),
+				row(1, contract.EndpointType_AnthropicMessages, "/a"),
+			},
+			srcType: contract.EndpointType_GeminiGenerateContent,
+			want:    []want{{1, "/a"}},
+		},
+		{
+			name: "chat preferred",
+			rows: []db.GetProvidersByEndpointTypesAndModelRow{
+				row(1, contract.EndpointType_OpenAIResponses, "/r"),
+				row(1, contract.EndpointType_OpenAIChatCompletions, "/c"),
+			},
+			srcType: contract.EndpointType_GeminiGenerateContent,
+			want:    []want{{1, "/c"}},
+		},
+		{
+			name: "path tiebreak",
+			rows: []db.GetProvidersByEndpointTypesAndModelRow{
+				row(1, contract.EndpointType_OpenAIResponses, "/z"),
+				row(1, contract.EndpointType_OpenAIResponses, "/a"),
+			},
+			srcType: contract.EndpointType_GeminiGenerateContent,
+			want:    []want{{1, "/a"}},
+		},
+		{
+			name: "multi provider",
+			rows: []db.GetProvidersByEndpointTypesAndModelRow{
+				row(1, contract.EndpointType_OpenAIChatCompletions, "/c"),
+				row(2, contract.EndpointType_AnthropicMessages, "/a"),
+			},
+			srcType: contract.EndpointType_OpenAIChatCompletions,
+			want: []want{
+				{1, "/c"},
+				{2, "/a"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := dedupeUnifiedRows(tc.rows, tc.srcType)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len = %d, want %d (got=%+v)", len(got), len(tc.want), got)
+			}
+			gotW := make([]want, len(got))
+			for i, r := range got {
+				gotW[i] = want{r.ProviderID, r.EndpointPath}
+			}
+			if !reflect.DeepEqual(gotW, tc.want) {
+				t.Errorf("got %+v, want %+v", gotW, tc.want)
+			}
+		})
 	}
 }

@@ -207,7 +207,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 
 		// 8. Resolve candidate providers across the endpoint-type set.
 		typeSet := candidateEndpointTypes(srcFormat, streaming)
-		providers, err := h.resolveProvidersByTypes(r.Context(), modelName, typeSet)
+		providers, err := h.resolveProvidersByTypes(r.Context(), modelName, typeSet, sourceEndpointType(srcFormat))
 		if err != nil {
 			var gwErr *gatewayError
 			if errors.As(err, &gwErr) {
@@ -672,8 +672,10 @@ func candidateEndpointPath(c jsx.Candidate) string {
 
 // resolveProvidersByTypes is the unified handler's analogue of resolveProviders.
 // It runs the new sqlc query and applies the same priority sort and minimum
-// validity filter (upstream URL + credentials non-empty).
-func (s *Server) resolveProvidersByTypes(ctx context.Context, model string, types []int32) ([]db.GetProvidersByEndpointTypesAndModelRow, error) {
+// validity filter (upstream URL + credentials non-empty). srcType is the
+// inbound request's endpoint_type (from sourceEndpointType(srcFormat)) and
+// drives the per-(provider, model) dedupe — see dedupeUnifiedRows.
+func (s *Server) resolveProvidersByTypes(ctx context.Context, model string, types []int32, srcType int32) ([]db.GetProvidersByEndpointTypesAndModelRow, error) {
 	rows, err := s.queries.GetProvidersByEndpointTypesAndModel(ctx, db.GetProvidersByEndpointTypesAndModelParams{
 		ModelName:     model,
 		EndpointTypes: types,
@@ -694,6 +696,7 @@ func (s *Server) resolveProvidersByTypes(ctx context.Context, model string, type
 	if len(valid) == 0 {
 		return nil, &gatewayError{status: http.StatusNotFound, message: "no provider available for model", code: errorx.NoProviderAvailable.Error()}
 	}
+	valid = dedupeUnifiedRows(valid, srcType)
 	// Sort by combined priority (provider + per-model-entry) descending.
 	for i := 1; i < len(valid); i++ {
 		for j := i; j > 0; j-- {
@@ -706,6 +709,58 @@ func (s *Server) resolveProvidersByTypes(ctx context.Context, model string, type
 		}
 	}
 	return valid, nil
+}
+
+// dedupeUnifiedRows collapses the type-set query result so that each
+// (ProviderID, ModelName) pair contributes at most one row. ModelName is
+// constant across the result set (the query is parameterized on it), so
+// bucketing by ProviderID alone is sufficient.
+//
+// Within each bucket, betterRow picks the survivor by: srcType match >
+// AnthropicMessages > OpenAIChatCompletions > endpoint.path lex order. The
+// returned slice preserves the order of first appearance per provider, so the
+// downstream priority sort sees a stable input.
+func dedupeUnifiedRows(rows []db.GetProvidersByEndpointTypesAndModelRow, srcType int32) []db.GetProvidersByEndpointTypesAndModelRow {
+	idx := make(map[int32]int, len(rows))
+	out := make([]db.GetProvidersByEndpointTypesAndModelRow, 0, len(rows))
+	for _, row := range rows {
+		if pos, ok := idx[row.ProviderID]; ok {
+			if betterRow(row, out[pos], srcType) {
+				out[pos] = row
+			}
+			continue
+		}
+		idx[row.ProviderID] = len(out)
+		out = append(out, row)
+	}
+	return out
+}
+
+// betterRow reports whether a should beat b within a (provider, model) bucket.
+// Tie-breakers, in order:
+//  1. srcType exact match (the row whose endpoint_type equals the inbound
+//     request format wins).
+//  2. AnthropicMessages format.
+//  3. OpenAIChatCompletions format.
+//  4. EndpointPath lexicographic ascending.
+func betterRow(a, b db.GetProvidersByEndpointTypesAndModelRow, srcType int32) bool {
+	rank := func(t int32) int {
+		switch {
+		case t == srcType:
+			return 0
+		case t == contract.EndpointType_AnthropicMessages:
+			return 1
+		case t == contract.EndpointType_OpenAIChatCompletions:
+			return 2
+		default:
+			return 3
+		}
+	}
+	ra, rb := rank(a.EndpointType), rank(b.EndpointType)
+	if ra != rb {
+		return ra < rb
+	}
+	return a.EndpointPath < b.EndpointPath
 }
 
 // unifiedStreamArgs bundles the (many) inputs the unified streaming success
