@@ -1,0 +1,1 @@
+提取用户文本的时候，如果当前文本块是 < 开头的，则跳过这一整个块，去找更靠前的块，比如 { "type": "message", "role": "user", "content": [ { "type": "input_text", "text": "baz" } ] }, { "type": "message", "role": "user", "content": [  { "type": "input_text",  "text": "foobar" }, {     "type": "input_text",  "text": "<p></p>"}]} 这种，选择 foobar 而不是 `<p></p>`
