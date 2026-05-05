@@ -298,7 +298,7 @@ func extractParentSpanID(h http.Header) string {
 		return v
 	}
 	for k, vs := range h {
-		if !strings.EqualFold(k, "conversation_id") {
+		if !strings.EqualFold(k, "session_id") {
 			continue
 		}
 		for _, v := range vs {

@@ -711,8 +711,16 @@ export interface components {
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
         RequestTraceView: {
+            /** Format: int64 */
+            cacheReadTokens: number;
+            /** Format: int64 */
+            cacheWriteTokens: number;
+            /** Format: int64 */
+            inputTokens: number;
             lastRequestAt?: string;
             modelCosts: components["schemas"]["TraceCostView"][] | null;
+            /** Format: int64 */
+            outputTokens: number;
             parentSpanId: string;
             /** Format: int64 */
             requestCount: number;

@@ -29,6 +29,7 @@ const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'parentSpanId', header: 'Parent Span ID' },
   { key: 'requestCount', header: '请求', align: 'right' },
   { key: 'totalTokens', header: 'Token', align: 'right' },
+  { key: 'cacheHitRate', header: '缓存命中', align: 'right' },
   { key: 'modelCosts', header: '模型成本', align: 'right' },
   { key: 'upstreamCosts', header: '上游成本', align: 'right' },
 ])
@@ -81,6 +82,22 @@ function formatTimeParts(iso: string | undefined): { time: string; date: string 
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
   const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   return { time, date }
+}
+
+function formatNumber(value: number): string {
+  return value.toLocaleString()
+}
+
+function cacheHitRate(row: RequestTraceView): number | null {
+  const denominator = row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens
+  if (denominator <= 0) return null
+  return row.cacheReadTokens / denominator
+}
+
+function formatCacheHitRate(row: RequestTraceView): string {
+  const rate = cacheHitRate(row)
+  if (rate == null) return '—'
+  return `${parseFloat((rate * 100).toFixed(2))}%`
 }
 
 function normalizeCosts(costs: TraceCostView[] | null): TraceCostView[] {
@@ -148,7 +165,21 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
           <span class="font-mono tabular-nums">{{ row.requestCount.toLocaleString() }}</span>
         </template>
         <template #cell-totalTokens="{ row }">
-          <span class="font-mono tabular-nums">{{ row.totalTokens.toLocaleString() }}</span>
+          <div class="flex flex-col items-end leading-tight">
+            <span class="font-mono tabular-nums text-ink">{{ formatNumber(row.totalTokens) }}</span>
+            <span class="font-mono text-2xs text-ink-faint tabular-nums">
+              {{ formatNumber(row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens) }} / {{ formatNumber(row.outputTokens) }}
+            </span>
+          </div>
+        </template>
+        <template #cell-cacheHitRate="{ row }">
+          <span
+            class="font-mono tabular-nums"
+            :class="cacheHitRate(row) == null ? 'text-ink-faint' : 'text-ink'"
+            :title="`cache read ${formatNumber(row.cacheReadTokens)} / input ${formatNumber(row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens)}`"
+          >
+            {{ formatCacheHitRate(row) }}
+          </span>
         </template>
         <template #cell-modelCosts="{ row }">
           <span

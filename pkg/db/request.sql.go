@@ -57,6 +57,10 @@ WITH trace_base AS (
       + COALESCE(output_tokens, 0)
       + COALESCE(cache_write_tokens, 0)
     )::bigint AS total_tokens,
+    SUM(COALESCE(input_tokens, 0))::bigint AS input_tokens,
+    SUM(COALESCE(cache_read_tokens, 0))::bigint AS cache_read_tokens,
+    SUM(COALESCE(output_tokens, 0))::bigint AS output_tokens,
+    SUM(COALESCE(cache_write_tokens, 0))::bigint AS cache_write_tokens,
     MAX(created_at)::timestamp AS last_request_at
   FROM request
   WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
@@ -66,6 +70,10 @@ SELECT
   trace_base.parent_span_id,
   trace_base.request_count,
   trace_base.total_tokens,
+  trace_base.input_tokens,
+  trace_base.cache_read_tokens,
+  trace_base.output_tokens,
+  trace_base.cache_write_tokens,
   COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
   COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
   trace_base.last_request_at
@@ -115,12 +123,16 @@ type ListRequestTracesParams struct {
 }
 
 type ListRequestTracesRow struct {
-	ParentSpanID  pgtype.Text      `json:"parentSpanId"`
-	RequestCount  int64            `json:"requestCount"`
-	TotalTokens   int64            `json:"totalTokens"`
-	ModelCosts    []byte           `json:"modelCosts"`
-	UpstreamCosts []byte           `json:"upstreamCosts"`
-	LastRequestAt pgtype.Timestamp `json:"lastRequestAt"`
+	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
+	RequestCount     int64            `json:"requestCount"`
+	TotalTokens      int64            `json:"totalTokens"`
+	InputTokens      int64            `json:"inputTokens"`
+	CacheReadTokens  int64            `json:"cacheReadTokens"`
+	OutputTokens     int64            `json:"outputTokens"`
+	CacheWriteTokens int64            `json:"cacheWriteTokens"`
+	ModelCosts       []byte           `json:"modelCosts"`
+	UpstreamCosts    []byte           `json:"upstreamCosts"`
+	LastRequestAt    pgtype.Timestamp `json:"lastRequestAt"`
 }
 
 func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
@@ -136,6 +148,10 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 			&i.ParentSpanID,
 			&i.RequestCount,
 			&i.TotalTokens,
+			&i.InputTokens,
+			&i.CacheReadTokens,
+			&i.OutputTokens,
+			&i.CacheWriteTokens,
 			&i.ModelCosts,
 			&i.UpstreamCosts,
 			&i.LastRequestAt,
