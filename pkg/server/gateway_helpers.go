@@ -567,42 +567,18 @@ func metricsToPG(m ResponseMetrics) (ttftMs pgtype.Int4, inputTokens pgtype.Int4
 	return
 }
 
-// candidateProviderID extracts the provider ID from a hook-returned candidate.
-// JS round-trips numbers as float64, so we accept both int32 (Go-side construction)
-// and float64 (post-JSON) shapes. Returns false if the field is missing or malformed.
-func candidateProviderID(c jsx.Candidate) (int32, bool) {
-	pm, ok := c.Provider.(map[string]any)
-	if !ok {
-		return 0, false
-	}
-	switch v := pm["id"].(type) {
-	case float64:
-		return int32(v), true
-	case int32:
-		return v, true
-	case int:
-		return int32(v), true
-	case json.Number:
-		n, err := v.Int64()
-		if err == nil {
-			return int32(n), true
-		}
-	}
-	return 0, false
+// candidateProviderID returns the provider id from a candidate. With typed
+// fields, JSON round-tripping decodes numbers straight into int32, so no
+// fallback handling is needed.
+func candidateProviderID(c jsx.Candidate) int32 {
+	return c.Provider.ID
 }
 
-// candidateUpstreamModel pulls upstreamModelName from a candidate's mpe field.
-// Empty string means "use the model name from the request body verbatim",
-// matching the existing buildUpstreamRequest contract.
+// candidateUpstreamModel returns the upstream model name override from a
+// candidate's MPE. Empty string means "use the model name from the request
+// body verbatim", matching the existing buildUpstreamRequest contract.
 func candidateUpstreamModel(c jsx.Candidate) string {
-	mm, ok := c.MPE.(map[string]any)
-	if !ok {
-		return ""
-	}
-	if v, ok := mm["upstreamModelName"].(string); ok {
-		return v
-	}
-	return ""
+	return c.MPE.UpstreamModelName
 }
 
 // isJSONContentType reports whether the given Content-Type header value

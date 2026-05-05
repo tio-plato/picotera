@@ -243,19 +243,19 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				endpointPath: row.EndpointPath,
 			}
 			candidates = append(candidates, jsx.Candidate{
-				Provider: map[string]any{
-					"id":          row.ProviderID,
-					"name":        row.ProviderName,
-					"priority":    row.ProviderPriority,
-					"annotations": json.RawMessage(row.ProviderAnnotations),
+				Provider: jsx.ProviderSummary{
+					ID:          row.ProviderID,
+					Name:        row.ProviderName,
+					Priority:    row.ProviderPriority,
+					Annotations: json.RawMessage(row.ProviderAnnotations),
 				},
-				MPE: map[string]any{
-					"modelName":         row.ModelName,
-					"providerId":        row.ProviderID,
-					"endpointPath":      row.EndpointPath,
-					"upstreamModelName": row.UpstreamModelName,
-					"priority":          row.Priority,
-					"annotations":       json.RawMessage(row.Annotations),
+				MPE: jsx.CandidateMPE{
+					ModelName:         row.ModelName,
+					ProviderID:        row.ProviderID,
+					EndpointPath:      row.EndpointPath,
+					UpstreamModelName: row.UpstreamModelName,
+					Priority:          row.Priority,
+					Annotations:       json.RawMessage(row.Annotations),
 				},
 			})
 		}
@@ -289,12 +289,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				break
 			}
 			cand := sortedCandidates[i]
-			providerID, ok := candidateProviderID(cand)
-			if !ok {
-				i++
-				currentRetryCount = 0
-				continue
-			}
+			providerID := candidateProviderID(cand)
 			candPath := candidateEndpointPath(cand)
 			side, hasSide := sidecar[fmt.Sprintf("%d|%s", providerID, candPath)]
 			if !hasSide {
@@ -655,19 +650,12 @@ func chiURLParams(r *http.Request) map[string]string {
 	return out
 }
 
-// candidateEndpointPath pulls mpe.endpointPath out of a hook-returned
-// candidate. Used together with provider id to look up the sidecar entry,
-// since the unified handler can have multiple rows per provider when one
-// provider serves multiple endpoint types.
+// candidateEndpointPath returns mpe.endpointPath for a candidate. Used
+// together with provider id to look up the sidecar entry, since the unified
+// handler can have multiple rows per provider when one provider serves
+// multiple endpoint types.
 func candidateEndpointPath(c jsx.Candidate) string {
-	mm, ok := c.MPE.(map[string]any)
-	if !ok {
-		return ""
-	}
-	if v, ok := mm["endpointPath"].(string); ok {
-		return v
-	}
-	return ""
+	return c.MPE.EndpointPath
 }
 
 // resolveProvidersByTypes is the unified handler's analogue of resolveProviders.

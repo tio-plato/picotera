@@ -28,11 +28,24 @@ func unmarshalJSON(s string, out any) error {
 }
 
 // Candidate is a JS-visible (provider, mpe) pair used by the sortProviders
-// and beforeRequest/rewriteRequest hooks. The Go side fills both fields with
-// db.* row structs and they round-trip through JSON.
+// and beforeRequest/rewriteRequest hooks. The Go side constructs typed
+// literals; values round-trip through JSON when JS hooks return modified
+// candidate arrays.
 type Candidate struct {
-	Provider any `json:"provider"`
-	MPE      any `json:"mpe"`
+	Provider ProviderSummary `json:"provider"`
+	MPE      CandidateMPE    `json:"mpe"`
+}
+
+// CandidateMPE is the JS-visible projection of a model_provider_endpoint row,
+// extended with the resolved endpoint path so hooks can disambiguate
+// candidates that share a provider but differ by endpoint.
+type CandidateMPE struct {
+	ModelName         string          `json:"modelName"`
+	ProviderID        int32           `json:"providerId"`
+	EndpointPath      string          `json:"endpointPath"`
+	UpstreamModelName string          `json:"upstreamModelName"`
+	Priority          int32           `json:"priority"`
+	Annotations       json.RawMessage `json:"annotations,omitempty"`
 }
 
 // RequestShape is the JS-visible shape of the incoming client request.
@@ -80,15 +93,15 @@ type LastError struct {
 
 // BeforeRequestInput is the ctx passed to the beforeRequest waterfall.
 type BeforeRequestInput struct {
-	Endpoint          any            `json:"endpoint"`
-	Model             any            `json:"model"`
-	Request           RequestShape   `json:"request"`
-	Provider          any            `json:"provider"`
-	MPE               any            `json:"mpe"`
-	CurrentRetryCount int            `json:"currentRetryCount"`
-	TotalAttemptCount int            `json:"totalAttemptCount"`
-	LastError         *LastError     `json:"lastError"`
-	ApiKey            *ApiKeySummary `json:"apiKey"`
+	Endpoint          any             `json:"endpoint"`
+	Model             any             `json:"model"`
+	Request           RequestShape    `json:"request"`
+	Provider          ProviderSummary `json:"provider"`
+	MPE               CandidateMPE    `json:"mpe"`
+	CurrentRetryCount int             `json:"currentRetryCount"`
+	TotalAttemptCount int             `json:"totalAttemptCount"`
+	LastError         *LastError      `json:"lastError"`
+	ApiKey            *ApiKeySummary  `json:"apiKey"`
 }
 
 // BeforeRequestDecision is the JS-returned shape from the beforeRequest hook.
@@ -124,8 +137,8 @@ type PendingRequestShape struct {
 type RewriteInput struct {
 	Endpoint          any                 `json:"endpoint"`
 	Model             any                 `json:"model"`
-	Provider          any                 `json:"provider"`
-	MPE               any                 `json:"mpe"`
+	Provider          ProviderSummary     `json:"provider"`
+	MPE               CandidateMPE        `json:"mpe"`
 	CurrentRetryCount int                 `json:"currentRetryCount"`
 	TotalAttemptCount int                 `json:"totalAttemptCount"`
 	ClientRequest     RequestShape        `json:"clientRequest"`
@@ -144,14 +157,19 @@ type ProviderModelEntry struct {
 	Disabled          bool              `json:"disabled,omitempty"`
 }
 
-// ProviderSummary is the shape of ctx.provider in rewriteProviderModels.
+// ProviderSummary is the shape of ctx.provider in rewriteProviderModels and
+// the Provider field on Candidate (and the *Input shapes that copy it).
 // Credentials are intentionally omitted for security.
+//
+// Annotations is the raw JSONB blob from the provider row, exposed to JS as
+// the parsed object. ProviderModels is only populated for the
+// rewriteProviderModels hook; dispatch hooks see it omitted.
 type ProviderSummary struct {
 	ID             int32                `json:"id"`
 	Name           string               `json:"name"`
 	Priority       int32                `json:"priority"`
-	ProviderModels []ProviderModelEntry `json:"providerModels"`
-	Annotations    map[string]string    `json:"annotations"`
+	ProviderModels []ProviderModelEntry `json:"providerModels,omitempty"`
+	Annotations    json.RawMessage      `json:"annotations,omitempty"`
 	Disabled       bool                 `json:"disabled"`
 }
 

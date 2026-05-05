@@ -126,13 +126,6 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 		_ = json.Unmarshal(provider.ProviderModels, &oldList)
 	}
 
-	var annotations map[string]string
-	if len(provider.Annotations) > 0 {
-		if jerr := json.Unmarshal(provider.Annotations, &annotations); jerr != nil {
-			annotations = nil
-		}
-	}
-
 	aggregated, removed := aggregateProviderModels(oldList, upstreamNames)
 
 	sess, serr := s.jsxEngine.NewSession(ctx, fmt.Sprintf("fetch-models:%d:%d", input.Body.ProviderID, time.Now().UnixNano()))
@@ -149,7 +142,7 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 			Name:           provider.Name,
 			Priority:       provider.Priority,
 			ProviderModels: contractToJsxEntries(oldList),
-			Annotations:    annotations,
+			Annotations:    json.RawMessage(provider.Annotations),
 			Disabled:       provider.Disabled,
 		},
 		EndpointPath:     input.Body.EndpointPath,

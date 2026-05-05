@@ -238,19 +238,19 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			sendResolver: effectiveSendResolver(endpoint.CredentialsResolver, row.SendCredentialsResolver),
 		}
 		candidates = append(candidates, jsx.Candidate{
-			Provider: map[string]any{
-				"id":          row.ProviderID,
-				"name":        row.ProviderName,
-				"priority":    row.ProviderPriority,
-				"annotations": json.RawMessage(row.ProviderAnnotations),
+			Provider: jsx.ProviderSummary{
+				ID:          row.ProviderID,
+				Name:        row.ProviderName,
+				Priority:    row.ProviderPriority,
+				Annotations: json.RawMessage(row.ProviderAnnotations),
 			},
-			MPE: map[string]any{
-				"modelName":         row.ModelName,
-				"providerId":        row.ProviderID,
-				"endpointPath":      row.EndpointPath,
-				"upstreamModelName": row.UpstreamModelName,
-				"priority":          row.Priority,
-				"annotations":       json.RawMessage(row.Annotations),
+			MPE: jsx.CandidateMPE{
+				ModelName:         row.ModelName,
+				ProviderID:        row.ProviderID,
+				EndpointPath:      row.EndpointPath,
+				UpstreamModelName: row.UpstreamModelName,
+				Priority:          row.Priority,
+				Annotations:       json.RawMessage(row.Annotations),
 			},
 		})
 	}
@@ -288,13 +288,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cand := sortedCandidates[i]
 
 		// Pull providerID back from the JSON-roundtripped Provider field.
-		providerID, ok := candidateProviderID(cand)
-		if !ok {
-			// Skip malformed candidate.
-			i++
-			currentRetryCount = 0
-			continue
-		}
+		providerID := candidateProviderID(cand)
 		side, hasSide := sidecar[providerID]
 		if !hasSide {
 			// JS introduced a provider we never saw — fail safely by skipping it.
