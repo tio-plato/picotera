@@ -23,7 +23,8 @@ LIMIT sqlc.narg('limit')::int;
 WITH trace_base AS (
   SELECT
     parent_span_id,
-    COUNT(*)::bigint AS request_count,
+    COUNT(*) FILTER (WHERE type = 0)::bigint AS meta_request_count,
+    COUNT(*) FILTER (WHERE type = 1)::bigint AS upstream_request_count,
     SUM(
       COALESCE(input_tokens, 0)
       + COALESCE(cache_read_tokens, 0)
@@ -41,7 +42,8 @@ WITH trace_base AS (
 )
 SELECT
   trace_base.parent_span_id,
-  trace_base.request_count,
+  trace_base.meta_request_count,
+  trace_base.upstream_request_count,
   trace_base.total_tokens,
   trace_base.input_tokens,
   trace_base.cache_read_tokens,

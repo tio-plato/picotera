@@ -718,15 +718,17 @@ export interface components {
             /** Format: int64 */
             inputTokens: number;
             lastRequestAt?: string;
+            /** Format: int64 */
+            metaRequestCount: number;
             modelCosts: components["schemas"]["TraceCostView"][] | null;
             /** Format: int64 */
             outputTokens: number;
             parentSpanId: string;
             /** Format: int64 */
-            requestCount: number;
-            /** Format: int64 */
             totalTokens: number;
             upstreamCosts: components["schemas"]["TraceCostView"][] | null;
+            /** Format: int64 */
+            upstreamRequestCount: number;
             userMessagePreview?: string;
         };
         RequestView: {

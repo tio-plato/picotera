@@ -46,17 +46,18 @@ type TraceCostView struct {
 }
 
 type RequestTraceView struct {
-	ParentSpanID       string          `json:"parentSpanId"`
-	RequestCount       int64           `json:"requestCount"`
-	TotalTokens        int64           `json:"totalTokens"`
-	InputTokens        int64           `json:"inputTokens"`
-	CacheReadTokens    int64           `json:"cacheReadTokens"`
-	OutputTokens       int64           `json:"outputTokens"`
-	CacheWriteTokens   int64           `json:"cacheWriteTokens"`
-	ModelCosts         []TraceCostView `json:"modelCosts"`
-	UpstreamCosts      []TraceCostView `json:"upstreamCosts"`
-	LastRequestAt      string          `json:"lastRequestAt,omitempty"`
-	UserMessagePreview string          `json:"userMessagePreview,omitempty"`
+	ParentSpanID         string          `json:"parentSpanId"`
+	MetaRequestCount     int64           `json:"metaRequestCount"`
+	UpstreamRequestCount int64           `json:"upstreamRequestCount"`
+	TotalTokens          int64           `json:"totalTokens"`
+	InputTokens          int64           `json:"inputTokens"`
+	CacheReadTokens      int64           `json:"cacheReadTokens"`
+	OutputTokens         int64           `json:"outputTokens"`
+	CacheWriteTokens     int64           `json:"cacheWriteTokens"`
+	ModelCosts           []TraceCostView `json:"modelCosts"`
+	UpstreamCosts        []TraceCostView `json:"upstreamCosts"`
+	LastRequestAt        string          `json:"lastRequestAt,omitempty"`
+	UserMessagePreview   string          `json:"userMessagePreview,omitempty"`
 }
 
 type requestLike struct {
@@ -279,14 +280,15 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 		return nil, err
 	}
 	view := &RequestTraceView{
-		RequestCount:     r.RequestCount,
-		TotalTokens:      r.TotalTokens,
-		InputTokens:      r.InputTokens,
-		CacheReadTokens:  r.CacheReadTokens,
-		OutputTokens:     r.OutputTokens,
-		CacheWriteTokens: r.CacheWriteTokens,
-		ModelCosts:       modelCosts,
-		UpstreamCosts:    upstreamCosts,
+		MetaRequestCount:     r.MetaRequestCount,
+		UpstreamRequestCount: r.UpstreamRequestCount,
+		TotalTokens:          r.TotalTokens,
+		InputTokens:          r.InputTokens,
+		CacheReadTokens:      r.CacheReadTokens,
+		OutputTokens:         r.OutputTokens,
+		CacheWriteTokens:     r.CacheWriteTokens,
+		ModelCosts:           modelCosts,
+		UpstreamCosts:        upstreamCosts,
 	}
 	if r.ParentSpanID.Valid {
 		view.ParentSpanID = r.ParentSpanID.String

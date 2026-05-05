@@ -51,7 +51,8 @@ const listRequestTraces = `-- name: ListRequestTraces :many
 WITH trace_base AS (
   SELECT
     parent_span_id,
-    COUNT(*)::bigint AS request_count,
+    COUNT(*) FILTER (WHERE type = 0)::bigint AS meta_request_count,
+    COUNT(*) FILTER (WHERE type = 1)::bigint AS upstream_request_count,
     SUM(
       COALESCE(input_tokens, 0)
       + COALESCE(cache_read_tokens, 0)
@@ -69,7 +70,8 @@ WITH trace_base AS (
 )
 SELECT
   trace_base.parent_span_id,
-  trace_base.request_count,
+  trace_base.meta_request_count,
+  trace_base.upstream_request_count,
   trace_base.total_tokens,
   trace_base.input_tokens,
   trace_base.cache_read_tokens,
@@ -134,17 +136,18 @@ type ListRequestTracesParams struct {
 }
 
 type ListRequestTracesRow struct {
-	ParentSpanID       pgtype.Text      `json:"parentSpanId"`
-	RequestCount       int64            `json:"requestCount"`
-	TotalTokens        int64            `json:"totalTokens"`
-	InputTokens        int64            `json:"inputTokens"`
-	CacheReadTokens    int64            `json:"cacheReadTokens"`
-	OutputTokens       int64            `json:"outputTokens"`
-	CacheWriteTokens   int64            `json:"cacheWriteTokens"`
-	ModelCosts         []byte           `json:"modelCosts"`
-	UpstreamCosts      []byte           `json:"upstreamCosts"`
-	LastRequestAt      pgtype.Timestamp `json:"lastRequestAt"`
-	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
+	ParentSpanID         pgtype.Text      `json:"parentSpanId"`
+	MetaRequestCount     int64            `json:"metaRequestCount"`
+	UpstreamRequestCount int64            `json:"upstreamRequestCount"`
+	TotalTokens          int64            `json:"totalTokens"`
+	InputTokens          int64            `json:"inputTokens"`
+	CacheReadTokens      int64            `json:"cacheReadTokens"`
+	OutputTokens         int64            `json:"outputTokens"`
+	CacheWriteTokens     int64            `json:"cacheWriteTokens"`
+	ModelCosts           []byte           `json:"modelCosts"`
+	UpstreamCosts        []byte           `json:"upstreamCosts"`
+	LastRequestAt        pgtype.Timestamp `json:"lastRequestAt"`
+	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
 }
 
 func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
@@ -158,7 +161,8 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 		var i ListRequestTracesRow
 		if err := rows.Scan(
 			&i.ParentSpanID,
-			&i.RequestCount,
+			&i.MetaRequestCount,
+			&i.UpstreamRequestCount,
 			&i.TotalTokens,
 			&i.InputTokens,
 			&i.CacheReadTokens,

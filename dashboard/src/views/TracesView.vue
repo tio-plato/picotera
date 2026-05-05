@@ -26,9 +26,8 @@ const nextCursor = ref('')
 
 const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'lastRequestAt', header: '最近请求' },
-  { key: 'parentSpanId', header: 'Parent Span ID' },
   { key: 'userMessagePreview', header: '用户消息' },
-  { key: 'requestCount', header: '请求', align: 'right' },
+  { key: 'metaRequestCount', header: '请求', align: 'right' },
   { key: 'totalTokens', header: 'Token', align: 'right' },
   { key: 'cacheHitRate', header: '缓存命中', align: 'right' },
   { key: 'modelCosts', header: '模型成本', align: 'right' },
@@ -157,11 +156,6 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
             <span class="font-mono text-2xs text-ink-faint">{{ formatTimeParts(row.lastRequestAt).date }}</span>
           </div>
         </template>
-        <template #cell-parentSpanId="{ row }">
-          <span class="block max-w-[34rem] truncate font-mono text-ink" :title="row.parentSpanId">
-            {{ row.parentSpanId }}
-          </span>
-        </template>
         <template #cell-userMessagePreview="{ row }">
           <span
             class="block max-w-[18rem] truncate"
@@ -171,8 +165,17 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
             {{ row.userMessagePreview || '—' }}
           </span>
         </template>
-        <template #cell-requestCount="{ row }">
-          <span class="font-mono tabular-nums">{{ row.requestCount.toLocaleString() }}</span>
+        <template #cell-metaRequestCount="{ row }">
+          <div class="flex flex-col items-end leading-tight">
+            <span class="font-mono tabular-nums text-ink">{{ row.metaRequestCount.toLocaleString() }}</span>
+            <span
+              v-if="row.metaRequestCount !== row.upstreamRequestCount"
+              class="font-mono text-2xs text-ink-faint tabular-nums"
+              title="上游（实际）请求数"
+            >
+              {{ (row.upstreamRequestCount - row.metaRequestCount) > 0 ? `+${row.upstreamRequestCount - row.metaRequestCount}` : row.upstreamRequestCount - row.metaRequestCount }}
+            </span>
+          </div>
         </template>
         <template #cell-totalTokens="{ row }">
           <div class="flex flex-col items-end leading-tight">

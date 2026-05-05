@@ -570,6 +570,9 @@ components:
           type: integer
         lastRequestAt:
           type: string
+        metaRequestCount:
+          format: int64
+          type: integer
         modelCosts:
           items:
             $ref: "#/components/schemas/TraceCostView"
@@ -580,9 +583,6 @@ components:
           type: integer
         parentSpanId:
           type: string
-        requestCount:
-          format: int64
-          type: integer
         totalTokens:
           format: int64
           type: integer
@@ -591,11 +591,15 @@ components:
             $ref: "#/components/schemas/TraceCostView"
           nullable: true
           type: array
+        upstreamRequestCount:
+          format: int64
+          type: integer
         userMessagePreview:
           type: string
       required:
         - parentSpanId
-        - requestCount
+        - metaRequestCount
+        - upstreamRequestCount
         - totalTokens
         - inputTokens
         - cacheReadTokens
