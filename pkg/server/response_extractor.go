@@ -10,10 +10,10 @@ import (
 
 // ResponseMetrics holds extracted TTFT and token usage from a provider response.
 type ResponseMetrics struct {
-	TTFTMs          *int64
-	InputTokens     *int64
-	OutputTokens    *int64
-	CacheReadTokens *int64
+	TTFTMs           *int64
+	InputTokens      *int64
+	OutputTokens     *int64
+	CacheReadTokens  *int64
 	CacheWriteTokens *int64
 }
 
@@ -136,10 +136,7 @@ func (e *ResponseExtractor) extractOpenAISSE(payload string) {
 	// Usage
 	usage := result.Get("usage")
 	if usage.Exists() {
-		if v := usage.Get("prompt_tokens"); v.Exists() {
-			val := v.Int()
-			e.metrics.InputTokens = &val
-		}
+		e.setOpenAIInputTokens(usage)
 		if v := usage.Get("completion_tokens"); v.Exists() {
 			val := v.Int()
 			e.metrics.OutputTokens = &val
@@ -173,10 +170,7 @@ func (e *ResponseExtractor) extractOpenAIResponsesSSE(payload string) {
 	if eventType == "response.completed" {
 		usage := result.Get("response.usage")
 		if usage.Exists() {
-			if v := usage.Get("input_tokens"); v.Exists() {
-				val := v.Int()
-				e.metrics.InputTokens = &val
-			}
+			e.setOpenAIInputTokens(usage)
 			if v := usage.Get("output_tokens"); v.Exists() {
 				val := v.Int()
 				e.metrics.OutputTokens = &val
@@ -246,10 +240,8 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 	result := gjson.ParseBytes(e.jsonBuf)
 
 	// Try OpenAI Chat Completions format
-	if v := result.Get("usage.prompt_tokens"); v.Exists() {
-		val := v.Int()
-		e.metrics.InputTokens = &val
-	}
+	usage := result.Get("usage")
+	e.setOpenAIInputTokens(usage)
 	if v := result.Get("usage.completion_tokens"); v.Exists() {
 		val := v.Int()
 		e.metrics.OutputTokens = &val
@@ -261,10 +253,7 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 
 	// Try OpenAI Responses format (only sets if Chat Completions didn't find fields)
 	if e.metrics.InputTokens == nil {
-		if v := result.Get("usage.input_tokens"); v.Exists() {
-			val := v.Int()
-			e.metrics.InputTokens = &val
-		}
+		e.setOpenAIInputTokens(usage)
 	}
 	if e.metrics.OutputTokens == nil {
 		if v := result.Get("usage.output_tokens"); v.Exists() {
@@ -304,6 +293,28 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 			e.metrics.CacheWriteTokens = &val
 		}
 	}
+}
+
+func (e *ResponseExtractor) setOpenAIInputTokens(usage gjson.Result) {
+	if !usage.Exists() {
+		return
+	}
+
+	total := usage.Get("prompt_tokens")
+	cached := usage.Get("prompt_tokens_details.cached_tokens")
+	if !total.Exists() {
+		total = usage.Get("input_tokens")
+		cached = usage.Get("input_tokens_details.cached_tokens")
+	}
+	if !total.Exists() {
+		return
+	}
+
+	val := total.Int()
+	if cached.Exists() {
+		val -= cached.Int()
+	}
+	e.metrics.InputTokens = &val
 }
 
 // bytesIndex finds the index of sep in buf, or -1 if not found.

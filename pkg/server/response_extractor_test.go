@@ -119,8 +119,8 @@ func TestResponseExtractor_SSE_OpenAI_Usage(t *testing.T) {
 	_, _ = io.ReadAll(extractor)
 
 	m := extractor.Metrics()
-	if m.InputTokens == nil || *m.InputTokens != 100 {
-		t.Errorf("InputTokens: got %v, want 100", m.InputTokens)
+	if m.InputTokens == nil || *m.InputTokens != 70 {
+		t.Errorf("InputTokens: got %v, want 70", m.InputTokens)
 	}
 	if m.OutputTokens == nil || *m.OutputTokens != 50 {
 		t.Errorf("OutputTokens: got %v, want 50", m.OutputTokens)
@@ -184,8 +184,8 @@ func TestResponseExtractor_JSON_OpenAI(t *testing.T) {
 	_, _ = io.ReadAll(extractor)
 
 	m := extractor.Metrics()
-	if m.InputTokens == nil || *m.InputTokens != 150 {
-		t.Errorf("InputTokens: got %v, want 150", m.InputTokens)
+	if m.InputTokens == nil || *m.InputTokens != 110 {
+		t.Errorf("InputTokens: got %v, want 110", m.InputTokens)
 	}
 	if m.OutputTokens == nil || *m.OutputTokens != 75 {
 		t.Errorf("OutputTokens: got %v, want 75", m.OutputTokens)
@@ -280,8 +280,8 @@ func TestResponseExtractor_SSE_OpenAIResponses_UsageAndTTFT(t *testing.T) {
 	if *m.TTFTMs < 50 {
 		t.Errorf("TTFTMs too low: got %d, expected >= 50", *m.TTFTMs)
 	}
-	if m.InputTokens == nil || *m.InputTokens != 22 {
-		t.Errorf("InputTokens: got %v, want 22", m.InputTokens)
+	if m.InputTokens == nil || *m.InputTokens != 17 {
+		t.Errorf("InputTokens: got %v, want 17", m.InputTokens)
 	}
 	if m.OutputTokens == nil || *m.OutputTokens != 42 {
 		t.Errorf("OutputTokens: got %v, want 42", m.OutputTokens)
@@ -307,21 +307,21 @@ func TestResponseExtractor_SSE_OpenAIResponses_FunctionCallTTFT(t *testing.T) {
 }
 
 func TestResponseExtractor_JSON_OpenAIResponses(t *testing.T) {
-	jsonData := `{"id":"resp_1","object":"response","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi"}]}],"usage":{"input_tokens":22,"input_tokens_details":{"cached_tokens":0},"output_tokens":40,"output_tokens_details":{"reasoning_tokens":15},"total_tokens":62}}`
+	jsonData := `{"id":"resp_1","object":"response","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi"}]}],"usage":{"input_tokens":22,"input_tokens_details":{"cached_tokens":5},"output_tokens":40,"output_tokens_details":{"reasoning_tokens":15},"total_tokens":62}}`
 	inner := strings.NewReader(jsonData)
 	extractor := NewResponseExtractor(inner, "application/json", time.Now())
 
 	_, _ = io.ReadAll(extractor)
 
 	m := extractor.Metrics()
-	if m.InputTokens == nil || *m.InputTokens != 22 {
-		t.Errorf("InputTokens: got %v, want 22", m.InputTokens)
+	if m.InputTokens == nil || *m.InputTokens != 17 {
+		t.Errorf("InputTokens: got %v, want 17", m.InputTokens)
 	}
 	if m.OutputTokens == nil || *m.OutputTokens != 40 {
 		t.Errorf("OutputTokens: got %v, want 40", m.OutputTokens)
 	}
-	if m.CacheReadTokens == nil || *m.CacheReadTokens != 0 {
-		t.Errorf("CacheReadTokens: got %v, want 0", m.CacheReadTokens)
+	if m.CacheReadTokens == nil || *m.CacheReadTokens != 5 {
+		t.Errorf("CacheReadTokens: got %v, want 5", m.CacheReadTokens)
 	}
 }
 
