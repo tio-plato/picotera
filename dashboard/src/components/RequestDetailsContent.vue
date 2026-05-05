@@ -7,6 +7,7 @@ import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
 
 const props = defineProps<{ requestId: string; providers?: ProviderView[] }>()
+const emit = defineEmits<{ selectedRequest: [requestId: string] }>()
 const api = useApi()
 
 const spans = ref<RequestView[]>([])
@@ -129,6 +130,12 @@ function statusLabel(s: number) {
   }
 }
 
+function selectRequest(requestId: string) {
+  if (selectedId.value === requestId) return
+  selectedId.value = requestId
+  emit('selectedRequest', requestId)
+}
+
 type DetailTab = 'overview' | 'request' | 'response' | 'logs'
 const detailTab = ref<DetailTab>('overview')
 const isMeta = computed(
@@ -175,7 +182,7 @@ watch(detailTabs, tabs => {
                 ? 'border-accent bg-accent-faint'
                 : 'border-line hover:bg-surface-50'
             "
-            @click="selectedId = meta.id"
+            @click="selectRequest(meta.id)"
           >
             <div class="flex items-center justify-between gap-2">
               <span class="text-2xs font-semibold text-accent-ink uppercase tracking-[0.04em]">meta</span>
@@ -198,7 +205,7 @@ watch(detailTabs, tabs => {
                 ? 'border-accent bg-accent-faint'
                 : 'border-line hover:bg-surface-50'
             "
-            @click="selectedId = s.id"
+            @click="selectRequest(s.id)"
           >
             <div class="flex items-center justify-between gap-2">
               <span class="text-2xs font-semibold text-ink-muted uppercase tracking-[0.04em]">

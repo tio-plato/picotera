@@ -161,7 +161,11 @@ function openDetails(r: RequestView) {
   }
   panel.open(
     RequestDetailsPanel,
-    { requestId: r.id, providers: providers.value },
+    {
+      requestId: r.id,
+      providers: providers.value,
+      onSelectedRequest: replaceRequestDetailUrl,
+    },
     { key, width: '520px' },
   )
   replaceRequestDetailUrl(r.id)
