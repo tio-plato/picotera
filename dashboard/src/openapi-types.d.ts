@@ -583,6 +583,9 @@ export interface components {
              * @example https://example.com/schemas/ModelView.json
              */
             readonly $schema?: string;
+            annotations: {
+                [key: string]: string;
+            };
             developer: string;
             disabled: boolean;
             name: string;

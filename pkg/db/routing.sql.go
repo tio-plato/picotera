@@ -41,7 +41,8 @@ SELECT
   p.priority AS provider_priority,
   pe.upstream_url,
   pe.credentials_resolver AS send_credentials_resolver,
-  p.annotations AS provider_annotations
+  p.annotations AS provider_annotations,
+  m.annotations AS model_annotations
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id
 JOIN model AS m ON m.name = $1::text
@@ -78,6 +79,7 @@ type GetProvidersByEndpointAndModelRow struct {
 	UpstreamUrl             string `json:"upstreamUrl"`
 	SendCredentialsResolver int32  `json:"sendCredentialsResolver"`
 	ProviderAnnotations     []byte `json:"providerAnnotations"`
+	ModelAnnotations        []byte `json:"modelAnnotations"`
 }
 
 func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error) {
@@ -102,6 +104,7 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 			&i.UpstreamUrl,
 			&i.SendCredentialsResolver,
 			&i.ProviderAnnotations,
+			&i.ModelAnnotations,
 		); err != nil {
 			return nil, err
 		}
@@ -127,7 +130,8 @@ SELECT
   p.priority AS provider_priority,
   pe.upstream_url,
   pe.credentials_resolver AS send_credentials_resolver,
-  p.annotations AS provider_annotations
+  p.annotations AS provider_annotations,
+  m.annotations AS model_annotations
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id
 JOIN endpoint AS e ON e.path = pe.endpoint_path
@@ -166,6 +170,7 @@ type GetProvidersByEndpointTypesAndModelRow struct {
 	UpstreamUrl             string `json:"upstreamUrl"`
 	SendCredentialsResolver int32  `json:"sendCredentialsResolver"`
 	ProviderAnnotations     []byte `json:"providerAnnotations"`
+	ModelAnnotations        []byte `json:"modelAnnotations"`
 }
 
 // Sister query to GetProvidersByEndpointAndModel that selects across a SET of
@@ -197,6 +202,7 @@ func (q *Queries) GetProvidersByEndpointTypesAndModel(ctx context.Context, arg G
 			&i.UpstreamUrl,
 			&i.SendCredentialsResolver,
 			&i.ProviderAnnotations,
+			&i.ModelAnnotations,
 		); err != nil {
 			return nil, err
 		}

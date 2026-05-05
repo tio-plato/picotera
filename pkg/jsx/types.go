@@ -27,25 +27,35 @@ func unmarshalJSON(s string, out any) error {
 	return nil
 }
 
+// ModelSummary is the JS-visible projection of the matched model row. Only
+// the layer-specific annotation map and the canonical name are exposed; the
+// merged map (model < provider < entry < apiKey) is exposed at the top level
+// of each hook input as ctx.annotations.
+type ModelSummary struct {
+	Name        string            `json:"name"`
+	Annotations map[string]string `json:"annotations"`
+}
+
 // Candidate is a JS-visible (provider, mpe) pair used by the sortProviders
-// and beforeRequest/rewriteRequest hooks. The Go side constructs typed
-// literals; values round-trip through JSON when JS hooks return modified
-// candidate arrays.
+// and beforeRequest/rewriteRequest hooks. Annotations carries the
+// per-candidate merged map (model + provider + entry + apiKey, later wins).
+// JS scripts can read it directly without re-running the merge.
 type Candidate struct {
-	Provider ProviderSummary `json:"provider"`
-	MPE      CandidateMPE    `json:"mpe"`
+	Provider    ProviderSummary   `json:"provider"`
+	MPE         CandidateMPE      `json:"mpe"`
+	Annotations map[string]string `json:"annotations"`
 }
 
 // CandidateMPE is the JS-visible projection of a model_provider_endpoint row,
 // extended with the resolved endpoint path so hooks can disambiguate
 // candidates that share a provider but differ by endpoint.
 type CandidateMPE struct {
-	ModelName         string          `json:"modelName"`
-	ProviderID        int32           `json:"providerId"`
-	EndpointPath      string          `json:"endpointPath"`
-	UpstreamModelName string          `json:"upstreamModelName"`
-	Priority          int32           `json:"priority"`
-	Annotations       json.RawMessage `json:"annotations,omitempty"`
+	ModelName         string            `json:"modelName"`
+	ProviderID        int32             `json:"providerId"`
+	EndpointPath      string            `json:"endpointPath"`
+	UpstreamModelName string            `json:"upstreamModelName"`
+	Priority          int32             `json:"priority"`
+	Annotations       map[string]string `json:"annotations"`
 }
 
 // RequestShape is the JS-visible shape of the incoming client request.
@@ -53,15 +63,15 @@ type CandidateMPE struct {
 // content-type is application/json and the body parses; otherwise omitted
 // so JS scripts cannot read it.
 type RequestShape struct {
-	Path     string              `json:"path"`
-	Method   string              `json:"method"`
-	Headers  map[string][]string `json:"headers"`
-	Model    string              `json:"model"`
+	Path    string              `json:"path"`
+	Method  string              `json:"method"`
+	Headers map[string][]string `json:"headers"`
+	Model   string              `json:"model"`
 	// PathVars holds path variables extracted from the matched endpoint pattern
 	// (e.g. {model} in /v1beta/models/{model}:generateContent). Omitted when
 	// the endpoint has no variables.
-	PathVars map[string]string   `json:"pathVars,omitempty"`
-	Body     json.RawMessage     `json:"body,omitempty"`
+	PathVars map[string]string `json:"pathVars,omitempty"`
+	Body     json.RawMessage   `json:"body,omitempty"`
 }
 
 // ApiKeySummary is the JS-visible shape of the API key that authorized the
@@ -74,13 +84,16 @@ type ApiKeySummary struct {
 	Disabled    bool              `json:"disabled"`
 }
 
-// SortInput is the ctx passed to the sortProviders waterfall.
+// SortInput is the ctx passed to the sortProviders waterfall. Annotations is
+// the request-level merge (model + apiKey); each candidate carries its own
+// merged map under candidate.annotations.
 type SortInput struct {
-	Endpoint  any            `json:"endpoint"`
-	Model     any            `json:"model"`
-	Request   RequestShape   `json:"request"`
-	Providers []Candidate    `json:"providers"`
-	ApiKey    *ApiKeySummary `json:"apiKey"`
+	Endpoint    any               `json:"endpoint"`
+	Model       *ModelSummary     `json:"model"`
+	Request     RequestShape      `json:"request"`
+	Providers   []Candidate       `json:"providers"`
+	ApiKey      *ApiKeySummary    `json:"apiKey"`
+	Annotations map[string]string `json:"annotations"`
 }
 
 // LastError describes the outcome of the last upstream attempt, exposed to
@@ -92,16 +105,19 @@ type LastError struct {
 }
 
 // BeforeRequestInput is the ctx passed to the beforeRequest waterfall.
+// Annotations is the chosen candidate's merged map (model + provider + entry
+// + apiKey).
 type BeforeRequestInput struct {
-	Endpoint          any             `json:"endpoint"`
-	Model             any             `json:"model"`
-	Request           RequestShape    `json:"request"`
-	Provider          ProviderSummary `json:"provider"`
-	MPE               CandidateMPE    `json:"mpe"`
-	CurrentRetryCount int             `json:"currentRetryCount"`
-	TotalAttemptCount int             `json:"totalAttemptCount"`
-	LastError         *LastError      `json:"lastError"`
-	ApiKey            *ApiKeySummary  `json:"apiKey"`
+	Endpoint          any               `json:"endpoint"`
+	Model             *ModelSummary     `json:"model"`
+	Request           RequestShape      `json:"request"`
+	Provider          ProviderSummary   `json:"provider"`
+	MPE               CandidateMPE      `json:"mpe"`
+	CurrentRetryCount int               `json:"currentRetryCount"`
+	TotalAttemptCount int               `json:"totalAttemptCount"`
+	LastError         *LastError        `json:"lastError"`
+	ApiKey            *ApiKeySummary    `json:"apiKey"`
+	Annotations       map[string]string `json:"annotations"`
 }
 
 // BeforeRequestDecision is the JS-returned shape from the beforeRequest hook.
@@ -114,12 +130,13 @@ type BeforeRequestDecision struct {
 }
 
 // RewriteModelInput is the ctx passed to the rewriteModel waterfall. The
-// hook fires once between extractModel and resolveProviders, so only the
-// raw client request snapshot is in scope.
+// hook fires once between extractModel and resolveProviders, so MPE / provider
+// layers are not yet known. Annotations is the model + apiKey merge.
 type RewriteModelInput struct {
-	Request RequestShape   `json:"request"`
-	Model   string         `json:"model"`
-	ApiKey  *ApiKeySummary `json:"apiKey"`
+	Request     RequestShape      `json:"request"`
+	Model       string            `json:"model"`
+	ApiKey      *ApiKeySummary    `json:"apiKey"`
+	Annotations map[string]string `json:"annotations"`
 }
 
 // PendingRequestShape mirrors the upstream request that is about to be sent.
@@ -133,10 +150,11 @@ type PendingRequestShape struct {
 	Body    json.RawMessage     `json:"body,omitempty"`
 }
 
-// RewriteInput is the ctx passed to the rewriteRequest waterfall.
+// RewriteInput is the ctx passed to the rewriteRequest waterfall. Annotations
+// is the chosen candidate's merged map (same as BeforeRequestInput).
 type RewriteInput struct {
 	Endpoint          any                 `json:"endpoint"`
-	Model             any                 `json:"model"`
+	Model             *ModelSummary       `json:"model"`
 	Provider          ProviderSummary     `json:"provider"`
 	MPE               CandidateMPE        `json:"mpe"`
 	CurrentRetryCount int                 `json:"currentRetryCount"`
@@ -144,6 +162,7 @@ type RewriteInput struct {
 	ClientRequest     RequestShape        `json:"clientRequest"`
 	PendingRequest    PendingRequestShape `json:"pendingRequest"`
 	ApiKey            *ApiKeySummary      `json:"apiKey"`
+	Annotations       map[string]string   `json:"annotations"`
 }
 
 // ProviderModelEntry mirrors the JSON shape of contract.ProviderModelEntry.
@@ -161,21 +180,26 @@ type ProviderModelEntry struct {
 // the Provider field on Candidate (and the *Input shapes that copy it).
 // Credentials are intentionally omitted for security.
 //
-// Annotations is the raw JSONB blob from the provider row, exposed to JS as
-// the parsed object. ProviderModels is only populated for the
-// rewriteProviderModels hook; dispatch hooks see it omitted.
+// Annotations is the decoded provider-level annotation map. ProviderModels is
+// only populated for the rewriteProviderModels hook; dispatch hooks see it
+// omitted.
 type ProviderSummary struct {
 	ID             int32                `json:"id"`
 	Name           string               `json:"name"`
 	Priority       int32                `json:"priority"`
 	ProviderModels []ProviderModelEntry `json:"providerModels,omitempty"`
-	Annotations    json.RawMessage      `json:"annotations,omitempty"`
+	Annotations    map[string]string    `json:"annotations"`
 	Disabled       bool                 `json:"disabled"`
 }
 
-// RewriteProviderModelsInput is the ctx passed to the rewriteProviderModels waterfall.
+// RewriteProviderModelsInput is the ctx passed to the rewriteProviderModels
+// waterfall. Annotations is the model + provider + apiKey merge (no entry
+// layer at this point). The fetch-models flow has no model context, in which
+// case Model is nil and the model layer contributes an empty map.
 type RewriteProviderModelsInput struct {
-	Provider         ProviderSummary `json:"provider"`
-	EndpointPath     string          `json:"endpointPath"`
-	UpstreamResponse json.RawMessage `json:"upstreamResponse"`
+	Provider         ProviderSummary   `json:"provider"`
+	Model            *ModelSummary     `json:"model,omitempty"`
+	EndpointPath     string            `json:"endpointPath"`
+	UpstreamResponse json.RawMessage   `json:"upstreamResponse"`
+	Annotations      map[string]string `json:"annotations"`
 }

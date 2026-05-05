@@ -153,6 +153,7 @@ async function toggleDisabled(m: ModelView) {
     developer: m.developer,
     series: m.series,
     disabled: !m.disabled,
+    annotations: m.annotations ?? {},
     ...(m.pricing ? { pricing: m.pricing } : {}),
   }
   const { error } = await api.PUT('/api/picotera/models', { body })

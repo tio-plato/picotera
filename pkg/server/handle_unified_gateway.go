@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"picotera/pkg/annotations"
 	"picotera/pkg/artifacts"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
@@ -143,6 +143,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		}
 		apiKeyID := pgtype.Int4{Int32: apiKey.ID, Valid: true}
 		apiKeyJS := apiKeySummaryFromRow(apiKey)
+		apiKeyAnno := apiKeyJS.Annotations
 		h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
 			ID:           metaID,
 			EndpointPath: pgtype.Text{String: virtualEndpoint.Path, Valid: true},
@@ -183,10 +184,12 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		// surfaced to JS hooks (matches the path-based gateway's contract).
 		pathVars := chiURLParams(r)
 		initialClientReq := serializeClientRequest(r, body, modelName, pathVars)
+		modelAnno := h.fetchModelAnnotations(r.Context(), modelName)
 		newModel, err := session.RunRewriteModelHook(jsx.RewriteModelInput{
-			Request: initialClientReq,
-			Model:   originalModelName,
-			ApiKey:  apiKeyJS,
+			Request:     initialClientReq,
+			Model:       originalModelName,
+			ApiKey:      apiKeyJS,
+			Annotations: annotations.Merge(modelAnno, apiKeyAnno),
 		}, modelName)
 		if err != nil {
 			failHook(err)
@@ -203,6 +206,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			}
 			body = updated
 			modelName = newModel
+			modelAnno = h.fetchModelAnnotations(r.Context(), modelName)
 		}
 
 		// 8. Resolve candidate providers across the endpoint-type set.
@@ -220,20 +224,39 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		}
 
 		// 9. Build candidate list for hooks plus a sidecar carrying upstream
-		// URL, credentials, send resolver, and chosen upstream format. The
-		// sidecar is keyed by providerID+endpointPath because one provider
-		// can have rows for multiple endpoints in the type set (e.g. both
-		// anthropicMessages and openaiChatCompletions).
+		// URL, credentials, send resolver, chosen upstream format, and the
+		// per-candidate merged annotations. The sidecar is keyed by
+		// providerID+endpointPath because one provider can have rows for
+		// multiple endpoints in the type set (e.g. both anthropicMessages and
+		// openaiChatCompletions).
+		if len(providers) > 0 {
+			if m, derr := annotations.Decode(providers[0].ModelAnnotations); derr == nil {
+				modelAnno = m
+			}
+		}
+		annoBuilder, err := newCandidateAnnotationsBuilder(nil, apiKeyAnno)
+		if err != nil {
+			errMsg := "failed to build annotations: " + err.Error()
+			failMeta(http.StatusInternalServerError, errMsg)
+			respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
+			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs())
+			return
+		}
+		annoBuilder.modelAnno = modelAnno
+
 		type providerSidecar struct {
 			upstreamURL  string
 			credentials  string
 			sendResolver int32
 			upFormat     llmbridge.Format
 			endpointPath string
+			annotations  map[string]string
 		}
 		sidecar := make(map[string]providerSidecar, len(providers))
 		candidates := make([]jsx.Candidate, 0, len(providers))
 		for _, row := range providers {
+			entryAnno, _ := annotations.Decode(row.Annotations)
+			merged, providerAnno := annoBuilder.merge(row.ProviderAnnotations, entryAnno)
 			key := fmt.Sprintf("%d|%s", row.ProviderID, row.EndpointPath)
 			sidecar[key] = providerSidecar{
 				upstreamURL:  row.UpstreamUrl,
@@ -241,13 +264,14 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				sendResolver: effectiveSendResolver(virtualEndpoint.CredentialsResolver, row.SendCredentialsResolver),
 				upFormat:     upstreamFormatFor(row.EndpointType),
 				endpointPath: row.EndpointPath,
+				annotations:  merged,
 			}
 			candidates = append(candidates, jsx.Candidate{
 				Provider: jsx.ProviderSummary{
 					ID:          row.ProviderID,
 					Name:        row.ProviderName,
 					Priority:    row.ProviderPriority,
-					Annotations: json.RawMessage(row.ProviderAnnotations),
+					Annotations: providerAnno,
 				},
 				MPE: jsx.CandidateMPE{
 					ModelName:         row.ModelName,
@@ -255,18 +279,22 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 					EndpointPath:      row.EndpointPath,
 					UpstreamModelName: row.UpstreamModelName,
 					Priority:          row.Priority,
-					Annotations:       json.RawMessage(row.Annotations),
+					Annotations:       entryAnno,
 				},
+				Annotations: merged,
 			})
 		}
 
+		modelJS := &jsx.ModelSummary{Name: originalModelName, Annotations: modelAnno}
+
 		jsClientRequest := serializeClientRequest(r, body, modelName, pathVars)
 		sortedCandidates, err := session.RunSortHook(jsx.SortInput{
-			Endpoint:  virtualEndpoint,
-			Model:     nil,
-			Request:   jsClientRequest,
-			Providers: candidates,
-			ApiKey:    apiKeyJS,
+			Endpoint:    virtualEndpoint,
+			Model:       modelJS,
+			Request:     jsClientRequest,
+			Providers:   candidates,
+			ApiKey:      apiKeyJS,
+			Annotations: annotations.Merge(modelAnno, apiKeyAnno),
 		})
 		if err != nil {
 			failHook(err)
@@ -299,9 +327,13 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				continue
 			}
 
+			candAnno := cand.Annotations
+			if candAnno == nil {
+				candAnno = side.annotations
+			}
 			dec, herr := session.RunBeforeRequestHook(jsx.BeforeRequestInput{
 				Endpoint:          virtualEndpoint,
-				Model:             nil,
+				Model:             modelJS,
 				Request:           jsClientRequest,
 				Provider:          cand.Provider,
 				MPE:               cand.MPE,
@@ -309,6 +341,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				TotalAttemptCount: totalAttemptCount,
 				LastError:         lastJSErr,
 				ApiKey:            apiKeyJS,
+				Annotations:       candAnno,
 			})
 			if herr != nil {
 				failHook(herr)
@@ -387,7 +420,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			// rewriteRequest hook — JS sees the source-format body.
 			newPending, rerr := session.RunRewriteHook(jsx.RewriteInput{
 				Endpoint:          virtualEndpoint,
-				Model:             nil,
+				Model:             modelJS,
 				Provider:          cand.Provider,
 				MPE:               cand.MPE,
 				CurrentRetryCount: currentRetryCount,
@@ -395,6 +428,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				ClientRequest:     jsClientRequest,
 				PendingRequest:    serializePendingRequest(req, reqBody),
 				ApiKey:            apiKeyJS,
+				Annotations:       candAnno,
 			})
 			if rerr != nil {
 				cancel()

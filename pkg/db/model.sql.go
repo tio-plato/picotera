@@ -21,7 +21,7 @@ func (q *Queries) DeleteModel(ctx context.Context, name string) error {
 }
 
 const getModelByName = `-- name: GetModelByName :one
-SELECT name, title, developer, series, disabled, pricing FROM model WHERE name = $1 LIMIT 1
+SELECT name, title, developer, series, disabled, pricing, annotations FROM model WHERE name = $1 LIMIT 1
 `
 
 func (q *Queries) GetModelByName(ctx context.Context, name string) (Model, error) {
@@ -34,12 +34,13 @@ func (q *Queries) GetModelByName(ctx context.Context, name string) (Model, error
 		&i.Series,
 		&i.Disabled,
 		&i.Pricing,
+		&i.Annotations,
 	)
 	return i, err
 }
 
 const getModels = `-- name: GetModels :many
-SELECT name, title, developer, series, disabled, pricing FROM model
+SELECT name, title, developer, series, disabled, pricing, annotations FROM model
 `
 
 func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
@@ -58,6 +59,7 @@ func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
 			&i.Series,
 			&i.Disabled,
 			&i.Pricing,
+			&i.Annotations,
 		); err != nil {
 			return nil, err
 		}
@@ -70,16 +72,17 @@ func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
 }
 
 const upsertModel = `-- name: UpsertModel :one
-INSERT INTO model (name, title, developer, series, disabled, pricing) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (name) DO UPDATE SET title = $2, developer = $3, series = $4, disabled = $5, pricing = $6 RETURNING name, title, developer, series, disabled, pricing
+INSERT INTO model (name, title, developer, series, disabled, pricing, annotations) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (name) DO UPDATE SET title = $2, developer = $3, series = $4, disabled = $5, pricing = $6, annotations = $7 RETURNING name, title, developer, series, disabled, pricing, annotations
 `
 
 type UpsertModelParams struct {
-	Name      string      `json:"name"`
-	Title     pgtype.Text `json:"title"`
-	Developer pgtype.Text `json:"developer"`
-	Series    pgtype.Text `json:"series"`
-	Disabled  bool        `json:"disabled"`
-	Pricing   []byte      `json:"pricing"`
+	Name        string      `json:"name"`
+	Title       pgtype.Text `json:"title"`
+	Developer   pgtype.Text `json:"developer"`
+	Series      pgtype.Text `json:"series"`
+	Disabled    bool        `json:"disabled"`
+	Pricing     []byte      `json:"pricing"`
+	Annotations []byte      `json:"annotations"`
 }
 
 func (q *Queries) UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error) {
@@ -90,6 +93,7 @@ func (q *Queries) UpsertModel(ctx context.Context, arg UpsertModelParams) (Model
 		arg.Series,
 		arg.Disabled,
 		arg.Pricing,
+		arg.Annotations,
 	)
 	var i Model
 	err := row.Scan(
@@ -99,6 +103,7 @@ func (q *Queries) UpsertModel(ctx context.Context, arg UpsertModelParams) (Model
 		&i.Series,
 		&i.Disabled,
 		&i.Pricing,
+		&i.Annotations,
 	)
 	return i, err
 }

@@ -14,7 +14,8 @@ SELECT
   p.priority AS provider_priority,
   pe.upstream_url,
   pe.credentials_resolver AS send_credentials_resolver,
-  p.annotations AS provider_annotations
+  p.annotations AS provider_annotations,
+  m.annotations AS model_annotations
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id
 JOIN model AS m ON m.name = sqlc.arg('model_name')::text
@@ -52,7 +53,8 @@ SELECT
   p.priority AS provider_priority,
   pe.upstream_url,
   pe.credentials_resolver AS send_credentials_resolver,
-  p.annotations AS provider_annotations
+  p.annotations AS provider_annotations,
+  m.annotations AS model_annotations
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id
 JOIN endpoint AS e ON e.path = pe.endpoint_path

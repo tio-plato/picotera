@@ -3,10 +3,8 @@ package server
 import (
 	"context"
 	"picotera/pkg/contract"
-	"picotera/pkg/db"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (s *Server) handleGetModel(ctx context.Context, input *contract.GetModelRequest) (*contract.GetModelResponse, error) {
@@ -29,19 +27,12 @@ func (s *Server) handlePutModel(ctx context.Context, input *contract.PutModelReq
 	if err := input.Body.Pricing.Validate(); err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
-	pricingBytes, err := contract.PricingToJSONB(input.Body.Pricing)
+	params, err := contract.FromModelView(&input.Body)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to encode pricing", err)
+		return nil, huma.Error500InternalServerError("failed to encode model", err)
 	}
 
-	model, err := s.queries.UpsertModel(ctx, db.UpsertModelParams{
-		Name:      input.Body.Name,
-		Title:     pgtype.Text{String: input.Body.Title, Valid: true},
-		Developer: pgtype.Text{String: input.Body.Developer, Valid: true},
-		Series:    pgtype.Text{String: input.Body.Series, Valid: true},
-		Disabled:  input.Body.Disabled,
-		Pricing:   pricingBytes,
-	})
+	model, err := s.queries.UpsertModel(ctx, *params)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to upsert model", err)
 	}

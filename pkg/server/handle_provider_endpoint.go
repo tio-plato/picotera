@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"picotera/pkg/annotations"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/jsx"
@@ -136,17 +137,24 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 
 	upstreamRawJSON, _ := json.Marshal(upstreamRaw)
 
+	providerAnno, _ := annotations.Decode(provider.Annotations)
+	// fetch-models has no model context — the model layer contributes an
+	// empty map, and ctx.model is nil. apiKey isn't authenticated on this
+	// management route, so its layer is empty too. Hook ctx therefore sees
+	// only the provider-level annotations.
 	processed, herr := sess.RunRewriteProviderModelsHook(jsx.RewriteProviderModelsInput{
 		Provider: jsx.ProviderSummary{
 			ID:             provider.ID,
 			Name:           provider.Name,
 			Priority:       provider.Priority,
 			ProviderModels: contractToJsxEntries(oldList),
-			Annotations:    json.RawMessage(provider.Annotations),
+			Annotations:    providerAnno,
 			Disabled:       provider.Disabled,
 		},
+		Model:            nil,
 		EndpointPath:     input.Body.EndpointPath,
 		UpstreamResponse: upstreamRawJSON,
+		Annotations:      annotations.Merge(providerAnno),
 	}, contractToJsxEntries(aggregated))
 	if herr != nil {
 		status := http.StatusBadGateway

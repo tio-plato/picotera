@@ -317,6 +317,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
         developer:
           type: string
         disabled:
@@ -335,6 +339,7 @@ components:
         - developer
         - series
         - disabled
+        - annotations
       type: object
     PaginatedBodyRequestView:
       additionalProperties: false

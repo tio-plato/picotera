@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"picotera/pkg/annotations"
 	"picotera/pkg/artifacts"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
@@ -139,6 +139,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	apiKeyID := pgtype.Int4{Int32: apiKey.ID, Valid: true}
 	apiKeyJS := apiKeySummaryFromRow(apiKey)
+	apiKeyAnno := apiKeyJS.Annotations
 	// Backfill the meta row's api_key_id now that we have it. Other fields
 	// (provider, model) get filled later in streamSuccess; here we only set
 	// what we know and keep status pending.
@@ -186,10 +187,12 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// a consistent client-request shape.
 	originalModelName := modelName
 	initialClientReq := serializeClientRequest(r, body, modelName, pathVars)
+	modelAnno := h.fetchModelAnnotations(r.Context(), modelName)
 	newModel, err := session.RunRewriteModelHook(jsx.RewriteModelInput{
-		Request: initialClientReq,
-		Model:   originalModelName,
-		ApiKey:  apiKeyJS,
+		Request:     initialClientReq,
+		Model:       originalModelName,
+		ApiKey:      apiKeyJS,
+		Annotations: annotations.Merge(modelAnno, apiKeyAnno),
 	}, modelName)
 	if err != nil {
 		failHook(err)
@@ -206,6 +209,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		body = updated
 		modelName = newModel
+		modelAnno = h.fetchModelAnnotations(r.Context(), modelName)
 	}
 
 	// 7. Resolve providers using the (possibly rewritten) modelName.
@@ -222,27 +226,49 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 8a. Build candidate list and a sidecar map for fields not exposed to JS
-	// (upstream URL, credentials). The hooks see {provider, mpe}; we look up
-	// the rest by providerID after the hook returns.
+	// (upstream URL, credentials, merged annotations). The hooks see
+	// {provider, mpe, annotations}; we look up the rest by providerID after
+	// the hook returns. Refresh modelAnno from the route SQL so a single
+	// snapshot drives the request — avoids drift between an earlier
+	// GetModelByName read and a later route lookup.
+	if len(providers) > 0 {
+		if m, derr := annotations.Decode(providers[0].ModelAnnotations); derr == nil {
+			modelAnno = m
+		}
+	}
+	annoBuilder, err := newCandidateAnnotationsBuilder(nil, apiKeyAnno)
+	if err != nil {
+		errMsg := "failed to build annotations: " + err.Error()
+		failMeta(http.StatusInternalServerError, errMsg)
+		respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs())
+		return
+	}
+	annoBuilder.modelAnno = modelAnno
+
 	type providerSidecar struct {
 		upstreamURL  string
 		credentials  string
 		sendResolver int32
+		annotations  map[string]string
 	}
 	sidecar := make(map[int32]providerSidecar, len(providers))
 	candidates := make([]jsx.Candidate, 0, len(providers))
 	for _, row := range providers {
+		entryAnno, _ := annotations.Decode(row.Annotations)
+		merged, providerAnno := annoBuilder.merge(row.ProviderAnnotations, entryAnno)
 		sidecar[row.ProviderID] = providerSidecar{
 			upstreamURL:  row.UpstreamUrl,
 			credentials:  row.ProviderCredentials,
 			sendResolver: effectiveSendResolver(endpoint.CredentialsResolver, row.SendCredentialsResolver),
+			annotations:  merged,
 		}
 		candidates = append(candidates, jsx.Candidate{
 			Provider: jsx.ProviderSummary{
 				ID:          row.ProviderID,
 				Name:        row.ProviderName,
 				Priority:    row.ProviderPriority,
-				Annotations: json.RawMessage(row.ProviderAnnotations),
+				Annotations: providerAnno,
 			},
 			MPE: jsx.CandidateMPE{
 				ModelName:         row.ModelName,
@@ -250,21 +276,25 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				EndpointPath:      row.EndpointPath,
 				UpstreamModelName: row.UpstreamModelName,
 				Priority:          row.Priority,
-				Annotations:       json.RawMessage(row.Annotations),
+				Annotations:       entryAnno,
 			},
+			Annotations: merged,
 		})
 	}
+
+	modelJS := &jsx.ModelSummary{Name: originalModelName, Annotations: modelAnno}
 
 	// 8b. The JS-visible client request shape (read-only).
 	jsClientRequest := serializeClientRequest(r, body, modelName, pathVars)
 
 	// 8c. sortProviders — once before the loop.
 	sortedCandidates, err := session.RunSortHook(jsx.SortInput{
-		Endpoint:  endpoint,
-		Model:     nil, // model row lookup is out of scope for v1
-		Request:   jsClientRequest,
-		Providers: candidates,
-		ApiKey:    apiKeyJS,
+		Endpoint:    endpoint,
+		Model:       modelJS,
+		Request:     jsClientRequest,
+		Providers:   candidates,
+		ApiKey:      apiKeyJS,
+		Annotations: annotations.Merge(modelAnno, apiKeyAnno),
 	})
 	if err != nil {
 		failHook(err)
@@ -297,9 +327,13 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		candAnno := cand.Annotations
+		if candAnno == nil {
+			candAnno = side.annotations
+		}
 		dec, err := session.RunBeforeRequestHook(jsx.BeforeRequestInput{
 			Endpoint:          endpoint,
-			Model:             nil,
+			Model:             modelJS,
 			Request:           jsClientRequest,
 			Provider:          cand.Provider,
 			MPE:               cand.MPE,
@@ -307,6 +341,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TotalAttemptCount: totalAttemptCount,
 			LastError:         lastJSErr,
 			ApiKey:            apiKeyJS,
+			Annotations:       candAnno,
 		})
 		if err != nil {
 			failHook(err)
@@ -375,7 +410,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// shape JS produced.
 		newPending, rerr := session.RunRewriteHook(jsx.RewriteInput{
 			Endpoint:          endpoint,
-			Model:             nil,
+			Model:             modelJS,
 			Provider:          cand.Provider,
 			MPE:               cand.MPE,
 			CurrentRetryCount: currentRetryCount,
@@ -383,6 +418,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ClientRequest:     jsClientRequest,
 			PendingRequest:    serializePendingRequest(req, reqBody),
 			ApiKey:            apiKeyJS,
+			Annotations:       candAnno,
 		})
 		if rerr != nil {
 			cancel()

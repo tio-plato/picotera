@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useApi } from '@/composables/useApi'
 import { SidePanel, Button, Input, Field } from '@/ui'
 import PricingEditor from '@/components/PricingEditor.vue'
+import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import type { ModelView, Pricing } from '@/api'
 
 const emit = defineEmits<{ close: [] }>()
@@ -22,6 +23,7 @@ const form = ref({
   series: props.model?.series ?? '',
   disabled: props.model?.disabled ?? false,
   pricing: (props.model?.pricing ?? null) as Pricing | null,
+  annotations: { ...props.model?.annotations } as Record<string, string>,
 })
 const saving = ref(false)
 const error = ref('')
@@ -35,6 +37,7 @@ async function submit() {
     developer: form.value.developer,
     series: form.value.series,
     disabled: form.value.disabled,
+    annotations: form.value.annotations,
     ...(form.value.pricing ? { pricing: form.value.pricing } : {}),
   }
   const { error: err } = await api.PUT('/api/picotera/models', { body })
@@ -80,6 +83,9 @@ async function submit() {
           <input v-model="form.disabled" type="checkbox" class="cursor-pointer" />
           <span>禁用此模型（不参与调度）</span>
         </label>
+      </Field>
+      <Field label="标注" as="div">
+        <AnnotationsEditor v-model="form.annotations" />
       </Field>
     </form>
 
