@@ -27,7 +27,7 @@ import (
 //
 // The returned reader is a ReadCloser; closing it stops the conversion
 // goroutine and closes the underlying upstream reader.
-func BridgeStream(ctx context.Context, src, upstream Format, upstreamBody io.ReadCloser, upstreamCT string) (io.ReadCloser, error) {
+func BridgeStream(ctx context.Context, src, upstream Format, upstreamBody io.ReadCloser, upstreamCT string, profile OutboundProfile) (io.ReadCloser, error) {
 	if src == FormatUnknown || upstream == FormatUnknown {
 		_ = upstreamBody.Close()
 		return nil, fmt.Errorf("llmbridge: bridge stream with unknown format (src=%s upstream=%s)", src, upstream)
@@ -41,7 +41,7 @@ func BridgeStream(ctx context.Context, src, upstream Format, upstreamBody io.Rea
 		_ = upstreamBody.Close()
 		return nil, err
 	}
-	out, err := outboundFor(upstream)
+	out, err := outboundFor(upstream, profile)
 	if err != nil {
 		_ = upstreamBody.Close()
 		return nil, err

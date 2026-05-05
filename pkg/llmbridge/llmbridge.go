@@ -10,14 +10,25 @@
 package llmbridge
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/looplj/axonhub/llm/auth"
 	"github.com/looplj/axonhub/llm/transformer"
 	anthropictrans "github.com/looplj/axonhub/llm/transformer/anthropic"
+	deepseektrans "github.com/looplj/axonhub/llm/transformer/deepseek"
+	fireworkstrans "github.com/looplj/axonhub/llm/transformer/fireworks"
 	geminitrans "github.com/looplj/axonhub/llm/transformer/gemini"
 	openaitrans "github.com/looplj/axonhub/llm/transformer/openai"
 	openairesponses "github.com/looplj/axonhub/llm/transformer/openai/responses"
+	openroutertrans "github.com/looplj/axonhub/llm/transformer/openrouter"
+)
+
+const (
+	placeholderURL = "https://upstream.invalid"
+	placeholderKey = "placeholder"
 )
 
 // Format identifies one of the four supported generation formats. The two
@@ -34,6 +45,27 @@ const (
 	FormatGeminiGenerateContent       // non-stream
 	FormatGeminiStreamGenerateContent // stream
 )
+
+// OutboundProfile selects an optional provider-specific outbound transformer
+// and JSON config for unified bridge attempts.
+type OutboundProfile struct {
+	Type      string
+	ConfigRaw string
+	Fallback  string
+}
+
+// OutboundProfileFromAnnotations extracts unified outbound settings from the
+// merged candidate annotations map.
+func OutboundProfileFromAnnotations(ann map[string]string) OutboundProfile {
+	if ann == nil {
+		return OutboundProfile{}
+	}
+	return OutboundProfile{
+		Type:      ann["ah.outbound.type"],
+		ConfigRaw: ann["ah.outbound.config"],
+		Fallback:  ann["ah.outbound.fallback"],
+	}
+}
 
 // String renders the format for log lines and error messages.
 func (f Format) String() string {
@@ -91,10 +123,40 @@ func inboundFor(f Format) (transformer.Inbound, error) {
 // in this format. The transformers expect a baseURL and APIKeyProvider for
 // URL construction and auth — picotera handles both itself, so we hand them
 // throwaway placeholders. Only the body bytes are read out of the result.
-func outboundFor(f Format) (transformer.Outbound, error) {
-	const placeholderURL = "https://upstream.invalid"
-	const placeholderKey = "placeholder"
+func outboundFor(f Format, profile OutboundProfile) (transformer.Outbound, error) {
+	switch profile.Type {
+	case "":
+		return defaultOutboundFor(f)
+	case "openrouter":
+		if f != FormatOpenAIChatCompletions {
+			if profile.Fallback == "default" {
+				return defaultOutboundFor(f)
+			}
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
+		}
+		return openRouterOutbound(profile)
+	case "deepseek":
+		if f != FormatOpenAIChatCompletions {
+			if profile.Fallback == "default" {
+				return defaultOutboundFor(f)
+			}
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
+		}
+		return deepSeekOutbound(profile)
+	case "fireworks":
+		if f != FormatOpenAIChatCompletions {
+			if profile.Fallback == "default" {
+				return defaultOutboundFor(f)
+			}
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
+		}
+		return fireworksOutbound(profile)
+	default:
+		return nil, fmt.Errorf("llmbridge: unsupported outbound type %q", profile.Type)
+	}
+}
 
+func defaultOutboundFor(f Format) (transformer.Outbound, error) {
 	switch f {
 	case FormatAnthropicMessages:
 		return anthropictrans.NewOutboundTransformerWithConfig(&anthropictrans.Config{
@@ -121,4 +183,68 @@ func outboundFor(f Format) (transformer.Outbound, error) {
 	default:
 		return nil, fmt.Errorf("llmbridge: unsupported upstream format %q", f)
 	}
+}
+
+func openRouterOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+	cfg := &openroutertrans.Config{}
+	forceOpenRouterConfig(cfg)
+	if err := decodeOutboundConfig(profile.ConfigRaw, cfg); err != nil {
+		return nil, err
+	}
+	forceOpenRouterConfig(cfg)
+	return openroutertrans.NewOutboundTransformerWithConfig(cfg)
+}
+
+func deepSeekOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+	cfg := &deepseektrans.Config{}
+	forceDeepSeekConfig(cfg)
+	if err := decodeOutboundConfig(profile.ConfigRaw, cfg); err != nil {
+		return nil, err
+	}
+	forceDeepSeekConfig(cfg)
+	return deepseektrans.NewOutboundTransformerWithConfig(cfg)
+}
+
+func fireworksOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+	cfg := &fireworkstrans.Config{}
+	forceFireworksConfig(cfg)
+	if err := decodeOutboundConfig(profile.ConfigRaw, cfg); err != nil {
+		return nil, err
+	}
+	forceFireworksConfig(cfg)
+	return fireworkstrans.NewOutboundTransformerWithConfig(cfg)
+}
+
+func decodeOutboundConfig(raw string, dst any) error {
+	if raw == "" {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader([]byte(raw)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return fmt.Errorf("llmbridge: decode outbound config: %w", err)
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("llmbridge: decode outbound config: multiple JSON values")
+		}
+		return fmt.Errorf("llmbridge: decode outbound config: %w", err)
+	}
+	return nil
+}
+
+func forceOpenRouterConfig(cfg *openroutertrans.Config) {
+	cfg.BaseURL = placeholderURL
+	cfg.APIKeyProvider = auth.NewStaticKeyProvider(placeholderKey)
+}
+
+func forceDeepSeekConfig(cfg *deepseektrans.Config) {
+	cfg.BaseURL = placeholderURL
+	cfg.APIKeyProvider = auth.NewStaticKeyProvider(placeholderKey)
+}
+
+func forceFireworksConfig(cfg *fireworkstrans.Config) {
+	cfg.BaseURL = placeholderURL
+	cfg.APIKeyProvider = auth.NewStaticKeyProvider(placeholderKey)
 }

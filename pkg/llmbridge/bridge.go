@@ -20,7 +20,7 @@ import (
 //
 // Returns the upstream-format body bytes and the Content-Type that should be
 // set on the outgoing request.
-func BridgeRequest(ctx context.Context, src, dst Format, body []byte, headers http.Header, pendingURL string) ([]byte, string, error) {
+func BridgeRequest(ctx context.Context, src, dst Format, body []byte, headers http.Header, pendingURL string, profile OutboundProfile) ([]byte, string, error) {
 	if src == FormatUnknown || dst == FormatUnknown {
 		return nil, "", fmt.Errorf("llmbridge: bridge with unknown format (src=%s dst=%s)", src, dst)
 	}
@@ -33,7 +33,7 @@ func BridgeRequest(ctx context.Context, src, dst Format, body []byte, headers ht
 		return nil, "", fmt.Errorf("llmbridge: parse source %s request: %w", src, err)
 	}
 
-	out, err := outboundFor(dst)
+	out, err := outboundFor(dst, profile)
 	if err != nil {
 		return nil, "", err
 	}
@@ -50,7 +50,7 @@ func BridgeRequest(ctx context.Context, src, dst Format, body []byte, headers ht
 
 // BridgeNonStream converts a non-streaming upstream JSON response body into
 // source-format JSON. Identity when src == upstream.
-func BridgeNonStream(ctx context.Context, src, upstream Format, upstreamBody []byte, upstreamHeaders http.Header) ([]byte, string, error) {
+func BridgeNonStream(ctx context.Context, src, upstream Format, upstreamBody []byte, upstreamHeaders http.Header, profile OutboundProfile) ([]byte, string, error) {
 	if src == FormatUnknown || upstream == FormatUnknown {
 		return nil, "", fmt.Errorf("llmbridge: bridge non-stream with unknown format (src=%s upstream=%s)", src, upstream)
 	}
@@ -58,7 +58,7 @@ func BridgeNonStream(ctx context.Context, src, upstream Format, upstreamBody []b
 		return upstreamBody, contentTypeOrDefault(upstreamHeaders), nil
 	}
 
-	out, err := outboundFor(upstream)
+	out, err := outboundFor(upstream, profile)
 	if err != nil {
 		return nil, "", err
 	}

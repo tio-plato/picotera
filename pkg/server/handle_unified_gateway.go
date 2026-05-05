@@ -331,6 +331,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			if candAnno == nil {
 				candAnno = side.annotations
 			}
+			outboundProfile := llmbridge.OutboundProfileFromAnnotations(candAnno)
 			dec, herr := session.RunBeforeRequestHook(jsx.BeforeRequestInput{
 				Endpoint:          virtualEndpoint,
 				Model:             modelJS,
@@ -452,7 +453,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 					// asked for, so the parsed *llm.Request carries them.
 					bridgeURL = llmbridge.SyntheticGeminiPath(srcFormat, originalModelName)
 				}
-				upBody, upCT, brerr := llmbridge.BridgeRequest(ctx, srcFormat, side.upFormat, reqBody, req.Header, bridgeURL)
+				upBody, upCT, brerr := llmbridge.BridgeRequest(ctx, srcFormat, side.upFormat, reqBody, req.Header, bridgeURL, outboundProfile)
 				if brerr != nil {
 					cancel()
 					h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, brerr.Error())
@@ -497,6 +498,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 					w: w, r: r, ctx: ctx, cancel: cancel, resp: resp,
 					srcFormat:         srcFormat,
 					upFormat:          side.upFormat,
+					outboundProfile:   outboundProfile,
 					upstreamID:        upstreamID,
 					upstreamCreatedAt: upstreamCreatedAt,
 					attemptStart:      attemptStart,
@@ -799,6 +801,7 @@ type unifiedStreamArgs struct {
 	resp              *http.Response
 	srcFormat         llmbridge.Format
 	upFormat          llmbridge.Format
+	outboundProfile   llmbridge.OutboundProfile
 	upstreamID        string
 	upstreamCreatedAt time.Time
 	attemptStart      time.Time
@@ -880,7 +883,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	clientCT := upstreamCT
 	if bridging {
 		if streamMode {
-			br, err := llmbridge.BridgeStream(ctx, a.srcFormat, a.upFormat, teedUpstream, upstreamCT)
+			br, err := llmbridge.BridgeStream(ctx, a.srcFormat, a.upFormat, teedUpstream, upstreamCT, a.outboundProfile)
 			if err != nil {
 				cancel()
 				h.failUnifiedSuccess(a, err.Error())
@@ -898,7 +901,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 				return
 			}
 			_ = teedUpstream.Close()
-			bridged, ct, berr := llmbridge.BridgeNonStream(ctx, a.srcFormat, a.upFormat, upstreamBody, resp.Header)
+			bridged, ct, berr := llmbridge.BridgeNonStream(ctx, a.srcFormat, a.upFormat, upstreamBody, resp.Header, a.outboundProfile)
 			if berr != nil {
 				cancel()
 				h.failUnifiedSuccess(a, berr.Error())
