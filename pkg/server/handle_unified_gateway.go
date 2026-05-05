@@ -287,11 +287,12 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			})
 		}
 
-		modelJS := &jsx.ModelSummary{Name: originalModelName, Annotations: modelAnno}
+		modelJS := &jsx.ModelSummary{Name: modelName, Annotations: modelAnno}
+		endpointJS := endpointSummaryFromRow(virtualEndpoint)
 
 		jsClientRequest := serializeClientRequest(r, body, modelName, pathVars)
 		sortedCandidates, err := session.RunSortHook(jsx.SortInput{
-			Endpoint:    virtualEndpoint,
+			Endpoint:    endpointJS,
 			Model:       modelJS,
 			Request:     jsClientRequest,
 			Providers:   candidates,
@@ -333,9 +334,8 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			if candAnno == nil {
 				candAnno = side.annotations
 			}
-			outboundProfile := llmbridge.OutboundProfileFromAnnotations(candAnno)
 			dec, herr := session.RunBeforeRequestHook(jsx.BeforeRequestInput{
-				Endpoint:          virtualEndpoint,
+				Endpoint:          endpointJS,
 				Model:             modelJS,
 				Request:           jsClientRequest,
 				Provider:          cand.Provider,
@@ -423,7 +423,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 
 			// rewriteRequest hook — JS sees the source-format body.
 			newPending, rerr := session.RunRewriteHook(jsx.RewriteInput{
-				Endpoint:          virtualEndpoint,
+				Endpoint:          endpointJS,
 				Model:             modelJS,
 				Provider:          cand.Provider,
 				MPE:               cand.MPE,
@@ -444,6 +444,45 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				cancel()
 				failHook(rerr)
 				return
+			}
+
+			baseProfile, perr := llmbridge.DefaultOutboundProfileForFormat(side.upFormat)
+			if perr != nil {
+				cancel()
+				h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, perr.Error())
+				lastErr = perr
+				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: perr.Error()}
+				currentRetryCount++
+				totalAttemptCount++
+				continue
+			}
+			initialProfile := jsx.OutboundProfile{Type: baseProfile.Type, Config: map[string]any{}}
+			hookProfile, perr := session.RunBeforeTransformHook(jsx.BeforeTransformInput{
+				Endpoint:          endpointJS,
+				Model:             modelJS,
+				Provider:          cand.Provider,
+				MPE:               cand.MPE,
+				CurrentRetryCount: currentRetryCount,
+				TotalAttemptCount: totalAttemptCount,
+				ClientRequest:     jsClientRequest,
+				PendingRequest:    newPending,
+				ApiKey:            apiKeyJS,
+				Annotations:       candAnno,
+				SourceFormat:      srcFormat.String(),
+				UpstreamFormat:    side.upFormat.String(),
+				Stream:            streaming,
+			}, initialProfile)
+			if perr != nil {
+				cancel()
+				failHook(perr)
+				return
+			}
+			outboundProfile := llmbridge.OutboundProfile{
+				Type:   hookProfile.Type,
+				Config: hookProfile.Config,
+			}
+			if outboundProfile.Config == nil {
+				outboundProfile.Config = map[string]any{}
 			}
 
 			// Bridge step. When formats match, BridgeRequest is identity.

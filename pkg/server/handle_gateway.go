@@ -285,13 +285,14 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	modelJS := &jsx.ModelSummary{Name: originalModelName, Annotations: modelAnno}
+	endpointJS := endpointSummaryFromRow(endpoint)
 
 	// 8b. The JS-visible client request shape (read-only).
 	jsClientRequest := serializeClientRequest(r, body, modelName, pathVars)
 
 	// 8c. sortProviders — once before the loop.
 	sortedCandidates, err := session.RunSortHook(jsx.SortInput{
-		Endpoint:    endpoint,
+		Endpoint:    endpointJS,
 		Model:       modelJS,
 		Request:     jsClientRequest,
 		Providers:   candidates,
@@ -334,7 +335,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			candAnno = side.annotations
 		}
 		dec, err := session.RunBeforeRequestHook(jsx.BeforeRequestInput{
-			Endpoint:          endpoint,
+			Endpoint:          endpointJS,
 			Model:             modelJS,
 			Request:           jsClientRequest,
 			Provider:          cand.Provider,
@@ -412,7 +413,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// no mutate-in-place, so the outgoing request is exactly the JSON
 		// shape JS produced.
 		newPending, rerr := session.RunRewriteHook(jsx.RewriteInput{
-			Endpoint:          endpoint,
+			Endpoint:          endpointJS,
 			Model:             modelJS,
 			Provider:          cand.Provider,
 			MPE:               cand.MPE,

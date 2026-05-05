@@ -10,9 +10,18 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func mustProfile(t *testing.T, f Format) OutboundProfile {
+	t.Helper()
+	p, err := DefaultOutboundProfileForFormat(f)
+	if err != nil {
+		t.Fatalf("DefaultOutboundProfileForFormat(%s): %v", f, err)
+	}
+	return p
+}
+
 func TestBridgeRequestIdentity(t *testing.T) {
 	body := []byte(`{"model":"x","messages":[{"role":"user","content":"hi"}],"max_tokens":1}`)
-	got, ct, err := BridgeRequest(context.Background(), FormatAnthropicMessages, FormatAnthropicMessages, body, http.Header{}, "/v1/messages", OutboundProfile{})
+	got, ct, err := BridgeRequest(context.Background(), FormatAnthropicMessages, FormatAnthropicMessages, body, http.Header{}, "/v1/messages", mustProfile(t, FormatAnthropicMessages))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +39,7 @@ func TestBridgeRequestIdentity(t *testing.T) {
 // just confirm we wired the transformers together correctly.
 func TestBridgeRequestAnthropicToOpenAIChat(t *testing.T) {
 	body := []byte(`{"model":"claude-3-5-sonnet","messages":[{"role":"user","content":"ping"}],"max_tokens":16,"stream":true}`)
-	got, ct, err := BridgeRequest(context.Background(), FormatAnthropicMessages, FormatOpenAIChatCompletions, body, http.Header{"Content-Type": []string{"application/json"}}, "/v1/messages", OutboundProfile{})
+	got, ct, err := BridgeRequest(context.Background(), FormatAnthropicMessages, FormatOpenAIChatCompletions, body, http.Header{"Content-Type": []string{"application/json"}}, "/v1/messages", mustProfile(t, FormatOpenAIChatCompletions))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +68,7 @@ func TestBridgeRequestAnthropicToOpenAIChat(t *testing.T) {
 func TestBridgeRequestGeminiSourceUsesPath(t *testing.T) {
 	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`)
 	model := "gemini-2.5-pro"
-	got, _, err := BridgeRequest(context.Background(), FormatGeminiStreamGenerateContent, FormatOpenAIChatCompletions, body, http.Header{"Content-Type": []string{"application/json"}}, SyntheticGeminiPath(FormatGeminiStreamGenerateContent, model), OutboundProfile{})
+	got, _, err := BridgeRequest(context.Background(), FormatGeminiStreamGenerateContent, FormatOpenAIChatCompletions, body, http.Header{"Content-Type": []string{"application/json"}}, SyntheticGeminiPath(FormatGeminiStreamGenerateContent, model), mustProfile(t, FormatOpenAIChatCompletions))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,42 +77,6 @@ func TestBridgeRequestGeminiSourceUsesPath(t *testing.T) {
 	}
 	if s := gjson.GetBytes(got, "stream").Bool(); !s {
 		t.Errorf("stream flag from streamGenerateContent path not propagated")
-	}
-}
-
-func TestOutboundProfileFromAnnotations(t *testing.T) {
-	got := OutboundProfileFromAnnotations(map[string]string{
-		"ah.outbound.type":     " OpenRouter ",
-		"ah.outbound.config":   " {\"base_url\":\"https://example.invalid\"} ",
-		"ah.outbound.fallback": " Default ",
-	})
-	if got.Type != " OpenRouter " {
-		t.Errorf("type = %q, want exact value", got.Type)
-	}
-	if got.ConfigRaw != ` {"base_url":"https://example.invalid"} ` {
-		t.Errorf("config = %q, want exact value", got.ConfigRaw)
-	}
-	if got.Fallback != " Default " {
-		t.Errorf("fallback = %q, want exact value", got.Fallback)
-	}
-
-	got = OutboundProfileFromAnnotations(nil)
-	if got.Type != "" || got.ConfigRaw != "" || got.Fallback != "" {
-		t.Errorf("nil annotations profile = %#v, want zero", got)
-	}
-}
-
-func TestBridgeRequestProfileFallbackDefaultSkipsConfig(t *testing.T) {
-	body := []byte(`{"model":"claude","messages":[{"role":"user","content":"ping"}],"max_tokens":16}`)
-	got, ct, err := BridgeRequest(context.Background(), FormatAnthropicMessages, FormatOpenAIResponses, body, http.Header{"Content-Type": []string{"application/json"}}, "/v1/messages", OutboundProfile{Type: "openrouter", ConfigRaw: `{"base_url":`, Fallback: "default"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(ct, "application/json") {
-		t.Errorf("unexpected content-type: %q", ct)
-	}
-	if model := gjson.GetBytes(got, "model").Str; model != "claude" {
-		t.Errorf("fallback default model = %q, want claude; body=%s", model, got)
 	}
 }
 
@@ -148,12 +121,42 @@ func TestBridgeRequestDeepSeekProfileThinking(t *testing.T) {
 
 func TestBridgeRequestFireworksProfileBuildsBody(t *testing.T) {
 	body := []byte(`{"model":"claude","messages":[{"role":"user","content":"ping"}],"max_tokens":16}`)
-	got, _, err := BridgeRequest(context.Background(), FormatAnthropicMessages, FormatOpenAIChatCompletions, body, http.Header{"Content-Type": []string{"application/json"}}, "/v1/messages", OutboundProfile{Type: "fireworks", ConfigRaw: `{"base_url":"https://example.invalid/v1"}`})
+	got, _, err := BridgeRequest(context.Background(), FormatAnthropicMessages, FormatOpenAIChatCompletions, body, http.Header{"Content-Type": []string{"application/json"}}, "/v1/messages", OutboundProfile{Type: "fireworks", Config: map[string]any{"base_url": "https://example.invalid/v1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if model := gjson.GetBytes(got, "model").Str; model != "claude" {
 		t.Errorf("fireworks model = %q, want claude", model)
+	}
+}
+
+func TestDefaultOutboundProfileForFormat(t *testing.T) {
+	cases := []struct {
+		format Format
+		want   string
+	}{
+		{FormatAnthropicMessages, "anthropic"},
+		{FormatOpenAIChatCompletions, "openai"},
+		{FormatOpenAIResponses, "openaiResponses"},
+		{FormatGeminiGenerateContent, "gemini"},
+		{FormatGeminiStreamGenerateContent, "gemini"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.format.String(), func(t *testing.T) {
+			got, err := DefaultOutboundProfileForFormat(tt.format)
+			if err != nil {
+				t.Fatalf("DefaultOutboundProfileForFormat: %v", err)
+			}
+			if got.Type != tt.want {
+				t.Errorf("type = %q, want %q", got.Type, tt.want)
+			}
+			if len(got.Config) != 0 {
+				t.Errorf("config = %+v, want empty", got.Config)
+			}
+		})
+	}
+	if _, err := DefaultOutboundProfileForFormat(FormatUnknown); err == nil {
+		t.Fatalf("FormatUnknown should fail")
 	}
 }
 
@@ -168,8 +171,7 @@ func TestBridgeRequestProfileErrors(t *testing.T) {
 		want    string
 	}{
 		{name: "incompatible", dst: FormatOpenAIResponses, profile: OutboundProfile{Type: "openrouter"}, want: "only compatible"},
-		{name: "malformed config", dst: FormatOpenAIChatCompletions, profile: OutboundProfile{Type: "fireworks", ConfigRaw: `{"base_url":`}, want: "decode outbound config"},
-		{name: "unknown config field", dst: FormatOpenAIChatCompletions, profile: OutboundProfile{Type: "fireworks", ConfigRaw: `{"unknown":true}`}, want: "unknown field"},
+		{name: "unknown config field", dst: FormatOpenAIChatCompletions, profile: OutboundProfile{Type: "fireworks", Config: map[string]any{"unknown": true}}, want: "unknown field"},
 		{name: "unknown type", dst: FormatOpenAIChatCompletions, profile: OutboundProfile{Type: "madeup"}, want: "unsupported outbound type"},
 	}
 

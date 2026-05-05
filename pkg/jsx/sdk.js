@@ -25,6 +25,7 @@
     hooks: {
       sortProviders: new Waterfall(),
       beforeRequest: new Waterfall(),
+      beforeTransform: new Waterfall(),
       rewriteRequest: new Waterfall(),
       rewriteModel: new Waterfall(),
       rewriteProviderModels: new Waterfall(),

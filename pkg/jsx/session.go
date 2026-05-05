@@ -300,6 +300,60 @@ func (s *Session) RunRewriteHook(in RewriteInput) (PendingRequestShape, error) {
 	return out, nil
 }
 
+// RunBeforeTransformHook calls the beforeTransform waterfall with the current
+// outbound profile. The hook contract is strict because its result controls
+// bridge construction: taps must return an object, with string type and object
+// config when present.
+func (s *Session) RunBeforeTransformHook(in BeforeTransformInput, initial OutboundProfile) (OutboundProfile, error) {
+	if initial.Config == nil {
+		initial.Config = map[string]any{}
+	}
+	ctxLit, err := marshalToJSLiteral(in)
+	if err != nil {
+		return initial, err
+	}
+	initLit, err := marshalToJSLiteral(initial)
+	if err != nil {
+		return initial, err
+	}
+	expr := fmt.Sprintf(`(async () => {
+		const ctx = %s;
+		const initial = %s;
+		const r = await picotera.hooks.beforeTransform.runWaterfall(ctx, initial);
+		if (typeof r === 'undefined' || r === null) return null;
+		if (typeof r !== 'object' || Array.isArray(r)) {
+			throw new Error("jsx: beforeTransform result must be object");
+		}
+		if (Object.prototype.hasOwnProperty.call(r, "type") && typeof r.type !== 'string') {
+			throw new Error("jsx: beforeTransform type must be string");
+		}
+		if (Object.prototype.hasOwnProperty.call(r, "config")) {
+			if (r.config === null || typeof r.config !== 'object' || Array.isArray(r.config)) {
+				throw new Error("jsx: beforeTransform config must be object");
+			}
+		}
+		return JSON.stringify({
+			type: Object.prototype.hasOwnProperty.call(r, "type") ? r.type : initial.type,
+			config: Object.prototype.hasOwnProperty.call(r, "config") ? r.config : {}
+		});
+	})()`, ctxLit, initLit)
+	jsonStr, err := s.runHookExpr("beforeTransform.js", expr)
+	if err != nil {
+		return initial, err
+	}
+	if jsonStr == "" || jsonStr == "null" {
+		return initial, nil
+	}
+	var out OutboundProfile
+	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+		return initial, fmt.Errorf("jsx: beforeTransform decode: %w", err)
+	}
+	if out.Config == nil {
+		out.Config = map[string]any{}
+	}
+	return out, nil
+}
+
 // RunRewriteProviderModelsHook calls the rewriteProviderModels waterfall after
 // default aggregation. Returns the hook-processed model list, falling back to
 // the input if the hook returns a non-array, returns undefined, or if

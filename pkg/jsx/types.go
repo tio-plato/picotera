@@ -84,11 +84,21 @@ type ApiKeySummary struct {
 	Disabled    bool              `json:"disabled"`
 }
 
+// EndpointSummary is the JS-visible projection of an endpoint. It is used for
+// both database-backed gateway endpoints and unified route virtual endpoints.
+type EndpointSummary struct {
+	Name                string `json:"name"`
+	Path                string `json:"path"`
+	ModelPath           string `json:"modelPath"`
+	CredentialsResolver int32  `json:"credentialsResolver"`
+	EndpointType        int32  `json:"endpointType"`
+}
+
 // SortInput is the ctx passed to the sortProviders waterfall. Annotations is
 // the request-level merge (model + apiKey); each candidate carries its own
 // merged map under candidate.annotations.
 type SortInput struct {
-	Endpoint    any               `json:"endpoint"`
+	Endpoint    EndpointSummary   `json:"endpoint"`
 	Model       *ModelSummary     `json:"model"`
 	Request     RequestShape      `json:"request"`
 	Providers   []Candidate       `json:"providers"`
@@ -108,7 +118,7 @@ type LastError struct {
 // Annotations is the chosen candidate's merged map (model + provider + entry
 // + apiKey).
 type BeforeRequestInput struct {
-	Endpoint          any               `json:"endpoint"`
+	Endpoint          EndpointSummary   `json:"endpoint"`
 	Model             *ModelSummary     `json:"model"`
 	Request           RequestShape      `json:"request"`
 	Provider          ProviderSummary   `json:"provider"`
@@ -153,7 +163,7 @@ type PendingRequestShape struct {
 // RewriteInput is the ctx passed to the rewriteRequest waterfall. Annotations
 // is the chosen candidate's merged map (same as BeforeRequestInput).
 type RewriteInput struct {
-	Endpoint          any                 `json:"endpoint"`
+	Endpoint          EndpointSummary     `json:"endpoint"`
 	Model             *ModelSummary       `json:"model"`
 	Provider          ProviderSummary     `json:"provider"`
 	MPE               CandidateMPE        `json:"mpe"`
@@ -163,6 +173,32 @@ type RewriteInput struct {
 	PendingRequest    PendingRequestShape `json:"pendingRequest"`
 	ApiKey            *ApiKeySummary      `json:"apiKey"`
 	Annotations       map[string]string   `json:"annotations"`
+}
+
+// OutboundProfile is the hook-visible profile used by beforeTransform to
+// select the axonhub outbound transformer for a unified gateway attempt.
+type OutboundProfile struct {
+	Type   string         `json:"type"`
+	Config map[string]any `json:"config"`
+}
+
+// BeforeTransformInput is the ctx passed to the beforeTransform waterfall.
+// PendingRequest is the rewriteRequest result, still in source format, before
+// the bridge converts it to the chosen upstream format.
+type BeforeTransformInput struct {
+	Endpoint          EndpointSummary     `json:"endpoint"`
+	Model             *ModelSummary       `json:"model"`
+	Provider          ProviderSummary     `json:"provider"`
+	MPE               CandidateMPE        `json:"mpe"`
+	CurrentRetryCount int                 `json:"currentRetryCount"`
+	TotalAttemptCount int                 `json:"totalAttemptCount"`
+	ClientRequest     RequestShape        `json:"clientRequest"`
+	PendingRequest    PendingRequestShape `json:"pendingRequest"`
+	ApiKey            *ApiKeySummary      `json:"apiKey"`
+	Annotations       map[string]string   `json:"annotations"`
+	SourceFormat      string              `json:"sourceFormat"`
+	UpstreamFormat    string              `json:"upstreamFormat"`
+	Stream            bool                `json:"stream"`
 }
 
 // ProviderModelEntry mirrors the JSON shape of contract.ProviderModelEntry.

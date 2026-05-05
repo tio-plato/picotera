@@ -116,7 +116,7 @@ func TestSession_CtxRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	expr := "picotera.hooks.sortProviders.runWaterfall(" + lit + "," + lit + ")"
+	expr := "(async () => JSON.stringify(await picotera.hooks.sortProviders.runWaterfall(" + lit + "," + lit + ")))()"
 	jsonStr, err := s.runHookExpr("rev.js", expr)
 	if err != nil {
 		t.Fatalf("runHookExpr: %v", err)
@@ -373,6 +373,104 @@ func TestSession_Hooks_Rewrite_BodyHidden_NonJSON(t *testing.T) {
 	defer v.Free()
 	if v.Bool() {
 		t.Errorf("hook should not see body when content-type is non-JSON")
+	}
+}
+
+func TestSession_Hooks_BeforeTransform_Passthrough(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.beforeTransform.tap("a", function () {});
+	`})
+	initial := OutboundProfile{Type: "openai", Config: map[string]any{}}
+	out, err := s.RunBeforeTransformHook(BeforeTransformInput{}, initial)
+	if err != nil {
+		t.Fatalf("RunBeforeTransformHook: %v", err)
+	}
+	if out.Type != "openai" || len(out.Config) != 0 {
+		t.Errorf("want passthrough initial profile, got %+v", out)
+	}
+}
+
+func TestSession_Hooks_BeforeTransform_ReturnsNewProfile(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.beforeTransform.tap("a", function () {
+			return { type: "openrouter", config: { provider: "x" } };
+		});
+	`})
+	out, err := s.RunBeforeTransformHook(BeforeTransformInput{}, OutboundProfile{Type: "openai", Config: map[string]any{"keep": true}})
+	if err != nil {
+		t.Fatalf("RunBeforeTransformHook: %v", err)
+	}
+	if out.Type != "openrouter" || out.Config["provider"] != "x" {
+		t.Errorf("want openrouter profile, got %+v", out)
+	}
+	if _, ok := out.Config["keep"]; ok {
+		t.Errorf("new profile should replace config, got %+v", out.Config)
+	}
+}
+
+func TestSession_Hooks_BeforeTransform_MutatesInPlace(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.beforeTransform.tap("a", function (ctx, outbound) {
+			outbound.type = "deepseek";
+			outbound.config = { include_reasoning: true };
+			return outbound;
+		});
+	`})
+	out, err := s.RunBeforeTransformHook(BeforeTransformInput{}, OutboundProfile{Type: "openai", Config: map[string]any{}})
+	if err != nil {
+		t.Fatalf("RunBeforeTransformHook: %v", err)
+	}
+	if out.Type != "deepseek" || out.Config["include_reasoning"] != true {
+		t.Errorf("want mutated deepseek profile, got %+v", out)
+	}
+}
+
+func TestSession_Hooks_BeforeTransform_PriorityWaterfall(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.beforeTransform.tap("low", function (ctx, outbound) {
+			outbound.type = outbound.type + "-low";
+			return outbound;
+		}, 1);
+		picotera.hooks.beforeTransform.tap("high", function (ctx, outbound) {
+			outbound.type = "high";
+			return outbound;
+		}, 10);
+	`})
+	out, err := s.RunBeforeTransformHook(BeforeTransformInput{}, OutboundProfile{Type: "openai", Config: map[string]any{}})
+	if err != nil {
+		t.Fatalf("RunBeforeTransformHook: %v", err)
+	}
+	if out.Type != "high-low" {
+		t.Errorf("want priority waterfall high-low, got %q", out.Type)
+	}
+}
+
+func TestSession_Hooks_BeforeTransform_TypeMustBeString(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.beforeTransform.tap("a", function () { return { type: 42 }; });
+	`})
+	_, err := s.RunBeforeTransformHook(BeforeTransformInput{}, OutboundProfile{Type: "openai", Config: map[string]any{}})
+	if err == nil || !contains(err.Error(), "jsx: beforeTransform type must be string") {
+		t.Fatalf("err = %v, want beforeTransform type error", err)
+	}
+}
+
+func TestSession_Hooks_BeforeTransform_ConfigMustBeObject(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+	}{
+		{name: "number", source: `picotera.hooks.beforeTransform.tap("a", function () { return { config: 42 }; });`},
+		{name: "array", source: `picotera.hooks.beforeTransform.tap("a", function () { return { config: [] }; });`},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestSession(t, db.Script{ID: "a", Source: tt.source})
+			_, err := s.RunBeforeTransformHook(BeforeTransformInput{}, OutboundProfile{Type: "openai", Config: map[string]any{}})
+			if err == nil || !contains(err.Error(), "jsx: beforeTransform config must be object") {
+				t.Fatalf("err = %v, want beforeTransform config error", err)
+			}
+		})
 	}
 }
 

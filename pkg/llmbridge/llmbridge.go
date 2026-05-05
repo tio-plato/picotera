@@ -46,25 +46,11 @@ const (
 	FormatGeminiStreamGenerateContent // stream
 )
 
-// OutboundProfile selects an optional provider-specific outbound transformer
-// and JSON config for unified bridge attempts.
+// OutboundProfile selects the outbound transformer and JSON-object config for
+// unified bridge attempts.
 type OutboundProfile struct {
-	Type      string
-	ConfigRaw string
-	Fallback  string
-}
-
-// OutboundProfileFromAnnotations extracts unified outbound settings from the
-// merged candidate annotations map.
-func OutboundProfileFromAnnotations(ann map[string]string) OutboundProfile {
-	if ann == nil {
-		return OutboundProfile{}
-	}
-	return OutboundProfile{
-		Type:      ann["ah.outbound.type"],
-		ConfigRaw: ann["ah.outbound.config"],
-		Fallback:  ann["ah.outbound.fallback"],
-	}
+	Type   string
+	Config map[string]any
 }
 
 // String renders the format for log lines and error messages.
@@ -101,6 +87,21 @@ func (f Format) IsGemini() bool {
 	return f == FormatGeminiGenerateContent || f == FormatGeminiStreamGenerateContent
 }
 
+func DefaultOutboundProfileForFormat(f Format) (OutboundProfile, error) {
+	switch f {
+	case FormatAnthropicMessages:
+		return OutboundProfile{Type: "anthropic", Config: map[string]any{}}, nil
+	case FormatOpenAIChatCompletions:
+		return OutboundProfile{Type: "openai", Config: map[string]any{}}, nil
+	case FormatOpenAIResponses:
+		return OutboundProfile{Type: "openaiResponses", Config: map[string]any{}}, nil
+	case FormatGeminiGenerateContent, FormatGeminiStreamGenerateContent:
+		return OutboundProfile{Type: "gemini", Config: map[string]any{}}, nil
+	default:
+		return OutboundProfile{}, fmt.Errorf("llmbridge: unsupported upstream format %q", f)
+	}
+}
+
 // inboundFor returns the axonhub Inbound transformer for parsing a body
 // written in this format. We treat the four canonical Inbound choices as
 // stateless singletons; the constructors only allocate an empty struct.
@@ -125,29 +126,38 @@ func inboundFor(f Format) (transformer.Inbound, error) {
 // throwaway placeholders. Only the body bytes are read out of the result.
 func outboundFor(f Format, profile OutboundProfile) (transformer.Outbound, error) {
 	switch profile.Type {
-	case "":
-		return defaultOutboundFor(f)
+	case "anthropic":
+		if f != FormatAnthropicMessages {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatAnthropicMessages, f)
+		}
+		return anthropicOutbound(profile)
+	case "openai":
+		if f != FormatOpenAIChatCompletions {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
+		}
+		return openAIOutbound(profile)
+	case "openaiResponses":
+		if f != FormatOpenAIResponses {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIResponses, f)
+		}
+		return openAIResponsesOutbound(profile)
+	case "gemini":
+		if f != FormatGeminiGenerateContent && f != FormatGeminiStreamGenerateContent {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s or %s, got %s", profile.Type, FormatGeminiGenerateContent, FormatGeminiStreamGenerateContent, f)
+		}
+		return geminiOutbound(profile)
 	case "openrouter":
 		if f != FormatOpenAIChatCompletions {
-			if profile.Fallback == "default" {
-				return defaultOutboundFor(f)
-			}
 			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
 		}
 		return openRouterOutbound(profile)
 	case "deepseek":
 		if f != FormatOpenAIChatCompletions {
-			if profile.Fallback == "default" {
-				return defaultOutboundFor(f)
-			}
 			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
 		}
 		return deepSeekOutbound(profile)
 	case "fireworks":
 		if f != FormatOpenAIChatCompletions {
-			if profile.Fallback == "default" {
-				return defaultOutboundFor(f)
-			}
 			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
 		}
 		return fireworksOutbound(profile)
@@ -156,39 +166,56 @@ func outboundFor(f Format, profile OutboundProfile) (transformer.Outbound, error
 	}
 }
 
-func defaultOutboundFor(f Format) (transformer.Outbound, error) {
-	switch f {
-	case FormatAnthropicMessages:
-		return anthropictrans.NewOutboundTransformerWithConfig(&anthropictrans.Config{
-			Type:           anthropictrans.PlatformDirect,
-			BaseURL:        placeholderURL,
-			APIKeyProvider: auth.NewStaticKeyProvider(placeholderKey),
-		})
-	case FormatOpenAIChatCompletions:
-		return openaitrans.NewOutboundTransformerWithConfig(&openaitrans.Config{
-			PlatformType:   openaitrans.PlatformOpenAI,
-			BaseURL:        placeholderURL,
-			APIKeyProvider: auth.NewStaticKeyProvider(placeholderKey),
-		})
-	case FormatOpenAIResponses:
-		return openairesponses.NewOutboundTransformerWithConfig(&openairesponses.Config{
-			BaseURL:        placeholderURL,
-			APIKeyProvider: auth.NewStaticKeyProvider(placeholderKey),
-		})
-	case FormatGeminiGenerateContent, FormatGeminiStreamGenerateContent:
-		return geminitrans.NewOutboundTransformerWithConfig(geminitrans.Config{
-			BaseURL:        placeholderURL,
-			APIKeyProvider: auth.NewStaticKeyProvider(placeholderKey),
-		})
-	default:
-		return nil, fmt.Errorf("llmbridge: unsupported upstream format %q", f)
+func anthropicOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+	cfg := &anthropictrans.Config{Type: anthropictrans.PlatformDirect}
+	forceAnthropicConfig(cfg)
+	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
+		return nil, err
 	}
+	if cfg.Type == "" {
+		cfg.Type = anthropictrans.PlatformDirect
+	}
+	forceAnthropicConfig(cfg)
+	return anthropictrans.NewOutboundTransformerWithConfig(cfg)
+}
+
+func openAIOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+	cfg := &openaitrans.Config{PlatformType: openaitrans.PlatformOpenAI}
+	forceOpenAIConfig(cfg)
+	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
+		return nil, err
+	}
+	if cfg.PlatformType == "" {
+		cfg.PlatformType = openaitrans.PlatformOpenAI
+	}
+	forceOpenAIConfig(cfg)
+	return openaitrans.NewOutboundTransformerWithConfig(cfg)
+}
+
+func openAIResponsesOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+	cfg := &openairesponses.Config{}
+	forceOpenAIResponsesConfig(cfg)
+	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
+		return nil, err
+	}
+	forceOpenAIResponsesConfig(cfg)
+	return openairesponses.NewOutboundTransformerWithConfig(cfg)
+}
+
+func geminiOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+	cfg := geminitrans.Config{}
+	forceGeminiConfig(&cfg)
+	if err := decodeOutboundConfig(profile.Config, &cfg); err != nil {
+		return nil, err
+	}
+	forceGeminiConfig(&cfg)
+	return geminitrans.NewOutboundTransformerWithConfig(cfg)
 }
 
 func openRouterOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 	cfg := &openroutertrans.Config{}
 	forceOpenRouterConfig(cfg)
-	if err := decodeOutboundConfig(profile.ConfigRaw, cfg); err != nil {
+	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
 		return nil, err
 	}
 	forceOpenRouterConfig(cfg)
@@ -198,7 +225,7 @@ func openRouterOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 func deepSeekOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 	cfg := &deepseektrans.Config{}
 	forceDeepSeekConfig(cfg)
-	if err := decodeOutboundConfig(profile.ConfigRaw, cfg); err != nil {
+	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
 		return nil, err
 	}
 	forceDeepSeekConfig(cfg)
@@ -208,18 +235,22 @@ func deepSeekOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 func fireworksOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 	cfg := &fireworkstrans.Config{}
 	forceFireworksConfig(cfg)
-	if err := decodeOutboundConfig(profile.ConfigRaw, cfg); err != nil {
+	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
 		return nil, err
 	}
 	forceFireworksConfig(cfg)
 	return fireworkstrans.NewOutboundTransformerWithConfig(cfg)
 }
 
-func decodeOutboundConfig(raw string, dst any) error {
-	if raw == "" {
+func decodeOutboundConfig(config map[string]any, dst any) error {
+	if len(config) == 0 {
 		return nil
 	}
-	dec := json.NewDecoder(bytes.NewReader([]byte(raw)))
+	raw, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("llmbridge: encode outbound config: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
 		return fmt.Errorf("llmbridge: decode outbound config: %w", err)
@@ -232,6 +263,26 @@ func decodeOutboundConfig(raw string, dst any) error {
 		return fmt.Errorf("llmbridge: decode outbound config: %w", err)
 	}
 	return nil
+}
+
+func forceAnthropicConfig(cfg *anthropictrans.Config) {
+	cfg.BaseURL = placeholderURL
+	cfg.APIKeyProvider = auth.NewStaticKeyProvider(placeholderKey)
+}
+
+func forceOpenAIConfig(cfg *openaitrans.Config) {
+	cfg.BaseURL = placeholderURL
+	cfg.APIKeyProvider = auth.NewStaticKeyProvider(placeholderKey)
+}
+
+func forceOpenAIResponsesConfig(cfg *openairesponses.Config) {
+	cfg.BaseURL = placeholderURL
+	cfg.APIKeyProvider = auth.NewStaticKeyProvider(placeholderKey)
+}
+
+func forceGeminiConfig(cfg *geminitrans.Config) {
+	cfg.BaseURL = placeholderURL
+	cfg.APIKeyProvider = auth.NewStaticKeyProvider(placeholderKey)
 }
 
 func forceOpenRouterConfig(cfg *openroutertrans.Config) {
