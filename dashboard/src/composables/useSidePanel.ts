@@ -1,11 +1,11 @@
-import { shallowRef, computed, type Component } from 'vue'
+import { shallowRef, computed, type Component, type ComponentPublicInstance } from 'vue'
 
 export type SidePanelKey = string | number | symbol | Component
 
 interface SidePanelState {
   key: SidePanelKey
   component: Component
-  props: Record<string, any>
+  props: ComponentPublicInstance['$props']
   width: string
 }
 
@@ -18,7 +18,7 @@ interface OpenOptions {
   width?: string
 }
 
-function open(comp: Component, props: Record<string, any> = {}, options: OpenOptions = {}) {
+function open(comp: Component, props: ComponentPublicInstance['$props'] = {}, options: OpenOptions = {}) {
   state.value = {
     key: options.key ?? comp,
     component: comp,
@@ -31,7 +31,7 @@ function close() {
   state.value = null
 }
 
-function toggle(comp: Component, props: Record<string, any> = {}, options: OpenOptions = {}) {
+function toggle(comp: Component, props: ComponentPublicInstance['$props'] = {}, options: OpenOptions = {}) {
   const key = options.key ?? comp
   if (state.value?.key === key) {
     close()

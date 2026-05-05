@@ -76,10 +76,6 @@ const groups = computed<Group[]>(() => {
   return result
 })
 
-const visibleCount = computed(() =>
-  groups.value.reduce((acc, g) => acc + g.upstreams.length, 0),
-)
-
 const mergedUpstreams = computed(() =>
   [...props.upstreams].sort((a, b) => {
     const score = (b.priority + b.providerPriority) - (a.priority + a.providerPriority)

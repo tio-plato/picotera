@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import PreferencesMenu from '@/components/PreferencesMenu.vue'
 import Icon from '@/ui/icons/Icon.vue'
 import type { IconName } from '@/ui/icons/paths'
 
 const route = useRoute()
+const activeRouteName = computed(() => {
+  if (route.name === 'requestDetail') return 'requests'
+  return route.name
+})
 
 const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'providers', label: '渠道', icon: 'db' },
@@ -44,7 +49,7 @@ const nav: { name: string; label: string; icon: IconName }[] = [
         :to="{ name: item.name }"
         class="group relative flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm font-normal text-sidebar-text no-underline transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-active"
         :class="
-          route.name === item.name
+          activeRouteName === item.name
             ? 'bg-sidebar-active-bg text-sidebar-active-text font-medium'
             : ''
         "
@@ -52,7 +57,7 @@ const nav: { name: string; label: string; icon: IconName }[] = [
         <span
           class="inline-flex w-[1.125rem] h-[1.125rem] items-center justify-center transition-colors"
           :class="
-            route.name === item.name
+            activeRouteName === item.name
               ? 'text-accent'
               : 'text-ink-faint group-hover:text-ink-muted'
           "

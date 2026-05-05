@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import {
   IconActivity,
   IconAlignJustified,
+  IconArrowLeft,
   IconBraces,
   IconCheck,
   IconChevronDown,
@@ -33,6 +34,7 @@ import {
 
 export type IconName =
   | 'plus'
+  | 'arrow-left'
   | 'edit'
   | 'trash'
   | 'close'
@@ -65,6 +67,7 @@ export type IconName =
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
+  'arrow-left': IconArrowLeft,
   edit: IconEdit,
   trash: IconTrash,
   close: IconX,

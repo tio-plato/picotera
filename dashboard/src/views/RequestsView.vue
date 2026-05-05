@@ -123,16 +123,39 @@ function rowKey(r: RequestView) {
 }
 
 function openDetails(r: RequestView) {
-  panel.toggle(
+  const key = `request:${r.id}`
+  if (panel.isActive(key)) {
+    panel.close()
+    router.replace({ name: 'requests', query: route.query })
+    return
+  }
+  panel.open(
     RequestDetailsPanel,
     { requestId: r.id, providers: providers.value },
-    { key: `request:${r.id}`, width: '520px' },
+    { key, width: '520px' },
   )
+  router.replace({
+    name: 'requestDetail',
+    params: { requestId: r.id },
+    query: route.query,
+  })
 }
 
 function rowSelected(r: RequestView) {
   return panel.isActive(`request:${r.id}`)
 }
+
+watch(
+  () => panel.activeKey.value,
+  (key) => {
+    if (route.name !== 'requestDetail') return
+    const requestId = route.params.requestId
+    if (typeof requestId !== 'string') return
+    if (key === `request:${requestId}`) return
+    if (typeof key === 'string' && key.startsWith('request:')) return
+    router.replace({ name: 'requests', query: route.query })
+  },
+)
 
 const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
   const base: AutoDataTableColumn<RequestView>[] = [
@@ -233,7 +256,11 @@ function syncParentSpanFilterToQuery() {
   } else {
     delete query.parentSpanId
   }
-  router.replace({ name: 'requests', query })
+  router.replace({
+    name: route.name ?? 'requests',
+    params: route.params,
+    query,
+  })
 }
 
 function formatTimeParts(iso: string | undefined): { time: string; date: string } {
