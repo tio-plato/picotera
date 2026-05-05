@@ -341,6 +341,26 @@ components:
         - disabled
         - annotations
       type: object
+    PaginatedBodyRequestTraceView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/PaginatedBodyRequestTraceView.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/RequestTraceView"
+          nullable: true
+          type: array
+        pagination:
+          $ref: "#/components/schemas/PaginationInfo"
+      required:
+        - items
+        - pagination
+      type: object
     PaginatedBodyRequestView:
       additionalProperties: false
       properties:
@@ -536,6 +556,36 @@ components:
         - annotations
         - disabled
       type: object
+    RequestTraceView:
+      additionalProperties: false
+      properties:
+        lastRequestAt:
+          type: string
+        modelCosts:
+          items:
+            $ref: "#/components/schemas/TraceCostView"
+          nullable: true
+          type: array
+        parentSpanId:
+          type: string
+        requestCount:
+          format: int64
+          type: integer
+        totalTokens:
+          format: int64
+          type: integer
+        upstreamCosts:
+          items:
+            $ref: "#/components/schemas/TraceCostView"
+          nullable: true
+          type: array
+      required:
+        - parentSpanId
+        - requestCount
+        - totalTokens
+        - modelCosts
+        - upstreamCosts
+      type: object
     RequestView:
       additionalProperties: false
       properties:
@@ -661,6 +711,18 @@ components:
         - enabled
         - createdAt
         - updatedAt
+      type: object
+    TraceCostView:
+      additionalProperties: false
+      properties:
+        amount:
+          format: double
+          type: number
+        currency:
+          type: string
+      required:
+        - currency
+        - amount
       type: object
     UpsertProviderRequestBody:
       additionalProperties: false
@@ -1249,6 +1311,40 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Get a provider by ID
+  /api/picotera/request-traces:
+    get:
+      operationId: listRequestTraces
+      parameters:
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 20
+            example: 20
+            format: int32
+            maximum: 100
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: cursor
+          schema:
+            example: eyJpZCI6MX0=
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedBodyRequestTraceView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List request traces
   /api/picotera/requests:
     get:
       operationId: listRequests
@@ -1295,6 +1391,11 @@ paths:
         - explode: false
           in: query
           name: upstreamModel
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: parentSpanId
           schema:
             type: string
       responses:

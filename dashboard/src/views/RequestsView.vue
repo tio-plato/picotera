@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useApi } from '@/composables/useApi'
 import { useProvidersMap } from '@/composables/useProvidersMap'
 import type {
@@ -26,6 +27,8 @@ import {
 
 const api = useApi()
 const panel = useSidePanel()
+const route = useRoute()
+const router = useRouter()
 const { providers, providerLabel, fetchProviders } = useProvidersMap()
 
 const requests = ref<RequestView[]>([])
@@ -44,6 +47,7 @@ const filters = reactive({
   endpointPath: '',
   model: '',
   upstreamModel: '',
+  parentSpanId: typeof route.query.parentSpanId === 'string' ? route.query.parentSpanId : '',
 })
 
 const typeOptions: { value: RequestKind; label: string }[] = [
@@ -74,6 +78,7 @@ async function fetchRequests(cursor?: string) {
   if (filters.endpointPath) query.endpointPath = filters.endpointPath
   if (filters.model) query.model = filters.model
   if (filters.upstreamModel) query.upstreamModel = filters.upstreamModel
+  if (filters.parentSpanId) query.parentSpanId = filters.parentSpanId
 
   const { data, error } = await api.GET('/api/picotera/requests', {
     params: { query: query as never },
@@ -96,9 +101,20 @@ onMounted(async () => {
 })
 
 watch(
-  () => [filters.type, filters.providerId, filters.endpointPath, filters.model, filters.upstreamModel],
+  () => [filters.type, filters.providerId, filters.endpointPath, filters.model, filters.upstreamModel, filters.parentSpanId],
   () => {
+    syncParentSpanFilterToQuery()
     fetchRequests()
+  },
+)
+
+watch(
+  () => route.query.parentSpanId,
+  (value) => {
+    const next = typeof value === 'string' ? value : ''
+    if (filters.parentSpanId !== next) {
+      filters.parentSpanId = next
+    }
   },
 )
 
@@ -188,6 +204,7 @@ function activeFilterCount(): number {
   if (filters.endpointPath) n++
   if (filters.model) n++
   if (filters.upstreamModel) n++
+  if (filters.parentSpanId) n++
   return n
 }
 
@@ -196,6 +213,26 @@ function clearAllFilters() {
   filters.endpointPath = ''
   filters.model = ''
   filters.upstreamModel = ''
+  filters.parentSpanId = ''
+}
+
+function clearParentSpanFilter() {
+  filters.parentSpanId = ''
+}
+
+function syncParentSpanFilterToQuery() {
+  const current = typeof route.query.parentSpanId === 'string' ? route.query.parentSpanId : ''
+  if (filters.parentSpanId === current) return
+  const query: Record<string, string | number | undefined> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (typeof value === 'string') query[key] = value
+  }
+  if (filters.parentSpanId) {
+    query.parentSpanId = filters.parentSpanId
+  } else {
+    delete query.parentSpanId
+  }
+  router.replace({ name: 'requests', query })
 }
 
 function formatTimeParts(iso: string | undefined): { time: string; date: string } {
@@ -263,6 +300,26 @@ function resetCursorAndReload() {
           <Icon name="refresh" :size="13" />
         </IconButton>
       </div>
+    </div>
+
+    <div
+      v-if="filters.parentSpanId"
+      class="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-0 px-3 py-2"
+    >
+      <div class="min-w-0 flex items-center gap-2">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">追踪</span>
+        <span class="min-w-0 truncate font-mono text-xs text-ink" :title="filters.parentSpanId">
+          {{ filters.parentSpanId }}
+        </span>
+      </div>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-transparent border-0 rounded-xs text-xs text-ink-faint cursor-pointer transition-colors hover:text-ink hover:bg-surface-100"
+        @click="clearParentSpanFilter"
+      >
+        <Icon name="close" :size="11" />
+        <span>清除</span>
+      </button>
     </div>
 
     <DataCard>

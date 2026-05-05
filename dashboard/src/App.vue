@@ -14,6 +14,7 @@ const pageMeta = computed(() => {
     models: { title: '模型', hint: '对外暴露的模型标识' },
     endpoints: { title: '端点', hint: 'HTTP 入口与请求形状' },
     requests: { title: '请求', hint: '推理请求历史与状态' },
+    traces: { title: '追踪', hint: '按 parent span 聚合请求历史' },
     apiKeys: { title: 'API Key', hint: '客户端调用网关的访问凭证' },
     scripts: { title: '脚本', hint: '自定义钩子脚本与执行逻辑' },
     rates: { title: '汇率', hint: '管理币种与换算' },

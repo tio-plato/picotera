@@ -301,6 +301,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/request-traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List request traces */
+        get: operations["listRequestTraces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/requests": {
         parameters: {
             query?: never;
@@ -593,6 +610,16 @@ export interface components {
             series: string;
             title: string;
         };
+        PaginatedBodyRequestTraceView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PaginatedBodyRequestTraceView.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["RequestTraceView"][] | null;
+            pagination: components["schemas"]["PaginationInfo"];
+        };
         PaginatedBodyRequestView: {
             /**
              * Format: uri
@@ -683,6 +710,16 @@ export interface components {
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
+        RequestTraceView: {
+            lastRequestAt?: string;
+            modelCosts: components["schemas"]["TraceCostView"][] | null;
+            parentSpanId: string;
+            /** Format: int64 */
+            requestCount: number;
+            /** Format: int64 */
+            totalTokens: number;
+            upstreamCosts: components["schemas"]["TraceCostView"][] | null;
+        };
         RequestView: {
             /**
              * Format: uri
@@ -753,6 +790,11 @@ export interface components {
             name: string;
             source: string;
             updatedAt: string;
+        };
+        TraceCostView: {
+            /** Format: double */
+            amount: number;
+            currency: string;
         };
         UpsertProviderRequestBody: {
             /**
@@ -1567,6 +1609,38 @@ export interface operations {
             };
         };
     };
+    listRequestTraces: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedBodyRequestTraceView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     listRequests: {
         parameters: {
             query?: {
@@ -1577,6 +1651,7 @@ export interface operations {
                 endpointPath?: string;
                 model?: string;
                 upstreamModel?: string;
+                parentSpanId?: string;
             };
             header?: never;
             path?: never;

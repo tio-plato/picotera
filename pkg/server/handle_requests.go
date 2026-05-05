@@ -80,6 +80,10 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 	if input.UpstreamModel != "" {
 		filterUpstreamModel = pgtype.Text{String: input.UpstreamModel, Valid: true}
 	}
+	var filterParentSpanID pgtype.Text
+	if input.ParentSpanID != "" {
+		filterParentSpanID = pgtype.Text{String: input.ParentSpanID, Valid: true}
+	}
 
 	rows, err := s.queries.ListRequests(ctx, db.ListRequestsParams{
 		Type:            filterType,
@@ -87,6 +91,7 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 		EndpointPath:    filterEndpointPath,
 		Model:           filterModel,
 		UpstreamModel:   filterUpstreamModel,
+		ParentSpanID:    filterParentSpanID,
 		CursorCreatedAt: cursorCreatedAt,
 		CursorID:        cursorID,
 		Limit:           pgtype.Int4{Int32: fetchLimit, Valid: true},
@@ -122,6 +127,77 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 
 	return &contract.ListRequestsResponse{
 		Body: contract.PaginatedBody[contract.RequestView]{
+			Items:      items,
+			Pagination: pagination,
+		},
+	}, nil
+}
+
+func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.ListRequestTracesRequest) (*contract.ListRequestTracesResponse, error) {
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	fetchLimit := limit + 1
+
+	var cursorLastRequestAt pgtype.Timestamp
+	var cursorParentSpanID pgtype.Text
+	if input.Cursor != "" {
+		var lastRequestAt, parentSpanID string
+		if err := contract.DecodeCursor(input.Cursor, "lastRequestAt", &lastRequestAt, "parentSpanId", &parentSpanID); err != nil {
+			return nil, huma.Error400BadRequest("invalid cursor", err)
+		}
+		t, err := time.Parse(time.RFC3339Nano, lastRequestAt)
+		if err != nil {
+			return nil, huma.Error400BadRequest("invalid cursor", err)
+		}
+		cursorLastRequestAt = pgtype.Timestamp{Time: t.UTC(), Valid: true}
+		cursorParentSpanID = pgtype.Text{String: parentSpanID, Valid: true}
+	}
+
+	rows, err := s.queries.ListRequestTraces(ctx, db.ListRequestTracesParams{
+		CursorLastRequestAt: cursorLastRequestAt,
+		CursorParentSpanID:  cursorParentSpanID,
+		Limit:               pgtype.Int4{Int32: fetchLimit, Valid: true},
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to list request traces", err)
+	}
+
+	hasMore := int32(len(rows)) > limit
+	if hasMore {
+		rows = rows[:limit]
+	}
+
+	items := make([]contract.RequestTraceView, len(rows))
+	for i, row := range rows {
+		view, err := contract.ToRequestTraceView(&row)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to parse request trace costs", err)
+		}
+		items[i] = *view
+	}
+
+	pagination := contract.PaginationInfo{HasMore: hasMore}
+	if hasMore && len(rows) > 0 {
+		last := rows[len(rows)-1]
+		lastRequestAt := ""
+		if last.LastRequestAt.Valid {
+			lastRequestAt = last.LastRequestAt.Time.UTC().Format(time.RFC3339Nano)
+		}
+		parentSpanID := ""
+		if last.ParentSpanID.Valid {
+			parentSpanID = last.ParentSpanID.String
+		}
+		cursor, err := contract.EncodeCursor("lastRequestAt", lastRequestAt, "parentSpanId", parentSpanID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to encode cursor", err)
+		}
+		pagination.NextCursor = cursor
+	}
+
+	return &contract.ListRequestTracesResponse{
+		Body: contract.PaginatedBody[contract.RequestTraceView]{
 			Items:      items,
 			Pagination: pagination,
 		},

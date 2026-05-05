@@ -10,11 +10,73 @@ WHERE
   AND (sqlc.narg('endpoint_path')::text IS NULL OR endpoint_path = sqlc.narg('endpoint_path'))
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model'))
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model'))
+  AND (sqlc.narg('parent_span_id')::text IS NULL OR parent_span_id = sqlc.narg('parent_span_id'))
   AND (
     sqlc.narg('cursor_created_at')::timestamp IS NULL
     OR (created_at, id) < (sqlc.narg('cursor_created_at')::timestamp, sqlc.narg('cursor_id')::text)
   )
 ORDER BY created_at DESC, id DESC
+LIMIT sqlc.narg('limit')::int;
+
+-- name: ListRequestTraces :many
+WITH trace_base AS (
+  SELECT
+    parent_span_id,
+    COUNT(*)::bigint AS request_count,
+    SUM(
+      COALESCE(input_tokens, 0)
+      + COALESCE(cache_read_tokens, 0)
+      + COALESCE(output_tokens, 0)
+      + COALESCE(cache_write_tokens, 0)
+    )::bigint AS total_tokens,
+    MAX(created_at)::timestamp AS last_request_at
+  FROM request
+  WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
+  GROUP BY parent_span_id
+)
+SELECT
+  trace_base.parent_span_id,
+  trace_base.request_count,
+  trace_base.total_tokens,
+  COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
+  COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
+  trace_base.last_request_at
+FROM trace_base
+LEFT JOIN LATERAL (
+  SELECT jsonb_agg(
+    jsonb_build_object('currency', grouped.currency, 'amount', grouped.amount)
+    ORDER BY grouped.currency
+  ) AS costs
+  FROM (
+    SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
+    FROM request
+    WHERE parent_span_id = trace_base.parent_span_id
+      AND model_cost IS NOT NULL
+      AND model_cost_currency IS NOT NULL
+    GROUP BY model_cost_currency
+  ) grouped
+) model_costs ON true
+LEFT JOIN LATERAL (
+  SELECT jsonb_agg(
+    jsonb_build_object('currency', grouped.currency, 'amount', grouped.amount)
+    ORDER BY grouped.currency
+  ) AS costs
+  FROM (
+    SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
+    FROM request
+    WHERE parent_span_id = trace_base.parent_span_id
+      AND upstream_cost IS NOT NULL
+      AND upstream_cost_currency IS NOT NULL
+    GROUP BY upstream_cost_currency
+  ) grouped
+) upstream_costs ON true
+WHERE
+  sqlc.narg('cursor_last_request_at')::timestamp IS NULL
+  OR (trace_base.last_request_at, trace_base.parent_span_id) < (
+    sqlc.narg('cursor_last_request_at')::timestamp,
+    sqlc.narg('cursor_parent_span_id')::text
+  )
+ORDER BY trace_base.last_request_at DESC, trace_base.parent_span_id DESC
 LIMIT sqlc.narg('limit')::int;
 
 -- name: GetRequest :one

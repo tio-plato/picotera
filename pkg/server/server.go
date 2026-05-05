@@ -58,7 +58,6 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	logx.WithContext(ctx).Info("connected to database")
 
-
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			ResponseHeaderTimeout: config.GatewayReadTimeout,
@@ -125,6 +124,7 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationDeleteProviderEndpoint, s.handleDeleteProviderEndpoint)
 	huma.Register(mgmt, contract.OperationFetchModels, s.handleFetchModels)
 	huma.Register(mgmt, contract.OperationListRequests, s.handleListRequests)
+	huma.Register(mgmt, contract.OperationListRequestTraces, s.handleListRequestTraces)
 	huma.Register(mgmt, contract.OperationGetRequest, s.handleGetRequest)
 	huma.Register(mgmt, contract.OperationListRequestSpans, s.handleListRequestSpans)
 	huma.Register(mgmt, contract.OperationListExchangeRates, s.handleListExchangeRates)

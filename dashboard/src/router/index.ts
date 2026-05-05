@@ -8,6 +8,7 @@ const router = createRouter({
     { path: '/models', name: 'models', component: () => import('@/views/ModelsView.vue') },
     { path: '/endpoints', name: 'endpoints', component: () => import('@/views/EndpointsView.vue') },
     { path: '/requests', name: 'requests', component: () => import('@/views/RequestsView.vue') },
+    { path: '/traces', name: 'traces', component: () => import('@/views/TracesView.vue') },
     { path: '/api-keys', name: 'apiKeys', component: () => import('@/views/ApiKeysView.vue') },
     { path: '/scripts', name: 'scripts', component: () => import('@/views/ScriptsView.vue') },
     { path: '/rates', name: 'rates', component: () => import('@/views/RatesView.vue') },

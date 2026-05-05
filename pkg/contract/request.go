@@ -1,6 +1,8 @@
 package contract
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"picotera/pkg/db"
 	"time"
@@ -35,6 +37,20 @@ type RequestView struct {
 	ModelCostCurrency    string   `json:"modelCostCurrency,omitempty"`
 	UpstreamCost         *float64 `json:"upstreamCost,omitempty"`
 	UpstreamCostCurrency string   `json:"upstreamCostCurrency,omitempty"`
+}
+
+type TraceCostView struct {
+	Currency string  `json:"currency"`
+	Amount   float64 `json:"amount"`
+}
+
+type RequestTraceView struct {
+	ParentSpanID  string          `json:"parentSpanId"`
+	RequestCount  int64           `json:"requestCount"`
+	TotalTokens   int64           `json:"totalTokens"`
+	ModelCosts    []TraceCostView `json:"modelCosts"`
+	UpstreamCosts []TraceCostView `json:"upstreamCosts"`
+	LastRequestAt string          `json:"lastRequestAt,omitempty"`
 }
 
 type requestLike struct {
@@ -229,6 +245,41 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 	})
 }
 
+func parseTraceCosts(raw []byte) ([]TraceCostView, error) {
+	var costs []TraceCostView
+	if err := json.Unmarshal(raw, &costs); err != nil {
+		return nil, fmt.Errorf("parse trace costs: %w", err)
+	}
+	if costs == nil {
+		costs = []TraceCostView{}
+	}
+	return costs, nil
+}
+
+func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
+	modelCosts, err := parseTraceCosts(r.ModelCosts)
+	if err != nil {
+		return nil, err
+	}
+	upstreamCosts, err := parseTraceCosts(r.UpstreamCosts)
+	if err != nil {
+		return nil, err
+	}
+	view := &RequestTraceView{
+		RequestCount:  r.RequestCount,
+		TotalTokens:   r.TotalTokens,
+		ModelCosts:    modelCosts,
+		UpstreamCosts: upstreamCosts,
+	}
+	if r.ParentSpanID.Valid {
+		view.ParentSpanID = r.ParentSpanID.String
+	}
+	if r.LastRequestAt.Valid {
+		view.LastRequestAt = r.LastRequestAt.Time.UTC().Format(time.RFC3339Nano)
+	}
+	return view, nil
+}
+
 type ListRequestsRequest struct {
 	PaginationRequest
 	Type          int32  `query:"type,omitempty" default:"-1"`
@@ -236,9 +287,16 @@ type ListRequestsRequest struct {
 	EndpointPath  string `query:"endpointPath,omitempty"`
 	Model         string `query:"model,omitempty"`
 	UpstreamModel string `query:"upstreamModel,omitempty"`
+	ParentSpanID  string `query:"parentSpanId,omitempty"`
 }
 
 type ListRequestsResponse = PaginatedResponse[RequestView]
+
+type ListRequestTracesRequest struct {
+	PaginationRequest
+}
+
+type ListRequestTracesResponse = PaginatedResponse[RequestTraceView]
 
 type GetRequestRequest struct {
 	ID string `path:"id"`
@@ -261,6 +319,13 @@ var OperationListRequests = huma.Operation{
 	Method:      http.MethodGet,
 	Path:        "/requests",
 	Summary:     "List requests",
+}
+
+var OperationListRequestTraces = huma.Operation{
+	OperationID: "listRequestTraces",
+	Method:      http.MethodGet,
+	Path:        "/request-traces",
+	Summary:     "List request traces",
 }
 
 var OperationGetRequest = huma.Operation{

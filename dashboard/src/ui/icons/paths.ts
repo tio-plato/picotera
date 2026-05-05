@@ -24,6 +24,7 @@ import {
   IconPuzzle,
   IconPuzzleOff,
   IconRefresh,
+  IconRoute,
   IconSearch,
   IconSettings,
   IconTrash,
@@ -47,6 +48,7 @@ export type IconName =
   | 'braces'
   | 'activity'
   | 'refresh'
+  | 'route'
   | 'chevron-down'
   | 'search'
   | 'cloud-download'
@@ -78,6 +80,7 @@ export const iconComponents: Record<IconName, Component> = {
   braces: IconBraces,
   activity: IconActivity,
   refresh: IconRefresh,
+  route: IconRoute,
   'chevron-down': IconChevronDown,
   search: IconSearch,
   'cloud-download': IconCloudDownload,

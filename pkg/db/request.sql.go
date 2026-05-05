@@ -46,6 +46,110 @@ func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
 	return i, err
 }
 
+const listRequestTraces = `-- name: ListRequestTraces :many
+WITH trace_base AS (
+  SELECT
+    parent_span_id,
+    COUNT(*)::bigint AS request_count,
+    SUM(
+      COALESCE(input_tokens, 0)
+      + COALESCE(cache_read_tokens, 0)
+      + COALESCE(output_tokens, 0)
+      + COALESCE(cache_write_tokens, 0)
+    )::bigint AS total_tokens,
+    MAX(created_at)::timestamp AS last_request_at
+  FROM request
+  WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
+  GROUP BY parent_span_id
+)
+SELECT
+  trace_base.parent_span_id,
+  trace_base.request_count,
+  trace_base.total_tokens,
+  COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
+  COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
+  trace_base.last_request_at
+FROM trace_base
+LEFT JOIN LATERAL (
+  SELECT jsonb_agg(
+    jsonb_build_object('currency', grouped.currency, 'amount', grouped.amount)
+    ORDER BY grouped.currency
+  ) AS costs
+  FROM (
+    SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
+    FROM request
+    WHERE parent_span_id = trace_base.parent_span_id
+      AND model_cost IS NOT NULL
+      AND model_cost_currency IS NOT NULL
+    GROUP BY model_cost_currency
+  ) grouped
+) model_costs ON true
+LEFT JOIN LATERAL (
+  SELECT jsonb_agg(
+    jsonb_build_object('currency', grouped.currency, 'amount', grouped.amount)
+    ORDER BY grouped.currency
+  ) AS costs
+  FROM (
+    SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
+    FROM request
+    WHERE parent_span_id = trace_base.parent_span_id
+      AND upstream_cost IS NOT NULL
+      AND upstream_cost_currency IS NOT NULL
+    GROUP BY upstream_cost_currency
+  ) grouped
+) upstream_costs ON true
+WHERE
+  $1::timestamp IS NULL
+  OR (trace_base.last_request_at, trace_base.parent_span_id) < (
+    $1::timestamp,
+    $2::text
+  )
+ORDER BY trace_base.last_request_at DESC, trace_base.parent_span_id DESC
+LIMIT $3::int
+`
+
+type ListRequestTracesParams struct {
+	CursorLastRequestAt pgtype.Timestamp `json:"cursorLastRequestAt"`
+	CursorParentSpanID  pgtype.Text      `json:"cursorParentSpanId"`
+	Limit               pgtype.Int4      `json:"limit"`
+}
+
+type ListRequestTracesRow struct {
+	ParentSpanID  pgtype.Text      `json:"parentSpanId"`
+	RequestCount  int64            `json:"requestCount"`
+	TotalTokens   int64            `json:"totalTokens"`
+	ModelCosts    []byte           `json:"modelCosts"`
+	UpstreamCosts []byte           `json:"upstreamCosts"`
+	LastRequestAt pgtype.Timestamp `json:"lastRequestAt"`
+}
+
+func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
+	rows, err := q.db.Query(ctx, listRequestTraces, arg.CursorLastRequestAt, arg.CursorParentSpanID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRequestTracesRow
+	for rows.Next() {
+		var i ListRequestTracesRow
+		if err := rows.Scan(
+			&i.ParentSpanID,
+			&i.RequestCount,
+			&i.TotalTokens,
+			&i.ModelCosts,
+			&i.UpstreamCosts,
+			&i.LastRequestAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRequests = `-- name: ListRequests :many
 SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
        upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
@@ -58,12 +162,13 @@ WHERE
   AND ($3::text IS NULL OR endpoint_path = $3)
   AND ($4::text IS NULL OR model = $4)
   AND ($5::text IS NULL OR upstream_model = $5)
+  AND ($6::text IS NULL OR parent_span_id = $6)
   AND (
-    $6::timestamp IS NULL
-    OR (created_at, id) < ($6::timestamp, $7::text)
+    $7::timestamp IS NULL
+    OR (created_at, id) < ($7::timestamp, $8::text)
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $8::int
+LIMIT $9::int
 `
 
 type ListRequestsParams struct {
@@ -72,6 +177,7 @@ type ListRequestsParams struct {
 	EndpointPath    pgtype.Text      `json:"endpointPath"`
 	Model           pgtype.Text      `json:"model"`
 	UpstreamModel   pgtype.Text      `json:"upstreamModel"`
+	ParentSpanID    pgtype.Text      `json:"parentSpanId"`
 	CursorCreatedAt pgtype.Timestamp `json:"cursorCreatedAt"`
 	CursorID        pgtype.Text      `json:"cursorId"`
 	Limit           pgtype.Int4      `json:"limit"`
@@ -110,6 +216,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 		arg.EndpointPath,
 		arg.Model,
 		arg.UpstreamModel,
+		arg.ParentSpanID,
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.Limit,
