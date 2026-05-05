@@ -2,22 +2,17 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import RequestDetailsContent from '@/components/RequestDetailsContent.vue'
-import RequestsView from '@/views/RequestsView.vue'
 import { useProvidersMap } from '@/composables/useProvidersMap'
-import { useSidePanel } from '@/composables/useSidePanel'
 import { Button, DataCard, Icon, StateText } from '@/ui'
 
 const route = useRoute()
 const router = useRouter()
 const { providers, fetchProviders } = useProvidersMap()
-const panel = useSidePanel()
 
 const requestId = computed(() => {
   const value = route.params.requestId
   return typeof value === 'string' ? value : ''
 })
-const listPanelKey = computed(() => requestId.value ? `request:${requestId.value}` : '')
-const showListWithPanel = computed(() => panel.activeKey.value === listPanelKey.value)
 
 onMounted(() => {
   fetchProviders()
@@ -29,8 +24,7 @@ function backToRequests() {
 </script>
 
 <template>
-  <RequestsView v-if="showListWithPanel" />
-  <div v-else class="flex flex-col gap-3.5">
+  <div class="flex flex-col gap-3.5">
     <DataCard>
       <div class="flex items-start justify-between gap-3 px-4 py-3 border-b border-line">
         <div class="min-w-0 flex flex-col gap-1">

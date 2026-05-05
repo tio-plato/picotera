@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useApi } from '@/composables/useApi'
 import { useProvidersMap } from '@/composables/useProvidersMap'
 import type {
@@ -28,7 +28,6 @@ import {
 const api = useApi()
 const panel = useSidePanel()
 const route = useRoute()
-const router = useRouter()
 const { providers, providerLabel, fetchProviders } = useProvidersMap()
 
 const requests = ref<RequestView[]>([])
@@ -55,6 +54,7 @@ const typeOptions: { value: RequestKind; label: string }[] = [
   { value: 'upstream', label: '上游请求' },
   { value: 'all', label: '全部' },
 ]
+const appBase = import.meta.env.BASE_URL.replace(/\/$/, '')
 
 async function fetchReferenceData() {
   const [, endpointsRes, modelsRes] = await Promise.all([
@@ -122,11 +122,41 @@ function rowKey(r: RequestView) {
   return r.id
 }
 
+function currentSearchParams(): URLSearchParams {
+  return new URLSearchParams(window.location.search)
+}
+
+function currentAppPathname(): string {
+  const pathname = window.location.pathname
+  if (!appBase) return pathname
+  if (pathname === appBase) return '/'
+  if (pathname.startsWith(`${appBase}/`)) return pathname.slice(appBase.length)
+  return pathname
+}
+
+function replaceBrowserUrl(pathname: string, searchParams = currentSearchParams()) {
+  const query = searchParams.toString()
+  const basePath = appBase ? `${appBase}${pathname}` : pathname
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `${basePath}${query ? `?${query}` : ''}`,
+  )
+}
+
+function replaceRequestDetailUrl(requestId: string) {
+  replaceBrowserUrl(`/requests/${encodeURIComponent(requestId)}`)
+}
+
+function replaceRequestsUrl() {
+  replaceBrowserUrl('/requests')
+}
+
 function openDetails(r: RequestView) {
   const key = `request:${r.id}`
   if (panel.isActive(key)) {
     panel.close()
-    router.replace({ name: 'requests', query: route.query })
+    replaceRequestsUrl()
     return
   }
   panel.open(
@@ -134,11 +164,7 @@ function openDetails(r: RequestView) {
     { requestId: r.id, providers: providers.value },
     { key, width: '520px' },
   )
-  router.replace({
-    name: 'requestDetail',
-    params: { requestId: r.id },
-    query: route.query,
-  })
+  replaceRequestDetailUrl(r.id)
 }
 
 function rowSelected(r: RequestView) {
@@ -148,12 +174,9 @@ function rowSelected(r: RequestView) {
 watch(
   () => panel.activeKey.value,
   (key) => {
-    if (route.name !== 'requestDetail') return
-    const requestId = route.params.requestId
-    if (typeof requestId !== 'string') return
-    if (key === `request:${requestId}`) return
+    if (!currentAppPathname().startsWith('/requests/')) return
     if (typeof key === 'string' && key.startsWith('request:')) return
-    router.replace({ name: 'requests', query: route.query })
+    replaceRequestsUrl()
   },
 )
 
@@ -245,22 +268,15 @@ function clearParentSpanFilter() {
 }
 
 function syncParentSpanFilterToQuery() {
-  const current = typeof route.query.parentSpanId === 'string' ? route.query.parentSpanId : ''
+  const query = currentSearchParams()
+  const current = query.get('parentSpanId') ?? ''
   if (filters.parentSpanId === current) return
-  const query: Record<string, string | number | undefined> = {}
-  for (const [key, value] of Object.entries(route.query)) {
-    if (typeof value === 'string') query[key] = value
-  }
   if (filters.parentSpanId) {
-    query.parentSpanId = filters.parentSpanId
+    query.set('parentSpanId', filters.parentSpanId)
   } else {
-    delete query.parentSpanId
+    query.delete('parentSpanId')
   }
-  router.replace({
-    name: route.name ?? 'requests',
-    params: route.params,
-    query,
-  })
+  replaceBrowserUrl(currentAppPathname(), query)
 }
 
 function formatTimeParts(iso: string | undefined): { time: string; date: string } {
