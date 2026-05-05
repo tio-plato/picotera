@@ -122,6 +122,67 @@ func TestExtractUserMessagePreviewNoPreview(t *testing.T) {
 	}
 }
 
+func TestExtractUserMessagePreviewSkipsMarkupTextParts(t *testing.T) {
+	cases := []struct {
+		name         string
+		endpointType int32
+		body         string
+		want         string
+	}{
+		{
+			name:         "openai responses skips newer markup input_text",
+			endpointType: contract.EndpointType_OpenAIResponses,
+			body:         `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"baz"}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"foobar"},{"type":"input_text","text":"<p></p>"}]}]}`,
+			want:         "foobar",
+		},
+		{
+			name:         "openai chat skips newer markup text",
+			endpointType: contract.EndpointType_OpenAIChatCompletions,
+			body:         `{"messages":[{"role":"user","content":[{"type":"text","text":"foobar"},{"type":"text","text":"<p></p>"}]}]}`,
+			want:         "foobar",
+		},
+		{
+			name:         "anthropic skips newer markup text",
+			endpointType: contract.EndpointType_AnthropicMessages,
+			body:         `{"messages":[{"role":"user","content":[{"type":"text","text":"foobar"},{"type":"text","text":"<p></p>"}]}]}`,
+			want:         "foobar",
+		},
+		{
+			name:         "gemini skips newer markup text",
+			endpointType: contract.EndpointType_GeminiGenerateContent,
+			body:         `{"contents":[{"role":"user","parts":[{"text":"foobar"},{"text":"<p></p>"}]}]}`,
+			want:         "foobar",
+		},
+		{
+			name:         "leading whitespace before markup is not skipped",
+			endpointType: contract.EndpointType_OpenAIResponses,
+			body:         `{"input":[{"role":"user","content":[{"type":"input_text","text":"foobar"},{"type":"input_text","text":" <p></p>"}]}]}`,
+			want:         " <p></p>",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractUserMessagePreview([]byte(tc.body), tc.endpointType)
+			if !got.Valid {
+				t.Fatalf("expected preview %q, got invalid", tc.want)
+			}
+			if got.String != tc.want {
+				t.Fatalf("preview = %q, want %q", got.String, tc.want)
+			}
+		})
+	}
+}
+
+func TestExtractUserMessagePreviewNoPreviewWhenAllTextPartsAreMarkup(t *testing.T) {
+	got := extractUserMessagePreview(
+		[]byte(`{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"<p></p>"},{"type":"input_text","text":"<span></span>"}]}]}`),
+		contract.EndpointType_OpenAIResponses,
+	)
+	if got.Valid {
+		t.Fatalf("expected invalid preview, got %q", got.String)
+	}
+}
+
 func TestShortenUserMessagePreview(t *testing.T) {
 	input := "一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥"
 	want := "一二三四五六七八九十甲乙丙丁戊...辛壬癸子丑寅卯辰巳午未申酉戌亥"

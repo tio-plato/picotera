@@ -51,6 +51,10 @@ func shortenUserMessagePreview(text string) string {
 	return string(runes[:15]) + "..." + string(runes[len(runes)-15:])
 }
 
+func startsWithMarkup(text string) bool {
+	return len(text) > 0 && text[0] == '<'
+}
+
 func decodeJSONObject(body []byte) (map[string]any, bool) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
@@ -155,6 +159,9 @@ func extractTextContent(content any) (string, bool) {
 				continue
 			}
 			if text, ok := part["text"].(string); ok {
+				if startsWithMarkup(text) {
+					continue
+				}
 				return text, true
 			}
 		}
@@ -173,6 +180,9 @@ func extractInputTextContent(content any) (string, bool) {
 				continue
 			}
 			if text, ok := part["text"].(string); ok {
+				if startsWithMarkup(text) {
+					continue
+				}
 				return text, true
 			}
 		}
@@ -191,6 +201,9 @@ func extractGeminiParts(parts any) (string, bool) {
 			continue
 		}
 		if text, ok := part["text"].(string); ok {
+			if startsWithMarkup(text) {
+				continue
+			}
 			return text, true
 		}
 	}
