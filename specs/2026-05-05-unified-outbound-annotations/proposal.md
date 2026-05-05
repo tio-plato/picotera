@@ -1,0 +1,1 @@
+unified 请求的时候，尝试读取 model 、 provider 、 provider models 的 annotations，优先级是 model < provider < provider models 越往后越优先，读取里面的 `ah.outbound.type` 值，如果是 `openrouter`，则 outbound transform 的时候使用 openrouter 包；`deepseek`, `fireworks` 同理。另外，也读取 `ah.outbound.config` 值，如果有，尝试解析为 json，并和对应的 Config 合并。

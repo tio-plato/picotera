@@ -1,4 +1,0 @@
-- [x] jsx.Candidate 的 MPE 和 Providers 应该改为 struct 类型，不要用 any
-- [ ] unified 请求的时候，尝试读取 model 、 provider 、 provider models 的 annotations，优先级是 model < provider < provider models 越往后越优先，读取里面的 `ah.outbound.type` 值，如果是 `openrouter`，则 outbound transform 的时候使用 openrouter 包；`deepseek`, `fireworks` 同理。另外，也读取 `ah.outbound.config` 值，如果有，尝试解析为 json，并和对应的 Config 合并。
-- [ ] 前面提到的这个 annotations 合并，应该提取成一个工具函数，在调用各类 hook 的时候，把合并后的结果也传到 ctx 里，方便 js 去用。
-- [ ] 给 api key 也加上 annotations，合并优先级变为 model < provider < provider models < api key
