@@ -20,6 +20,13 @@ interface SSEEvent {
   data: string;
 }
 
+export interface ParsedSSEEvent {
+  index: number;
+  event: string | null;
+  data: string;
+  json: unknown | null;
+}
+
 // ---- SSE Line Parsing ----
 
 function parseSSEEvents(body: string): SSEEvent[] {
@@ -505,6 +512,23 @@ export function aggregateSSE(body: string): AggregatedResult {
   }
 
   return { format, json };
+}
+
+export function parseSSEEventsForDisplay(body: string): ParsedSSEEvent[] {
+  return parseSSEEvents(body).map((event, index) => {
+    let json: unknown | null = null;
+    try {
+      json = JSON.parse(event.data);
+    } catch {
+      json = null;
+    }
+    return {
+      index,
+      event: event.event ?? null,
+      data: event.data,
+      json,
+    };
+  });
 }
 
 export function extractContent(body: string, isSSE: boolean): ContentResult {

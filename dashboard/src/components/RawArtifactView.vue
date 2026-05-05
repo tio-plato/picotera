@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { StateText, DataTable, Th, Td, Tr, Field } from '@/ui'
+import { computed, ref, watch } from 'vue'
+import { StateText, DataTable, Th, Td, Tr, Field, SegmentedControl } from '@/ui'
+import { isJsonContentType, parseJsonBody, rawBodyText } from './artifactBody'
+import JsonArtifactViewer from './JsonArtifactViewer.vue'
 import ResponseArtifactView from './ResponseArtifactView.vue'
 
 interface ArtifactPayload {
@@ -17,6 +19,22 @@ const props = defineProps<{ url?: string; kind: 'request' | 'response' }>()
 const loading = ref(false)
 const error = ref('')
 const payload = ref<ArtifactPayload | null>(null)
+const requestBodyView = ref<'raw' | 'json'>('json')
+
+const requestJsonBody = computed(() => {
+  if (!payload.value || payload.value.bodyEncoding === 'base64' || !isJsonContentType(payload.value.headers)) {
+    return { ok: false, value: null, error: '' }
+  }
+  return parseJsonBody(payload.value.body, payload.value.bodyEncoding)
+})
+
+const requestBodyOptions = computed(() => {
+  if (!requestJsonBody.value.ok) return [{ value: 'raw', label: 'Raw' }]
+  return [
+    { value: 'raw', label: 'Raw' },
+    { value: 'json', label: 'JSON' },
+  ]
+})
 
 async function load() {
   payload.value = null
@@ -49,14 +67,18 @@ function headerEntries(headers: Record<string, string[]> | undefined) {
 }
 
 function bodyDisplay(body: string | undefined, encoding: string | undefined) {
-  if (!body) return ''
-  if (encoding === 'base64') return ''
-  try {
-    return JSON.stringify(JSON.parse(body), null, 2)
-  } catch {
-    return body
-  }
+  return rawBodyText(body, encoding)
 }
+
+watch(requestBodyOptions, opts => {
+  if (!opts.some(o => o.value === requestBodyView.value)) {
+    requestBodyView.value = opts[0]?.value as 'raw' | 'json'
+  }
+})
+
+watch(requestJsonBody, parsed => {
+  requestBodyView.value = parsed.ok ? 'json' : 'raw'
+})
 </script>
 
 <template>
@@ -101,15 +123,33 @@ function bodyDisplay(body: string | undefined, encoding: string | undefined) {
         </details>
 
         <section class="flex flex-col gap-2">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Body</span>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Body</span>
+            <SegmentedControl
+              v-if="payload.bodyEncoding !== 'base64' && requestBodyOptions.length > 1"
+              v-model="requestBodyView"
+              :options="requestBodyOptions"
+            />
+          </div>
           <div v-if="payload.bodyEncoding === 'base64'" class="flex items-center gap-3 text-xs text-ink-faint">
             <span>[binary, {{ payload.body?.length ?? 0 }} bytes]</span>
             <a :href="url" download class="text-accent-ink underline hover:no-underline">下载原始数据</a>
           </div>
-          <pre
-            v-else
-            class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
-          >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre>
+          <template v-else-if="requestBodyView === 'json' && requestJsonBody.ok">
+            <JsonArtifactViewer :value="requestJsonBody.value" />
+          </template>
+          <StateText
+            v-else-if="isJsonContentType(payload.headers) && !requestJsonBody.ok"
+            :dashed="false"
+            compact
+          >
+            {{ requestJsonBody.error }}
+          </StateText>
+          <template v-if="requestBodyView === 'raw'">
+            <pre
+              class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
+            >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre>
+          </template>
         </section>
       </div>
     </template>

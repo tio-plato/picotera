@@ -5,9 +5,12 @@ import {
   aggregateSSE,
   extractContent,
   isSSEContentType,
+  parseSSEEventsForDisplay,
   renderMarkdown,
   type SSEFormat,
 } from '@/composables/useSSEParser'
+import { isJsonContentType, parseJsonBody, rawBodyText } from './artifactBody'
+import JsonArtifactViewer from './JsonArtifactViewer.vue'
 
 interface ArtifactPayload {
   method?: string
@@ -20,11 +23,17 @@ interface ArtifactPayload {
 
 const props = defineProps<{ payload: ArtifactPayload; url?: string }>()
 
-type SubView = 'raw' | 'aggregated' | 'rendered'
+type SubView = 'raw' | 'json' | 'aggregated' | 'rendered' | 'events'
 const subView = ref<SubView>('raw')
 
 const isSSE = computed(() => isSSEContentType(props.payload.headers))
 const isBinary = computed(() => props.payload.bodyEncoding === 'base64')
+const jsonBody = computed(() => {
+  if (isBinary.value || !isJsonContentType(props.payload.headers)) {
+    return { ok: false, value: null, error: '' }
+  }
+  return parseJsonBody(props.payload.body, props.payload.bodyEncoding)
+})
 
 const subViewOptions = computed(() => {
   const opts: Array<{ value: string; label: string }> = [
@@ -32,6 +41,9 @@ const subViewOptions = computed(() => {
   ]
   if (isSSE.value && !isBinary.value) {
     opts.push({ value: 'aggregated', label: '聚合' })
+    opts.push({ value: 'events', label: 'Events' })
+  } else if (!isBinary.value && jsonBody.value.ok) {
+    opts.push({ value: 'json', label: 'JSON' })
   }
   if (!isBinary.value) {
     opts.push({ value: 'rendered', label: '渲染' })
@@ -42,6 +54,11 @@ const subViewOptions = computed(() => {
 const aggregated = computed(() => {
   if (!isSSE.value || !props.payload.body) return null
   return aggregateSSE(props.payload.body)
+})
+
+const sseEvents = computed(() => {
+  if (!isSSE.value || !props.payload.body) return []
+  return parseSSEEventsForDisplay(props.payload.body)
 })
 
 const content = computed(() => {
@@ -65,13 +82,7 @@ function headerEntries(headers: Record<string, string[]> | undefined) {
 }
 
 function bodyDisplay(body: string | undefined, encoding: string | undefined) {
-  if (!body) return ''
-  if (encoding === 'base64') return ''
-  try {
-    return JSON.stringify(JSON.parse(body), null, 2)
-  } catch {
-    return body
-  }
+  return rawBodyText(body, encoding)
 }
 
 function formatLabel(f: SSEFormat | null): string {
@@ -85,9 +96,14 @@ function formatLabel(f: SSEFormat | null): string {
 
 watch(subViewOptions, (opts) => {
   if (!opts.some(o => o.value === subView.value)) {
-    subView.value = 'raw'
+    subView.value = opts.some(o => o.value === 'json') ? 'json' : 'raw'
   }
+}, { immediate: true })
+
+watch(jsonBody, parsed => {
+  if (!isSSE.value && parsed.ok) subView.value = 'json'
 })
+
 </script>
 
 <template>
@@ -139,10 +155,25 @@ watch(subViewOptions, (opts) => {
       </div>
 
       <!-- Raw -->
-      <pre
-        v-else-if="subView === 'raw'"
-        class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
-      >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre>
+      <template v-else-if="subView === 'raw'">
+        <StateText
+          v-if="isJsonContentType(payload.headers) && !jsonBody.ok"
+          :dashed="false"
+          compact
+          class="mb-2"
+        >
+          {{ jsonBody.error }}
+        </StateText>
+        <pre
+          class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
+        >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre>
+      </template>
+
+      <!-- JSON -->
+      <template v-else-if="subView === 'json'">
+        <JsonArtifactViewer v-if="jsonBody.ok" :value="jsonBody.value" />
+        <StateText v-else :dashed="false" compact>{{ jsonBody.error }}</StateText>
+      </template>
 
       <!-- Aggregated -->
       <template v-else-if="subView === 'aggregated'">
@@ -150,9 +181,42 @@ watch(subViewOptions, (opts) => {
           <span v-if="formatLabel(aggregated.format)" class="text-2xs text-ink-muted">
             检测格式: {{ formatLabel(aggregated.format) }}
           </span>
-          <pre class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]">{{ JSON.stringify(aggregated.json, null, 2) }}</pre>
+          <JsonArtifactViewer :value="aggregated.json" />
         </div>
         <StateText v-else :dashed="false" compact>无法聚合 SSE 数据</StateText>
+      </template>
+
+      <!-- Events -->
+      <template v-else-if="subView === 'events'">
+        <StateText v-if="!sseEvents.length" :dashed="false" compact>没有可解析 event</StateText>
+        <div v-else class="flex max-h-[720px] flex-col gap-2 overflow-auto pr-1">
+          <article
+            v-for="event in sseEvents"
+            :key="event.index"
+            class="shrink-0 overflow-hidden rounded-md border border-line-soft bg-surface-0"
+          >
+            <header class="flex flex-wrap items-center gap-2 border-b border-line-soft bg-surface-50 px-3 py-2">
+              <span class="font-mono text-xs tabular text-ink">#{{ event.index + 1 }}</span>
+              <span class="font-mono text-2xs text-ink-muted">{{ event.event ?? 'message' }}</span>
+              <span
+                class="ml-auto rounded-[5px] border border-line-soft bg-surface-0 px-1.5 py-0.5 font-mono text-2xs"
+                :class="event.json !== null ? 'text-ok-ink' : 'text-ink-faint'"
+              >
+                {{ event.json !== null ? 'JSON' : 'Text' }}
+              </span>
+            </header>
+            <div class="p-3">
+              <JsonArtifactViewer
+                v-if="event.json !== null"
+                :value="event.json"
+              />
+              <pre
+                v-else
+                class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[360px]"
+              >{{ event.data }}</pre>
+            </div>
+          </article>
+        </div>
       </template>
 
       <!-- Rendered -->
