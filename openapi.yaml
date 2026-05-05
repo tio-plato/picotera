@@ -591,6 +591,8 @@ components:
             $ref: "#/components/schemas/TraceCostView"
           nullable: true
           type: array
+        userMessagePreview:
+          type: string
       required:
         - parentSpanId
         - requestCount
@@ -673,6 +675,8 @@ components:
         upstreamCostCurrency:
           type: string
         upstreamModel:
+          type: string
+        userMessagePreview:
           type: string
       required:
         - id

@@ -27,6 +27,7 @@ const nextCursor = ref('')
 const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'lastRequestAt', header: '最近请求' },
   { key: 'parentSpanId', header: 'Parent Span ID' },
+  { key: 'userMessagePreview', header: '用户消息' },
   { key: 'requestCount', header: '请求', align: 'right' },
   { key: 'totalTokens', header: 'Token', align: 'right' },
   { key: 'cacheHitRate', header: '缓存命中', align: 'right' },
@@ -159,6 +160,15 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
         <template #cell-parentSpanId="{ row }">
           <span class="block max-w-[34rem] truncate font-mono text-ink" :title="row.parentSpanId">
             {{ row.parentSpanId }}
+          </span>
+        </template>
+        <template #cell-userMessagePreview="{ row }">
+          <span
+            class="block max-w-[18rem] truncate"
+            :class="row.userMessagePreview ? 'text-ink' : 'text-ink-faint'"
+            :title="row.userMessagePreview"
+          >
+            {{ row.userMessagePreview || '—' }}
           </span>
         </template>
         <template #cell-requestCount="{ row }">

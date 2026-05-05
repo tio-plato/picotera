@@ -12,7 +12,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency FROM request WHERE id = $1
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency, user_message_preview FROM request WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
@@ -42,6 +42,7 @@ func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
 		&i.ModelCostCurrency,
 		&i.UpstreamCost,
 		&i.UpstreamCostCurrency,
+		&i.UserMessagePreview,
 	)
 	return i, err
 }
@@ -76,7 +77,8 @@ SELECT
   trace_base.cache_write_tokens,
   COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
   COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
-  trace_base.last_request_at
+  trace_base.last_request_at,
+  preview.user_message_preview
 FROM trace_base
 LEFT JOIN LATERAL (
   SELECT jsonb_agg(
@@ -106,6 +108,15 @@ LEFT JOIN LATERAL (
     GROUP BY upstream_cost_currency
   ) grouped
 ) upstream_costs ON true
+LEFT JOIN LATERAL (
+  SELECT user_message_preview
+  FROM request
+  WHERE parent_span_id = trace_base.parent_span_id
+    AND type = 0
+    AND user_message_preview IS NOT NULL
+  ORDER BY created_at DESC, id DESC
+  LIMIT 1
+) preview ON true
 WHERE
   $1::timestamp IS NULL
   OR (trace_base.last_request_at, trace_base.parent_span_id) < (
@@ -123,16 +134,17 @@ type ListRequestTracesParams struct {
 }
 
 type ListRequestTracesRow struct {
-	ParentSpanID     pgtype.Text      `json:"parentSpanId"`
-	RequestCount     int64            `json:"requestCount"`
-	TotalTokens      int64            `json:"totalTokens"`
-	InputTokens      int64            `json:"inputTokens"`
-	CacheReadTokens  int64            `json:"cacheReadTokens"`
-	OutputTokens     int64            `json:"outputTokens"`
-	CacheWriteTokens int64            `json:"cacheWriteTokens"`
-	ModelCosts       []byte           `json:"modelCosts"`
-	UpstreamCosts    []byte           `json:"upstreamCosts"`
-	LastRequestAt    pgtype.Timestamp `json:"lastRequestAt"`
+	ParentSpanID       pgtype.Text      `json:"parentSpanId"`
+	RequestCount       int64            `json:"requestCount"`
+	TotalTokens        int64            `json:"totalTokens"`
+	InputTokens        int64            `json:"inputTokens"`
+	CacheReadTokens    int64            `json:"cacheReadTokens"`
+	OutputTokens       int64            `json:"outputTokens"`
+	CacheWriteTokens   int64            `json:"cacheWriteTokens"`
+	ModelCosts         []byte           `json:"modelCosts"`
+	UpstreamCosts      []byte           `json:"upstreamCosts"`
+	LastRequestAt      pgtype.Timestamp `json:"lastRequestAt"`
+	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
 }
 
 func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
@@ -155,6 +167,7 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 			&i.ModelCosts,
 			&i.UpstreamCosts,
 			&i.LastRequestAt,
+			&i.UserMessagePreview,
 		); err != nil {
 			return nil, err
 		}
@@ -170,7 +183,8 @@ const listRequests = `-- name: ListRequests :many
 SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
        upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
        status_code, error_message, ttft_ms, time_spent_ms, created_at,
-       model_cost, model_cost_currency, upstream_cost, upstream_cost_currency
+       model_cost, model_cost_currency, upstream_cost, upstream_cost_currency,
+       user_message_preview
 FROM request
 WHERE
   ($1::int IS NULL OR type = $1)
@@ -223,6 +237,7 @@ type ListRequestsRow struct {
 	ModelCostCurrency    pgtype.Text      `json:"modelCostCurrency"`
 	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
 	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
+	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
 }
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
@@ -268,6 +283,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 			&i.ModelCostCurrency,
 			&i.UpstreamCost,
 			&i.UpstreamCostCurrency,
+			&i.UserMessagePreview,
 		); err != nil {
 			return nil, err
 		}
@@ -287,7 +303,8 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
        r.cache_write_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at,
-       r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency
+       r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
+       r.user_message_preview
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC
@@ -317,6 +334,7 @@ type ListRequestsBySpanRow struct {
 	ModelCostCurrency    pgtype.Text      `json:"modelCostCurrency"`
 	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
 	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
+	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
 }
 
 func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequestsBySpanRow, error) {
@@ -352,6 +370,7 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequ
 			&i.ModelCostCurrency,
 			&i.UpstreamCost,
 			&i.UpstreamCostCurrency,
+			&i.UserMessagePreview,
 		); err != nil {
 			return nil, err
 		}

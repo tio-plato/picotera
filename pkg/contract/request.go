@@ -33,6 +33,7 @@ type RequestView struct {
 	CreatedAt            string   `json:"createdAt,omitempty"`
 	RequestArtifactUrl   string   `json:"requestArtifactUrl,omitempty"`
 	ResponseArtifactUrl  string   `json:"responseArtifactUrl,omitempty"`
+	UserMessagePreview   string   `json:"userMessagePreview,omitempty"`
 	ModelCost            *float64 `json:"modelCost,omitempty"`
 	ModelCostCurrency    string   `json:"modelCostCurrency,omitempty"`
 	UpstreamCost         *float64 `json:"upstreamCost,omitempty"`
@@ -45,16 +46,17 @@ type TraceCostView struct {
 }
 
 type RequestTraceView struct {
-	ParentSpanID     string          `json:"parentSpanId"`
-	RequestCount     int64           `json:"requestCount"`
-	TotalTokens      int64           `json:"totalTokens"`
-	InputTokens      int64           `json:"inputTokens"`
-	CacheReadTokens  int64           `json:"cacheReadTokens"`
-	OutputTokens     int64           `json:"outputTokens"`
-	CacheWriteTokens int64           `json:"cacheWriteTokens"`
-	ModelCosts       []TraceCostView `json:"modelCosts"`
-	UpstreamCosts    []TraceCostView `json:"upstreamCosts"`
-	LastRequestAt    string          `json:"lastRequestAt,omitempty"`
+	ParentSpanID       string          `json:"parentSpanId"`
+	RequestCount       int64           `json:"requestCount"`
+	TotalTokens        int64           `json:"totalTokens"`
+	InputTokens        int64           `json:"inputTokens"`
+	CacheReadTokens    int64           `json:"cacheReadTokens"`
+	OutputTokens       int64           `json:"outputTokens"`
+	CacheWriteTokens   int64           `json:"cacheWriteTokens"`
+	ModelCosts         []TraceCostView `json:"modelCosts"`
+	UpstreamCosts      []TraceCostView `json:"upstreamCosts"`
+	LastRequestAt      string          `json:"lastRequestAt,omitempty"`
+	UserMessagePreview string          `json:"userMessagePreview,omitempty"`
 }
 
 type requestLike struct {
@@ -81,6 +83,7 @@ type requestLike struct {
 	ModelCostCurrency    pgtype.Text
 	UpstreamCost         pgtype.Numeric
 	UpstreamCostCurrency pgtype.Text
+	UserMessagePreview   pgtype.Text
 }
 
 func toRequestView(r requestLike) *RequestView {
@@ -162,6 +165,9 @@ func toRequestView(r requestLike) *RequestView {
 	if r.UpstreamCostCurrency.Valid {
 		view.UpstreamCostCurrency = r.UpstreamCostCurrency.String
 	}
+	if r.UserMessagePreview.Valid {
+		view.UserMessagePreview = r.UserMessagePreview.String
+	}
 	return view
 }
 
@@ -190,6 +196,7 @@ func ToRequestView(r *db.Request) *RequestView {
 		ModelCostCurrency:    r.ModelCostCurrency,
 		UpstreamCost:         r.UpstreamCost,
 		UpstreamCostCurrency: r.UpstreamCostCurrency,
+		UserMessagePreview:   r.UserMessagePreview,
 	})
 }
 
@@ -218,6 +225,7 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		ModelCostCurrency:    r.ModelCostCurrency,
 		UpstreamCost:         r.UpstreamCost,
 		UpstreamCostCurrency: r.UpstreamCostCurrency,
+		UserMessagePreview:   r.UserMessagePreview,
 	})
 }
 
@@ -246,6 +254,7 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		ModelCostCurrency:    r.ModelCostCurrency,
 		UpstreamCost:         r.UpstreamCost,
 		UpstreamCostCurrency: r.UpstreamCostCurrency,
+		UserMessagePreview:   r.UserMessagePreview,
 	})
 }
 
@@ -284,6 +293,9 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 	}
 	if r.LastRequestAt.Valid {
 		view.LastRequestAt = r.LastRequestAt.Time.UTC().Format(time.RFC3339Nano)
+	}
+	if r.UserMessagePreview.Valid {
+		view.UserMessagePreview = r.UserMessagePreview.String
 	}
 	return view, nil
 }

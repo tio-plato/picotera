@@ -61,20 +61,22 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
 	metaReqMethod := r.Method
 	metaReqURL := r.URL.String()
+	userMessagePreview := extractUserMessagePreview(body, endpoint.EndpointType)
 	metaCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
-		ID:            metaID,
-		SpanID:        pgtype.Text{String: metaID, Valid: true},
-		ParentSpanID:  parentSpanIDPg,
-		Type:          db.RequestTypeMeta,
-		Status:        db.RequestStatusPending,
-		ProviderID:    pgtype.Int4{Valid: false},
-		EndpointPath:  pgtype.Text{String: endpoint.Path, Valid: true},
-		ApiKeyID:      pgtype.Int4{Valid: false},
-		Model:         pgtype.Text{Valid: false},
-		UpstreamModel: pgtype.Text{Valid: false},
-		StatusCode:    pgtype.Int4{Valid: false},
-		ErrorMessage:  pgtype.Text{Valid: false},
-		TimeSpentMs:   pgtype.Int4{Valid: false},
+		ID:                 metaID,
+		SpanID:             pgtype.Text{String: metaID, Valid: true},
+		ParentSpanID:       parentSpanIDPg,
+		Type:               db.RequestTypeMeta,
+		Status:             db.RequestStatusPending,
+		ProviderID:         pgtype.Int4{Valid: false},
+		EndpointPath:       pgtype.Text{String: endpoint.Path, Valid: true},
+		ApiKeyID:           pgtype.Int4{Valid: false},
+		Model:              pgtype.Text{Valid: false},
+		UpstreamModel:      pgtype.Text{Valid: false},
+		StatusCode:         pgtype.Int4{Valid: false},
+		ErrorMessage:       pgtype.Text{Valid: false},
+		TimeSpentMs:        pgtype.Int4{Valid: false},
+		UserMessagePreview: userMessagePreview,
 	})
 
 	h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, metaReqMethod, metaReqURL, metaReqHeader, body)
@@ -378,19 +380,20 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		upstreamID := xid.New().String()
 		upstreamCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
-			ID:            upstreamID,
-			SpanID:        pgtype.Text{String: metaID, Valid: true},
-			ParentSpanID:  parentSpanIDPg,
-			Type:          db.RequestTypeUpstream,
-			Status:        db.RequestStatusPending,
-			ProviderID:    pgtype.Int4{Int32: providerID, Valid: true},
-			EndpointPath:  pgtype.Text{String: endpoint.Path, Valid: true},
-			ApiKeyID:      apiKeyID,
-			Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
-			UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
-			StatusCode:    pgtype.Int4{Valid: false},
-			ErrorMessage:  pgtype.Text{Valid: false},
-			TimeSpentMs:   pgtype.Int4{Valid: false},
+			ID:                 upstreamID,
+			SpanID:             pgtype.Text{String: metaID, Valid: true},
+			ParentSpanID:       parentSpanIDPg,
+			Type:               db.RequestTypeUpstream,
+			Status:             db.RequestStatusPending,
+			ProviderID:         pgtype.Int4{Int32: providerID, Valid: true},
+			EndpointPath:       pgtype.Text{String: endpoint.Path, Valid: true},
+			ApiKeyID:           apiKeyID,
+			Model:              pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
+			UpstreamModel:      pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
+			StatusCode:         pgtype.Int4{Valid: false},
+			ErrorMessage:       pgtype.Text{Valid: false},
+			TimeSpentMs:        pgtype.Int4{Valid: false},
+			UserMessagePreview: pgtype.Text{Valid: false},
 		})
 
 		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, side.sendResolver, pathVars)

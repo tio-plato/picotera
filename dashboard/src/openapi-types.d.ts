@@ -727,6 +727,7 @@ export interface components {
             /** Format: int64 */
             totalTokens: number;
             upstreamCosts: components["schemas"]["TraceCostView"][] | null;
+            userMessagePreview?: string;
         };
         RequestView: {
             /**
@@ -773,6 +774,7 @@ export interface components {
             upstreamCost?: number;
             upstreamCostCurrency?: string;
             upstreamModel?: string;
+            userMessagePreview?: string;
         };
         ScriptMutateBody: {
             /**

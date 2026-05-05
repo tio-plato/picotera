@@ -142,6 +142,7 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
     base.push({ key: 'type', header: '类型' })
   }
   base.push(
+    { key: 'userMessagePreview', header: '用户消息' },
     {
       key: 'providerId',
       header: '渠道',
@@ -369,6 +370,15 @@ function resetCursorAndReload() {
         </template>
         <template #cell-type="{ row }">
           <Tag :variant="row.type === 0 ? 'accent' : 'muted'">{{ row.type === 0 ? 'META' : 'UP' }}</Tag>
+        </template>
+        <template #cell-userMessagePreview="{ row }">
+          <span
+            class="block max-w-[18rem] truncate"
+            :class="row.userMessagePreview ? 'text-ink' : 'text-ink-faint'"
+            :title="row.userMessagePreview"
+          >
+            {{ row.userMessagePreview || '—' }}
+          </span>
         </template>
         <template #cell-providerId="{ row }">
           <span v-if="row.providerId" class="font-medium">{{ providerLabel(row.providerId) }}</span>

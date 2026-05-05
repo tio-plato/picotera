@@ -219,35 +219,38 @@ INSERT INTO request (
   id, span_id, parent_span_id, type, status,
   provider_id, endpoint_path, api_key_id, model, upstream_model,
   input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
-  status_code, error_message, ttft_ms, time_spent_ms
+  status_code, error_message, ttft_ms, time_spent_ms,
+  user_message_preview
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6, $7, $8, $9, $10,
   $11, $12, $13, $14,
-  $15, $16, $17, $18
+  $15, $16, $17, $18,
+  $19
 )
 RETURNING created_at
 `
 
 type InsertRequestParams struct {
-	ID               string      `json:"id"`
-	SpanID           pgtype.Text `json:"spanId"`
-	ParentSpanID     pgtype.Text `json:"parentSpanId"`
-	Type             int32       `json:"type"`
-	Status           int32       `json:"status"`
-	ProviderID       pgtype.Int4 `json:"providerId"`
-	EndpointPath     pgtype.Text `json:"endpointPath"`
-	ApiKeyID         pgtype.Int4 `json:"apiKeyId"`
-	Model            pgtype.Text `json:"model"`
-	UpstreamModel    pgtype.Text `json:"upstreamModel"`
-	InputTokens      pgtype.Int4 `json:"inputTokens"`
-	CacheReadTokens  pgtype.Int4 `json:"cacheReadTokens"`
-	OutputTokens     pgtype.Int4 `json:"outputTokens"`
-	CacheWriteTokens pgtype.Int4 `json:"cacheWriteTokens"`
-	StatusCode       pgtype.Int4 `json:"statusCode"`
-	ErrorMessage     pgtype.Text `json:"errorMessage"`
-	TtftMs           pgtype.Int4 `json:"ttftMs"`
-	TimeSpentMs      pgtype.Int4 `json:"timeSpentMs"`
+	ID                 string      `json:"id"`
+	SpanID             pgtype.Text `json:"spanId"`
+	ParentSpanID       pgtype.Text `json:"parentSpanId"`
+	Type               int32       `json:"type"`
+	Status             int32       `json:"status"`
+	ProviderID         pgtype.Int4 `json:"providerId"`
+	EndpointPath       pgtype.Text `json:"endpointPath"`
+	ApiKeyID           pgtype.Int4 `json:"apiKeyId"`
+	Model              pgtype.Text `json:"model"`
+	UpstreamModel      pgtype.Text `json:"upstreamModel"`
+	InputTokens        pgtype.Int4 `json:"inputTokens"`
+	CacheReadTokens    pgtype.Int4 `json:"cacheReadTokens"`
+	OutputTokens       pgtype.Int4 `json:"outputTokens"`
+	CacheWriteTokens   pgtype.Int4 `json:"cacheWriteTokens"`
+	StatusCode         pgtype.Int4 `json:"statusCode"`
+	ErrorMessage       pgtype.Text `json:"errorMessage"`
+	TtftMs             pgtype.Int4 `json:"ttftMs"`
+	TimeSpentMs        pgtype.Int4 `json:"timeSpentMs"`
+	UserMessagePreview pgtype.Text `json:"userMessagePreview"`
 }
 
 func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (pgtype.Timestamp, error) {
@@ -270,6 +273,7 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (p
 		arg.ErrorMessage,
 		arg.TtftMs,
 		arg.TimeSpentMs,
+		arg.UserMessagePreview,
 	)
 	var created_at pgtype.Timestamp
 	err := row.Scan(&created_at)

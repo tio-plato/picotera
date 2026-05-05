@@ -242,6 +242,11 @@ watch(detailTabs, tabs => {
             <Field v-if="selected.parentSpanId" label="Parent Span" as="div">
               <span class="font-mono text-xs text-ink break-all">{{ selected.parentSpanId }}</span>
             </Field>
+            <Field v-if="selected.userMessagePreview" label="用户消息" as="div" class="col-span-2">
+              <span class="block truncate text-sm text-ink" :title="selected.userMessagePreview">
+                {{ selected.userMessagePreview }}
+              </span>
+            </Field>
             <Field label="渠道" as="div">
               <span class="font-mono text-sm">{{ providerLabel(selected.providerId) }}</span>
             </Field>
