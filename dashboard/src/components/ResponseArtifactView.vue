@@ -2,24 +2,15 @@
 import { ref, computed, watch } from 'vue'
 import { DataTable, Th, Td, Tr, Field, SegmentedControl, StateText } from '@/ui'
 import {
-  aggregateSSE,
-  extractContent,
+  extractContentFromAggregated,
+  formatAggregatedLabel,
   isSSEContentType,
   parseSSEEventsForDisplay,
   renderMarkdown,
-  type SSEFormat,
 } from '@/composables/useSSEParser'
 import { isJsonContentType, parseJsonBody, rawBodyText } from './artifactBody'
+import type { ArtifactPayload } from './artifactTypes'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
-
-interface ArtifactPayload {
-  method?: string
-  url?: string
-  statusCode?: number
-  headers?: Record<string, string[]>
-  body?: string
-  bodyEncoding?: 'utf8' | 'base64'
-}
 
 const props = defineProps<{ payload: ArtifactPayload; url?: string }>()
 
@@ -36,11 +27,11 @@ const jsonBody = computed(() => {
 })
 
 const subViewOptions = computed(() => {
-  const opts: Array<{ value: string; label: string }> = [
-    { value: 'raw', label: 'Raw' },
-  ]
-  if (isSSE.value && !isBinary.value) {
+  const opts: Array<{ value: string; label: string }> = [{ value: 'raw', label: 'Raw' }]
+  if (!isBinary.value && (isSSE.value || props.payload.aggregated)) {
     opts.push({ value: 'aggregated', label: '聚合' })
+  }
+  if (isSSE.value && !isBinary.value) {
     opts.push({ value: 'events', label: 'Events' })
   } else if (!isBinary.value && jsonBody.value.ok) {
     opts.push({ value: 'json', label: 'JSON' })
@@ -51,19 +42,13 @@ const subViewOptions = computed(() => {
   return opts
 })
 
-const aggregated = computed(() => {
-  if (!isSSE.value || !props.payload.body) return null
-  return aggregateSSE(props.payload.body)
-})
-
 const sseEvents = computed(() => {
   if (!isSSE.value || !props.payload.body) return []
   return parseSSEEventsForDisplay(props.payload.body)
 })
 
 const content = computed(() => {
-  if (!props.payload.body) return { thinking: null, reply: null }
-  return extractContent(props.payload.body, isSSE.value)
+  return extractContentFromAggregated(props.payload.aggregated)
 })
 
 const replyHtml = computed(() => {
@@ -85,25 +70,19 @@ function bodyDisplay(body: string | undefined, encoding: string | undefined) {
   return rawBodyText(body, encoding)
 }
 
-function formatLabel(f: SSEFormat | null): string {
-  switch (f) {
-    case 'openai-chat': return 'OpenAI Chat'
-    case 'anthropic': return 'Anthropic'
-    case 'openai-responses': return 'OpenAI Responses'
-    default: return ''
-  }
-}
+watch(
+  subViewOptions,
+  (opts) => {
+    if (!opts.some((o) => o.value === subView.value)) {
+      subView.value = opts.some((o) => o.value === 'json') ? 'json' : 'raw'
+    }
+  },
+  { immediate: true },
+)
 
-watch(subViewOptions, (opts) => {
-  if (!opts.some(o => o.value === subView.value)) {
-    subView.value = opts.some(o => o.value === 'json') ? 'json' : 'raw'
-  }
-}, { immediate: true })
-
-watch(jsonBody, parsed => {
+watch(jsonBody, (parsed) => {
   if (!isSSE.value && parsed.ok) subView.value = 'json'
 })
-
 </script>
 
 <template>
@@ -115,10 +94,22 @@ watch(jsonBody, parsed => {
     </div>
 
     <details class="group flex flex-col gap-2">
-      <summary class="flex items-center gap-1.5 cursor-pointer select-none list-none text-2xs font-medium text-ink-muted uppercase tracking-[0.04em] hover:text-ink">
+      <summary
+        class="flex items-center gap-1.5 cursor-pointer select-none list-none text-2xs font-medium text-ink-muted uppercase tracking-[0.04em] hover:text-ink"
+      >
         Headers
-        <span v-if="headerEntries(payload.headers).length" class="text-ink-faint normal-case tracking-normal">({{ headerEntries(payload.headers).length }})</span>
-        <svg class="w-3 h-3 transition-transform group-open:rotate-90" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5l5 4.5-5 4.5V3.5z"/></svg>
+        <span
+          v-if="headerEntries(payload.headers).length"
+          class="text-ink-faint normal-case tracking-normal"
+          >({{ headerEntries(payload.headers).length }})</span
+        >
+        <svg
+          class="w-3 h-3 transition-transform group-open:rotate-90"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+        >
+          <path d="M6 3.5l5 4.5-5 4.5V3.5z" />
+        </svg>
       </summary>
       <div class="mt-2">
         <div v-if="!headerEntries(payload.headers).length" class="text-xs text-ink-faint">—</div>
@@ -142,16 +133,14 @@ watch(jsonBody, parsed => {
     <section class="flex flex-col gap-2">
       <div class="flex items-center justify-between gap-3">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Body</span>
-        <SegmentedControl
-          v-if="!isBinary"
-          v-model="subView"
-          :options="subViewOptions"
-        />
+        <SegmentedControl v-if="!isBinary" v-model="subView" :options="subViewOptions" />
       </div>
 
       <div v-if="isBinary" class="flex items-center gap-3 text-xs text-ink-faint">
         <span>[binary, {{ payload.body?.length ?? 0 }} bytes]</span>
-        <a :href="url" download class="text-accent-ink underline hover:no-underline">下载原始数据</a>
+        <a :href="url" download class="text-accent-ink underline hover:no-underline"
+          >下载原始数据</a
+        >
       </div>
 
       <!-- Raw -->
@@ -166,7 +155,8 @@ watch(jsonBody, parsed => {
         </StateText>
         <pre
           class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
-        >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre>
+          >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre
+        >
       </template>
 
       <!-- JSON -->
@@ -177,13 +167,19 @@ watch(jsonBody, parsed => {
 
       <!-- Aggregated -->
       <template v-else-if="subView === 'aggregated'">
-        <div v-if="aggregated?.json" class="flex flex-col gap-1.5">
-          <span v-if="formatLabel(aggregated.format)" class="text-2xs text-ink-muted">
-            检测格式: {{ formatLabel(aggregated.format) }}
+        <div v-if="payload.aggregated?.body !== undefined" class="flex flex-col gap-1.5">
+          <span
+            v-if="formatAggregatedLabel(payload.aggregated.format)"
+            class="text-2xs text-ink-muted"
+          >
+            后端格式: {{ formatAggregatedLabel(payload.aggregated.format) }}
           </span>
-          <JsonArtifactViewer :value="aggregated.json" />
+          <JsonArtifactViewer :value="payload.aggregated.body" />
         </div>
-        <StateText v-else :dashed="false" compact>无法聚合 SSE 数据</StateText>
+        <StateText v-else-if="payload.aggregated?.error" :dashed="false" compact>
+          {{ payload.aggregated.error }}
+        </StateText>
+        <StateText v-else :dashed="false" compact>无后端聚合结果</StateText>
       </template>
 
       <!-- Events -->
@@ -195,7 +191,9 @@ watch(jsonBody, parsed => {
             :key="event.index"
             class="shrink-0 overflow-hidden rounded-md border border-line-soft bg-surface-0"
           >
-            <header class="flex flex-wrap items-center gap-2 border-b border-line-soft bg-surface-50 px-3 py-2">
+            <header
+              class="flex flex-wrap items-center gap-2 border-b border-line-soft bg-surface-50 px-3 py-2"
+            >
               <span class="font-mono text-xs tabular text-ink">#{{ event.index + 1 }}</span>
               <span class="font-mono text-2xs text-ink-muted">{{ event.event ?? 'message' }}</span>
               <span
@@ -206,14 +204,12 @@ watch(jsonBody, parsed => {
               </span>
             </header>
             <div class="p-3">
-              <JsonArtifactViewer
-                v-if="event.json !== null"
-                :value="event.json"
-              />
+              <JsonArtifactViewer v-if="event.json !== null" :value="event.json" />
               <pre
                 v-else
                 class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[360px]"
-              >{{ event.data }}</pre>
+                >{{ event.data }}</pre
+              >
             </div>
           </article>
         </div>
@@ -223,14 +219,25 @@ watch(jsonBody, parsed => {
       <template v-else-if="subView === 'rendered'">
         <div class="flex flex-col gap-3">
           <details v-if="content.thinking" class="group">
-            <summary class="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-ink-muted select-none hover:text-ink">
-              <svg class="w-3 h-3 transition-transform group-open:rotate-90" viewBox="0 0 16 16" fill="currentColor"><path d="M6 3.5l5 4.5-5 4.5V3.5z"/></svg>
+            <summary
+              class="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-ink-muted select-none hover:text-ink"
+            >
+              <svg
+                class="w-3 h-3 transition-transform group-open:rotate-90"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+              >
+                <path d="M6 3.5l5 4.5-5 4.5V3.5z" />
+              </svg>
               思考过程
             </summary>
-            <div class="mt-2 bg-surface-50 border border-line-soft rounded-md p-3 prose prose-sm max-w-none" v-html="thinkingHtml" />
+            <div
+              class="mt-2 bg-surface-50 border border-line-soft rounded-md p-3 prose prose-sm max-w-none"
+              v-html="thinkingHtml"
+            />
           </details>
           <div v-if="content.reply" class="prose prose-sm max-w-none" v-html="replyHtml" />
-          <StateText v-else-if="!content.thinking" :dashed="false" compact>无内容</StateText>
+          <StateText v-else-if="!content.thinking" :dashed="false" compact>无可渲染内容</StateText>
         </div>
       </template>
     </section>

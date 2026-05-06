@@ -21,13 +21,21 @@ type LogEntry struct {
 }
 
 type Payload struct {
-	Method       string      `json:"method,omitempty"`
-	URL          string      `json:"url,omitempty"`
-	StatusCode   int         `json:"statusCode,omitempty"`
-	Headers      http.Header `json:"headers"`
-	Body         string      `json:"body"`
-	BodyEncoding string      `json:"bodyEncoding"`
-	Logs         []LogEntry  `json:"logs,omitempty"`
+	Method       string              `json:"method,omitempty"`
+	URL          string              `json:"url,omitempty"`
+	StatusCode   int                 `json:"statusCode,omitempty"`
+	Headers      http.Header         `json:"headers"`
+	Body         string              `json:"body"`
+	BodyEncoding string              `json:"bodyEncoding"`
+	Aggregated   *AggregatedResponse `json:"aggregated,omitempty"`
+	Logs         []LogEntry          `json:"logs,omitempty"`
+}
+
+type AggregatedResponse struct {
+	Format       string          `json:"format"`
+	Body         json.RawMessage `json:"body,omitempty"`
+	BodyEncoding string          `json:"bodyEncoding"`
+	Error        string          `json:"error,omitempty"`
 }
 
 func BuildRequest(method, url string, header http.Header, body []byte) ([]byte, error) {
@@ -41,9 +49,22 @@ func BuildRequest(method, url string, header http.Header, body []byte) ([]byte, 
 }
 
 func BuildResponse(statusCode int, header http.Header, body []byte) ([]byte, error) {
+	return buildResponse(statusCode, header, body, nil, nil)
+}
+
+func BuildResponseWithAggregated(statusCode int, header http.Header, body []byte, aggregated *AggregatedResponse) ([]byte, error) {
+	return buildResponse(statusCode, header, body, nil, aggregated)
+}
+
+func buildResponse(statusCode int, header http.Header, body []byte, logs []LogEntry, aggregated *AggregatedResponse) ([]byte, error) {
+	if err := validateAggregated(aggregated); err != nil {
+		return nil, err
+	}
 	p := Payload{
 		StatusCode: statusCode,
 		Headers:    normalizeHeader(header),
+		Logs:       logs,
+		Aggregated: aggregated,
 	}
 	encodeBody(&p, body)
 	return marshalAndCompress(&p)
@@ -52,13 +73,11 @@ func BuildResponse(statusCode int, header http.Header, body []byte) ([]byte, err
 // BuildResponseWithLogs is BuildResponse plus a logs array — used for meta
 // response artifacts so JSX console output is visible in the dashboard.
 func BuildResponseWithLogs(statusCode int, header http.Header, body []byte, logs []LogEntry) ([]byte, error) {
-	p := Payload{
-		StatusCode: statusCode,
-		Headers:    normalizeHeader(header),
-		Logs:       logs,
-	}
-	encodeBody(&p, body)
-	return marshalAndCompress(&p)
+	return buildResponse(statusCode, header, body, logs, nil)
+}
+
+func BuildResponseWithLogsAndAggregated(statusCode int, header http.Header, body []byte, logs []LogEntry, aggregated *AggregatedResponse) ([]byte, error) {
+	return buildResponse(statusCode, header, body, logs, aggregated)
 }
 
 func normalizeHeader(h http.Header) http.Header {
@@ -76,6 +95,16 @@ func encodeBody(p *Payload, body []byte) {
 	}
 	p.Body = base64.StdEncoding.EncodeToString(body)
 	p.BodyEncoding = "base64"
+}
+
+func validateAggregated(aggregated *AggregatedResponse) error {
+	if aggregated == nil || len(aggregated.Body) == 0 {
+		return nil
+	}
+	if !json.Valid(aggregated.Body) {
+		return fmt.Errorf("invalid aggregated body json")
+	}
+	return nil
 }
 
 func marshalAndCompress(p *Payload) ([]byte, error) {

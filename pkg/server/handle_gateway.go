@@ -453,7 +453,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if resp.StatusCode == http.StatusOK {
 			metaLogs := collectLogs()
-			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, originalModelName, upstreamModel, endpoint.Path, upstreamStartTime, bgCtx, metaLogs, apiKeyID)
+			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, originalModelName, upstreamModel, endpoint.EndpointType, endpoint.Path, upstreamStartTime, bgCtx, metaLogs, apiKeyID)
 			return
 		}
 
@@ -520,6 +520,18 @@ func (h *gatewayHandler) uploadResponseArtifact(ctx context.Context, id string, 
 	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
 }
 
+func (h *gatewayHandler) uploadResponseArtifactWithAggregation(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, aggregated *artifacts.AggregatedResponse) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildResponseWithAggregated(statusCode, header, body, aggregated)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build response failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
+}
+
 // uploadMetaResponseArtifact is uploadResponseArtifact for the meta request,
 // embedding any captured JSX console output. Only meta artifacts carry logs.
 func (h *gatewayHandler) uploadMetaResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry) {
@@ -527,6 +539,18 @@ func (h *gatewayHandler) uploadMetaResponseArtifact(ctx context.Context, id stri
 		return
 	}
 	payload, err := artifacts.BuildResponseWithLogs(statusCode, header, body, logs)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build meta response failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
+}
+
+func (h *gatewayHandler) uploadMetaResponseArtifactWithAggregation(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry, aggregated *artifacts.AggregatedResponse) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildResponseWithLogsAndAggregated(statusCode, header, body, logs, aggregated)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build meta response failed")
 		return
@@ -542,7 +566,7 @@ func (h *gatewayHandler) streamSuccess(
 	ctx context.Context, cancel context.CancelFunc, resp *http.Response,
 	upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time,
 	metaID string, metaCreatedAt time.Time, gatewayStart time.Time,
-	providerID int32, originalModelName, upstreamModel, endpointPath string,
+	providerID int32, originalModelName, upstreamModel string, endpointType int32, endpointPath string,
 	upstreamStartTime time.Time,
 	bgCtx context.Context,
 	metaLogs []artifacts.LogEntry,
@@ -600,8 +624,14 @@ func (h *gatewayHandler) streamSuccess(
 	resp.Body.Close()
 
 	respBytes := captureBuf.Bytes()
-	h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes)
-	h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes, metaLogs)
+	var aggregated *artifacts.AggregatedResponse
+	if format, ok := responseAggregationFormat(endpointType); ok {
+		if profile, ok := defaultAggregationProfile(format); ok {
+			aggregated = buildAggregatedArtifact(bgCtx, format, resp.Header.Get("Content-Type"), respBytes, profile)
+		}
+	}
+	h.uploadResponseArtifactWithAggregation(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes, aggregated)
+	h.uploadMetaResponseArtifactWithAggregation(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes, metaLogs, aggregated)
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens := metricsToPG(m)

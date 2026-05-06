@@ -993,8 +993,13 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		clientBytes = upstreamBytes
 	}
 
-	h.uploadResponseArtifact(a.bgCtx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes)
-	h.uploadMetaResponseArtifact(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs)
+	upstreamAggregated := buildAggregatedArtifact(a.bgCtx, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
+	var metaAggregated *artifacts.AggregatedResponse
+	if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
+		metaAggregated = buildAggregatedArtifact(a.bgCtx, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
+	}
+	h.uploadResponseArtifactWithAggregation(a.bgCtx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated)
+	h.uploadMetaResponseArtifactWithAggregation(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated)
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens := metricsToPG(m)

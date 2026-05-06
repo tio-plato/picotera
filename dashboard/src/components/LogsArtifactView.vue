@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { StateText } from '@/ui'
-
-interface LogEntry {
-  level: string
-  message: string
-  ts: string
-}
-
-interface ArtifactPayload {
-  logs?: LogEntry[]
-}
+import type { ArtifactPayload, LogEntry } from './artifactTypes'
 
 const props = defineProps<{ url?: string }>()
 
@@ -81,7 +72,8 @@ function formatTs(iso: string) {
       <span
         class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] uppercase text-2xs leading-[1.2] shrink-0"
         :class="levelClass(l.level)"
-      >{{ l.level }}</span>
+        >{{ l.level }}</span
+      >
       <span class="text-ink-faint shrink-0 tabular-nums">{{ formatTs(l.ts) }}</span>
       <span class="text-ink whitespace-pre-wrap break-all">{{ l.message }}</span>
     </div>

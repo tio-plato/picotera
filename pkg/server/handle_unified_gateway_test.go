@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"picotera/pkg/contract"
@@ -48,6 +49,55 @@ func TestUpstreamFormatFor(t *testing.T) {
 		if got := upstreamFormatFor(t1); got != want {
 			t.Errorf("upstreamFormatFor(%d) = %s, want %s", t1, got, want)
 		}
+	}
+}
+
+func TestResponseAggregationFormat(t *testing.T) {
+	cases := []struct {
+		endpointType int32
+		wantFormat   llmbridge.Format
+		wantOK       bool
+	}{
+		{contract.EndpointType_AnthropicMessages, llmbridge.FormatAnthropicMessages, true},
+		{contract.EndpointType_OpenAIChatCompletions, llmbridge.FormatOpenAIChatCompletions, true},
+		{contract.EndpointType_OpenAIResponses, llmbridge.FormatOpenAIResponses, true},
+		{contract.EndpointType_GeminiStreamGenerateContent, llmbridge.FormatGeminiStreamGenerateContent, true},
+		{contract.EndpointType_GeminiGenerateContent, llmbridge.FormatUnknown, false},
+		{contract.EndpointType_General, llmbridge.FormatUnknown, false},
+		{contract.EndpointType_GeneralListModels, llmbridge.FormatUnknown, false},
+	}
+	for _, tt := range cases {
+		gotFormat, gotOK := responseAggregationFormat(tt.endpointType)
+		if gotFormat != tt.wantFormat || gotOK != tt.wantOK {
+			t.Errorf("responseAggregationFormat(%d) = (%s, %v), want (%s, %v)", tt.endpointType, gotFormat, gotOK, tt.wantFormat, tt.wantOK)
+		}
+	}
+}
+
+func TestBuildAggregatedArtifactGeminiStreamAndNonStream(t *testing.T) {
+	streamLine := `{"responseId":"resp-1","modelVersion":"gemini-test","candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`
+	profile, err := llmbridge.DefaultOutboundProfileForFormat(llmbridge.FormatGeminiStreamGenerateContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aggregated := buildAggregatedArtifact(context.Background(), llmbridge.FormatGeminiStreamGenerateContent, "application/json", []byte(streamLine+"\n"), profile)
+	if aggregated == nil {
+		t.Fatal("expected aggregated artifact")
+	}
+	if aggregated.Error != "" {
+		t.Fatalf("unexpected aggregation error: %s", aggregated.Error)
+	}
+	if aggregated.Format != "geminiStreamGenerateContent" || !strings.Contains(string(aggregated.Body), `"responseId":"resp-1"`) {
+		t.Fatalf("unexpected aggregated body: format=%s body=%s", aggregated.Format, aggregated.Body)
+	}
+
+	nonStreamProfile, err := llmbridge.DefaultOutboundProfileForFormat(llmbridge.FormatGeminiGenerateContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aggregated = buildAggregatedArtifact(context.Background(), llmbridge.FormatGeminiGenerateContent, "application/json", []byte(`{"candidates":[]}`), nonStreamProfile)
+	if aggregated != nil {
+		t.Fatalf("Gemini non-stream should not aggregate, got %+v", aggregated)
 	}
 }
 
