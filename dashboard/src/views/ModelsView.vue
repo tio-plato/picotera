@@ -111,6 +111,13 @@ const upstreamIndex = computed<Record<string, Upstream[]>>(() => {
 
 const registeredNames = computed(() => new Set(models.value.map((m) => m.name)))
 
+const sortedModels = computed(() =>
+  [...models.value].sort((a, b) => {
+    if (a.disabled !== b.disabled) return a.disabled ? 1 : -1
+    return a.name.localeCompare(b.name)
+  }),
+)
+
 const orphanRows = computed<{ name: string; providerNames: string[] }[]>(() => {
   const out: { name: string; providerNames: string[] }[] = []
   for (const [name, list] of Object.entries(upstreamIndex.value)) {
@@ -149,9 +156,6 @@ function openUpstreams(m: ModelView) {
 async function toggleDisabled(m: ModelView) {
   const body = {
     name: m.name,
-    title: m.title,
-    developer: m.developer,
-    series: m.series,
     disabled: !m.disabled,
     annotations: m.annotations ?? {},
     ...(m.pricing ? { pricing: m.pricing } : {}),
@@ -197,23 +201,17 @@ function confirmDelete(_event: Event, m: ModelView) {
           <thead>
             <tr>
               <Th>名称</Th>
-              <Th>标题</Th>
-              <Th>开发者</Th>
-              <Th>系列</Th>
               <Th>价格</Th>
               <Th>上游</Th>
               <Th actions />
             </tr>
           </thead>
           <tbody>
-            <Tr v-for="m in models" :key="m.name" :selected="panel.isActive(`model:${m.name}`)" :class="m.disabled ? 'opacity-55' : ''">
+            <Tr v-for="m in sortedModels" :key="m.name" :selected="panel.isActive(`model:${m.name}`)" :class="m.disabled ? 'opacity-55' : ''">
               <Td>
 	                <span class="font-mono font-medium">{{ m.name }}</span>
 	                <span v-if="m.disabled" class="text-ink-faint ml-1.5">（已禁用）</span>
 	              </Td>
-              <Td>{{ m.title }}</Td>
-              <Td><span class="text-ink-faint">{{ m.developer }}</span></Td>
-              <Td><Tag>{{ m.series }}</Tag></Td>
               <Td>
                 <template v-if="!m.pricing || !m.pricing.tiers || m.pricing.tiers.length === 0">
                   <span class="text-ink-faint">—</span>

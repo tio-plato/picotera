@@ -34,13 +34,10 @@ type ExchangeRate struct {
 }
 
 type Model struct {
-	Name        string      `json:"name"`
-	Title       pgtype.Text `json:"title"`
-	Developer   pgtype.Text `json:"developer"`
-	Series      pgtype.Text `json:"series"`
-	Disabled    bool        `json:"disabled"`
-	Pricing     []byte      `json:"pricing"`
-	Annotations []byte      `json:"annotations"`
+	Name        string `json:"name"`
+	Disabled    bool   `json:"disabled"`
+	Pricing     []byte `json:"pricing"`
+	Annotations []byte `json:"annotations"`
 }
 
 type Provider struct {

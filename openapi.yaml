@@ -321,23 +321,14 @@ components:
           additionalProperties:
             type: string
           type: object
-        developer:
-          type: string
         disabled:
           type: boolean
         name:
           type: string
         pricing:
           $ref: "#/components/schemas/Pricing"
-        series:
-          type: string
-        title:
-          type: string
       required:
         - name
-        - title
-        - developer
-        - series
         - disabled
         - annotations
       type: object

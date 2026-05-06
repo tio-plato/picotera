@@ -18,9 +18,6 @@ const api = useApi()
 const isEdit = !!props.model
 const form = ref({
   name: props.model?.name ?? props.defaultName ?? '',
-  title: props.model?.title ?? '',
-  developer: props.model?.developer ?? '',
-  series: props.model?.series ?? '',
   disabled: props.model?.disabled ?? false,
   pricing: (props.model?.pricing ?? null) as Pricing | null,
   annotations: { ...props.model?.annotations } as Record<string, string>,
@@ -33,9 +30,6 @@ async function submit() {
   error.value = ''
   const body = {
     name: form.value.name,
-    title: form.value.title,
-    developer: form.value.developer,
-    series: form.value.series,
     disabled: form.value.disabled,
     annotations: form.value.annotations,
     ...(form.value.pricing ? { pricing: form.value.pricing } : {}),
@@ -53,7 +47,7 @@ async function submit() {
 
 <template>
   <SidePanel
-    :title="isEdit ? (form.title || form.name || '模型') : '新增模型'"
+    :title="isEdit ? (form.name || '模型') : '新增模型'"
     :kicker="isEdit ? '编辑模型' : lockedName ? '新增模型 · 来自上游' : '模型'"
     @close="emit('close')"
   >
@@ -65,15 +59,6 @@ async function submit() {
           placeholder="例如 gpt-4o"
           :disabled="isEdit || lockedName"
         />
-      </Field>
-      <Field label="标题">
-        <Input v-model="form.title" required placeholder="例如 GPT-4o" />
-      </Field>
-      <Field label="开发者">
-        <Input v-model="form.developer" required placeholder="例如 OpenAI" />
-      </Field>
-      <Field label="系列">
-        <Input v-model="form.series" required placeholder="例如 GPT" />
       </Field>
       <Field label="定价" as="div">
         <PricingEditor v-model="form.pricing" />

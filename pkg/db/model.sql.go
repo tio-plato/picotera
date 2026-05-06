@@ -7,8 +7,6 @@ package db
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const deleteModel = `-- name: DeleteModel :exec
@@ -21,7 +19,7 @@ func (q *Queries) DeleteModel(ctx context.Context, name string) error {
 }
 
 const getModelByName = `-- name: GetModelByName :one
-SELECT name, title, developer, series, disabled, pricing, annotations FROM model WHERE name = $1 LIMIT 1
+SELECT name, disabled, pricing, annotations FROM model WHERE name = $1 LIMIT 1
 `
 
 func (q *Queries) GetModelByName(ctx context.Context, name string) (Model, error) {
@@ -29,9 +27,6 @@ func (q *Queries) GetModelByName(ctx context.Context, name string) (Model, error
 	var i Model
 	err := row.Scan(
 		&i.Name,
-		&i.Title,
-		&i.Developer,
-		&i.Series,
 		&i.Disabled,
 		&i.Pricing,
 		&i.Annotations,
@@ -40,7 +35,7 @@ func (q *Queries) GetModelByName(ctx context.Context, name string) (Model, error
 }
 
 const getModels = `-- name: GetModels :many
-SELECT name, title, developer, series, disabled, pricing, annotations FROM model
+SELECT name, disabled, pricing, annotations FROM model
 `
 
 func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
@@ -54,9 +49,6 @@ func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
 		var i Model
 		if err := rows.Scan(
 			&i.Name,
-			&i.Title,
-			&i.Developer,
-			&i.Series,
 			&i.Disabled,
 			&i.Pricing,
 			&i.Annotations,
@@ -72,25 +64,19 @@ func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
 }
 
 const upsertModel = `-- name: UpsertModel :one
-INSERT INTO model (name, title, developer, series, disabled, pricing, annotations) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (name) DO UPDATE SET title = $2, developer = $3, series = $4, disabled = $5, pricing = $6, annotations = $7 RETURNING name, title, developer, series, disabled, pricing, annotations
+INSERT INTO model (name, disabled, pricing, annotations) VALUES ($1, $2, $3, $4) ON CONFLICT (name) DO UPDATE SET disabled = $2, pricing = $3, annotations = $4 RETURNING name, disabled, pricing, annotations
 `
 
 type UpsertModelParams struct {
-	Name        string      `json:"name"`
-	Title       pgtype.Text `json:"title"`
-	Developer   pgtype.Text `json:"developer"`
-	Series      pgtype.Text `json:"series"`
-	Disabled    bool        `json:"disabled"`
-	Pricing     []byte      `json:"pricing"`
-	Annotations []byte      `json:"annotations"`
+	Name        string `json:"name"`
+	Disabled    bool   `json:"disabled"`
+	Pricing     []byte `json:"pricing"`
+	Annotations []byte `json:"annotations"`
 }
 
 func (q *Queries) UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error) {
 	row := q.db.QueryRow(ctx, upsertModel,
 		arg.Name,
-		arg.Title,
-		arg.Developer,
-		arg.Series,
 		arg.Disabled,
 		arg.Pricing,
 		arg.Annotations,
@@ -98,9 +84,6 @@ func (q *Queries) UpsertModel(ctx context.Context, arg UpsertModelParams) (Model
 	var i Model
 	err := row.Scan(
 		&i.Name,
-		&i.Title,
-		&i.Developer,
-		&i.Series,
 		&i.Disabled,
 		&i.Pricing,
 		&i.Annotations,

@@ -8,7 +8,6 @@ import (
 	"picotera/pkg/db"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type GetModelRequest struct {
@@ -17,9 +16,6 @@ type GetModelRequest struct {
 
 type ModelView struct {
 	Name        string            `json:"name"`
-	Title       string            `json:"title"`
-	Developer   string            `json:"developer"`
-	Series      string            `json:"series"`
 	Disabled    bool              `json:"disabled"`
 	Pricing     *Pricing          `json:"pricing,omitempty"`
 	Annotations map[string]string `json:"annotations"`
@@ -82,9 +78,6 @@ func ToModelView(model *db.Model) (*ModelView, error) {
 	}
 	return &ModelView{
 		Name:        model.Name,
-		Title:       model.Title.String,
-		Developer:   model.Developer.String,
-		Series:      model.Series.String,
 		Disabled:    model.Disabled,
 		Pricing:     pricing,
 		Annotations: anno,
@@ -109,9 +102,6 @@ func FromModelView(view *ModelView) (*db.UpsertModelParams, error) {
 	}
 	return &db.UpsertModelParams{
 		Name:        view.Name,
-		Title:       pgtype.Text{String: view.Title, Valid: true},
-		Developer:   pgtype.Text{String: view.Developer, Valid: true},
-		Series:      pgtype.Text{String: view.Series, Valid: true},
 		Disabled:    view.Disabled,
 		Pricing:     pricingBytes,
 		Annotations: annoBytes,

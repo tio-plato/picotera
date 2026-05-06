@@ -603,12 +603,9 @@ export interface components {
             annotations: {
                 [key: string]: string;
             };
-            developer: string;
             disabled: boolean;
             name: string;
             pricing?: components["schemas"]["Pricing"];
-            series: string;
-            title: string;
         };
         PaginatedBodyRequestTraceView: {
             /**
