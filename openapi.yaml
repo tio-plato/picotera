@@ -308,6 +308,38 @@ components:
         - providerModels
         - removedModels
       type: object
+    MatchPricingRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/MatchPricingRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        targetModel:
+          example: claude-sonnet-4-6
+          type: string
+      required:
+        - targetModel
+      type: object
+    MatchPricingResponseBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/MatchPricingResponseBody.json
+          format: uri
+          readOnly: true
+          type: string
+        candidates:
+          items:
+            $ref: "#/components/schemas/PricingMatchCandidate"
+          nullable: true
+          type: array
+      required:
+        - candidates
+      type: object
     ModelView:
       additionalProperties: false
       properties:
@@ -418,6 +450,35 @@ components:
       required:
         - currency
         - tiers
+      type: object
+    PricingMatchCandidate:
+      additionalProperties: false
+      properties:
+        modelId:
+          example: claude-sonnet-4-6
+          type: string
+        modelName:
+          example: Claude Sonnet 4.6
+          type: string
+        pricing:
+          $ref: "#/components/schemas/Pricing"
+        providerId:
+          example: anthropic
+          type: string
+        providerName:
+          example: Anthropic
+          type: string
+        score:
+          example: 0
+          format: int64
+          type: integer
+      required:
+        - providerId
+        - providerName
+        - modelId
+        - modelName
+        - score
+        - pricing
       type: object
     PricingTier:
       additionalProperties: false
@@ -1127,6 +1188,29 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Get a model by name
+  /api/picotera/pricing/matches:
+    post:
+      operationId: matchPricing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatchPricingRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchPricingResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Match built-in pricing candidates for a model
   /api/picotera/provider-endpoints:
     get:
       operationId: listProviderEndpoints

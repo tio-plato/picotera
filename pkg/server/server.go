@@ -131,6 +131,7 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationGetExchangeRate, s.handleGetExchangeRate)
 	huma.Register(mgmt, contract.OperationPutExchangeRate, s.handlePutExchangeRate)
 	huma.Register(mgmt, contract.OperationDeleteExchangeRate, s.handleDeleteExchangeRate)
+	huma.Register(mgmt, contract.OperationMatchPricing, s.handleMatchPricing)
 	huma.Register(mgmt, contract.OperationListApiKeys, s.handleListApiKeys)
 	huma.Register(mgmt, contract.OperationGetApiKey, s.handleGetApiKey)
 	huma.Register(mgmt, contract.OperationCreateApiKey, s.handleCreateApiKey)

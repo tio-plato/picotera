@@ -196,6 +196,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/pricing/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Match built-in pricing candidates for a model */
+        post: operations["matchPricing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/provider-endpoints": {
         parameters: {
             query?: never;
@@ -593,6 +610,25 @@ export interface components {
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
             removedModels: string[] | null;
         };
+        MatchPricingRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MatchPricingRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @example claude-sonnet-4-6 */
+            targetModel: string;
+        };
+        MatchPricingResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MatchPricingResponseBody.json
+             */
+            readonly $schema?: string;
+            candidates: components["schemas"]["PricingMatchCandidate"][] | null;
+        };
         ModelView: {
             /**
              * Format: uri
@@ -645,6 +681,22 @@ export interface components {
         Pricing: {
             currency: string;
             tiers: components["schemas"]["PricingTier"][] | null;
+        };
+        PricingMatchCandidate: {
+            /** @example claude-sonnet-4-6 */
+            modelId: string;
+            /** @example Claude Sonnet 4.6 */
+            modelName: string;
+            pricing: components["schemas"]["Pricing"];
+            /** @example anthropic */
+            providerId: string;
+            /** @example Anthropic */
+            providerName: string;
+            /**
+             * Format: int64
+             * @example 0
+             */
+            score: number;
         };
         PricingTier: {
             /** Format: double */
@@ -1320,6 +1372,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    matchPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchPricingRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchPricingResponseBody"];
                 };
             };
             /** @description Error */

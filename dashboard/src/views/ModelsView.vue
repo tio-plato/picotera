@@ -10,6 +10,7 @@ import type {
   EndpointView,
 } from '@/api'
 import ModelForm from '@/components/ModelForm.vue'
+import ModelPricingMatchPanel from '@/components/ModelPricingMatchPanel.vue'
 import ModelUpstreamsPanel, { type Upstream } from '@/components/ModelUpstreamsPanel.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
 import {
@@ -153,6 +154,14 @@ function openUpstreams(m: ModelView) {
   )
 }
 
+function openPricingMatch(m: ModelView) {
+  panel.open(
+    ModelPricingMatchPanel,
+    { model: m, onSave: fetchAll },
+    { key: `model-pricing-match:${m.name}` },
+  )
+}
+
 async function toggleDisabled(m: ModelView) {
   const body = {
     name: m.name,
@@ -214,7 +223,12 @@ function confirmDelete(_event: Event, m: ModelView) {
 	              </Td>
               <Td>
                 <template v-if="!m.pricing || !m.pricing.tiers || m.pricing.tiers.length === 0">
-                  <span class="text-ink-faint">—</span>
+                  <div class="inline-flex items-center gap-2">
+                    <Button type="button" variant="ghost" size="sm" @click="openPricingMatch(m)">
+                      <Icon name="currency-dollar" :size="13" />
+                      <span>匹配价格</span>
+                    </Button>
+                  </div>
                 </template>
                 <template v-else-if="m.pricing.tiers.length === 1">
                   <span class="inline-flex items-baseline gap-1.5 text-xs">
@@ -252,6 +266,14 @@ function confirmDelete(_event: Event, m: ModelView) {
                     @click="openUpstreams(m)"
                   >
                     <Icon name="cloud-upload" :size="13" />
+                  </IconButton>
+                  <IconButton
+                    :active="panel.isActive(`model-pricing-match:${m.name}`)"
+                    title="匹配价格"
+                    aria-label="匹配价格"
+                    @click="openPricingMatch(m)"
+                  >
+                    <Icon name="currency-dollar" :size="13" />
                   </IconButton>
                   <IconButton
                     :active="panel.isActive(`model:${m.name}`)"
