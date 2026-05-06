@@ -44,7 +44,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="json-artifact-viewer overflow-hidden rounded-md border border-line-soft bg-surface-50">
-    <div ref="target" class="min-h-72 max-h-[480px] overflow-auto" />
+    <div ref="target" />
   </div>
 </template>
 
@@ -161,5 +161,10 @@ onBeforeUnmount(() => {
   height: 8px;
   margin-left: 1px;
   margin-bottom: 1px;
+}
+
+.json-artifact-viewer :deep(.jse-main) {
+  height: auto !important;
+  min-height: 0 !important;
 }
 </style>

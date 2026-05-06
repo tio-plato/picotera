@@ -11,6 +11,7 @@ import {
 import { isJsonContentType, parseJsonBody, rawBodyText } from './artifactBody'
 import type { ArtifactPayload } from './artifactTypes'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
+import SSEEventsVirtualList from './SSEEventsVirtualList.vue'
 
 const props = defineProps<{ payload: ArtifactPayload; url?: string }>()
 
@@ -185,34 +186,7 @@ watch(jsonBody, (parsed) => {
       <!-- Events -->
       <template v-else-if="subView === 'events'">
         <StateText v-if="!sseEvents.length" :dashed="false" compact>没有可解析 event</StateText>
-        <div v-else class="flex max-h-[720px] flex-col gap-2 overflow-auto pr-1">
-          <article
-            v-for="event in sseEvents"
-            :key="event.index"
-            class="shrink-0 overflow-hidden rounded-md border border-line-soft bg-surface-0"
-          >
-            <header
-              class="flex flex-wrap items-center gap-2 border-b border-line-soft bg-surface-50 px-3 py-2"
-            >
-              <span class="font-mono text-xs tabular text-ink">#{{ event.index + 1 }}</span>
-              <span class="font-mono text-2xs text-ink-muted">{{ event.event ?? 'message' }}</span>
-              <span
-                class="ml-auto rounded-[5px] border border-line-soft bg-surface-0 px-1.5 py-0.5 font-mono text-2xs"
-                :class="event.json !== null ? 'text-ok-ink' : 'text-ink-faint'"
-              >
-                {{ event.json !== null ? 'JSON' : 'Text' }}
-              </span>
-            </header>
-            <div class="p-3">
-              <JsonArtifactViewer v-if="event.json !== null" :value="event.json" />
-              <pre
-                v-else
-                class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[360px]"
-                >{{ event.data }}</pre
-              >
-            </div>
-          </article>
-        </div>
+        <SSEEventsVirtualList v-else :events="sseEvents" />
       </template>
 
       <!-- Rendered -->
