@@ -1,6 +1,8 @@
 package server
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"picotera/pkg/contract"
@@ -159,6 +161,12 @@ func TestExtractUserMessagePreviewSkipsMarkupTextParts(t *testing.T) {
 			body:         `{"input":[{"role":"user","content":[{"type":"input_text","text":"foobar"},{"type":"input_text","text":" <p></p>"}]}]}`,
 			want:         " <p></p>",
 		},
+		{
+			name:         "openai responses falls back to earlier user when latest user is markup",
+			endpointType: contract.EndpointType_OpenAIResponses,
+			body:         `{"input":[{"role":"user","content":[{"type":"input_text","text":"real request"}]},{"role":"assistant","content":[{"type":"output_text","text":"answer"}]},{"role":"user","content":[{"type":"input_text","text":"<skill></skill>"}]}]}`,
+			want:         "real request",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -180,6 +188,22 @@ func TestExtractUserMessagePreviewNoPreviewWhenAllTextPartsAreMarkup(t *testing.
 	)
 	if got.Valid {
 		t.Fatalf("expected invalid preview, got %q", got.String)
+	}
+}
+
+func TestExtractUserMessagePreviewFromOpenAIResponsesRequestFixture(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "fixtures", "openai-responses-request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := extractUserMessagePreview(body, contract.EndpointType_OpenAIResponses)
+	if !got.Valid {
+		t.Fatal("expected valid preview, got invalid")
+	}
+	want := "$file-based-pla...染所有的 json 块，太卡了"
+	if got.String != want {
+		t.Fatalf("preview = %q, want %q", got.String, want)
 	}
 }
 

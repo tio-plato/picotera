@@ -102,7 +102,6 @@ func extractOpenAIResponsesUserMessage(body []byte) (string, bool) {
 			if text, ok := extractInputTextContent(item["content"]); ok {
 				return text, true
 			}
-			return "", false
 		}
 	}
 	return "", false
