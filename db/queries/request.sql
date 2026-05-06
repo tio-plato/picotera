@@ -25,16 +25,16 @@ WITH trace_base AS (
     parent_span_id,
     COUNT(*) FILTER (WHERE type = 0)::bigint AS meta_request_count,
     COUNT(*) FILTER (WHERE type = 1)::bigint AS upstream_request_count,
-    SUM(
+    COALESCE(SUM(
       COALESCE(input_tokens, 0)
       + COALESCE(cache_read_tokens, 0)
       + COALESCE(output_tokens, 0)
       + COALESCE(cache_write_tokens, 0)
-    )::bigint AS total_tokens,
-    SUM(COALESCE(input_tokens, 0))::bigint AS input_tokens,
-    SUM(COALESCE(cache_read_tokens, 0))::bigint AS cache_read_tokens,
-    SUM(COALESCE(output_tokens, 0))::bigint AS output_tokens,
-    SUM(COALESCE(cache_write_tokens, 0))::bigint AS cache_write_tokens,
+    ) FILTER (WHERE type = 1), 0)::bigint AS total_tokens,
+    COALESCE(SUM(COALESCE(input_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS input_tokens,
+    COALESCE(SUM(COALESCE(cache_read_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_read_tokens,
+    COALESCE(SUM(COALESCE(output_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS output_tokens,
+    COALESCE(SUM(COALESCE(cache_write_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_tokens,
     MAX(created_at)::timestamp AS last_request_at
   FROM request
   WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
@@ -63,6 +63,7 @@ LEFT JOIN LATERAL (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
+      AND type = 1
       AND model_cost IS NOT NULL
       AND model_cost_currency IS NOT NULL
     GROUP BY model_cost_currency
@@ -77,6 +78,7 @@ LEFT JOIN LATERAL (
     SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
+      AND type = 1
       AND upstream_cost IS NOT NULL
       AND upstream_cost_currency IS NOT NULL
     GROUP BY upstream_cost_currency
