@@ -225,21 +225,18 @@ function confirmDelete(_event: Event, m: ModelView) {
                 <template v-if="!m.pricing || !m.pricing.tiers || m.pricing.tiers.length === 0">
                   <div class="inline-flex items-center gap-2">
                     <Button type="button" variant="ghost" size="sm" @click="openPricingMatch(m)">
-                      <Icon name="currency-dollar" :size="13" />
+                      <Icon name="cloud-dollar" :size="13" />
                       <span>匹配价格</span>
                     </Button>
                   </div>
                 </template>
-                <template v-else-if="m.pricing.tiers.length === 1">
+                <template v-else>
                   <span class="inline-flex items-baseline gap-1.5 text-xs">
                     <MoneyDisplay :amount="m.pricing.tiers[0]?.input ?? null" :currency="m.pricing.currency" :max-digits="2" />
                     <span class="text-ink-faint">/</span>
                     <MoneyDisplay :amount="m.pricing.tiers[0]?.output ?? null" :currency="m.pricing.currency" :max-digits="2" />
-                    <span class="text-2xs text-ink-faint">/1M</span>
+                    <Tag v-if="m.pricing.tiers.length > 1" variant="accent">+{{ m.pricing.tiers.length - 1 }}</Tag>
                   </span>
-                </template>
-                <template v-else>
-                  <Tag variant="accent">分级 {{ m.pricing.tiers.length }}</Tag>
                 </template>
               </Td>
               <Td>
@@ -273,7 +270,7 @@ function confirmDelete(_event: Event, m: ModelView) {
                     aria-label="匹配价格"
                     @click="openPricingMatch(m)"
                   >
-                    <Icon name="currency-dollar" :size="13" />
+                    <Icon name="cloud-dollar" :size="13" />
                   </IconButton>
                   <IconButton
                     :active="panel.isActive(`model:${m.name}`)"

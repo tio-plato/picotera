@@ -6,6 +6,7 @@ import {
   IconBraces,
   IconCheck,
   IconChevronDown,
+  IconCloudDollar,
   IconCloudDownload,
   IconCloudUpload,
   IconCpu,
@@ -53,6 +54,7 @@ export type IconName =
   | 'route'
   | 'chevron-down'
   | 'search'
+  | 'cloud-dollar'
   | 'cloud-download'
   | 'cloud-upload'
   | 'loader'
@@ -86,6 +88,7 @@ export const iconComponents: Record<IconName, Component> = {
   route: IconRoute,
   'chevron-down': IconChevronDown,
   search: IconSearch,
+  'cloud-dollar': IconCloudDollar,
   'cloud-download': IconCloudDownload,
   'cloud-upload': IconCloudUpload,
   loader: IconLoader2,
