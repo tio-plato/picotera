@@ -62,6 +62,26 @@ const availableEndpoints = computed(() =>
   ),
 )
 
+function guessUpstreamUrl(endpointPath: string) {
+  if (!endpointPath) return ''
+
+  const shortestMatchedBinding = providerEndpoints.value
+    .filter((pe) => pe.upstreamUrl.endsWith(pe.endpointPath))
+    .sort((a, b) => a.upstreamUrl.length - b.upstreamUrl.length)[0]
+
+  if (!shortestMatchedBinding) return endpointPath
+
+  const prefix = shortestMatchedBinding.upstreamUrl.slice(
+    0,
+    shortestMatchedBinding.upstreamUrl.length - shortestMatchedBinding.endpointPath.length,
+  )
+  return `${prefix}${endpointPath}`
+}
+
+function onAddEndpointPathChange() {
+  form.value.upstreamUrl = guessUpstreamUrl(form.value.endpointPath)
+}
+
 async function fetchEndpoints() {
   const { data, error: err } = await api.GET('/api/picotera/endpoints')
   if (err) {
@@ -311,7 +331,12 @@ function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
       </div>
       <form class="flex flex-col gap-2" @submit.prevent="addBinding">
         <Field label="端点">
-          <Select v-model="form.endpointPath" size="sm" :disabled="!availableEndpoints.length">
+          <Select
+            v-model="form.endpointPath"
+            size="sm"
+            :disabled="!availableEndpoints.length"
+            @change="onAddEndpointPathChange"
+          >
             <option value="" disabled>
               {{ availableEndpoints.length ? '选择端点' : '该渠道暂无可绑定端点' }}
             </option>

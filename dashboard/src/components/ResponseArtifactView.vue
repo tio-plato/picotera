@@ -62,6 +62,22 @@ const thinkingHtml = computed(() => {
   return renderMarkdown(content.value.thinking)
 })
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+const openAIImageGeneration = computed(() => {
+  if (!jsonBody.value.ok) return null
+  const root = asRecord(jsonBody.value.value)
+  const firstItem = Array.isArray(root?.data) ? asRecord(root.data[0]) : null
+  const b64Json = firstItem?.b64_json
+  if (typeof b64Json !== 'string' || b64Json === '') return null
+  return {
+    src: `data:image/png;base64,${b64Json}`,
+  }
+})
+
 function headerEntries(headers: Record<string, string[]> | undefined) {
   if (!headers) return []
   return Object.entries(headers).map(([k, v]) => ({ key: k, value: v.join(', ') }))
@@ -192,6 +208,16 @@ watch(jsonBody, (parsed) => {
       <!-- Rendered -->
       <template v-else-if="subView === 'rendered'">
         <div class="flex flex-col gap-3">
+          <figure
+            v-if="openAIImageGeneration"
+            class="m-0 overflow-hidden rounded-md border border-line-soft bg-surface-50"
+          >
+            <img
+              :src="openAIImageGeneration.src"
+              alt="OpenAI image generation result"
+              class="block max-h-[640px] w-full object-contain"
+            >
+          </figure>
           <details v-if="content.thinking" class="group">
             <summary
               class="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-ink-muted select-none hover:text-ink"
@@ -211,7 +237,11 @@ watch(jsonBody, (parsed) => {
             />
           </details>
           <div v-if="content.reply" class="prose prose-sm max-w-none" v-html="replyHtml" />
-          <StateText v-else-if="!content.thinking" :dashed="false" compact>无可渲染内容</StateText>
+          <StateText
+            v-else-if="!content.thinking && !openAIImageGeneration"
+            :dashed="false"
+            compact
+          >无可渲染内容</StateText>
         </div>
       </template>
     </section>
