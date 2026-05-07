@@ -311,6 +311,9 @@ watch(detailTabs, tabs => {
             <Field label="缓存写入" as="div">
               <span class="font-mono tabular-nums text-sm">{{ fmtNum(selected.cacheWriteTokens) }}</span>
             </Field>
+            <Field label="1h 缓存写入" as="div">
+              <span class="font-mono tabular-nums text-sm">{{ fmtNum(selected.cacheWrite1hTokens) }}</span>
+            </Field>
           </div>
         </section>
 

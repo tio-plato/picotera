@@ -320,6 +320,23 @@ function outputSpeed(r: RequestView): string | null {
   return (r.outputTokens / seconds).toFixed(0)
 }
 
+function inputSideTokens(r: RequestView): number {
+  return (r.inputTokens || 0)
+    + (r.cacheReadTokens || 0)
+    + (r.cacheWriteTokens || 0)
+    + (r.cacheWrite1hTokens || 0)
+}
+
+function totalTokens(r: RequestView): number {
+  return inputSideTokens(r) + (r.outputTokens || 0)
+}
+
+function cacheHitRate(r: RequestView): number | null {
+  const denominator = inputSideTokens(r)
+  if (denominator <= 0 || !r.cacheReadTokens) return null
+  return r.cacheReadTokens / denominator
+}
+
 function resetCursorAndReload() {
   fetchRequests()
 }
@@ -465,10 +482,10 @@ function resetCursorAndReload() {
         <template #cell-tokens="{ row }">
           <div class="text-xs">
             <span class="font-mono tabular-nums text-ink">
-              {{ ((row.inputTokens || 0 ) + (row.outputTokens || 0) + (row.cacheReadTokens || 0) + (row.cacheWriteTokens || 0)).toLocaleString() }}
+              {{ totalTokens(row).toLocaleString() }}
             </span>
-            <div v-if="row.cacheReadTokens || row.cacheWriteTokens" class="flex items-center gap-1.5 mt-0.5 text-ink-faint text-2xs">
-              <span v-if="row.cacheReadTokens" >{{ parseFloat((row.cacheReadTokens / (((row.inputTokens || 0) + row.cacheReadTokens + (row.cacheWriteTokens || 0)) || 1) * 100).toFixed(2)) }}%</span>
+            <div v-if="row.cacheReadTokens || row.cacheWriteTokens || row.cacheWrite1hTokens" class="flex items-center gap-1.5 mt-0.5 text-ink-faint text-2xs">
+              <span v-if="cacheHitRate(row) != null">{{ parseFloat(((cacheHitRate(row) ?? 0) * 100).toFixed(2)) }}%</span>
             </div>
           </div>
         </template>

@@ -12,7 +12,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency, user_message_preview FROM request WHERE id = $1
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency, user_message_preview, cache_write_1h_tokens FROM request WHERE id = $1
 `
 
 func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
@@ -43,6 +43,7 @@ func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
 		&i.UpstreamCost,
 		&i.UpstreamCostCurrency,
 		&i.UserMessagePreview,
+		&i.CacheWrite1hTokens,
 	)
 	return i, err
 }
@@ -58,11 +59,13 @@ WITH trace_base AS (
       + COALESCE(cache_read_tokens, 0)
       + COALESCE(output_tokens, 0)
       + COALESCE(cache_write_tokens, 0)
+      + COALESCE(cache_write_1h_tokens, 0)
     ) FILTER (WHERE type = 1), 0)::bigint AS total_tokens,
     COALESCE(SUM(COALESCE(input_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS input_tokens,
     COALESCE(SUM(COALESCE(cache_read_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_read_tokens,
     COALESCE(SUM(COALESCE(output_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS output_tokens,
     COALESCE(SUM(COALESCE(cache_write_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_tokens,
+    COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens,
     MAX(created_at)::timestamp AS last_request_at
   FROM request
   WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
@@ -77,6 +80,7 @@ SELECT
   trace_base.cache_read_tokens,
   trace_base.output_tokens,
   trace_base.cache_write_tokens,
+  trace_base.cache_write_1h_tokens,
   COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
   COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
   trace_base.last_request_at,
@@ -146,6 +150,7 @@ type ListRequestTracesRow struct {
 	CacheReadTokens      int64            `json:"cacheReadTokens"`
 	OutputTokens         int64            `json:"outputTokens"`
 	CacheWriteTokens     int64            `json:"cacheWriteTokens"`
+	CacheWrite1hTokens   int64            `json:"cacheWrite1hTokens"`
 	ModelCosts           []byte           `json:"modelCosts"`
 	UpstreamCosts        []byte           `json:"upstreamCosts"`
 	LastRequestAt        pgtype.Timestamp `json:"lastRequestAt"`
@@ -170,6 +175,7 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 			&i.CacheReadTokens,
 			&i.OutputTokens,
 			&i.CacheWriteTokens,
+			&i.CacheWrite1hTokens,
 			&i.ModelCosts,
 			&i.UpstreamCosts,
 			&i.LastRequestAt,
@@ -187,7 +193,7 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 
 const listRequests = `-- name: ListRequests :many
 SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
-       upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
+       upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, cache_write_1h_tokens,
        status_code, error_message, ttft_ms, time_spent_ms, created_at,
        model_cost, model_cost_currency, upstream_cost, upstream_cost_currency,
        user_message_preview
@@ -234,6 +240,7 @@ type ListRequestsRow struct {
 	CacheReadTokens      pgtype.Int4      `json:"cacheReadTokens"`
 	OutputTokens         pgtype.Int4      `json:"outputTokens"`
 	CacheWriteTokens     pgtype.Int4      `json:"cacheWriteTokens"`
+	CacheWrite1hTokens   pgtype.Int4      `json:"cacheWrite1hTokens"`
 	StatusCode           pgtype.Int4      `json:"statusCode"`
 	ErrorMessage         pgtype.Text      `json:"errorMessage"`
 	TtftMs               pgtype.Int4      `json:"ttftMs"`
@@ -280,6 +287,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 			&i.CacheReadTokens,
 			&i.OutputTokens,
 			&i.CacheWriteTokens,
+			&i.CacheWrite1hTokens,
 			&i.StatusCode,
 			&i.ErrorMessage,
 			&i.TtftMs,
@@ -307,7 +315,7 @@ WITH anchor AS (
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
-       r.cache_write_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
+       r.cache_write_tokens, r.cache_write_1h_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at,
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
        r.user_message_preview
@@ -331,6 +339,7 @@ type ListRequestsBySpanRow struct {
 	CacheReadTokens      pgtype.Int4      `json:"cacheReadTokens"`
 	OutputTokens         pgtype.Int4      `json:"outputTokens"`
 	CacheWriteTokens     pgtype.Int4      `json:"cacheWriteTokens"`
+	CacheWrite1hTokens   pgtype.Int4      `json:"cacheWrite1hTokens"`
 	StatusCode           pgtype.Int4      `json:"statusCode"`
 	ErrorMessage         pgtype.Text      `json:"errorMessage"`
 	TtftMs               pgtype.Int4      `json:"ttftMs"`
@@ -367,6 +376,7 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequ
 			&i.CacheReadTokens,
 			&i.OutputTokens,
 			&i.CacheWriteTokens,
+			&i.CacheWrite1hTokens,
 			&i.StatusCode,
 			&i.ErrorMessage,
 			&i.TtftMs,
@@ -391,17 +401,18 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequ
 const updateRequestMetrics = `-- name: UpdateRequestMetrics :exec
 UPDATE request
 SET ttft_ms = $2, input_tokens = $3, output_tokens = $4,
-    cache_read_tokens = $5, cache_write_tokens = $6
+    cache_read_tokens = $5, cache_write_tokens = $6, cache_write_1h_tokens = $7
 WHERE id = $1
 `
 
 type UpdateRequestMetricsParams struct {
-	ID               string      `json:"id"`
-	TtftMs           pgtype.Int4 `json:"ttftMs"`
-	InputTokens      pgtype.Int4 `json:"inputTokens"`
-	OutputTokens     pgtype.Int4 `json:"outputTokens"`
-	CacheReadTokens  pgtype.Int4 `json:"cacheReadTokens"`
-	CacheWriteTokens pgtype.Int4 `json:"cacheWriteTokens"`
+	ID                 string      `json:"id"`
+	TtftMs             pgtype.Int4 `json:"ttftMs"`
+	InputTokens        pgtype.Int4 `json:"inputTokens"`
+	OutputTokens       pgtype.Int4 `json:"outputTokens"`
+	CacheReadTokens    pgtype.Int4 `json:"cacheReadTokens"`
+	CacheWriteTokens   pgtype.Int4 `json:"cacheWriteTokens"`
+	CacheWrite1hTokens pgtype.Int4 `json:"cacheWrite1hTokens"`
 }
 
 func (q *Queries) UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error {
@@ -412,6 +423,7 @@ func (q *Queries) UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMet
 		arg.OutputTokens,
 		arg.CacheReadTokens,
 		arg.CacheWriteTokens,
+		arg.CacheWrite1hTokens,
 	)
 	return err
 }
@@ -435,8 +447,9 @@ UPDATE request
 SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     ttft_ms = $6, input_tokens = $7, output_tokens = $8,
     cache_read_tokens = $9, cache_write_tokens = $10,
-    model_cost = $11, model_cost_currency = $12,
-    upstream_cost = $13, upstream_cost_currency = $14
+    cache_write_1h_tokens = $11,
+    model_cost = $12, model_cost_currency = $13,
+    upstream_cost = $14, upstream_cost_currency = $15
 WHERE id = $1
 `
 
@@ -451,6 +464,7 @@ type UpdateRequestOnCompleteParams struct {
 	OutputTokens         pgtype.Int4    `json:"outputTokens"`
 	CacheReadTokens      pgtype.Int4    `json:"cacheReadTokens"`
 	CacheWriteTokens     pgtype.Int4    `json:"cacheWriteTokens"`
+	CacheWrite1hTokens   pgtype.Int4    `json:"cacheWrite1hTokens"`
 	ModelCost            pgtype.Numeric `json:"modelCost"`
 	ModelCostCurrency    pgtype.Text    `json:"modelCostCurrency"`
 	UpstreamCost         pgtype.Numeric `json:"upstreamCost"`
@@ -469,6 +483,7 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 		arg.OutputTokens,
 		arg.CacheReadTokens,
 		arg.CacheWriteTokens,
+		arg.CacheWrite1hTokens,
 		arg.ModelCost,
 		arg.ModelCostCurrency,
 		arg.UpstreamCost,

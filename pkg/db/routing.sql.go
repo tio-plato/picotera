@@ -218,15 +218,15 @@ const insertRequest = `-- name: InsertRequest :one
 INSERT INTO request (
   id, span_id, parent_span_id, type, status,
   provider_id, endpoint_path, api_key_id, model, upstream_model,
-  input_tokens, cache_read_tokens, output_tokens, cache_write_tokens,
+  input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, cache_write_1h_tokens,
   status_code, error_message, ttft_ms, time_spent_ms,
   user_message_preview
 ) VALUES (
   $1, $2, $3, $4, $5,
   $6, $7, $8, $9, $10,
-  $11, $12, $13, $14,
-  $15, $16, $17, $18,
-  $19
+  $11, $12, $13, $14, $15,
+  $16, $17, $18, $19,
+  $20
 )
 RETURNING created_at
 `
@@ -246,6 +246,7 @@ type InsertRequestParams struct {
 	CacheReadTokens    pgtype.Int4 `json:"cacheReadTokens"`
 	OutputTokens       pgtype.Int4 `json:"outputTokens"`
 	CacheWriteTokens   pgtype.Int4 `json:"cacheWriteTokens"`
+	CacheWrite1hTokens pgtype.Int4 `json:"cacheWrite1hTokens"`
 	StatusCode         pgtype.Int4 `json:"statusCode"`
 	ErrorMessage       pgtype.Text `json:"errorMessage"`
 	TtftMs             pgtype.Int4 `json:"ttftMs"`
@@ -269,6 +270,7 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (p
 		arg.CacheReadTokens,
 		arg.OutputTokens,
 		arg.CacheWriteTokens,
+		arg.CacheWrite1hTokens,
 		arg.StatusCode,
 		arg.ErrorMessage,
 		arg.TtftMs,

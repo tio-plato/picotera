@@ -10,11 +10,12 @@ import (
 
 // ResponseMetrics holds extracted TTFT and token usage from a provider response.
 type ResponseMetrics struct {
-	TTFTMs           *int64
-	InputTokens      *int64
-	OutputTokens     *int64
-	CacheReadTokens  *int64
-	CacheWriteTokens *int64
+	TTFTMs             *int64
+	InputTokens        *int64
+	OutputTokens       *int64
+	CacheReadTokens    *int64
+	CacheWriteTokens   *int64
+	CacheWrite1HTokens *int64
 }
 
 // ResponseExtractor wraps an io.Reader and inspects bytes as they flow through,
@@ -220,10 +221,7 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 			val := v.Int()
 			e.metrics.CacheReadTokens = &val
 		}
-		if v := msgUsage.Get("cache_creation_input_tokens"); v.Exists() {
-			val := v.Int()
-			e.metrics.CacheWriteTokens = &val
-		}
+		e.extractAnthropicCacheCreation(msgUsage)
 	}
 
 	// Usage from message_delta (output tokens)
@@ -288,10 +286,29 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 		}
 	}
 	if e.metrics.CacheWriteTokens == nil {
-		if v := result.Get("usage.cache_creation_input_tokens"); v.Exists() {
-			val := v.Int()
-			e.metrics.CacheWriteTokens = &val
-		}
+		e.extractAnthropicCacheCreation(result.Get("usage"))
+	}
+}
+
+func (e *ResponseExtractor) extractAnthropicCacheCreation(usage gjson.Result) {
+	if !usage.Exists() {
+		return
+	}
+
+	cacheCreation := usage.Get("cache_creation")
+	ephemeral5m := cacheCreation.Get("ephemeral_5m_input_tokens")
+	ephemeral1h := cacheCreation.Get("ephemeral_1h_input_tokens")
+	if ephemeral5m.Exists() && ephemeral1h.Exists() {
+		cacheWrite := ephemeral5m.Int()
+		cacheWrite1h := ephemeral1h.Int()
+		e.metrics.CacheWriteTokens = &cacheWrite
+		e.metrics.CacheWrite1HTokens = &cacheWrite1h
+		return
+	}
+
+	if v := usage.Get("cache_creation_input_tokens"); v.Exists() {
+		val := v.Int()
+		e.metrics.CacheWriteTokens = &val
 	}
 }
 

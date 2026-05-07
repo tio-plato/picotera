@@ -763,6 +763,8 @@ export interface components {
             /** Format: int64 */
             cacheReadTokens: number;
             /** Format: int64 */
+            cacheWrite1hTokens: number;
+            /** Format: int64 */
             cacheWriteTokens: number;
             /** Format: int64 */
             inputTokens: number;
@@ -791,6 +793,8 @@ export interface components {
             apiKeyId?: number;
             /** Format: int32 */
             cacheReadTokens?: number;
+            /** Format: int32 */
+            cacheWrite1hTokens?: number;
             /** Format: int32 */
             cacheWriteTokens?: number;
             createdAt?: string;

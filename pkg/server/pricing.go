@@ -27,13 +27,13 @@ func pickTier(p *contract.Pricing, inputTokens int64) *contract.PricingTier {
 }
 
 // computeCost calculates the per-request cost in p.Currency given token counts.
-// inputTokens must be non-nil to drive tier selection. cacheWrite1h /
-// implicitCacheRead are not yet tracked in the request table, so they
-// contribute 0. ok=false signals "not enough information to bill".
+// inputTokens must be non-nil to drive tier selection. implicitCacheRead is
+// not yet tracked in the request table, so it contributes 0. ok=false signals
+// "not enough information to bill".
 //
 // The returned Numeric carries the amount with 6-decimal precision. The Text
 // is the currency code. Both are zero-valued when ok is false.
-func computeCost(p *contract.Pricing, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens *int32) (pgtype.Numeric, pgtype.Text, bool) {
+func computeCost(p *contract.Pricing, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens *int32) (pgtype.Numeric, pgtype.Text, bool) {
 	if p == nil || len(p.Tiers) == 0 || inputTokens == nil {
 		return pgtype.Numeric{}, pgtype.Text{}, false
 	}
@@ -68,7 +68,10 @@ func computeCost(p *contract.Pricing, inputTokens, outputTokens, cacheReadTokens
 	if cacheWriteTokens != nil {
 		add(tier.CacheWrite, *cacheWriteTokens)
 	}
-	// cacheWrite1h, implicitCacheRead — no token columns yet; reserved.
+	if cacheWrite1hTokens != nil {
+		add(tier.CacheWrite1H, *cacheWrite1hTokens)
+	}
+	// implicitCacheRead — no token column yet; reserved.
 
 	num, err := ratToNumeric6(total)
 	if err != nil {

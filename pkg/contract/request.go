@@ -26,6 +26,7 @@ type RequestView struct {
 	CacheReadTokens      *int32   `json:"cacheReadTokens,omitempty"`
 	OutputTokens         *int32   `json:"outputTokens,omitempty"`
 	CacheWriteTokens     *int32   `json:"cacheWriteTokens,omitempty"`
+	CacheWrite1HTokens   *int32   `json:"cacheWrite1hTokens,omitempty"`
 	StatusCode           *int32   `json:"statusCode,omitempty"`
 	ErrorMessage         string   `json:"errorMessage,omitempty"`
 	TtftMs               *int32   `json:"ttftMs,omitempty"`
@@ -54,6 +55,7 @@ type RequestTraceView struct {
 	CacheReadTokens      int64           `json:"cacheReadTokens"`
 	OutputTokens         int64           `json:"outputTokens"`
 	CacheWriteTokens     int64           `json:"cacheWriteTokens"`
+	CacheWrite1HTokens   int64           `json:"cacheWrite1hTokens"`
 	ModelCosts           []TraceCostView `json:"modelCosts"`
 	UpstreamCosts        []TraceCostView `json:"upstreamCosts"`
 	LastRequestAt        string          `json:"lastRequestAt,omitempty"`
@@ -75,6 +77,7 @@ type requestLike struct {
 	CacheReadTokens      pgtype.Int4
 	OutputTokens         pgtype.Int4
 	CacheWriteTokens     pgtype.Int4
+	CacheWrite1HTokens   pgtype.Int4
 	StatusCode           pgtype.Int4
 	ErrorMessage         pgtype.Text
 	TtftMs               pgtype.Int4
@@ -132,6 +135,10 @@ func toRequestView(r requestLike) *RequestView {
 		v := r.CacheWriteTokens.Int32
 		view.CacheWriteTokens = &v
 	}
+	if r.CacheWrite1HTokens.Valid {
+		v := r.CacheWrite1HTokens.Int32
+		view.CacheWrite1HTokens = &v
+	}
 	if r.StatusCode.Valid {
 		v := r.StatusCode.Int32
 		view.StatusCode = &v
@@ -188,6 +195,7 @@ func ToRequestView(r *db.Request) *RequestView {
 		CacheReadTokens:      r.CacheReadTokens,
 		OutputTokens:         r.OutputTokens,
 		CacheWriteTokens:     r.CacheWriteTokens,
+		CacheWrite1HTokens:   r.CacheWrite1hTokens,
 		StatusCode:           r.StatusCode,
 		ErrorMessage:         r.ErrorMessage,
 		TtftMs:               r.TtftMs,
@@ -217,6 +225,7 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		CacheReadTokens:      r.CacheReadTokens,
 		OutputTokens:         r.OutputTokens,
 		CacheWriteTokens:     r.CacheWriteTokens,
+		CacheWrite1HTokens:   r.CacheWrite1hTokens,
 		StatusCode:           r.StatusCode,
 		ErrorMessage:         r.ErrorMessage,
 		TtftMs:               r.TtftMs,
@@ -246,6 +255,7 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		CacheReadTokens:      r.CacheReadTokens,
 		OutputTokens:         r.OutputTokens,
 		CacheWriteTokens:     r.CacheWriteTokens,
+		CacheWrite1HTokens:   r.CacheWrite1hTokens,
 		StatusCode:           r.StatusCode,
 		ErrorMessage:         r.ErrorMessage,
 		TtftMs:               r.TtftMs,
@@ -287,6 +297,7 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 		CacheReadTokens:      r.CacheReadTokens,
 		OutputTokens:         r.OutputTokens,
 		CacheWriteTokens:     r.CacheWriteTokens,
+		CacheWrite1HTokens:   r.CacheWrite1hTokens,
 		ModelCosts:           modelCosts,
 		UpstreamCosts:        upstreamCosts,
 	}

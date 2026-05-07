@@ -1002,8 +1002,8 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	h.uploadMetaResponseArtifactWithAggregation(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated)
 
 	m := extractor.Metrics()
-	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens := metricsToPG(m)
-	modelCost, modelCcy, upstreamCost, upstreamCcy := h.costsFor(a.bgCtx, a.originalModelName, a.providerID, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens)
+	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
+	modelCost, modelCcy, upstreamCost, upstreamCcy := h.costsFor(a.bgCtx, a.originalModelName, a.providerID, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 
 	upstreamTimeSpent := int32(time.Since(a.attemptStart).Milliseconds())
 	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
@@ -1017,6 +1017,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		OutputTokens:         outputTokens,
 		CacheReadTokens:      cacheReadTokens,
 		CacheWriteTokens:     cacheWriteTokens,
+		CacheWrite1hTokens:   cacheWrite1hTokens,
 		ModelCost:            modelCost,
 		ModelCostCurrency:    modelCcy,
 		UpstreamCost:         upstreamCost,
@@ -1034,6 +1035,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		OutputTokens:         outputTokens,
 		CacheReadTokens:      cacheReadTokens,
 		CacheWriteTokens:     cacheWriteTokens,
+		CacheWrite1hTokens:   cacheWrite1hTokens,
 		ModelCost:            modelCost,
 		ModelCostCurrency:    modelCcy,
 		UpstreamCost:         upstreamCost,

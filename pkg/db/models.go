@@ -82,6 +82,7 @@ type Request struct {
 	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
 	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
 	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
+	CacheWrite1hTokens   pgtype.Int4      `json:"cacheWrite1hTokens"`
 }
 
 type Script struct {

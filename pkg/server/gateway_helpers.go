@@ -509,17 +509,18 @@ func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateReque
 // the matching provider.providerModels[].pricing entries. Either side may be
 // absent — its two columns are returned as invalid pgtype values in that case.
 // providerID == 0 / model == "" short-circuits the corresponding side.
-func (s *Server) costsFor(ctx context.Context, model string, providerID int32, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens pgtype.Int4) (modelCost pgtype.Numeric, modelCcy pgtype.Text, upstreamCost pgtype.Numeric, upstreamCcy pgtype.Text) {
+func (s *Server) costsFor(ctx context.Context, model string, providerID int32, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens pgtype.Int4) (modelCost pgtype.Numeric, modelCcy pgtype.Text, upstreamCost pgtype.Numeric, upstreamCcy pgtype.Text) {
 	in := pgInt4ToPtr(inputTokens)
 	out := pgInt4ToPtr(outputTokens)
 	cr := pgInt4ToPtr(cacheReadTokens)
 	cw := pgInt4ToPtr(cacheWriteTokens)
+	cw1h := pgInt4ToPtr(cacheWrite1hTokens)
 
 	if model != "" {
 		row, err := s.queries.GetModelByName(ctx, model)
 		if err == nil {
 			if pricing, perr := contract.PricingFromJSONB(row.Pricing); perr == nil && pricing != nil {
-				if num, ccy, ok := computeCost(pricing, in, out, cr, cw); ok {
+				if num, ccy, ok := computeCost(pricing, in, out, cr, cw, cw1h); ok {
 					modelCost, modelCcy = num, ccy
 				}
 			}
@@ -530,7 +531,7 @@ func (s *Server) costsFor(ctx context.Context, model string, providerID int32, i
 		prov, err := s.queries.GetProviderByID(ctx, providerID)
 		if err == nil {
 			if pricing, perr := providerEntryPricing(prov.ProviderModels, model); perr == nil && pricing != nil {
-				if num, ccy, ok := computeCost(pricing, in, out, cr, cw); ok {
+				if num, ccy, ok := computeCost(pricing, in, out, cr, cw, cw1h); ok {
 					upstreamCost, upstreamCcy = num, ccy
 				}
 			}
@@ -548,7 +549,7 @@ func pgInt4ToPtr(v pgtype.Int4) *int32 {
 }
 
 // metricsToPG converts ResponseMetrics to pgtype fields for DB queries.
-func metricsToPG(m ResponseMetrics) (ttftMs pgtype.Int4, inputTokens pgtype.Int4, outputTokens pgtype.Int4, cacheReadTokens pgtype.Int4, cacheWriteTokens pgtype.Int4) {
+func metricsToPG(m ResponseMetrics) (ttftMs pgtype.Int4, inputTokens pgtype.Int4, outputTokens pgtype.Int4, cacheReadTokens pgtype.Int4, cacheWriteTokens pgtype.Int4, cacheWrite1hTokens pgtype.Int4) {
 	if m.TTFTMs != nil {
 		ttftMs = pgtype.Int4{Int32: int32(*m.TTFTMs), Valid: true}
 	}
@@ -563,6 +564,9 @@ func metricsToPG(m ResponseMetrics) (ttftMs pgtype.Int4, inputTokens pgtype.Int4
 	}
 	if m.CacheWriteTokens != nil {
 		cacheWriteTokens = pgtype.Int4{Int32: int32(*m.CacheWriteTokens), Valid: true}
+	}
+	if m.CacheWrite1HTokens != nil {
+		cacheWrite1hTokens = pgtype.Int4{Int32: int32(*m.CacheWrite1HTokens), Valid: true}
 	}
 	return
 }

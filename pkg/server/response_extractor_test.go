@@ -159,6 +159,45 @@ func TestResponseExtractor_SSE_Anthropic_FullFlow(t *testing.T) {
 	if m.CacheWriteTokens == nil || *m.CacheWriteTokens != 10 {
 		t.Errorf("CacheWriteTokens: got %v, want 10", m.CacheWriteTokens)
 	}
+	if m.CacheWrite1HTokens != nil {
+		t.Errorf("CacheWrite1HTokens should be nil for fallback usage, got %v", m.CacheWrite1HTokens)
+	}
+}
+
+func TestResponseExtractor_SSE_Anthropic_CacheCreationDetails(t *testing.T) {
+	events := []string{
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":200,\"cache_creation_input_tokens\":668,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":668}}}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.CacheWriteTokens == nil || *m.CacheWriteTokens != 0 {
+		t.Errorf("CacheWriteTokens: got %v, want 0", m.CacheWriteTokens)
+	}
+	if m.CacheWrite1HTokens == nil || *m.CacheWrite1HTokens != 668 {
+		t.Errorf("CacheWrite1HTokens: got %v, want 668", m.CacheWrite1HTokens)
+	}
+}
+
+func TestResponseExtractor_SSE_Anthropic_CacheCreationMissingDetailFallsBack(t *testing.T) {
+	events := []string{
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":200,\"cache_creation_input_tokens\":668,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0}}}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.CacheWriteTokens == nil || *m.CacheWriteTokens != 668 {
+		t.Errorf("CacheWriteTokens: got %v, want fallback 668", m.CacheWriteTokens)
+	}
+	if m.CacheWrite1HTokens != nil {
+		t.Errorf("CacheWrite1HTokens should be nil when a detail is missing, got %v", m.CacheWrite1HTokens)
+	}
 }
 
 func TestResponseExtractor_SSE_Anthropic_ToolUseTTFT(t *testing.T) {
@@ -218,6 +257,41 @@ func TestResponseExtractor_JSON_Anthropic(t *testing.T) {
 	if m.CacheWriteTokens == nil || *m.CacheWriteTokens != 15 {
 		t.Errorf("CacheWriteTokens: got %v, want 15", m.CacheWriteTokens)
 	}
+	if m.CacheWrite1HTokens != nil {
+		t.Errorf("CacheWrite1HTokens should be nil for fallback usage, got %v", m.CacheWrite1HTokens)
+	}
+}
+
+func TestResponseExtractor_JSON_Anthropic_CacheCreationDetails(t *testing.T) {
+	jsonData := `{"id":"msg_1","type":"message","content":[{"type":"text","text":"Hi"}],"usage":{"input_tokens":300,"output_tokens":100,"cache_read_input_tokens":60,"cache_creation_input_tokens":668,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":668}}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.CacheWriteTokens == nil || *m.CacheWriteTokens != 0 {
+		t.Errorf("CacheWriteTokens: got %v, want 0", m.CacheWriteTokens)
+	}
+	if m.CacheWrite1HTokens == nil || *m.CacheWrite1HTokens != 668 {
+		t.Errorf("CacheWrite1HTokens: got %v, want 668", m.CacheWrite1HTokens)
+	}
+}
+
+func TestResponseExtractor_JSON_Anthropic_CacheCreationMissingDetailFallsBack(t *testing.T) {
+	jsonData := `{"id":"msg_1","type":"message","content":[{"type":"text","text":"Hi"}],"usage":{"input_tokens":300,"output_tokens":100,"cache_creation_input_tokens":668,"cache_creation":{"ephemeral_1h_input_tokens":668}}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.CacheWriteTokens == nil || *m.CacheWriteTokens != 668 {
+		t.Errorf("CacheWriteTokens: got %v, want fallback 668", m.CacheWriteTokens)
+	}
+	if m.CacheWrite1HTokens != nil {
+		t.Errorf("CacheWrite1HTokens should be nil when a detail is missing, got %v", m.CacheWrite1HTokens)
+	}
 }
 
 func TestResponseExtractor_JSON_UnrecognizedFormat(t *testing.T) {
@@ -228,7 +302,7 @@ func TestResponseExtractor_JSON_UnrecognizedFormat(t *testing.T) {
 	_, _ = io.ReadAll(extractor)
 
 	m := extractor.Metrics()
-	if m.InputTokens != nil || m.OutputTokens != nil || m.CacheReadTokens != nil || m.CacheWriteTokens != nil || m.TTFTMs != nil {
+	if m.InputTokens != nil || m.OutputTokens != nil || m.CacheReadTokens != nil || m.CacheWriteTokens != nil || m.CacheWrite1HTokens != nil || m.TTFTMs != nil {
 		t.Errorf("expected all nil metrics for unrecognized JSON, got %+v", m)
 	}
 }

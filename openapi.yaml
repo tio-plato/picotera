@@ -614,6 +614,9 @@ components:
         cacheReadTokens:
           format: int64
           type: integer
+        cacheWrite1hTokens:
+          format: int64
+          type: integer
         cacheWriteTokens:
           format: int64
           type: integer
@@ -657,6 +660,7 @@ components:
         - cacheReadTokens
         - outputTokens
         - cacheWriteTokens
+        - cacheWrite1hTokens
         - modelCosts
         - upstreamCosts
       type: object
@@ -673,6 +677,9 @@ components:
           format: int32
           type: integer
         cacheReadTokens:
+          format: int32
+          type: integer
+        cacheWrite1hTokens:
           format: int32
           type: integer
         cacheWriteTokens:

@@ -89,7 +89,7 @@ function formatNumber(value: number): string {
 }
 
 function cacheHitRate(row: RequestTraceView): number | null {
-  const denominator = row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens
+  const denominator = row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens + row.cacheWrite1hTokens
   if (denominator <= 0) return null
   return row.cacheReadTokens / denominator
 }
@@ -181,7 +181,7 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
           <div class="flex flex-col items-end leading-tight">
             <span class="font-mono tabular-nums text-ink">{{ formatNumber(row.totalTokens) }}</span>
             <span class="font-mono text-2xs text-ink-faint tabular-nums">
-              {{ formatNumber(row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens) }} / {{ formatNumber(row.outputTokens) }}
+              {{ formatNumber(row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens + row.cacheWrite1hTokens) }} / {{ formatNumber(row.outputTokens) }}
             </span>
           </div>
         </template>
@@ -189,7 +189,7 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
           <span
             class="font-mono tabular-nums"
             :class="cacheHitRate(row) == null ? 'text-ink-faint' : 'text-ink'"
-            :title="`cache read ${formatNumber(row.cacheReadTokens)} / input ${formatNumber(row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens)}`"
+            :title="`cache read ${formatNumber(row.cacheReadTokens)} / input ${formatNumber(row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens + row.cacheWrite1hTokens)}`"
           >
             {{ formatCacheHitRate(row) }}
           </span>
