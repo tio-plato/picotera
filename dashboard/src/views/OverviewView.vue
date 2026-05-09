@@ -566,24 +566,24 @@ function formatCurrencyCompact(v: number, code: string) {
 
     <!-- Bento totals -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-      <DataCard>
-        <div class="p-4 flex flex-col gap-1.5">
+      <DataCard class="min-h-20">
+        <div class="p-4 min-h-20 flex flex-col gap-1.5">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总 Token</span>
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
           <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalTokens ?? 0).toLocaleString() }}</span>
         </div>
       </DataCard>
-      <DataCard>
-        <div class="p-4 flex flex-col gap-1.5">
+      <DataCard class="min-h-20">
+        <div class="p-4 min-h-20 flex flex-col gap-1.5">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总请求</span>
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
           <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalRequests ?? 0).toLocaleString() }}</span>
         </div>
       </DataCard>
-      <DataCard>
-        <div class="p-4 flex flex-col gap-1.5">
+      <DataCard class="min-h-20">
+        <div class="p-4 min-h-20 flex flex-col gap-1.5">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总费用</span>
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -606,8 +606,8 @@ function formatCurrencyCompact(v: number, code: string) {
           </div>
         </div>
       </DataCard>
-      <DataCard>
-        <div class="p-4 flex flex-col gap-1.5">
+      <DataCard class="min-h-20">
+        <div class="p-4 min-h-20 flex flex-col gap-1.5">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总追踪</span>
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -625,12 +625,13 @@ function formatCurrencyCompact(v: number, code: string) {
     </div>
     <div class="grid grid-cols-1 gap-3">
       <DataCard
+        class="min-h-[22.5rem]"
         v-if="
           !isOriginalMode ||
           (sankeyVariant !== 'costIn' && sankeyVariant !== 'costOut') ||
           breakdownCurrenciesPresent.length <= 0
         ">
-        <div class="p-4 flex flex-col gap-3">
+        <div class="p-4 min-h-[22.5rem] flex flex-col gap-3">
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText
             v-else-if="summaryQuery.isError.value"
@@ -710,8 +711,9 @@ function formatCurrencyCompact(v: number, code: string) {
         <DataCard
           v-for="currency in breakdownCurrenciesPresent"
           :key="`${sankeyVariant}-${currency}`"
+          class="min-h-[22.5rem]"
         >
-          <div class="p-4 flex flex-col gap-3">
+          <div class="p-4 min-h-[22.5rem] flex flex-col gap-3">
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">
               费用 · {{ currency }}
             </span>
@@ -753,8 +755,8 @@ function formatCurrencyCompact(v: number, code: string) {
       </div>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      <DataCard>
-        <div class="p-4 flex flex-col gap-3">
+      <DataCard class="min-h-[17.5rem]">
+        <div class="p-4 min-h-[17.5rem] flex flex-col gap-3">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">Token 分布</span>
           <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -767,8 +769,8 @@ function formatCurrencyCompact(v: number, code: string) {
         </div>
       </DataCard>
       <template v-if="!isOriginalMode">
-        <DataCard>
-          <div class="p-4 flex flex-col gap-3">
+        <DataCard class="min-h-[17.5rem]">
+          <div class="p-4 min-h-[17.5rem] flex flex-col gap-3">
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布<span class="ml-1 text-ink-faint normal-case">· {{ ccy.targetCurrency.value }}</span></span>
             <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
             <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -782,8 +784,8 @@ function formatCurrencyCompact(v: number, code: string) {
         </DataCard>
       </template>
       <template v-else-if="distributionCurrenciesPresent.length === 0">
-        <DataCard>
-          <div class="p-4 flex flex-col gap-3">
+        <DataCard class="min-h-[17.5rem]">
+          <div class="p-4 min-h-[17.5rem] flex flex-col gap-3">
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布</span>
             <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
             <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -792,8 +794,8 @@ function formatCurrencyCompact(v: number, code: string) {
         </DataCard>
       </template>
       <template v-else>
-        <DataCard v-for="currency in distributionCurrenciesPresent" :key="currency">
-          <div class="p-4 flex flex-col gap-3">
+        <DataCard v-for="currency in distributionCurrenciesPresent" :key="currency" class="min-h-[17.5rem]">
+          <div class="p-4 min-h-[17.5rem] flex flex-col gap-3">
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布<span class="ml-1 text-ink-faint normal-case">· {{ currency }}</span></span>
             <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
             <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -816,8 +818,8 @@ function formatCurrencyCompact(v: number, code: string) {
       </div>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      <DataCard>
-        <div class="p-4 flex flex-col gap-3">
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">Token</span>
           <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -832,8 +834,8 @@ function formatCurrencyCompact(v: number, code: string) {
         </div>
       </DataCard>
       <template v-if="!isOriginalMode">
-        <DataCard>
-          <div class="p-4 flex flex-col gap-3">
+        <DataCard class="min-h-[17rem]">
+          <div class="p-4 min-h-[17rem] flex flex-col gap-3">
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用<span class="ml-1 text-ink-faint normal-case">· {{ ccy.targetCurrency.value }}</span></span>
             <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
             <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -849,8 +851,8 @@ function formatCurrencyCompact(v: number, code: string) {
         </DataCard>
       </template>
       <template v-else-if="seriesCurrenciesPresent.length === 0">
-        <DataCard>
-          <div class="p-4 flex flex-col gap-3">
+        <DataCard class="min-h-[17rem]">
+          <div class="p-4 min-h-[17rem] flex flex-col gap-3">
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用</span>
             <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
             <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -859,8 +861,8 @@ function formatCurrencyCompact(v: number, code: string) {
         </DataCard>
       </template>
       <template v-else>
-        <DataCard v-for="currency in seriesCurrenciesPresent" :key="currency">
-          <div class="p-4 flex flex-col gap-3">
+        <DataCard v-for="currency in seriesCurrenciesPresent" :key="currency" class="min-h-[17rem]">
+          <div class="p-4 min-h-[17rem] flex flex-col gap-3">
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用<span class="ml-1 text-ink-faint normal-case">· {{ currency }}</span></span>
             <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
             <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -875,8 +877,8 @@ function formatCurrencyCompact(v: number, code: string) {
           </div>
         </DataCard>
       </template>
-      <DataCard>
-        <div class="p-4 flex flex-col gap-3">
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">请求数</span>
           <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
@@ -890,8 +892,8 @@ function formatCurrencyCompact(v: number, code: string) {
           />
         </div>
       </DataCard>
-      <DataCard>
-        <div class="p-4 flex flex-col gap-3">
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">追踪数</span>
           <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
