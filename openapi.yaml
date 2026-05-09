@@ -392,6 +392,9 @@ components:
           type: array
         model:
           type: string
+        projectId:
+          format: int32
+          type: integer
         providerId:
           format: int32
           type: integer
@@ -405,6 +408,7 @@ components:
         - model
         - upstreamModel
         - providerId
+        - projectId
         - totalTokens
         - costs
       type: object
@@ -1563,6 +1567,13 @@ paths:
             type: integer
         - explode: false
           in: query
+          name: projectId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
           name: dimension
           required: true
           schema:
@@ -1571,6 +1582,7 @@ paths:
               - model
               - upstreamModel
               - provider
+              - project
             type: string
       responses:
         "200":
@@ -1628,6 +1640,13 @@ paths:
             type: integer
         - explode: false
           in: query
+          name: projectId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
           name: dimension
           required: true
           schema:
@@ -1637,6 +1656,7 @@ paths:
               - model
               - upstreamModel
               - provider
+              - project
             type: string
       responses:
         "200":
@@ -1688,6 +1708,13 @@ paths:
         - explode: false
           in: query
           name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: projectId
           schema:
             format: int32
             minimum: 1

@@ -12,6 +12,7 @@ type breakdownKey struct {
 	Model         string
 	UpstreamModel string
 	ProviderID    int32
+	ProjectID     int32
 }
 
 func mergeBreakdown(
@@ -21,19 +22,20 @@ func mergeBreakdown(
 	rows := make(map[breakdownKey]*contract.OverviewBreakdownRowView, len(tokens)+len(costs))
 
 	for _, t := range tokens {
-		k := breakdownKey{APIKeyID: t.ApiKeyID, Model: t.Model, UpstreamModel: t.UpstreamModel, ProviderID: t.ProviderID}
+		k := breakdownKey{APIKeyID: t.ApiKeyID, Model: t.Model, UpstreamModel: t.UpstreamModel, ProviderID: t.ProviderID, ProjectID: t.ProjectID}
 		rows[k] = &contract.OverviewBreakdownRowView{
 			ApiKeyID:      t.ApiKeyID,
 			Model:         t.Model,
 			UpstreamModel: t.UpstreamModel,
 			ProviderID:    t.ProviderID,
+			ProjectID:     t.ProjectID,
 			TotalTokens:   t.TotalTokens,
 			Costs:         []contract.OverviewCostView{},
 		}
 	}
 
 	for _, c := range costs {
-		k := breakdownKey{APIKeyID: c.ApiKeyID, Model: c.Model, UpstreamModel: c.UpstreamModel, ProviderID: c.ProviderID}
+		k := breakdownKey{APIKeyID: c.ApiKeyID, Model: c.Model, UpstreamModel: c.UpstreamModel, ProviderID: c.ProviderID, ProjectID: c.ProjectID}
 		row, ok := rows[k]
 		if !ok {
 			row = &contract.OverviewBreakdownRowView{
@@ -41,6 +43,7 @@ func mergeBreakdown(
 				Model:         c.Model,
 				UpstreamModel: c.UpstreamModel,
 				ProviderID:    c.ProviderID,
+				ProjectID:     c.ProjectID,
 				TotalTokens:   0,
 				Costs:         []contract.OverviewCostView{},
 			}

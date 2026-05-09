@@ -46,6 +46,7 @@ WHERE t.last_request_at >= $1::timestamp
       AND ($4::text IS NULL OR r.model = $4::text)
       AND ($5::text IS NULL OR r.upstream_model = $5::text)
       AND ($6::int IS NULL OR r.provider_id = $6::int)
+      AND ($7::int IS NULL OR r.project_id = $7::int)
   )
 `
 
@@ -56,6 +57,7 @@ type CountTracesFilteredParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 func (q *Queries) CountTracesFiltered(ctx context.Context, arg CountTracesFilteredParams) (int64, error) {
@@ -66,6 +68,7 @@ func (q *Queries) CountTracesFiltered(ctx context.Context, arg CountTracesFilter
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	var trace_count int64
 	err := row.Scan(&trace_count)
@@ -86,6 +89,7 @@ WHERE bucket_at >= $1::timestamp
   AND ($4::text IS NULL OR model = $4::text)
   AND ($5::text IS NULL OR upstream_model = $5::text)
   AND ($6::int IS NULL OR provider_id = $6::int)
+  AND ($7::int IS NULL OR project_id = $7::int)
 `
 
 type GetOverviewTokenBreakdownParams struct {
@@ -95,6 +99,7 @@ type GetOverviewTokenBreakdownParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type GetOverviewTokenBreakdownRow struct {
@@ -113,6 +118,7 @@ func (q *Queries) GetOverviewTokenBreakdown(ctx context.Context, arg GetOverview
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	var i GetOverviewTokenBreakdownRow
 	err := row.Scan(
@@ -143,6 +149,7 @@ WITH filtered AS (
     AND ($4::text IS NULL OR model = $4::text)
     AND ($5::text IS NULL OR upstream_model = $5::text)
     AND ($6::int IS NULL OR provider_id = $6::int)
+    AND ($7::int IS NULL OR project_id = $7::int)
 ), totals AS (
   SELECT
     COALESCE(SUM(
@@ -179,6 +186,7 @@ type GetOverviewTotalsParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type GetOverviewTotalsRow struct {
@@ -195,6 +203,7 @@ func (q *Queries) GetOverviewTotals(ctx context.Context, arg GetOverviewTotalsPa
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	var i GetOverviewTotalsRow
 	err := row.Scan(&i.TotalTokens, &i.TotalRequests, &i.Costs)
@@ -207,6 +216,7 @@ SELECT
   COALESCE(model, '')::text             AS model,
   COALESCE(upstream_model, '')::text    AS upstream_model,
   COALESCE(provider_id, 0)::int         AS provider_id,
+  COALESCE(project_id, 0)::int          AS project_id,
   cost_currency::text                    AS currency,
   SUM(cost)::float8                      AS amount
 FROM request_overview_hourly
@@ -216,9 +226,10 @@ WHERE bucket_at >= $1::timestamp
   AND ($4::text IS NULL OR model = $4::text)
   AND ($5::text IS NULL OR upstream_model = $5::text)
   AND ($6::int IS NULL OR provider_id = $6::int)
+  AND ($7::int IS NULL OR project_id = $7::int)
   AND cost_currency IS NOT NULL
   AND cost_currency <> ''
-GROUP BY 1, 2, 3, 4, 5
+GROUP BY 1, 2, 3, 4, 5, 6
 `
 
 type ListOverviewBreakdownCostsParams struct {
@@ -228,6 +239,7 @@ type ListOverviewBreakdownCostsParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type ListOverviewBreakdownCostsRow struct {
@@ -235,6 +247,7 @@ type ListOverviewBreakdownCostsRow struct {
 	Model         string  `json:"model"`
 	UpstreamModel string  `json:"upstreamModel"`
 	ProviderID    int32   `json:"providerId"`
+	ProjectID     int32   `json:"projectId"`
 	Currency      string  `json:"currency"`
 	Amount        float64 `json:"amount"`
 }
@@ -247,6 +260,7 @@ func (q *Queries) ListOverviewBreakdownCosts(ctx context.Context, arg ListOvervi
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	if err != nil {
 		return nil, err
@@ -260,6 +274,7 @@ func (q *Queries) ListOverviewBreakdownCosts(ctx context.Context, arg ListOvervi
 			&i.Model,
 			&i.UpstreamModel,
 			&i.ProviderID,
+			&i.ProjectID,
 			&i.Currency,
 			&i.Amount,
 		); err != nil {
@@ -279,6 +294,7 @@ SELECT
   COALESCE(model, '')::text             AS model,
   COALESCE(upstream_model, '')::text    AS upstream_model,
   COALESCE(provider_id, 0)::int         AS provider_id,
+  COALESCE(project_id, 0)::int          AS project_id,
   SUM(
     input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
   )::bigint AS total_tokens
@@ -289,7 +305,8 @@ WHERE bucket_at >= $1::timestamp
   AND ($4::text IS NULL OR model = $4::text)
   AND ($5::text IS NULL OR upstream_model = $5::text)
   AND ($6::int IS NULL OR provider_id = $6::int)
-GROUP BY 1, 2, 3, 4
+  AND ($7::int IS NULL OR project_id = $7::int)
+GROUP BY 1, 2, 3, 4, 5
 HAVING SUM(
   input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
 ) > 0
@@ -302,6 +319,7 @@ type ListOverviewBreakdownTokensParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type ListOverviewBreakdownTokensRow struct {
@@ -309,6 +327,7 @@ type ListOverviewBreakdownTokensRow struct {
 	Model         string `json:"model"`
 	UpstreamModel string `json:"upstreamModel"`
 	ProviderID    int32  `json:"providerId"`
+	ProjectID     int32  `json:"projectId"`
 	TotalTokens   int64  `json:"totalTokens"`
 }
 
@@ -320,6 +339,7 @@ func (q *Queries) ListOverviewBreakdownTokens(ctx context.Context, arg ListOverv
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	if err != nil {
 		return nil, err
@@ -333,6 +353,7 @@ func (q *Queries) ListOverviewBreakdownTokens(ctx context.Context, arg ListOverv
 			&i.Model,
 			&i.UpstreamModel,
 			&i.ProviderID,
+			&i.ProjectID,
 			&i.TotalTokens,
 		); err != nil {
 			return nil, err
@@ -352,6 +373,7 @@ SELECT
     WHEN 'model' THEN COALESCE(model, '')
     WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
     WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
     ELSE ''
   END AS key,
   SUM(
@@ -365,6 +387,7 @@ WHERE bucket_at >= $2::timestamp
   AND ($5::text IS NULL OR model = $5::text)
   AND ($6::text IS NULL OR upstream_model = $6::text)
   AND ($7::int IS NULL OR provider_id = $7::int)
+  AND ($8::int IS NULL OR project_id = $8::int)
 GROUP BY key
 ORDER BY total_tokens DESC, key ASC
 `
@@ -377,6 +400,7 @@ type ListOverviewDistributionParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type ListOverviewDistributionRow struct {
@@ -394,6 +418,7 @@ func (q *Queries) ListOverviewDistribution(ctx context.Context, arg ListOverview
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	if err != nil {
 		return nil, err
@@ -420,6 +445,7 @@ SELECT
     WHEN 'model' THEN COALESCE(model, '')
     WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
     WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
     ELSE ''
   END AS key,
   cost_currency::text AS currency,
@@ -431,6 +457,7 @@ WHERE bucket_at >= $2::timestamp
   AND ($5::text IS NULL OR model = $5::text)
   AND ($6::text IS NULL OR upstream_model = $6::text)
   AND ($7::int IS NULL OR provider_id = $7::int)
+  AND ($8::int IS NULL OR project_id = $8::int)
   AND cost_currency IS NOT NULL
   AND cost_currency <> ''
 GROUP BY key, currency
@@ -445,6 +472,7 @@ type ListOverviewDistributionCostsParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type ListOverviewDistributionCostsRow struct {
@@ -462,6 +490,7 @@ func (q *Queries) ListOverviewDistributionCosts(ctx context.Context, arg ListOve
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	if err != nil {
 		return nil, err
@@ -489,6 +518,7 @@ SELECT
     WHEN 'model' THEN COALESCE(model, '')
     WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
     WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
     ELSE ''
   END AS group_key,
   COALESCE(cost_currency, '')::text AS currency,
@@ -502,6 +532,7 @@ WHERE bucket_at >= $2::timestamp
   AND ($5::text IS NULL OR model = $5::text)
   AND ($6::text IS NULL OR upstream_model = $6::text)
   AND ($7::int IS NULL OR provider_id = $7::int)
+  AND ($8::int IS NULL OR project_id = $8::int)
 GROUP BY bucket_at, group_key, currency
 ORDER BY bucket_at ASC, group_key ASC, currency ASC
 `
@@ -514,6 +545,7 @@ type ListOverviewSeriesMetricsParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type ListOverviewSeriesMetricsRow struct {
@@ -534,6 +566,7 @@ func (q *Queries) ListOverviewSeriesMetrics(ctx context.Context, arg ListOvervie
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	if err != nil {
 		return nil, err
@@ -568,6 +601,7 @@ SELECT
     WHEN 'model' THEN COALESCE(r.model, '')
     WHEN 'upstreamModel' THEN COALESCE(r.upstream_model, '')
     WHEN 'provider' THEN COALESCE(r.provider_id::text, '')
+    WHEN 'project' THEN COALESCE(r.project_id::text, '')
     ELSE ''
   END AS group_key,
   COUNT(DISTINCT r.parent_span_id)::bigint AS trace_count
@@ -581,6 +615,7 @@ WHERE r.created_at >= $2::timestamp
   AND ($5::text IS NULL OR r.model = $5::text)
   AND ($6::text IS NULL OR r.upstream_model = $6::text)
   AND ($7::int IS NULL OR r.provider_id = $7::int)
+  AND ($8::int IS NULL OR r.project_id = $8::int)
 GROUP BY bucket_at, group_key
 ORDER BY bucket_at ASC, group_key ASC
 `
@@ -593,6 +628,7 @@ type ListOverviewSeriesTracesParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type ListOverviewSeriesTracesRow struct {
@@ -610,6 +646,7 @@ func (q *Queries) ListOverviewSeriesTraces(ctx context.Context, arg ListOverview
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	if err != nil {
 		return nil, err
@@ -636,6 +673,7 @@ SELECT
     WHEN 'model' THEN COALESCE(r.model, '')
     WHEN 'upstreamModel' THEN COALESCE(r.upstream_model, '')
     WHEN 'provider' THEN COALESCE(r.provider_id::text, '')
+    WHEN 'project' THEN COALESCE(r.project_id::text, '')
     ELSE ''
   END AS key,
   COUNT(DISTINCT r.parent_span_id)::bigint AS trace_count
@@ -649,6 +687,7 @@ WHERE r.created_at >= $2::timestamp
   AND ($5::text IS NULL OR r.model = $5::text)
   AND ($6::text IS NULL OR r.upstream_model = $6::text)
   AND ($7::int IS NULL OR r.provider_id = $7::int)
+  AND ($8::int IS NULL OR r.project_id = $8::int)
 GROUP BY key
 `
 
@@ -660,6 +699,7 @@ type ListOverviewTraceCountsByDimensionParams struct {
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
 	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 }
 
 type ListOverviewTraceCountsByDimensionRow struct {
@@ -676,6 +716,7 @@ func (q *Queries) ListOverviewTraceCountsByDimension(ctx context.Context, arg Li
 		arg.Model,
 		arg.UpstreamModel,
 		arg.ProviderID,
+		arg.ProjectID,
 	)
 	if err != nil {
 		return nil, err

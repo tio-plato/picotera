@@ -102,6 +102,7 @@ type RequestOverviewHourly struct {
 	Model              pgtype.Text    `json:"model"`
 	UpstreamModel      pgtype.Text    `json:"upstreamModel"`
 	ProviderID         pgtype.Int4    `json:"providerId"`
+	ProjectID          pgtype.Int4    `json:"projectId"`
 	CostCurrency       interface{}    `json:"costCurrency"`
 	RequestCount       int64          `json:"requestCount"`
 	InputTokens        int64          `json:"inputTokens"`

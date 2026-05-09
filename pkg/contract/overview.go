@@ -31,6 +31,7 @@ type OverviewBreakdownRowView struct {
 	Model         string             `json:"model"`
 	UpstreamModel string             `json:"upstreamModel"`
 	ProviderID    int32              `json:"providerId"`
+	ProjectID     int32              `json:"projectId"`
 	TotalTokens   int64              `json:"totalTokens"`
 	Costs         []OverviewCostView `json:"costs"`
 }
@@ -87,6 +88,7 @@ type OverviewCommonRequest struct {
 	Model         string `query:"model,omitempty" minLength:"1"`
 	UpstreamModel string `query:"upstreamModel,omitempty" minLength:"1"`
 	ProviderID    int32  `query:"providerId,omitempty" minimum:"1"`
+	ProjectID     int32  `query:"projectId,omitempty" minimum:"1"`
 }
 
 type GetOverviewSummaryRequest struct {
@@ -99,7 +101,7 @@ type GetOverviewSummaryResponse struct {
 
 type GetOverviewDistributionRequest struct {
 	OverviewCommonRequest
-	Dimension string `query:"dimension" enum:"apiKey,model,upstreamModel,provider" required:"true"`
+	Dimension string `query:"dimension" enum:"apiKey,model,upstreamModel,provider,project" required:"true"`
 }
 
 type GetOverviewDistributionResponse struct {
@@ -108,7 +110,7 @@ type GetOverviewDistributionResponse struct {
 
 type GetOverviewSeriesRequest struct {
 	OverviewCommonRequest
-	Dimension string `query:"dimension" enum:"none,apiKey,model,upstreamModel,provider" required:"true"`
+	Dimension string `query:"dimension" enum:"none,apiKey,model,upstreamModel,provider,project" required:"true"`
 }
 
 type GetOverviewSeriesResponse struct {

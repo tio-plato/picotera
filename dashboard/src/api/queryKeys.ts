@@ -8,6 +8,7 @@ export type OverviewFilters = Readonly<{
   model?: string
   upstreamModel?: string
   providerId?: number
+  projectId?: number
 }>
 
 export type RequestsFilters = Readonly<{

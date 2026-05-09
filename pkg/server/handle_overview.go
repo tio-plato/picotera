@@ -100,7 +100,7 @@ func parseCostsJSON(raw []byte) ([]contract.OverviewCostView, error) {
 }
 
 func hasFilters(in contract.OverviewCommonRequest) bool {
-	return in.ApiKeyID != 0 || in.Model != "" || in.UpstreamModel != "" || in.ProviderID != 0
+	return in.ApiKeyID != 0 || in.Model != "" || in.UpstreamModel != "" || in.ProviderID != 0 || in.ProjectID != 0
 }
 
 func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetOverviewSummaryRequest) (*contract.GetOverviewSummaryResponse, error) {
@@ -118,6 +118,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query totals", err)
@@ -135,6 +136,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query token breakdown", err)
@@ -147,6 +149,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query breakdown tokens", err)
@@ -159,6 +162,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query breakdown costs", err)
@@ -173,6 +177,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 			Model:         toPgText(in.Model),
 			UpstreamModel: toPgText(in.UpstreamModel),
 			ProviderID:    toPgInt4(in.ProviderID),
+			ProjectID:     toPgInt4(in.ProjectID),
 		})
 	} else {
 		traceCount, err = s.queries.CountTraces(ctx, db.CountTracesParams{
@@ -219,6 +224,7 @@ func (s *Server) handleGetOverviewDistribution(ctx context.Context, in *contract
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query distribution", err)
@@ -232,6 +238,7 @@ func (s *Server) handleGetOverviewDistribution(ctx context.Context, in *contract
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query distribution costs", err)
@@ -245,6 +252,7 @@ func (s *Server) handleGetOverviewDistribution(ctx context.Context, in *contract
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query distribution traces", err)
@@ -310,6 +318,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query series metrics", err)
@@ -322,6 +331,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
 		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query series traces", err)

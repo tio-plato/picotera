@@ -305,6 +305,7 @@ function overviewQuery(filters: OverviewFilters) {
   if (filters.model !== undefined) query.model = filters.model
   if (filters.upstreamModel !== undefined) query.upstreamModel = filters.upstreamModel
   if (filters.providerId !== undefined) query.providerId = filters.providerId
+  if (filters.projectId !== undefined) query.projectId = filters.projectId
   return query
 }
 

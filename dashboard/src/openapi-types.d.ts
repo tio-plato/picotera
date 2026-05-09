@@ -762,6 +762,8 @@ export interface components {
             costs: components["schemas"]["OverviewCostView"][] | null;
             model: string;
             /** Format: int32 */
+            projectId: number;
+            /** Format: int32 */
             providerId: number;
             /** Format: int64 */
             totalTokens: number;
@@ -1643,7 +1645,8 @@ export interface operations {
                 model?: string;
                 upstreamModel?: string;
                 providerId?: number;
-                dimension: "apiKey" | "model" | "upstreamModel" | "provider";
+                projectId?: number;
+                dimension: "apiKey" | "model" | "upstreamModel" | "provider" | "project";
             };
             header?: never;
             path?: never;
@@ -1679,7 +1682,8 @@ export interface operations {
                 model?: string;
                 upstreamModel?: string;
                 providerId?: number;
-                dimension: "none" | "apiKey" | "model" | "upstreamModel" | "provider";
+                projectId?: number;
+                dimension: "none" | "apiKey" | "model" | "upstreamModel" | "provider" | "project";
             };
             header?: never;
             path?: never;
@@ -1715,6 +1719,7 @@ export interface operations {
                 model?: string;
                 upstreamModel?: string;
                 providerId?: number;
+                projectId?: number;
             };
             header?: never;
             path?: never;

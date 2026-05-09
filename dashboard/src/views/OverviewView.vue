@@ -7,6 +7,7 @@ import {
   getOverviewSummary,
   listApiKeys,
   listModels,
+  listProjects,
   listProviders,
 } from '@/api/client'
 import { OPERATIONAL_STALE_TIME } from '@/api/queryClient'
@@ -32,6 +33,7 @@ const filters = reactive({
   model: '',
   upstreamModel: '',
   providerId: 0,
+  projectId: 0,
 })
 const distributionDimension = ref<OverviewDimension>('provider')
 const seriesDimension = ref<OverviewSeriesDimension>('none')
@@ -72,6 +74,7 @@ const distributionDimensionOptions: { value: OverviewDimension; label: string }[
   { value: 'apiKey', label: '密钥' },
   { value: 'model', label: '请求模型' },
   { value: 'upstreamModel', label: '上游模型' },
+  { value: 'project', label: '项目' },
 ]
 const seriesDimensionOptions: { value: OverviewSeriesDimension; label: string }[] = [
   { value: 'none', label: '全部' },
@@ -79,26 +82,30 @@ const seriesDimensionOptions: { value: OverviewSeriesDimension; label: string }[
   { value: 'apiKey', label: '密钥' },
   { value: 'model', label: '请求模型' },
   { value: 'upstreamModel', label: '上游模型' },
+  { value: 'project', label: '项目' },
 ]
 
 const overviewFilters = computed<OverviewFilters>(() => {
-  const out: { range: OverviewRange; apiKeyId?: number; model?: string; upstreamModel?: string; providerId?: number } = {
+  const out: { range: OverviewRange; apiKeyId?: number; model?: string; upstreamModel?: string; providerId?: number; projectId?: number } = {
     range: filters.range,
   }
   if (filters.apiKeyId) out.apiKeyId = filters.apiKeyId
   if (filters.model) out.model = filters.model
   if (filters.upstreamModel) out.upstreamModel = filters.upstreamModel
   if (filters.providerId) out.providerId = filters.providerId
+  if (filters.projectId) out.projectId = filters.projectId
   return out
 })
 
 const apiKeysQuery = useQuery({ queryKey: queryKeys.apiKeys.all, queryFn: listApiKeys })
 const providersQuery = useQuery({ queryKey: queryKeys.providers.all, queryFn: listProviders })
 const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listModels })
+const projectsQuery = useQuery({ queryKey: queryKeys.projects.all, queryFn: listProjects })
 
 const apiKeys = computed(() => apiKeysQuery.data.value ?? [])
 const providers = computed(() => providersQuery.data.value ?? [])
 const models = computed(() => modelsQuery.data.value ?? [])
+const projects = computed(() => projectsQuery.data.value ?? [])
 
 const apiKeyLabelById = computed(() => {
   const m = new Map<number, string>()
@@ -108,6 +115,11 @@ const apiKeyLabelById = computed(() => {
 const providerLabelById = computed(() => {
   const m = new Map<number, string>()
   for (const p of providers.value) m.set(p.id, p.name)
+  return m
+})
+const projectLabelById = computed(() => {
+  const m = new Map<number, string>()
+  for (const p of projects.value) m.set(p.id, p.name)
   return m
 })
 
@@ -162,6 +174,11 @@ function refreshOverview() {
 }
 
 function dimensionLabel(dim: OverviewDimension | OverviewSeriesDimension, key: string): string {
+  if (dim === 'project') {
+    if (key === '' || key === '0') return '未关联'
+    const id = Number(key)
+    return Number.isFinite(id) ? projectLabelById.value.get(id) ?? `#${key}` : key
+  }
   if (key === '') return '全部'
   if (dim === 'provider') {
     const id = Number(key)
@@ -329,7 +346,7 @@ const tokenCompositionSankey = computed<{ nodes: SankeyNode[]; links: SankeyLink
   return { nodes: allNodes.filter((n) => used.has(n.id)), links }
 })
 
-type DimKind = 'apiKey' | 'model' | 'upstreamModel' | 'provider'
+type DimKind = 'apiKey' | 'model' | 'upstreamModel' | 'provider' | 'project'
 
 const TOP_PER_LAYER = 8
 
@@ -339,6 +356,7 @@ function rowDimKey(row: OverviewBreakdownRowView, dim: DimKind): string {
     case 'model':         return `model:${row.model || ''}`
     case 'upstreamModel': return `upstreamModel:${row.upstreamModel || ''}`
     case 'provider':      return `provider:${row.providerId || 0}`
+    case 'project':       return `project:${row.projectId || 0}`
   }
 }
 
@@ -346,7 +364,10 @@ function rawValueFromKey(key: string): { dim: DimKind; raw: string } | null {
   const idx = key.indexOf(':')
   if (idx < 0) return null
   const dim = key.slice(0, idx) as DimKind
-  if (dim !== 'apiKey' && dim !== 'model' && dim !== 'upstreamModel' && dim !== 'provider') return null
+  if (
+    dim !== 'apiKey' && dim !== 'model' && dim !== 'upstreamModel' &&
+    dim !== 'provider' && dim !== 'project'
+  ) return null
   return { dim, raw: key.slice(idx + 1) }
 }
 
@@ -424,10 +445,13 @@ function buildDimensionSankey(
 
 const breakdownRows = computed<OverviewBreakdownRowView[]>(() => summaryQuery.data.value?.breakdown ?? [])
 
+const tokensInLayers: DimKind[] = ['provider', 'upstreamModel', 'model', 'apiKey', 'project']
+const tokensOutLayers: DimKind[] = ['project', 'apiKey', 'model', 'upstreamModel', 'provider']
+
 const tokensInSankey = computed(() =>
   buildDimensionSankey(
     breakdownRows.value,
-    ['provider', 'upstreamModel', 'model', 'apiKey'],
+    tokensInLayers,
     'root',
     '总 Token',
     (row) => row.totalTokens,
@@ -437,7 +461,7 @@ const tokensInSankey = computed(() =>
 const tokensOutSankey = computed(() =>
   buildDimensionSankey(
     breakdownRows.value,
-    ['apiKey', 'model', 'upstreamModel', 'provider'],
+    tokensOutLayers,
     'root',
     '总 Token',
     (row) => row.totalTokens,
@@ -463,8 +487,8 @@ function rowCostConverted(row: OverviewBreakdownRowView): number {
   return (row.costs ?? []).reduce((acc, c) => acc + ccy.convert(c.amount, c.currency).amount, 0)
 }
 
-const costInLayers: DimKind[] = ['provider', 'upstreamModel', 'model', 'apiKey']
-const costOutLayers: DimKind[] = ['apiKey', 'model', 'upstreamModel', 'provider']
+const costInLayers: DimKind[] = ['provider', 'upstreamModel', 'model', 'apiKey', 'project']
+const costOutLayers: DimKind[] = ['project', 'apiKey', 'model', 'upstreamModel', 'provider']
 
 const costInSankeyConverted = computed(() => {
   const target = ccy.targetCurrency.value
@@ -575,6 +599,13 @@ function formatCurrencyCompact(v: number, code: string) {
         <Select v-model.number="filters.providerId" size="sm">
           <option :value="0">全部</option>
           <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
+        </Select>
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">项目</span>
+        <Select v-model.number="filters.projectId" size="sm">
+          <option :value="0">全部</option>
+          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
         </Select>
       </div>
       <Button

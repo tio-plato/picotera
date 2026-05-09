@@ -31,7 +31,7 @@ export type OverviewCostView = components['schemas']['OverviewCostView']
 export type OverviewBreakdownRowView = components['schemas']['OverviewBreakdownRowView']
 
 export type OverviewRange = '1d' | '7d' | '1m'
-export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider'
+export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider' | 'project'
 export type OverviewSeriesDimension = 'none' | OverviewDimension
 export type OverviewMetric = 'tokens' | 'cost' | 'requests' | 'traces'
 

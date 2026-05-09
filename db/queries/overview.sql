@@ -16,6 +16,7 @@ WITH filtered AS (
     AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
     AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
     AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+    AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
 ), totals AS (
   SELECT
     COALESCE(SUM(
@@ -66,6 +67,7 @@ WHERE t.last_request_at >= sqlc.arg('start_at')::timestamp
       AND (sqlc.narg('model')::text IS NULL OR r.model = sqlc.narg('model')::text)
       AND (sqlc.narg('upstream_model')::text IS NULL OR r.upstream_model = sqlc.narg('upstream_model')::text)
       AND (sqlc.narg('provider_id')::int IS NULL OR r.provider_id = sqlc.narg('provider_id')::int)
+      AND (sqlc.narg('project_id')::int IS NULL OR r.project_id = sqlc.narg('project_id')::int)
   );
 
 -- name: ListOverviewDistribution :many
@@ -75,6 +77,7 @@ SELECT
     WHEN 'model' THEN COALESCE(model, '')
     WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
     WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
     ELSE ''
   END AS key,
   SUM(
@@ -88,6 +91,7 @@ WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
   AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
 GROUP BY key
 ORDER BY total_tokens DESC, key ASC;
 
@@ -98,6 +102,7 @@ SELECT
     WHEN 'model' THEN COALESCE(model, '')
     WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
     WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
     ELSE ''
   END AS key,
   cost_currency::text AS currency,
@@ -109,6 +114,7 @@ WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
   AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
   AND cost_currency IS NOT NULL
   AND cost_currency <> ''
 GROUP BY key, currency
@@ -121,6 +127,7 @@ SELECT
     WHEN 'model' THEN COALESCE(r.model, '')
     WHEN 'upstreamModel' THEN COALESCE(r.upstream_model, '')
     WHEN 'provider' THEN COALESCE(r.provider_id::text, '')
+    WHEN 'project' THEN COALESCE(r.project_id::text, '')
     ELSE ''
   END AS key,
   COUNT(DISTINCT r.parent_span_id)::bigint AS trace_count
@@ -134,6 +141,7 @@ WHERE r.created_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('model')::text IS NULL OR r.model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR r.upstream_model = sqlc.narg('upstream_model')::text)
   AND (sqlc.narg('provider_id')::int IS NULL OR r.provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR r.project_id = sqlc.narg('project_id')::int)
 GROUP BY key;
 
 -- name: ListOverviewSeriesMetrics :many
@@ -144,6 +152,7 @@ SELECT
     WHEN 'model' THEN COALESCE(model, '')
     WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
     WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
     ELSE ''
   END AS group_key,
   COALESCE(cost_currency, '')::text AS currency,
@@ -157,6 +166,7 @@ WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
   AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
 GROUP BY bucket_at, group_key, currency
 ORDER BY bucket_at ASC, group_key ASC, currency ASC;
 
@@ -168,6 +178,7 @@ SELECT
     WHEN 'model' THEN COALESCE(r.model, '')
     WHEN 'upstreamModel' THEN COALESCE(r.upstream_model, '')
     WHEN 'provider' THEN COALESCE(r.provider_id::text, '')
+    WHEN 'project' THEN COALESCE(r.project_id::text, '')
     ELSE ''
   END AS group_key,
   COUNT(DISTINCT r.parent_span_id)::bigint AS trace_count
@@ -181,6 +192,7 @@ WHERE r.created_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('model')::text IS NULL OR r.model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR r.upstream_model = sqlc.narg('upstream_model')::text)
   AND (sqlc.narg('provider_id')::int IS NULL OR r.provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR r.project_id = sqlc.narg('project_id')::int)
 GROUP BY bucket_at, group_key
 ORDER BY bucket_at ASC, group_key ASC;
 
@@ -197,7 +209,8 @@ WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
-  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int);
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int);
 
 -- name: ListOverviewBreakdownTokens :many
 SELECT
@@ -205,6 +218,7 @@ SELECT
   COALESCE(model, '')::text             AS model,
   COALESCE(upstream_model, '')::text    AS upstream_model,
   COALESCE(provider_id, 0)::int         AS provider_id,
+  COALESCE(project_id, 0)::int          AS project_id,
   SUM(
     input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
   )::bigint AS total_tokens
@@ -215,7 +229,8 @@ WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
   AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
-GROUP BY 1, 2, 3, 4
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
+GROUP BY 1, 2, 3, 4, 5
 HAVING SUM(
   input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
 ) > 0;
@@ -226,6 +241,7 @@ SELECT
   COALESCE(model, '')::text             AS model,
   COALESCE(upstream_model, '')::text    AS upstream_model,
   COALESCE(provider_id, 0)::int         AS provider_id,
+  COALESCE(project_id, 0)::int          AS project_id,
   cost_currency::text                    AS currency,
   SUM(cost)::float8                      AS amount
 FROM request_overview_hourly
@@ -235,6 +251,7 @@ WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
   AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
   AND cost_currency IS NOT NULL
   AND cost_currency <> ''
-GROUP BY 1, 2, 3, 4, 5;
+GROUP BY 1, 2, 3, 4, 5, 6;
