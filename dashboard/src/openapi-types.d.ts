@@ -694,6 +694,17 @@ export interface components {
             name: string;
             pricing?: components["schemas"]["Pricing"];
         };
+        OverviewBreakdownRowView: {
+            /** Format: int32 */
+            apiKeyId: number;
+            costs: components["schemas"]["OverviewCostView"][] | null;
+            model: string;
+            /** Format: int32 */
+            providerId: number;
+            /** Format: int64 */
+            totalTokens: number;
+            upstreamModel: string;
+        };
         OverviewCostView: {
             /** Format: double */
             amount: number;
@@ -753,7 +764,9 @@ export interface components {
              * @example https://example.com/schemas/OverviewSummaryView.json
              */
             readonly $schema?: string;
+            breakdown: components["schemas"]["OverviewBreakdownRowView"][] | null;
             costs: components["schemas"]["OverviewCostView"][] | null;
+            tokenBreakdown: components["schemas"]["OverviewTokenBreakdownView"];
             /** Format: int64 */
             totalRequests: number;
             /** Format: int64 */
@@ -761,6 +774,18 @@ export interface components {
             /** Format: int64 */
             totalTraceCount: number;
             window: components["schemas"]["OverviewWindowView"];
+        };
+        OverviewTokenBreakdownView: {
+            /** Format: int64 */
+            cacheRead: number;
+            /** Format: int64 */
+            cacheWrite: number;
+            /** Format: int64 */
+            cacheWrite1h: number;
+            /** Format: int64 */
+            input: number;
+            /** Format: int64 */
+            output: number;
         };
         OverviewWindowView: {
             bucket: string;

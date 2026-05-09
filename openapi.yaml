@@ -364,6 +364,35 @@ components:
         - disabled
         - annotations
       type: object
+    OverviewBreakdownRowView:
+      additionalProperties: false
+      properties:
+        apiKeyId:
+          format: int32
+          type: integer
+        costs:
+          items:
+            $ref: "#/components/schemas/OverviewCostView"
+          nullable: true
+          type: array
+        model:
+          type: string
+        providerId:
+          format: int32
+          type: integer
+        totalTokens:
+          format: int64
+          type: integer
+        upstreamModel:
+          type: string
+      required:
+        - apiKeyId
+        - model
+        - upstreamModel
+        - providerId
+        - totalTokens
+        - costs
+      type: object
     OverviewCostView:
       additionalProperties: false
       properties:
@@ -504,11 +533,18 @@ components:
           format: uri
           readOnly: true
           type: string
+        breakdown:
+          items:
+            $ref: "#/components/schemas/OverviewBreakdownRowView"
+          nullable: true
+          type: array
         costs:
           items:
             $ref: "#/components/schemas/OverviewCostView"
           nullable: true
           type: array
+        tokenBreakdown:
+          $ref: "#/components/schemas/OverviewTokenBreakdownView"
         totalRequests:
           format: int64
           type: integer
@@ -526,6 +562,33 @@ components:
         - totalRequests
         - totalTraceCount
         - costs
+        - tokenBreakdown
+        - breakdown
+      type: object
+    OverviewTokenBreakdownView:
+      additionalProperties: false
+      properties:
+        cacheRead:
+          format: int64
+          type: integer
+        cacheWrite:
+          format: int64
+          type: integer
+        cacheWrite1h:
+          format: int64
+          type: integer
+        input:
+          format: int64
+          type: integer
+        output:
+          format: int64
+          type: integer
+      required:
+        - input
+        - cacheRead
+        - cacheWrite
+        - cacheWrite1h
+        - output
       type: object
     OverviewWindowView:
       additionalProperties: false
