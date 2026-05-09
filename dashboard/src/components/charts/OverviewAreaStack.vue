@@ -91,12 +91,13 @@ function compactNumber(v: number) {
 function tooltipTemplate(datum: Datum | undefined) {
   if (!datum) return ''
   const lines = props.groups
-    .filter(g => datum.values[g.key] !== undefined && datum.values[g.key] !== 0)
     .map((g, i) => {
       const v = datum.values[g.key] ?? 0
       const formatted = props.valueFormat ? props.valueFormat(v) : compactNumber(v)
-      return `<div class="flex items-center gap-1 text-2xs"><span style="background:${colors.value[i]};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`
+      return {...g, html: `<div class="flex items-center gap-1 text-2xs"><span style="background:${colors.value[i]};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`}
     })
+    .filter(g => datum.values[g.key] !== undefined && datum.values[g.key] !== 0)
+    .map(g => g.html)
     .join('')
   const bucket = props.bucketFormat ? props.bucketFormat(datum.bucket) : defaultBucketFormat(datum.bucket)
   const head = `<div class="text-2xs text-ink-muted mb-1">${escape(bucket)}</div>`
