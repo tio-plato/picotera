@@ -88,19 +88,19 @@ function compactNumber(v: number) {
   return v.toFixed(2)
 }
 
-const tooltipTriggers = computed(() => ({
-  '.vis-crosshair': (d: unknown) => {
-    const datum = d as Datum
-    if (!datum) return ''
-    const lines = props.groups.map((g, i) => {
+function tooltipTemplate(datum: Datum | undefined) {
+  if (!datum) return ''
+  const lines = props.groups
+    .map((g, i) => {
       const v = datum.values[g.key] ?? 0
       const formatted = props.valueFormat ? props.valueFormat(v) : compactNumber(v)
-      return `<div class="flex items-center gap-1 text-2xs"><span style="background:${colors.value[i]};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '—')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`
-    }).join('')
-    const head = `<div class="text-2xs text-ink-muted mb-1">${escape(props.bucketFormat ? props.bucketFormat(datum.bucket) : defaultBucketFormat(datum.bucket))}</div>`
-    return `<div class="min-w-32">${head}${lines}</div>`
-  },
-}))
+      return `<div class="flex items-center gap-1 text-2xs"><span style="background:${colors.value[i]};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`
+    })
+    .join('')
+  const bucket = props.bucketFormat ? props.bucketFormat(datum.bucket) : defaultBucketFormat(datum.bucket)
+  const head = `<div class="text-2xs text-ink-muted mb-1">${escape(bucket)}</div>`
+  return `<div class="min-w-32">${head}${lines}</div>`
+}
 
 function escape(s: string) {
   return s.replace(/[&<>"']/g, (c) =>
@@ -134,8 +134,8 @@ function escape(s: string) {
         />
         <VisAxis type="x" :tick-format="xTickFormat" :grid-line="false" :num-ticks="6" />
         <VisAxis type="y" :tick-format="yTickFormat" :num-ticks="4" />
-        <VisCrosshair :template="() => ''" />
-        <VisTooltip :triggers="tooltipTriggers" />
+        <VisCrosshair :template="tooltipTemplate" />
+        <VisTooltip />
       </VisXYContainer>
     </div>
     <ul class="flex flex-wrap gap-1">

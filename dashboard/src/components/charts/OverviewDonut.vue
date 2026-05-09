@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { VisSingleContainer, VisDonut, VisTooltip } from '@unovis/vue'
+import { VisSingleContainer, VisDonut, VisTooltip, VisDonutSelectors } from '@unovis/vue'
 import { Tag } from '@/ui'
 import { groupColor } from './colors'
 
@@ -27,7 +27,7 @@ const value = (d: DonutDatum) => d.value
 const colorFn = (d: DonutDatum & { _color: string }) => d._color
 
 const tooltipTriggers = computed(() => ({
-  '.vis-donut-segment': (d: unknown) => {
+  [VisDonutSelectors.segment]: (d: unknown) => {
     const datum = d as DonutDatum & { _color: string }
     if (!datum) return ''
     const formatted = props.valueFormat ? props.valueFormat(datum.value, datum) : String(datum.value)
