@@ -3,6 +3,8 @@ package server
 import (
 	"testing"
 	"time"
+
+	"picotera/pkg/db"
 )
 
 func TestOverviewWindow(t *testing.T) {
@@ -76,5 +78,75 @@ func TestToPgTextEmpty(t *testing.T) {
 	v = toPgText("Foo Bar ")
 	if !v.Valid || v.String != "Foo Bar " {
 		t.Errorf("got %+v, want raw passthrough (no trim)", v)
+	}
+}
+
+func TestMergeBreakdownTokensOnly(t *testing.T) {
+	tokens := []db.ListOverviewBreakdownTokensRow{
+		{ApiKeyID: 1, Model: "claude-4", UpstreamModel: "claude-4-up", ProviderID: 2, TotalTokens: 100},
+		{ApiKeyID: 0, Model: "", UpstreamModel: "", ProviderID: 0, TotalTokens: 50},
+	}
+	got := mergeBreakdown(tokens, nil)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].TotalTokens != 100 || got[1].TotalTokens != 50 {
+		t.Fatalf("sort by tokens desc broken: %+v", got)
+	}
+	for _, row := range got {
+		if row.Costs == nil {
+			t.Errorf("Costs must be non-nil empty slice for row %+v", row)
+		}
+	}
+}
+
+func TestMergeBreakdownTokensAndCosts(t *testing.T) {
+	tokens := []db.ListOverviewBreakdownTokensRow{
+		{ApiKeyID: 1, Model: "m1", UpstreamModel: "u1", ProviderID: 7, TotalTokens: 200},
+	}
+	costs := []db.ListOverviewBreakdownCostsRow{
+		{ApiKeyID: 1, Model: "m1", UpstreamModel: "u1", ProviderID: 7, Currency: "USD", Amount: 1.5},
+		{ApiKeyID: 1, Model: "m1", UpstreamModel: "u1", ProviderID: 7, Currency: "CNY", Amount: 9.9},
+	}
+	got := mergeBreakdown(tokens, costs)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	row := got[0]
+	if row.TotalTokens != 200 {
+		t.Errorf("TotalTokens = %d, want 200 (must NOT double-count across currencies)", row.TotalTokens)
+	}
+	if len(row.Costs) != 2 {
+		t.Fatalf("Costs len = %d, want 2", len(row.Costs))
+	}
+	if row.Costs[0].Currency != "CNY" || row.Costs[1].Currency != "USD" {
+		t.Errorf("Costs not sorted by currency: %+v", row.Costs)
+	}
+}
+
+func TestMergeBreakdownCostOnlyRowKept(t *testing.T) {
+	costs := []db.ListOverviewBreakdownCostsRow{
+		{ApiKeyID: 0, Model: "ghost", UpstreamModel: "ghost-up", ProviderID: 0, Currency: "USD", Amount: 0.05},
+	}
+	got := mergeBreakdown(nil, costs)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].TotalTokens != 0 || len(got[0].Costs) != 1 {
+		t.Errorf("got %+v, want zero tokens with one cost", got[0])
+	}
+	if got[0].Model != "ghost" {
+		t.Errorf("Model = %q, want ghost", got[0].Model)
+	}
+}
+
+func TestMergeBreakdownStableSort(t *testing.T) {
+	tokens := []db.ListOverviewBreakdownTokensRow{
+		{ApiKeyID: 5, Model: "a", UpstreamModel: "a", ProviderID: 1, TotalTokens: 10},
+		{ApiKeyID: 3, Model: "a", UpstreamModel: "a", ProviderID: 1, TotalTokens: 10},
+	}
+	got := mergeBreakdown(tokens, nil)
+	if got[0].ApiKeyID != 3 || got[1].ApiKeyID != 5 {
+		t.Errorf("tie-break must be ApiKeyID asc, got %+v", got)
 	}
 }

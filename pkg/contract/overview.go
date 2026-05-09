@@ -18,12 +18,31 @@ type OverviewWindowView struct {
 	Bucket  string `json:"bucket"`
 }
 
+type OverviewTokenBreakdownView struct {
+	Input        int64 `json:"input"`
+	CacheRead    int64 `json:"cacheRead"`
+	CacheWrite   int64 `json:"cacheWrite"`
+	CacheWrite1h int64 `json:"cacheWrite1h"`
+	Output       int64 `json:"output"`
+}
+
+type OverviewBreakdownRowView struct {
+	ApiKeyID      int32              `json:"apiKeyId"`
+	Model         string             `json:"model"`
+	UpstreamModel string             `json:"upstreamModel"`
+	ProviderID    int32              `json:"providerId"`
+	TotalTokens   int64              `json:"totalTokens"`
+	Costs         []OverviewCostView `json:"costs"`
+}
+
 type OverviewSummaryView struct {
-	Window          OverviewWindowView `json:"window"`
-	TotalTokens     int64              `json:"totalTokens"`
-	TotalRequests   int64              `json:"totalRequests"`
-	TotalTraceCount int64              `json:"totalTraceCount"`
-	Costs           []OverviewCostView `json:"costs"`
+	Window          OverviewWindowView         `json:"window"`
+	TotalTokens     int64                      `json:"totalTokens"`
+	TotalRequests   int64                      `json:"totalRequests"`
+	TotalTraceCount int64                      `json:"totalTraceCount"`
+	Costs           []OverviewCostView         `json:"costs"`
+	TokenBreakdown  OverviewTokenBreakdownView `json:"tokenBreakdown"`
+	Breakdown       []OverviewBreakdownRowView `json:"breakdown"`
 }
 
 type OverviewDistributionRowView struct {

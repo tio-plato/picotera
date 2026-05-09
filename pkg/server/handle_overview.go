@@ -107,6 +107,42 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 		return nil, huma.Error500InternalServerError("failed to decode costs", err)
 	}
 
+	tokenBreakdownRow, err := s.queries.GetOverviewTokenBreakdown(ctx, db.GetOverviewTokenBreakdownParams{
+		StartAt:       startTS,
+		EndAt:         endTS,
+		ApiKeyID:      toPgInt4(in.ApiKeyID),
+		Model:         toPgText(in.Model),
+		UpstreamModel: toPgText(in.UpstreamModel),
+		ProviderID:    toPgInt4(in.ProviderID),
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to query token breakdown", err)
+	}
+
+	breakdownTokenRows, err := s.queries.ListOverviewBreakdownTokens(ctx, db.ListOverviewBreakdownTokensParams{
+		StartAt:       startTS,
+		EndAt:         endTS,
+		ApiKeyID:      toPgInt4(in.ApiKeyID),
+		Model:         toPgText(in.Model),
+		UpstreamModel: toPgText(in.UpstreamModel),
+		ProviderID:    toPgInt4(in.ProviderID),
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to query breakdown tokens", err)
+	}
+
+	breakdownCostRows, err := s.queries.ListOverviewBreakdownCosts(ctx, db.ListOverviewBreakdownCostsParams{
+		StartAt:       startTS,
+		EndAt:         endTS,
+		ApiKeyID:      toPgInt4(in.ApiKeyID),
+		Model:         toPgText(in.Model),
+		UpstreamModel: toPgText(in.UpstreamModel),
+		ProviderID:    toPgInt4(in.ProviderID),
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to query breakdown costs", err)
+	}
+
 	var traceCount int64
 	if hasFilters(in.OverviewCommonRequest) {
 		traceCount, err = s.queries.CountTracesFiltered(ctx, db.CountTracesFilteredParams{
@@ -134,6 +170,14 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 			TotalRequests:   totals.TotalRequests,
 			TotalTraceCount: traceCount,
 			Costs:           costs,
+			TokenBreakdown: contract.OverviewTokenBreakdownView{
+				Input:        tokenBreakdownRow.InputTokens,
+				CacheRead:    tokenBreakdownRow.CacheReadTokens,
+				CacheWrite:   tokenBreakdownRow.CacheWriteTokens,
+				CacheWrite1h: tokenBreakdownRow.CacheWrite1hTokens,
+				Output:       tokenBreakdownRow.OutputTokens,
+			},
+			Breakdown: mergeBreakdown(breakdownTokenRows, breakdownCostRows),
 		},
 	}, nil
 }
