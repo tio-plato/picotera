@@ -73,9 +73,7 @@ WITH trace_base AS (
     COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens,
     MAX(created_at)::timestamp AS last_request_at
   FROM request
-  WHERE created_at >= $1::timestamp
-    AND created_at < $2::timestamp
-    AND parent_span_id IS NOT NULL AND parent_span_id <> ''
+  WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
   GROUP BY parent_span_id
 )
 SELECT
@@ -102,8 +100,6 @@ LEFT JOIN LATERAL (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
-      AND created_at >= $1::timestamp
-      AND created_at < $2::timestamp
       AND type = 1
       AND model_cost IS NOT NULL
       AND model_cost_currency IS NOT NULL
@@ -119,8 +115,6 @@ LEFT JOIN LATERAL (
     SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
-      AND created_at >= $1::timestamp
-      AND created_at < $2::timestamp
       AND type = 1
       AND upstream_cost IS NOT NULL
       AND upstream_cost_currency IS NOT NULL
@@ -131,26 +125,22 @@ LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
   WHERE parent_span_id = trace_base.parent_span_id
-    AND created_at >= $1::timestamp
-    AND created_at < $2::timestamp
     AND type = 0
     AND user_message_preview IS NOT NULL
   ORDER BY created_at DESC, id DESC
   LIMIT 1
 ) preview ON true
 WHERE
-  $3::timestamp IS NULL
+  $1::timestamp IS NULL
   OR (trace_base.last_request_at, trace_base.parent_span_id) < (
-    $3::timestamp,
-    $4::text
+    $1::timestamp,
+    $2::text
   )
 ORDER BY trace_base.last_request_at DESC, trace_base.parent_span_id DESC
-LIMIT $5::int
+LIMIT $3::int
 `
 
 type ListRequestTracesParams struct {
-	CreatedAtFrom       pgtype.Timestamp `json:"createdAtFrom"`
-	CreatedAtTo         pgtype.Timestamp `json:"createdAtTo"`
 	CursorLastRequestAt pgtype.Timestamp `json:"cursorLastRequestAt"`
 	CursorParentSpanID  pgtype.Text      `json:"cursorParentSpanId"`
 	Limit               pgtype.Int4      `json:"limit"`
@@ -173,13 +163,7 @@ type ListRequestTracesRow struct {
 }
 
 func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
-	rows, err := q.db.Query(ctx, listRequestTraces,
-		arg.CreatedAtFrom,
-		arg.CreatedAtTo,
-		arg.CursorLastRequestAt,
-		arg.CursorParentSpanID,
-		arg.Limit,
-	)
+	rows, err := q.db.Query(ctx, listRequestTraces, arg.CursorLastRequestAt, arg.CursorParentSpanID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -220,25 +204,21 @@ SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, ap
        user_message_preview
 FROM request
 WHERE
-  created_at >= $1::timestamp
-  AND created_at < $2::timestamp
-  AND ($3::int IS NULL OR type = $3)
-  AND ($4::int IS NULL OR provider_id = $4)
-  AND ($5::text IS NULL OR endpoint_path = $5)
-  AND ($6::text IS NULL OR model = $6)
-  AND ($7::text IS NULL OR upstream_model = $7)
-  AND ($8::text IS NULL OR parent_span_id = $8)
+  ($1::int IS NULL OR type = $1)
+  AND ($2::int IS NULL OR provider_id = $2)
+  AND ($3::text IS NULL OR endpoint_path = $3)
+  AND ($4::text IS NULL OR model = $4)
+  AND ($5::text IS NULL OR upstream_model = $5)
+  AND ($6::text IS NULL OR parent_span_id = $6)
   AND (
-    $9::timestamp IS NULL
-    OR (created_at, id) < ($9::timestamp, $10::text)
+    $7::timestamp IS NULL
+    OR (created_at, id) < ($7::timestamp, $8::text)
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $11::int
+LIMIT $9::int
 `
 
 type ListRequestsParams struct {
-	CreatedAtFrom   pgtype.Timestamp `json:"createdAtFrom"`
-	CreatedAtTo     pgtype.Timestamp `json:"createdAtTo"`
 	Type            pgtype.Int4      `json:"type"`
 	ProviderID      pgtype.Int4      `json:"providerId"`
 	EndpointPath    pgtype.Text      `json:"endpointPath"`
@@ -280,8 +260,6 @@ type ListRequestsRow struct {
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listRequests,
-		arg.CreatedAtFrom,
-		arg.CreatedAtTo,
 		arg.Type,
 		arg.ProviderID,
 		arg.EndpointPath,
@@ -340,8 +318,8 @@ const listRequestsBySpan = `-- name: ListRequestsBySpan :many
 WITH anchor AS (
   SELECT request.span_id
   FROM request
-  WHERE request.id = $3::text
-    AND request.created_at = $4::timestamp
+  WHERE request.id = $1::text
+    AND request.created_at = $2::timestamp
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
@@ -350,17 +328,13 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
        r.user_message_preview
 FROM request r, anchor
-WHERE r.created_at >= $1::timestamp
-  AND r.created_at < $2::timestamp
-  AND r.span_id = anchor.span_id
+WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC
 `
 
 type ListRequestsBySpanParams struct {
-	CreatedAtFrom pgtype.Timestamp `json:"createdAtFrom"`
-	CreatedAtTo   pgtype.Timestamp `json:"createdAtTo"`
-	ID            string           `json:"id"`
-	IDCreatedAt   pgtype.Timestamp `json:"idCreatedAt"`
+	ID          string           `json:"id"`
+	IDCreatedAt pgtype.Timestamp `json:"idCreatedAt"`
 }
 
 type ListRequestsBySpanRow struct {
@@ -392,12 +366,7 @@ type ListRequestsBySpanRow struct {
 }
 
 func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error) {
-	rows, err := q.db.Query(ctx, listRequestsBySpan,
-		arg.CreatedAtFrom,
-		arg.CreatedAtTo,
-		arg.ID,
-		arg.IDCreatedAt,
-	)
+	rows, err := q.db.Query(ctx, listRequestsBySpan, arg.ID, arg.IDCreatedAt)
 	if err != nil {
 		return nil, err
 	}

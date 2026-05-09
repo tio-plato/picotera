@@ -6,9 +6,7 @@ SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, ap
        user_message_preview
 FROM request
 WHERE
-  created_at >= sqlc.arg('created_at_from')::timestamp
-  AND created_at < sqlc.arg('created_at_to')::timestamp
-  AND (sqlc.narg('type')::int IS NULL OR type = sqlc.narg('type'))
+  (sqlc.narg('type')::int IS NULL OR type = sqlc.narg('type'))
   AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id'))
   AND (sqlc.narg('endpoint_path')::text IS NULL OR endpoint_path = sqlc.narg('endpoint_path'))
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model'))
@@ -41,9 +39,7 @@ WITH trace_base AS (
     COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens,
     MAX(created_at)::timestamp AS last_request_at
   FROM request
-  WHERE created_at >= sqlc.arg('created_at_from')::timestamp
-    AND created_at < sqlc.arg('created_at_to')::timestamp
-    AND parent_span_id IS NOT NULL AND parent_span_id <> ''
+  WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
   GROUP BY parent_span_id
 )
 SELECT
@@ -70,8 +66,6 @@ LEFT JOIN LATERAL (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
-      AND created_at >= sqlc.arg('created_at_from')::timestamp
-      AND created_at < sqlc.arg('created_at_to')::timestamp
       AND type = 1
       AND model_cost IS NOT NULL
       AND model_cost_currency IS NOT NULL
@@ -87,8 +81,6 @@ LEFT JOIN LATERAL (
     SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
-      AND created_at >= sqlc.arg('created_at_from')::timestamp
-      AND created_at < sqlc.arg('created_at_to')::timestamp
       AND type = 1
       AND upstream_cost IS NOT NULL
       AND upstream_cost_currency IS NOT NULL
@@ -99,8 +91,6 @@ LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
   WHERE parent_span_id = trace_base.parent_span_id
-    AND created_at >= sqlc.arg('created_at_from')::timestamp
-    AND created_at < sqlc.arg('created_at_to')::timestamp
     AND type = 0
     AND user_message_preview IS NOT NULL
   ORDER BY created_at DESC, id DESC
@@ -132,9 +122,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
        r.user_message_preview
 FROM request r, anchor
-WHERE r.created_at >= sqlc.arg('created_at_from')::timestamp
-  AND r.created_at < sqlc.arg('created_at_to')::timestamp
-  AND r.span_id = anchor.span_id
+WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC;
 
 -- name: UpdateRequestOnHeader :exec

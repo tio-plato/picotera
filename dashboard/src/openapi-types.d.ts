@@ -1712,8 +1712,6 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string;
-                createdAtFrom?: string;
-                createdAtTo?: string;
             };
             header?: never;
             path?: never;
@@ -1746,8 +1744,6 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string;
-                createdAtFrom?: string;
-                createdAtTo?: string;
                 type?: number;
                 providerId?: number;
                 endpointPath?: string;
@@ -1814,10 +1810,7 @@ export interface operations {
     };
     listRequestSpans: {
         parameters: {
-            query?: {
-                createdAtFrom?: string;
-                createdAtTo?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 id: string;

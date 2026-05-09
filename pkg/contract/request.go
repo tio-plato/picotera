@@ -315,8 +315,6 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 
 type ListRequestsRequest struct {
 	PaginationRequest
-	CreatedAtFrom string `query:"createdAtFrom"`
-	CreatedAtTo   string `query:"createdAtTo"`
 	Type          int32  `query:"type,omitempty" default:"-1"`
 	ProviderID    int32  `query:"providerId,omitempty"`
 	EndpointPath  string `query:"endpointPath,omitempty"`
@@ -329,8 +327,6 @@ type ListRequestsResponse = PaginatedResponse[RequestView]
 
 type ListRequestTracesRequest struct {
 	PaginationRequest
-	CreatedAtFrom string `query:"createdAtFrom"`
-	CreatedAtTo   string `query:"createdAtTo"`
 }
 
 type ListRequestTracesResponse = PaginatedResponse[RequestTraceView]
@@ -344,9 +340,7 @@ type GetRequestResponse struct {
 }
 
 type ListRequestSpansRequest struct {
-	ID            string `path:"id"`
-	CreatedAtFrom string `query:"createdAtFrom,omitempty"`
-	CreatedAtTo   string `query:"createdAtTo,omitempty"`
+	ID string `path:"id"`
 }
 
 type ListRequestSpansResponse struct {
