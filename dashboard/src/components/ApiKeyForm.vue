@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
+import { customAlphabet } from 'nanoid'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import { SidePanel, Button, IconButton, Input, Field, Icon } from '@/ui'
 import type { ApiKeyView } from '@/api'
 import { createApiKey, invalidateApiKeys, updateApiKey } from '@/api/client'
+
+const apiKeyNanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 24)
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ apiKey?: ApiKeyView; onSave?: () => void }>()
@@ -26,10 +29,7 @@ const saveMutation = useMutation({
 })
 
 function generateKey(): string {
-  const buf = new Uint8Array(16)
-  crypto.getRandomValues(buf)
-  const hex = Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
-  return `sk_pt_${hex}`
+  return `sk_pt_${apiKeyNanoid()}`
 }
 
 function regenerate() {

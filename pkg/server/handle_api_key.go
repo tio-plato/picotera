@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -15,14 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
-
-func generateApiKey() (string, error) {
-	var buf [16]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return "", err
-	}
-	return "sk_pt_" + hex.EncodeToString(buf[:]), nil
-}
 
 func marshalAnnotations(a map[string]string) ([]byte, error) {
 	if a == nil {
@@ -72,13 +62,8 @@ func (s *Server) handleGetApiKey(ctx context.Context, in *contract.GetApiKeyRequ
 }
 
 func (s *Server) handleCreateApiKey(ctx context.Context, in *contract.CreateApiKeyRequest) (*contract.CreateApiKeyResponse, error) {
-	key := strings.TrimSpace(in.Body.Key)
-	if key == "" {
-		gen, err := generateApiKey()
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to generate api key", err)
-		}
-		key = gen
+	if in.Body.Key == "" {
+		return nil, huma.Error400BadRequest("key is required")
 	}
 	annotations, err := marshalAnnotations(in.Body.Annotations)
 	if err != nil {
@@ -86,7 +71,7 @@ func (s *Server) handleCreateApiKey(ctx context.Context, in *contract.CreateApiK
 	}
 	r, err := s.queries.InsertApiKey(ctx, db.InsertApiKeyParams{
 		Name:        in.Body.Name,
-		Key:         key,
+		Key:         in.Body.Key,
 		Disabled:    in.Body.Disabled,
 		Annotations: annotations,
 	})
@@ -104,13 +89,8 @@ func (s *Server) handleCreateApiKey(ctx context.Context, in *contract.CreateApiK
 }
 
 func (s *Server) handleUpdateApiKey(ctx context.Context, in *contract.UpdateApiKeyRequest) (*contract.UpdateApiKeyResponse, error) {
-	key := strings.TrimSpace(in.Body.Key)
-	if key == "" {
-		gen, err := generateApiKey()
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to generate api key", err)
-		}
-		key = gen
+	if in.Body.Key == "" {
+		return nil, huma.Error400BadRequest("key is required")
 	}
 	annotations, err := marshalAnnotations(in.Body.Annotations)
 	if err != nil {
@@ -119,7 +99,7 @@ func (s *Server) handleUpdateApiKey(ctx context.Context, in *contract.UpdateApiK
 	r, err := s.queries.UpdateApiKey(ctx, db.UpdateApiKeyParams{
 		ID:          in.ID,
 		Name:        in.Body.Name,
-		Key:         key,
+		Key:         in.Body.Key,
 		Disabled:    in.Body.Disabled,
 		Annotations: annotations,
 	})
