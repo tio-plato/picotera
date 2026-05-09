@@ -8,6 +8,11 @@ import type {
   FetchModelsRequestBody,
   FetchModelsResponseBody,
   ModelView,
+  OverviewDimension,
+  OverviewDistributionView,
+  OverviewSeriesDimension,
+  OverviewSeriesView,
+  OverviewSummaryView,
   PricingMatchCandidate,
   ProviderEndpointView,
   ProviderView,
@@ -15,7 +20,7 @@ import type {
   ScriptView,
 } from '@/api'
 import type { components } from '@/openapi-types'
-import { queryKeys, type RequestsFilters } from '@/api/queryKeys'
+import { queryKeys, type OverviewFilters, type RequestsFilters } from '@/api/queryKeys'
 
 type ApiErrorShape = Partial<components['schemas']['PicoTeraError']>
 
@@ -259,4 +264,47 @@ export function invalidateApiKeys(client: QueryClient) {
 
 export function invalidateExchangeRates(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.exchangeRates.all })
+}
+
+function overviewQuery(filters: OverviewFilters) {
+  const query: Record<string, unknown> = { range: filters.range }
+  if (filters.apiKeyId !== undefined) query.apiKeyId = filters.apiKeyId
+  if (filters.model !== undefined) query.model = filters.model
+  if (filters.upstreamModel !== undefined) query.upstreamModel = filters.upstreamModel
+  if (filters.providerId !== undefined) query.providerId = filters.providerId
+  return query
+}
+
+export async function getOverviewSummary(filters: OverviewFilters): Promise<OverviewSummaryView> {
+  const { data, error } = await api.GET('/api/picotera/overview/summary', {
+    params: { query: overviewQuery(filters) as never },
+  })
+  if (error) fail(error, '加载概览失败')
+  return data
+}
+
+export async function getOverviewDistribution(
+  filters: OverviewFilters,
+  dimension: OverviewDimension,
+): Promise<OverviewDistributionView> {
+  const { data, error } = await api.GET('/api/picotera/overview/distribution', {
+    params: { query: { ...overviewQuery(filters), dimension } as never },
+  })
+  if (error) fail(error, '加载分布失败')
+  return data
+}
+
+export async function getOverviewSeries(
+  filters: OverviewFilters,
+  dimension: OverviewSeriesDimension,
+): Promise<OverviewSeriesView> {
+  const { data, error } = await api.GET('/api/picotera/overview/series', {
+    params: { query: { ...overviewQuery(filters), dimension } as never },
+  })
+  if (error) fail(error, '加载趋势失败')
+  return data
+}
+
+export function invalidateOverview(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.overview.all })
 }

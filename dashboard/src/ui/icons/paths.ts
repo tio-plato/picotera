@@ -4,6 +4,7 @@ import {
   IconAlignJustified,
   IconArrowLeft,
   IconBraces,
+  IconChartPie,
   IconCheck,
   IconChevronDown,
   IconCloudDollar,
@@ -49,6 +50,7 @@ export type IconName =
   | 'list'
   | 'lines'
   | 'braces'
+  | 'chart-pie'
   | 'activity'
   | 'refresh'
   | 'route'
@@ -83,6 +85,7 @@ export const iconComponents: Record<IconName, Component> = {
   list: IconList,
   lines: IconAlignJustified,
   braces: IconBraces,
+  'chart-pie': IconChartPie,
   activity: IconActivity,
   refresh: IconRefresh,
   route: IconRoute,

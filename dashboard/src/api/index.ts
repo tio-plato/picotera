@@ -18,6 +18,19 @@ export type ExchangeRateView = components['schemas']['ExchangeRateView']
 export type Pricing = components['schemas']['Pricing']
 export type PricingTier = components['schemas']['PricingTier']
 export type PricingMatchCandidate = components['schemas']['PricingMatchCandidate']
+export type OverviewSummaryView = components['schemas']['OverviewSummaryView']
+export type OverviewDistributionView = components['schemas']['OverviewDistributionView']
+export type OverviewDistributionRowView = components['schemas']['OverviewDistributionRowView']
+export type OverviewSeriesView = components['schemas']['OverviewSeriesView']
+export type OverviewSeriesGroupView = components['schemas']['OverviewSeriesGroupView']
+export type OverviewSeriesPointView = components['schemas']['OverviewSeriesPointView']
+export type OverviewWindowView = components['schemas']['OverviewWindowView']
+export type OverviewCostView = components['schemas']['OverviewCostView']
+
+export type OverviewRange = '1d' | '7d' | '1m'
+export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider'
+export type OverviewSeriesDimension = 'none' | OverviewDimension
+export type OverviewMetric = 'tokens' | 'cost' | 'requests' | 'traces'
 
 export type EndpointType = NonNullable<EndpointView['endpointType']>
 export const ENDPOINT_TYPES_MODEL_ROUTED: EndpointType[] = [

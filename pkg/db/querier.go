@@ -12,6 +12,8 @@ import (
 
 type Querier interface {
 	BackfillTrace(ctx context.Context, arg BackfillTraceParams) error
+	CountTraces(ctx context.Context, arg CountTracesParams) (int64, error)
+	CountTracesFiltered(ctx context.Context, arg CountTracesFilteredParams) (int64, error)
 	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
 	DeleteApiKey(ctx context.Context, id int32) error
 	DeleteEndpoint(ctx context.Context, path string) error
@@ -28,6 +30,7 @@ type Querier interface {
 	GetExchangeRates(ctx context.Context) ([]ExchangeRate, error)
 	GetModelByName(ctx context.Context, name string) (Model, error)
 	GetModels(ctx context.Context) ([]Model, error)
+	GetOverviewTotals(ctx context.Context, arg GetOverviewTotalsParams) (GetOverviewTotalsRow, error)
 	GetProviderByID(ctx context.Context, id int32) (Provider, error)
 	GetProviderEndpoint(ctx context.Context, arg GetProviderEndpointParams) (ProviderEndpoint, error)
 	GetProviders(ctx context.Context) ([]Provider, error)
@@ -46,6 +49,11 @@ type Querier interface {
 	InsertScript(ctx context.Context, arg InsertScriptParams) (Script, error)
 	ListApiKeys(ctx context.Context) ([]ApiKey, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
+	ListOverviewDistribution(ctx context.Context, arg ListOverviewDistributionParams) ([]ListOverviewDistributionRow, error)
+	ListOverviewDistributionCosts(ctx context.Context, arg ListOverviewDistributionCostsParams) ([]ListOverviewDistributionCostsRow, error)
+	ListOverviewSeriesMetrics(ctx context.Context, arg ListOverviewSeriesMetricsParams) ([]ListOverviewSeriesMetricsRow, error)
+	ListOverviewSeriesTraces(ctx context.Context, arg ListOverviewSeriesTracesParams) ([]ListOverviewSeriesTracesRow, error)
+	ListOverviewTraceCountsByDimension(ctx context.Context, arg ListOverviewTraceCountsByDimensionParams) ([]ListOverviewTraceCountsByDimensionRow, error)
 	ListProviderEndpoints(ctx context.Context, providerID pgtype.Int4) ([]ProviderEndpoint, error)
 	ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error)
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)

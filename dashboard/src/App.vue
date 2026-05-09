@@ -11,6 +11,7 @@ useExchangeRates()
 
 const pageMeta = computed(() => {
   const map: Record<string, { title: string; hint: string }> = {
+    overview: { title: '概览', hint: '过去窗口内的请求、token、费用与追踪一览' },
     providers: { title: '渠道', hint: '上游模型提供方与凭证' },
     models: { title: '模型', hint: '对外暴露的模型标识' },
     endpoints: { title: '端点', hint: 'HTTP 入口与请求形状' },

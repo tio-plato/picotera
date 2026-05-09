@@ -1,4 +1,14 @@
+import type { OverviewDimension, OverviewSeriesDimension } from './index'
+
 export type ProviderEndpointFilters = Readonly<{ providerId?: number }>
+
+export type OverviewFilters = Readonly<{
+  range: '1d' | '7d' | '1m'
+  apiKeyId?: number
+  model?: string
+  upstreamModel?: string
+  providerId?: number
+}>
 
 export type RequestsFilters = Readonly<{
   type?: number
@@ -66,5 +76,13 @@ export const queryKeys = {
   artifacts: {
     all: ['artifacts'] as const,
     detail: (url: string) => ['artifacts', url] as const,
+  },
+  overview: {
+    all: ['overview'] as const,
+    summary: (f: OverviewFilters) => ['overview', 'summary', { ...f }] as const,
+    distribution: (f: OverviewFilters, dim: OverviewDimension) =>
+      ['overview', 'distribution', dim, { ...f }] as const,
+    series: (f: OverviewFilters, dim: OverviewSeriesDimension) =>
+      ['overview', 'series', dim, { ...f }] as const,
   },
 }

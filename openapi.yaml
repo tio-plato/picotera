@@ -364,6 +364,186 @@ components:
         - disabled
         - annotations
       type: object
+    OverviewCostView:
+      additionalProperties: false
+      properties:
+        amount:
+          format: double
+          type: number
+        currency:
+          type: string
+      required:
+        - currency
+        - amount
+      type: object
+    OverviewDistributionRowView:
+      additionalProperties: false
+      properties:
+        costs:
+          items:
+            $ref: "#/components/schemas/OverviewCostView"
+          nullable: true
+          type: array
+        key:
+          type: string
+        label:
+          type: string
+        requestCount:
+          format: int64
+          type: integer
+        totalTokens:
+          format: int64
+          type: integer
+        traceCount:
+          format: int64
+          type: integer
+      required:
+        - key
+        - label
+        - totalTokens
+        - requestCount
+        - traceCount
+        - costs
+      type: object
+    OverviewDistributionView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/OverviewDistributionView.json
+          format: uri
+          readOnly: true
+          type: string
+        dimension:
+          type: string
+        rows:
+          items:
+            $ref: "#/components/schemas/OverviewDistributionRowView"
+          nullable: true
+          type: array
+        window:
+          $ref: "#/components/schemas/OverviewWindowView"
+      required:
+        - window
+        - dimension
+        - rows
+      type: object
+    OverviewSeriesGroupView:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+      required:
+        - key
+        - label
+      type: object
+    OverviewSeriesPointView:
+      additionalProperties: false
+      properties:
+        bucketAt:
+          type: string
+        currency:
+          type: string
+        groupKey:
+          type: string
+        metric:
+          type: string
+        value:
+          format: double
+          type: number
+      required:
+        - metric
+        - bucketAt
+        - groupKey
+        - value
+        - currency
+      type: object
+    OverviewSeriesView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/OverviewSeriesView.json
+          format: uri
+          readOnly: true
+          type: string
+        buckets:
+          items:
+            type: string
+          nullable: true
+          type: array
+        dimension:
+          type: string
+        groups:
+          items:
+            $ref: "#/components/schemas/OverviewSeriesGroupView"
+          nullable: true
+          type: array
+        points:
+          items:
+            $ref: "#/components/schemas/OverviewSeriesPointView"
+          nullable: true
+          type: array
+        window:
+          $ref: "#/components/schemas/OverviewWindowView"
+      required:
+        - window
+        - dimension
+        - groups
+        - buckets
+        - points
+      type: object
+    OverviewSummaryView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/OverviewSummaryView.json
+          format: uri
+          readOnly: true
+          type: string
+        costs:
+          items:
+            $ref: "#/components/schemas/OverviewCostView"
+          nullable: true
+          type: array
+        totalRequests:
+          format: int64
+          type: integer
+        totalTokens:
+          format: int64
+          type: integer
+        totalTraceCount:
+          format: int64
+          type: integer
+        window:
+          $ref: "#/components/schemas/OverviewWindowView"
+      required:
+        - window
+        - totalTokens
+        - totalRequests
+        - totalTraceCount
+        - costs
+      type: object
+    OverviewWindowView:
+      additionalProperties: false
+      properties:
+        bucket:
+          type: string
+        endAt:
+          type: string
+        range:
+          type: string
+        startAt:
+          type: string
+      required:
+        - range
+        - startAt
+        - endAt
+        - bucket
+      type: object
     PaginatedBodyRequestTraceView:
       additionalProperties: false
       properties:
@@ -1200,6 +1380,191 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Get a model by name
+  /api/picotera/overview/distribution:
+    get:
+      operationId: getOverviewDistribution
+      parameters:
+        - explode: false
+          in: query
+          name: range
+          required: true
+          schema:
+            enum:
+              - 1d
+              - 7d
+              - 1m
+            type: string
+        - explode: false
+          in: query
+          name: apiKeyId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: model
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: dimension
+          required: true
+          schema:
+            enum:
+              - apiKey
+              - model
+              - upstreamModel
+              - provider
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewDistributionView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get overview distribution for a dimension
+  /api/picotera/overview/series:
+    get:
+      operationId: getOverviewSeries
+      parameters:
+        - explode: false
+          in: query
+          name: range
+          required: true
+          schema:
+            enum:
+              - 1d
+              - 7d
+              - 1m
+            type: string
+        - explode: false
+          in: query
+          name: apiKeyId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: model
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: dimension
+          required: true
+          schema:
+            enum:
+              - none
+              - apiKey
+              - model
+              - upstreamModel
+              - provider
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewSeriesView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get hourly overview series for a dimension
+  /api/picotera/overview/summary:
+    get:
+      operationId: getOverviewSummary
+      parameters:
+        - explode: false
+          in: query
+          name: range
+          required: true
+          schema:
+            enum:
+              - 1d
+              - 7d
+              - 1m
+            type: string
+        - explode: false
+          in: query
+          name: apiKeyId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: model
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewSummaryView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get overview summary totals
   /api/picotera/pricing/matches:
     post:
       operationId: matchPricing

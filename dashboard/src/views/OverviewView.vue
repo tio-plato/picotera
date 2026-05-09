@@ -1,0 +1,446 @@
+<script setup lang="ts">
+import { computed, reactive, ref, watch } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
+import {
+  getOverviewDistribution,
+  getOverviewSeries,
+  getOverviewSummary,
+  listApiKeys,
+  listModels,
+  listProviders,
+} from '@/api/client'
+import { OPERATIONAL_STALE_TIME } from '@/api/queryClient'
+import { queryKeys, type OverviewFilters } from '@/api/queryKeys'
+import type {
+  OverviewDimension,
+  OverviewRange,
+  OverviewSeriesDimension,
+  OverviewSeriesPointView,
+} from '@/api'
+import { DataCard, MoneyDisplay, SegmentedControl, Select, StateText } from '@/ui'
+import OverviewDonut from '@/components/charts/OverviewDonut.vue'
+import OverviewAreaStack from '@/components/charts/OverviewAreaStack.vue'
+
+const filters = reactive({
+  range: '1d' as OverviewRange,
+  apiKeyId: 0,
+  model: '',
+  upstreamModel: '',
+  providerId: 0,
+})
+const distributionDimension = ref<OverviewDimension>('provider')
+const seriesDimension = ref<OverviewSeriesDimension>('none')
+const costCurrency = ref<string>('')
+
+const rangeOptions: { value: OverviewRange; label: string }[] = [
+  { value: '1d', label: '24 小时' },
+  { value: '7d', label: '7 天' },
+  { value: '1m', label: '30 天' },
+]
+const distributionDimensionOptions: { value: OverviewDimension; label: string }[] = [
+  { value: 'provider', label: '渠道' },
+  { value: 'apiKey', label: 'API Key' },
+  { value: 'model', label: '请求模型' },
+  { value: 'upstreamModel', label: '上游模型' },
+]
+const seriesDimensionOptions: { value: OverviewSeriesDimension; label: string }[] = [
+  { value: 'none', label: '全部' },
+  { value: 'provider', label: '渠道' },
+  { value: 'apiKey', label: 'API Key' },
+  { value: 'model', label: '请求模型' },
+  { value: 'upstreamModel', label: '上游模型' },
+]
+
+const overviewFilters = computed<OverviewFilters>(() => {
+  const out: { range: OverviewRange; apiKeyId?: number; model?: string; upstreamModel?: string; providerId?: number } = {
+    range: filters.range,
+  }
+  if (filters.apiKeyId) out.apiKeyId = filters.apiKeyId
+  if (filters.model) out.model = filters.model
+  if (filters.upstreamModel) out.upstreamModel = filters.upstreamModel
+  if (filters.providerId) out.providerId = filters.providerId
+  return out
+})
+
+const apiKeysQuery = useQuery({ queryKey: queryKeys.apiKeys.all, queryFn: listApiKeys })
+const providersQuery = useQuery({ queryKey: queryKeys.providers.all, queryFn: listProviders })
+const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listModels })
+
+const apiKeys = computed(() => apiKeysQuery.data.value ?? [])
+const providers = computed(() => providersQuery.data.value ?? [])
+const models = computed(() => modelsQuery.data.value ?? [])
+
+const apiKeyLabelById = computed(() => {
+  const m = new Map<number, string>()
+  for (const k of apiKeys.value) m.set(k.id, k.name)
+  return m
+})
+const providerLabelById = computed(() => {
+  const m = new Map<number, string>()
+  for (const p of providers.value) m.set(p.id, p.name)
+  return m
+})
+
+const modelOptions = computed(() => {
+  const set = new Set<string>()
+  for (const m of models.value) if (m.name) set.add(m.name)
+  return Array.from(set).sort()
+})
+
+const upstreamModelOptions = computed(() => {
+  const set = new Set<string>()
+  for (const p of providers.value) {
+    for (const pm of p.providerModels ?? []) {
+      if (pm.upstreamModelName) set.add(pm.upstreamModelName)
+      else if (pm.model) set.add(pm.model)
+    }
+  }
+  return Array.from(set).sort()
+})
+
+const summaryQuery = useQuery({
+  queryKey: computed(() => queryKeys.overview.summary(overviewFilters.value)),
+  queryFn: () => getOverviewSummary(overviewFilters.value),
+  staleTime: OPERATIONAL_STALE_TIME,
+})
+
+const distributionQuery = useQuery({
+  queryKey: computed(() => queryKeys.overview.distribution(overviewFilters.value, distributionDimension.value)),
+  queryFn: () => getOverviewDistribution(overviewFilters.value, distributionDimension.value),
+  staleTime: OPERATIONAL_STALE_TIME,
+})
+
+const seriesQuery = useQuery({
+  queryKey: computed(() => queryKeys.overview.series(overviewFilters.value, seriesDimension.value)),
+  queryFn: () => getOverviewSeries(overviewFilters.value, seriesDimension.value),
+  staleTime: OPERATIONAL_STALE_TIME,
+})
+
+function dimensionLabel(dim: OverviewDimension | OverviewSeriesDimension, key: string): string {
+  if (key === '') return '全部'
+  if (dim === 'provider') {
+    const id = Number(key)
+    return Number.isFinite(id) ? providerLabelById.value.get(id) ?? `#${key}` : key
+  }
+  if (dim === 'apiKey') {
+    const id = Number(key)
+    return Number.isFinite(id) ? apiKeyLabelById.value.get(id) ?? `#${key}` : key
+  }
+  return key
+}
+
+const TOP_N = 8
+
+const distributionRows = computed(() => distributionQuery.data.value?.rows ?? [])
+
+function buildDonutData(metric: 'tokens' | 'cost') {
+  const rows = distributionRows.value
+  if (!rows.length) return [] as { key: string; label: string; value: number }[]
+  const items = rows
+    .map((r) => {
+      let value = 0
+      if (metric === 'tokens') value = r.totalTokens ?? 0
+      else value = (r.costs ?? []).find((c) => c.currency === costCurrency.value)?.amount ?? 0
+      return {
+        key: r.key,
+        label: dimensionLabel(distributionDimension.value, r.key),
+        value,
+      }
+    })
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+  if (items.length <= TOP_N) return items
+  const top = items.slice(0, TOP_N)
+  const restValue = items.slice(TOP_N).reduce((acc, d) => acc + d.value, 0)
+  if (restValue > 0) top.push({ key: '__other__', label: '其他', value: restValue })
+  return top
+}
+
+const tokenDonutData = computed(() => buildDonutData('tokens'))
+const costDonutData = computed(() => buildDonutData('cost'))
+
+const distributionCurrencies = computed(() => {
+  const set = new Set<string>()
+  for (const row of distributionRows.value) {
+    for (const c of row.costs ?? []) if (c.currency) set.add(c.currency)
+  }
+  return Array.from(set).sort()
+})
+
+watch(distributionCurrencies, (currencies) => {
+  if (!currencies.length) {
+    costCurrency.value = ''
+    return
+  }
+  const first = currencies[0]
+  if (first && !currencies.includes(costCurrency.value)) {
+    costCurrency.value = first
+  }
+}, { immediate: true })
+
+const seriesData = computed(() => seriesQuery.data.value)
+
+const seriesCurrencies = computed(() => {
+  const set = new Set<string>()
+  const points = seriesData.value?.points ?? []
+  for (const p of points) {
+    if (p.metric === 'cost' && p.currency) set.add(p.currency)
+  }
+  return Array.from(set).sort()
+})
+
+watch(seriesCurrencies, (currencies) => {
+  if (!currencies.length) return
+  const first = currencies[0]
+  if (first && !currencies.includes(costCurrency.value)) {
+    costCurrency.value = first
+  }
+}, { immediate: true })
+
+const seriesGroups = computed(() => {
+  const groups = seriesData.value?.groups ?? []
+  return groups.map((g) => ({ key: g.key, label: dimensionLabel(seriesDimension.value, g.key) }))
+})
+const seriesBuckets = computed(() => seriesData.value?.buckets ?? [])
+
+function metricPoints(metric: 'tokens' | 'cost' | 'requests' | 'traces') {
+  const points: OverviewSeriesPointView[] = seriesData.value?.points ?? []
+  return points
+    .filter((p) => p.metric === metric)
+    .filter((p) => metric !== 'cost' || p.currency === costCurrency.value)
+    .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
+}
+
+const seriesTokens = computed(() => metricPoints('tokens'))
+const seriesCost = computed(() => metricPoints('cost'))
+const seriesRequests = computed(() => metricPoints('requests'))
+const seriesTraces = computed(() => metricPoints('traces'))
+
+function compactNumber(v: number) {
+  if (!Number.isFinite(v)) return ''
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(1)}B`
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`
+  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}k`
+  return v.toFixed(0)
+}
+
+function formatBucket(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const buckets = seriesBuckets.value
+  if (buckets.length <= 24) {
+    return `${d.getHours().toString().padStart(2, '0')}:00`
+  }
+  if (buckets.length <= 24 * 7) {
+    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:00`
+  }
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+function compactCurrency(v: number) {
+  return v.toFixed(2)
+}
+</script>
+
+<template>
+  <div class="flex flex-col gap-3">
+    <!-- Controls bar -->
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">时间范围</span>
+        <SegmentedControl v-model="filters.range" :options="rangeOptions" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">API Key</span>
+        <Select v-model.number="filters.apiKeyId" size="sm">
+          <option :value="0">全部</option>
+          <option v-for="k in apiKeys" :key="k.id" :value="k.id">{{ k.name }}</option>
+        </Select>
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">请求模型</span>
+        <Select v-model="filters.model" size="sm">
+          <option value="">全部</option>
+          <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
+        </Select>
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">上游模型</span>
+        <Select v-model="filters.upstreamModel" size="sm">
+          <option value="">全部</option>
+          <option v-for="u in upstreamModelOptions" :key="u" :value="u">{{ u }}</option>
+        </Select>
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">渠道</span>
+        <Select v-model.number="filters.providerId" size="sm">
+          <option :value="0">全部</option>
+          <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
+        </Select>
+      </div>
+    </div>
+
+    <!-- Bento totals -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <DataCard>
+        <div class="p-4 flex flex-col gap-1.5">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总 Token</span>
+          <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalTokens ?? 0).toLocaleString() }}</span>
+        </div>
+      </DataCard>
+      <DataCard>
+        <div class="p-4 flex flex-col gap-1.5">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总请求</span>
+          <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalRequests ?? 0).toLocaleString() }}</span>
+        </div>
+      </DataCard>
+      <DataCard>
+        <div class="p-4 flex flex-col gap-1.5">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总费用</span>
+          <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <div v-else-if="(summaryQuery.data.value?.costs ?? []).length === 0" class="text-xl text-ink-faint">—</div>
+          <div v-else class="flex flex-col gap-0.5">
+            <MoneyDisplay
+              v-for="c in summaryQuery.data.value?.costs ?? []"
+              :key="c.currency"
+              class="text-xl font-semibold mono tabular text-ink"
+              :amount="c.amount"
+              :currency="c.currency"
+            />
+          </div>
+        </div>
+      </DataCard>
+      <DataCard>
+        <div class="p-4 flex flex-col gap-1.5">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总追踪</span>
+          <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalTraceCount ?? 0).toLocaleString() }}</span>
+        </div>
+      </DataCard>
+    </div>
+
+    <!-- Distribution -->
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">分布统计</span>
+        <SegmentedControl v-model="distributionDimension" :options="distributionDimensionOptions" />
+      </div>
+      <div v-if="distributionCurrencies.length > 1" class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">币种</span>
+        <Select v-model="costCurrency" size="sm">
+          <option v-for="c in distributionCurrencies" :key="c" :value="c">{{ c }}</option>
+        </Select>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <DataCard>
+        <div class="p-4 flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">Token 分布</span>
+          <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <StateText v-else-if="!tokenDonutData.length" compact>暂无数据</StateText>
+          <OverviewDonut
+            v-else
+            :data="tokenDonutData"
+            :value-format="(v) => compactNumber(v)"
+          />
+        </div>
+      </DataCard>
+      <DataCard>
+        <div class="p-4 flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布<span v-if="costCurrency" class="ml-1 text-ink-faint normal-case">· {{ costCurrency }}</span></span>
+          <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <StateText v-else-if="!costDonutData.length" compact>暂无数据</StateText>
+          <OverviewDonut
+            v-else
+            :data="costDonutData"
+            :value-format="(v) => compactCurrency(v)"
+          />
+        </div>
+      </DataCard>
+    </div>
+
+    <!-- Series -->
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">用量统计</span>
+        <SegmentedControl v-model="seriesDimension" :options="seriesDimensionOptions" />
+      </div>
+      <div v-if="seriesCurrencies.length > 1" class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用币种</span>
+        <Select v-model="costCurrency" size="sm">
+          <option v-for="c in seriesCurrencies" :key="c" :value="c">{{ c }}</option>
+        </Select>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <DataCard>
+        <div class="p-4 flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">Token</span>
+          <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <OverviewAreaStack
+            v-else
+            :groups="seriesGroups"
+            :buckets="seriesBuckets"
+            :points="seriesTokens"
+            :value-format="(v) => compactNumber(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard>
+        <div class="p-4 flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用<span v-if="costCurrency" class="ml-1 text-ink-faint normal-case">· {{ costCurrency }}</span></span>
+          <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <OverviewAreaStack
+            v-else
+            :groups="seriesGroups"
+            :buckets="seriesBuckets"
+            :points="seriesCost"
+            :value-format="(v) => compactCurrency(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard>
+        <div class="p-4 flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">请求数</span>
+          <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <OverviewAreaStack
+            v-else
+            :groups="seriesGroups"
+            :buckets="seriesBuckets"
+            :points="seriesRequests"
+            :value-format="(v) => compactNumber(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard>
+        <div class="p-4 flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">追踪数</span>
+          <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <OverviewAreaStack
+            v-else
+            :groups="seriesGroups"
+            :buckets="seriesBuckets"
+            :points="seriesTraces"
+            :value-format="(v) => compactNumber(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+    </div>
+  </div>
+</template>
