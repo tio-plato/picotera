@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, watch, computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { useInfiniteQuery, useQuery } from '@tanstack/vue-query'
+import { reactive, watch, computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useQuery } from '@tanstack/vue-query'
 import { useProvidersMap } from '@/composables/useProvidersMap'
 import type { RequestView, EndpointView, ModelView } from '@/api'
 import { listEndpoints, listModels, listRequests } from '@/api/client'
@@ -25,6 +25,7 @@ import {
 
 const panel = useSidePanel()
 const route = useRoute()
+const router = useRouter()
 const { providers, providerLabel } = useProvidersMap()
 
 type RequestKind = 'meta' | 'upstream' | 'all'
@@ -44,6 +45,11 @@ const typeOptions: { value: RequestKind; label: string }[] = [
   { value: 'all', label: '全部' },
 ]
 const appBase = import.meta.env.BASE_URL.replace(/\/$/, '')
+const pageSize = 30
+const initialCursor = typeof route.query.cursor === 'string' ? route.query.cursor : ''
+const cursorIndex = ref(initialCursor ? 1 : 0)
+const pageCursors = ref<string[]>(initialCursor ? ['', initialCursor] : [''])
+const hasPaginationHistory = ref(!initialCursor)
 
 const endpointsQuery = useQuery({
   queryKey: queryKeys.endpoints.all,
@@ -75,19 +81,30 @@ const requestFilters = computed<RequestsFilters>(() => {
   return out
 })
 
-const requestsQuery = useInfiniteQuery({
-  queryKey: computed(() => queryKeys.requests.list(requestFilters.value)),
-  queryFn: ({ pageParam }) =>
-    listRequests({ ...requestFilters.value, limit: 30, cursor: pageParam || undefined }),
-  initialPageParam: '',
-  getNextPageParam: (lastPage) =>
-    lastPage.pagination.hasMore ? lastPage.pagination.nextCursor ?? '' : undefined,
+const currentCursor = computed(() => (typeof route.query.cursor === 'string' ? route.query.cursor : ''))
+
+const requestsQuery = useQuery({
+  queryKey: computed(() =>
+    queryKeys.requests.list({ ...requestFilters.value, limit: pageSize, cursor: currentCursor.value }),
+  ),
+  queryFn: () =>
+    listRequests({
+      ...requestFilters.value,
+      limit: pageSize,
+      cursor: currentCursor.value || undefined,
+    }),
 })
-const requests = computed<RequestView[]>(() =>
-  requestsQuery.data.value?.pages.flatMap((page) => page.items ?? []) ?? [],
+const requests = computed<RequestView[]>(() => requestsQuery.data.value?.items ?? [])
+const loading = computed(() => requestsQuery.isLoading.value || requestsQuery.isFetching.value)
+const hasMore = computed(() => requestsQuery.data.value?.pagination.hasMore ?? false)
+const canGoHome = computed(() => !!currentCursor.value)
+const canGoPrevious = computed(
+  () =>
+    hasPaginationHistory.value &&
+    cursorIndex.value > 1 &&
+    pageCursors.value[cursorIndex.value - 1] !== undefined,
 )
-const loading = computed(() => requestsQuery.isLoading.value || requestsQuery.isFetchingNextPage.value)
-const hasMore = computed(() => requestsQuery.hasNextPage.value)
+const canGoNext = computed(() => hasPaginationHistory.value && hasMore.value)
 
 watch(
   () => [
@@ -99,7 +116,17 @@ watch(
     filters.traceId,
   ],
   () => {
-    syncTraceFilterToQuery()
+    resetPaginationMemory()
+    syncFiltersToQuery()
+  },
+)
+
+watch(
+  () => route.query.cursor,
+  (value) => {
+    const next = typeof value === 'string' ? value : ''
+    const knownIndex = pageCursors.value.indexOf(next)
+    cursorIndex.value = knownIndex >= 0 ? knownIndex : next ? 1 : 0
   },
 )
 
@@ -133,6 +160,13 @@ function replaceBrowserUrl(pathname: string, searchParams = currentSearchParams(
   const query = searchParams.toString()
   const basePath = appBase ? `${appBase}${pathname}` : pathname
   window.history.replaceState(window.history.state, '', `${basePath}${query ? `?${query}` : ''}`)
+}
+
+function pushCursorQuery(nextCursor: string) {
+  const query = { ...route.query }
+  if (nextCursor) query.cursor = nextCursor
+  else delete query.cursor
+  router.push({ name: route.name ?? 'requests', params: route.params, query })
 }
 
 function replaceRequestDetailUrl(requestId: string) {
@@ -261,16 +295,46 @@ function clearTraceFilter() {
   filters.traceId = ''
 }
 
-function syncTraceFilterToQuery() {
+function syncFiltersToQuery() {
   const query = currentSearchParams()
   const current = query.get('traceId') ?? ''
-  if (filters.traceId === current) return
   if (filters.traceId) {
     query.set('traceId', filters.traceId)
   } else {
     query.delete('traceId')
   }
+  query.delete('cursor')
+  if (filters.traceId === current && !currentCursor.value) return
   replaceBrowserUrl(currentAppPathname(), query)
+}
+
+function resetPaginationMemory() {
+  pageCursors.value = ['']
+  cursorIndex.value = 0
+  hasPaginationHistory.value = true
+}
+
+function goHome() {
+  resetPaginationMemory()
+  pushCursorQuery('')
+}
+
+function goPrevious() {
+  if (!canGoPrevious.value) return
+  const previousCursor = pageCursors.value[cursorIndex.value - 1]
+  if (previousCursor === undefined) return
+  pushCursorQuery(previousCursor)
+}
+
+function goNext() {
+  if (!canGoNext.value) return
+  const nextCursor = requestsQuery.data.value?.pagination.nextCursor
+  if (!nextCursor) return
+  pageCursors.value = pageCursors.value.slice(0, cursorIndex.value + 1)
+  pageCursors.value[cursorIndex.value + 1] = nextCursor
+  cursorIndex.value += 1
+  hasPaginationHistory.value = true
+  pushCursorQuery(nextCursor)
 }
 
 function formatTimeParts(iso: string | undefined): { time: string; date: string } {
@@ -527,9 +591,13 @@ function resetCursorAndReload() {
       </AutoDataTable>
     </DataCard>
 
-    <div v-if="hasMore" class="flex justify-center py-1">
-      <Button variant="ghost" :disabled="loading" @click="requestsQuery.fetchNextPage()">
-        {{ loading ? '加载中…' : '加载更多' }}
+    <div v-if="canGoHome || canGoPrevious || canGoNext" class="flex justify-center gap-2 py-1">
+      <Button v-if="canGoHome" variant="ghost" :disabled="loading" @click="goHome">首页</Button>
+      <Button v-if="canGoPrevious" variant="ghost" :disabled="loading" @click="goPrevious">
+        上一页
+      </Button>
+      <Button v-if="canGoNext" variant="ghost" :disabled="loading" @click="goNext">
+        {{ loading ? '加载中…' : '下一页' }}
       </Button>
     </div>
   </div>

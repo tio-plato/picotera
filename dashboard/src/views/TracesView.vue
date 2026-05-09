@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { useInfiniteQuery } from '@tanstack/vue-query'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useQuery } from '@tanstack/vue-query'
 import { useCurrency } from '@/composables/useCurrency'
 import { listRequestTraces } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
@@ -9,20 +9,42 @@ import type { RequestTraceView, TraceCostView } from '@/api'
 import { AutoDataTable, Button, DataCard, Icon, IconButton, type AutoDataTableColumn } from '@/ui'
 
 const router = useRouter()
+const route = useRoute()
 const currency = useCurrency()
+const pageSize = 30
+const initialCursor = typeof route.query.cursor === 'string' ? route.query.cursor : ''
+const cursorIndex = ref(initialCursor ? 1 : 0)
+const pageCursors = ref<string[]>(initialCursor ? ['', initialCursor] : [''])
+const hasPaginationHistory = ref(!initialCursor)
 
-const tracesQuery = useInfiniteQuery({
-  queryKey: queryKeys.requestTraces.list({ limit: 30 }),
-  queryFn: ({ pageParam }) => listRequestTraces({ limit: 30, cursor: pageParam || undefined }),
-  initialPageParam: '',
-  getNextPageParam: (lastPage) =>
-    lastPage.pagination.hasMore ? lastPage.pagination.nextCursor ?? '' : undefined,
+const currentCursor = computed(() => (typeof route.query.cursor === 'string' ? route.query.cursor : ''))
+
+const tracesQuery = useQuery({
+  queryKey: computed(() =>
+    queryKeys.requestTraces.list({ limit: pageSize, cursor: currentCursor.value }),
+  ),
+  queryFn: () => listRequestTraces({ limit: pageSize, cursor: currentCursor.value || undefined }),
 })
-const traces = computed<RequestTraceView[]>(() =>
-  tracesQuery.data.value?.pages.flatMap((page) => page.items ?? []) ?? [],
+const traces = computed<RequestTraceView[]>(() => tracesQuery.data.value?.items ?? [])
+const loading = computed(() => tracesQuery.isLoading.value || tracesQuery.isFetching.value)
+const hasMore = computed(() => tracesQuery.data.value?.pagination.hasMore ?? false)
+const canGoHome = computed(() => !!currentCursor.value)
+const canGoPrevious = computed(
+  () =>
+    hasPaginationHistory.value &&
+    cursorIndex.value > 1 &&
+    pageCursors.value[cursorIndex.value - 1] !== undefined,
 )
-const loading = computed(() => tracesQuery.isLoading.value || tracesQuery.isFetchingNextPage.value)
-const hasMore = computed(() => tracesQuery.hasNextPage.value)
+const canGoNext = computed(() => hasPaginationHistory.value && hasMore.value)
+
+watch(
+  () => route.query.cursor,
+  (value) => {
+    const next = typeof value === 'string' ? value : ''
+    const knownIndex = pageCursors.value.indexOf(next)
+    cursorIndex.value = knownIndex >= 0 ? knownIndex : next ? 1 : 0
+  },
+)
 
 const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'lastRequestAt', header: '最近请求' },
@@ -42,6 +64,42 @@ function rowKey(row: RequestTraceView) {
 
 function openTrace(row: RequestTraceView) {
   router.push({ name: 'requests', query: { traceId: row.id } })
+}
+
+function pushCursorQuery(nextCursor: string) {
+  const query = { ...route.query }
+  if (nextCursor) query.cursor = nextCursor
+  else delete query.cursor
+  router.push({ name: 'traces', query })
+}
+
+function resetPaginationMemory() {
+  pageCursors.value = ['']
+  cursorIndex.value = 0
+  hasPaginationHistory.value = true
+}
+
+function goHome() {
+  resetPaginationMemory()
+  pushCursorQuery('')
+}
+
+function goPrevious() {
+  if (!canGoPrevious.value) return
+  const previousCursor = pageCursors.value[cursorIndex.value - 1]
+  if (previousCursor === undefined) return
+  pushCursorQuery(previousCursor)
+}
+
+function goNext() {
+  if (!canGoNext.value) return
+  const nextCursor = tracesQuery.data.value?.pagination.nextCursor
+  if (!nextCursor) return
+  pageCursors.value = pageCursors.value.slice(0, cursorIndex.value + 1)
+  pageCursors.value[cursorIndex.value + 1] = nextCursor
+  cursorIndex.value += 1
+  hasPaginationHistory.value = true
+  pushCursorQuery(nextCursor)
 }
 
 function formatTimeParts(iso: string | undefined): { time: string; date: string } {
@@ -223,9 +281,13 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
       </AutoDataTable>
     </DataCard>
 
-    <div v-if="hasMore" class="flex justify-center py-1">
-      <Button variant="ghost" :disabled="loading" @click="tracesQuery.fetchNextPage()">
-        {{ loading ? '加载中…' : '加载更多' }}
+    <div v-if="canGoHome || canGoPrevious || canGoNext" class="flex justify-center gap-2 py-1">
+      <Button v-if="canGoHome" variant="ghost" :disabled="loading" @click="goHome">首页</Button>
+      <Button v-if="canGoPrevious" variant="ghost" :disabled="loading" @click="goPrevious">
+        上一页
+      </Button>
+      <Button v-if="canGoNext" variant="ghost" :disabled="loading" @click="goNext">
+        {{ loading ? '加载中…' : '下一页' }}
       </Button>
     </div>
   </div>

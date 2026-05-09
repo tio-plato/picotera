@@ -10,6 +10,7 @@ export type RequestsFilters = Readonly<{
 }>
 
 export type CursorFilters = Readonly<{ limit: number; cursor?: string }>
+export type RequestListFilters = RequestsFilters & Partial<CursorFilters>
 
 export const queryKeys = {
   providers: {
@@ -42,7 +43,7 @@ export const queryKeys = {
   },
   requests: {
     all: ['requests'] as const,
-    list: (filters: RequestsFilters = {}) => ['requests', { ...filters }] as const,
+    list: (filters: RequestListFilters = {}) => ['requests', { ...filters }] as const,
     detail: (id: string) => ['requests', id] as const,
   },
   requestTraces: {
