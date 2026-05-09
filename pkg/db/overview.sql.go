@@ -72,6 +72,59 @@ func (q *Queries) CountTracesFiltered(ctx context.Context, arg CountTracesFilter
 	return trace_count, err
 }
 
+const getOverviewTokenBreakdown = `-- name: GetOverviewTokenBreakdown :one
+SELECT
+  COALESCE(SUM(input_tokens), 0)::bigint           AS input_tokens,
+  COALESCE(SUM(cache_read_tokens), 0)::bigint      AS cache_read_tokens,
+  COALESCE(SUM(cache_write_tokens), 0)::bigint     AS cache_write_tokens,
+  COALESCE(SUM(cache_write_1h_tokens), 0)::bigint  AS cache_write_1h_tokens,
+  COALESCE(SUM(output_tokens), 0)::bigint          AS output_tokens
+FROM request_overview_hourly
+WHERE bucket_at >= $1::timestamp
+  AND bucket_at < $2::timestamp
+  AND ($3::int IS NULL OR api_key_id = $3::int)
+  AND ($4::text IS NULL OR model = $4::text)
+  AND ($5::text IS NULL OR upstream_model = $5::text)
+  AND ($6::int IS NULL OR provider_id = $6::int)
+`
+
+type GetOverviewTokenBreakdownParams struct {
+	StartAt       pgtype.Timestamp `json:"startAt"`
+	EndAt         pgtype.Timestamp `json:"endAt"`
+	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
+	Model         pgtype.Text      `json:"model"`
+	UpstreamModel pgtype.Text      `json:"upstreamModel"`
+	ProviderID    pgtype.Int4      `json:"providerId"`
+}
+
+type GetOverviewTokenBreakdownRow struct {
+	InputTokens        int64 `json:"inputTokens"`
+	CacheReadTokens    int64 `json:"cacheReadTokens"`
+	CacheWriteTokens   int64 `json:"cacheWriteTokens"`
+	CacheWrite1hTokens int64 `json:"cacheWrite1hTokens"`
+	OutputTokens       int64 `json:"outputTokens"`
+}
+
+func (q *Queries) GetOverviewTokenBreakdown(ctx context.Context, arg GetOverviewTokenBreakdownParams) (GetOverviewTokenBreakdownRow, error) {
+	row := q.db.QueryRow(ctx, getOverviewTokenBreakdown,
+		arg.StartAt,
+		arg.EndAt,
+		arg.ApiKeyID,
+		arg.Model,
+		arg.UpstreamModel,
+		arg.ProviderID,
+	)
+	var i GetOverviewTokenBreakdownRow
+	err := row.Scan(
+		&i.InputTokens,
+		&i.CacheReadTokens,
+		&i.CacheWriteTokens,
+		&i.CacheWrite1hTokens,
+		&i.OutputTokens,
+	)
+	return i, err
+}
+
 const getOverviewTotals = `-- name: GetOverviewTotals :one
 WITH filtered AS (
   SELECT
@@ -146,6 +199,150 @@ func (q *Queries) GetOverviewTotals(ctx context.Context, arg GetOverviewTotalsPa
 	var i GetOverviewTotalsRow
 	err := row.Scan(&i.TotalTokens, &i.TotalRequests, &i.Costs)
 	return i, err
+}
+
+const listOverviewBreakdownCosts = `-- name: ListOverviewBreakdownCosts :many
+SELECT
+  COALESCE(api_key_id, 0)::int          AS api_key_id,
+  COALESCE(model, '')::text             AS model,
+  COALESCE(upstream_model, '')::text    AS upstream_model,
+  COALESCE(provider_id, 0)::int         AS provider_id,
+  cost_currency::text                    AS currency,
+  SUM(cost)::float8                      AS amount
+FROM request_overview_hourly
+WHERE bucket_at >= $1::timestamp
+  AND bucket_at < $2::timestamp
+  AND ($3::int IS NULL OR api_key_id = $3::int)
+  AND ($4::text IS NULL OR model = $4::text)
+  AND ($5::text IS NULL OR upstream_model = $5::text)
+  AND ($6::int IS NULL OR provider_id = $6::int)
+  AND cost_currency IS NOT NULL
+  AND cost_currency <> ''
+GROUP BY 1, 2, 3, 4, 5
+`
+
+type ListOverviewBreakdownCostsParams struct {
+	StartAt       pgtype.Timestamp `json:"startAt"`
+	EndAt         pgtype.Timestamp `json:"endAt"`
+	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
+	Model         pgtype.Text      `json:"model"`
+	UpstreamModel pgtype.Text      `json:"upstreamModel"`
+	ProviderID    pgtype.Int4      `json:"providerId"`
+}
+
+type ListOverviewBreakdownCostsRow struct {
+	ApiKeyID      int32   `json:"apiKeyId"`
+	Model         string  `json:"model"`
+	UpstreamModel string  `json:"upstreamModel"`
+	ProviderID    int32   `json:"providerId"`
+	Currency      string  `json:"currency"`
+	Amount        float64 `json:"amount"`
+}
+
+func (q *Queries) ListOverviewBreakdownCosts(ctx context.Context, arg ListOverviewBreakdownCostsParams) ([]ListOverviewBreakdownCostsRow, error) {
+	rows, err := q.db.Query(ctx, listOverviewBreakdownCosts,
+		arg.StartAt,
+		arg.EndAt,
+		arg.ApiKeyID,
+		arg.Model,
+		arg.UpstreamModel,
+		arg.ProviderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOverviewBreakdownCostsRow
+	for rows.Next() {
+		var i ListOverviewBreakdownCostsRow
+		if err := rows.Scan(
+			&i.ApiKeyID,
+			&i.Model,
+			&i.UpstreamModel,
+			&i.ProviderID,
+			&i.Currency,
+			&i.Amount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOverviewBreakdownTokens = `-- name: ListOverviewBreakdownTokens :many
+SELECT
+  COALESCE(api_key_id, 0)::int          AS api_key_id,
+  COALESCE(model, '')::text             AS model,
+  COALESCE(upstream_model, '')::text    AS upstream_model,
+  COALESCE(provider_id, 0)::int         AS provider_id,
+  SUM(
+    input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
+  )::bigint AS total_tokens
+FROM request_overview_hourly
+WHERE bucket_at >= $1::timestamp
+  AND bucket_at < $2::timestamp
+  AND ($3::int IS NULL OR api_key_id = $3::int)
+  AND ($4::text IS NULL OR model = $4::text)
+  AND ($5::text IS NULL OR upstream_model = $5::text)
+  AND ($6::int IS NULL OR provider_id = $6::int)
+GROUP BY 1, 2, 3, 4
+HAVING SUM(
+  input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
+) > 0
+`
+
+type ListOverviewBreakdownTokensParams struct {
+	StartAt       pgtype.Timestamp `json:"startAt"`
+	EndAt         pgtype.Timestamp `json:"endAt"`
+	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
+	Model         pgtype.Text      `json:"model"`
+	UpstreamModel pgtype.Text      `json:"upstreamModel"`
+	ProviderID    pgtype.Int4      `json:"providerId"`
+}
+
+type ListOverviewBreakdownTokensRow struct {
+	ApiKeyID      int32  `json:"apiKeyId"`
+	Model         string `json:"model"`
+	UpstreamModel string `json:"upstreamModel"`
+	ProviderID    int32  `json:"providerId"`
+	TotalTokens   int64  `json:"totalTokens"`
+}
+
+func (q *Queries) ListOverviewBreakdownTokens(ctx context.Context, arg ListOverviewBreakdownTokensParams) ([]ListOverviewBreakdownTokensRow, error) {
+	rows, err := q.db.Query(ctx, listOverviewBreakdownTokens,
+		arg.StartAt,
+		arg.EndAt,
+		arg.ApiKeyID,
+		arg.Model,
+		arg.UpstreamModel,
+		arg.ProviderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOverviewBreakdownTokensRow
+	for rows.Next() {
+		var i ListOverviewBreakdownTokensRow
+		if err := rows.Scan(
+			&i.ApiKeyID,
+			&i.Model,
+			&i.UpstreamModel,
+			&i.ProviderID,
+			&i.TotalTokens,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listOverviewDistribution = `-- name: ListOverviewDistribution :many

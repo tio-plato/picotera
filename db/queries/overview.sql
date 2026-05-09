@@ -183,3 +183,58 @@ WHERE r.created_at >= sqlc.arg('start_at')::timestamp
   AND (sqlc.narg('provider_id')::int IS NULL OR r.provider_id = sqlc.narg('provider_id')::int)
 GROUP BY bucket_at, group_key
 ORDER BY bucket_at ASC, group_key ASC;
+
+-- name: GetOverviewTokenBreakdown :one
+SELECT
+  COALESCE(SUM(input_tokens), 0)::bigint           AS input_tokens,
+  COALESCE(SUM(cache_read_tokens), 0)::bigint      AS cache_read_tokens,
+  COALESCE(SUM(cache_write_tokens), 0)::bigint     AS cache_write_tokens,
+  COALESCE(SUM(cache_write_1h_tokens), 0)::bigint  AS cache_write_1h_tokens,
+  COALESCE(SUM(output_tokens), 0)::bigint          AS output_tokens
+FROM request_overview_hourly
+WHERE bucket_at >= sqlc.arg('start_at')::timestamp
+  AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
+  AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
+  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int);
+
+-- name: ListOverviewBreakdownTokens :many
+SELECT
+  COALESCE(api_key_id, 0)::int          AS api_key_id,
+  COALESCE(model, '')::text             AS model,
+  COALESCE(upstream_model, '')::text    AS upstream_model,
+  COALESCE(provider_id, 0)::int         AS provider_id,
+  SUM(
+    input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
+  )::bigint AS total_tokens
+FROM request_overview_hourly
+WHERE bucket_at >= sqlc.arg('start_at')::timestamp
+  AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
+  AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
+  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+GROUP BY 1, 2, 3, 4
+HAVING SUM(
+  input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
+) > 0;
+
+-- name: ListOverviewBreakdownCosts :many
+SELECT
+  COALESCE(api_key_id, 0)::int          AS api_key_id,
+  COALESCE(model, '')::text             AS model,
+  COALESCE(upstream_model, '')::text    AS upstream_model,
+  COALESCE(provider_id, 0)::int         AS provider_id,
+  cost_currency::text                    AS currency,
+  SUM(cost)::float8                      AS amount
+FROM request_overview_hourly
+WHERE bucket_at >= sqlc.arg('start_at')::timestamp
+  AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
+  AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
+  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND cost_currency IS NOT NULL
+  AND cost_currency <> ''
+GROUP BY 1, 2, 3, 4, 5;
