@@ -4,6 +4,7 @@ import {
   IconAlignJustified,
   IconArrowLeft,
   IconBraces,
+  IconChartPie,
   IconCheck,
   IconChevronDown,
   IconCloudDollar,
@@ -42,6 +43,7 @@ export type IconName =
   | 'close-sm'
   | 'link'
   | 'settings'
+  | 'chart-pie'
   | 'cpu'
   | 'plug'
   | 'branch'
@@ -76,6 +78,7 @@ export const iconComponents: Record<IconName, Component> = {
   'close-sm': IconX,
   link: IconLink,
   settings: IconSettings,
+  'chart-pie': IconChartPie,
   cpu: IconCpu,
   plug: IconPlug,
   branch: IconGitBranch,

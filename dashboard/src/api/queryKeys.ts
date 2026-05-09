@@ -9,10 +9,27 @@ export type RequestsFilters = Readonly<{
   traceId?: string
 }>
 
+export type OverviewRange = '24h' | '1d' | '7d' | '1m'
+export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider'
+export type OverviewSeriesDimension = 'none' | OverviewDimension
+export type OverviewFilters = Readonly<{
+  range: OverviewRange
+  apiKeyId?: number
+  model?: string
+  upstreamModel?: string
+  providerId?: number
+  distributionDimension?: OverviewDimension
+  seriesDimension?: OverviewSeriesDimension
+}>
+
 export type CursorFilters = Readonly<{ limit: number; cursor?: string }>
 export type RequestListFilters = RequestsFilters & Partial<CursorFilters>
 
 export const queryKeys = {
+  overview: {
+    all: ['overview'] as const,
+    detail: (filters: OverviewFilters) => ['overview', { ...filters }] as const,
+  },
   providers: {
     all: ['providers'] as const,
     detail: (id: number) => ['providers', id] as const,

@@ -1,4 +1,5 @@
 import './index.css'
+import '@unovis/ts/styles'
 
 import { createApp } from 'vue'
 import { VueQueryPlugin } from '@tanstack/vue-query'

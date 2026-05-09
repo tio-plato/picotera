@@ -8,6 +8,7 @@ import type {
   FetchModelsRequestBody,
   FetchModelsResponseBody,
   ModelView,
+  OverviewResponseBody,
   PricingMatchCandidate,
   ProviderEndpointView,
   ProviderView,
@@ -15,7 +16,7 @@ import type {
   ScriptView,
 } from '@/api'
 import type { components } from '@/openapi-types'
-import { queryKeys, type RequestsFilters } from '@/api/queryKeys'
+import { queryKeys, type OverviewFilters, type RequestsFilters } from '@/api/queryKeys'
 
 type ApiErrorShape = Partial<components['schemas']['PicoTeraError']>
 
@@ -40,6 +41,14 @@ export async function listProviders(): Promise<ProviderView[]> {
   const { data, error } = await api.GET('/api/picotera/providers')
   if (error) fail(error, '加载渠道失败')
   return data ?? []
+}
+
+export async function getOverview(filters: OverviewFilters): Promise<OverviewResponseBody> {
+  const { data, error } = await api.GET('/api/picotera/overview', {
+    params: { query: filters },
+  })
+  if (error) fail(error, '加载概览失败')
+  return data
 }
 
 export async function getProvider(id: number): Promise<ProviderView> {
