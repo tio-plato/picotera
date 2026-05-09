@@ -6,7 +6,9 @@ SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, ap
        user_message_preview
 FROM request
 WHERE
-  (sqlc.narg('type')::int IS NULL OR type = sqlc.narg('type'))
+  created_at >= sqlc.arg('created_at_from')::timestamp
+  AND created_at < sqlc.arg('created_at_to')::timestamp
+  AND (sqlc.narg('type')::int IS NULL OR type = sqlc.narg('type'))
   AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id'))
   AND (sqlc.narg('endpoint_path')::text IS NULL OR endpoint_path = sqlc.narg('endpoint_path'))
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model'))
@@ -39,7 +41,9 @@ WITH trace_base AS (
     COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens,
     MAX(created_at)::timestamp AS last_request_at
   FROM request
-  WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
+  WHERE created_at >= sqlc.arg('created_at_from')::timestamp
+    AND created_at < sqlc.arg('created_at_to')::timestamp
+    AND parent_span_id IS NOT NULL AND parent_span_id <> ''
   GROUP BY parent_span_id
 )
 SELECT
@@ -66,6 +70,8 @@ LEFT JOIN LATERAL (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
+      AND created_at >= sqlc.arg('created_at_from')::timestamp
+      AND created_at < sqlc.arg('created_at_to')::timestamp
       AND type = 1
       AND model_cost IS NOT NULL
       AND model_cost_currency IS NOT NULL
@@ -81,6 +87,8 @@ LEFT JOIN LATERAL (
     SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
+      AND created_at >= sqlc.arg('created_at_from')::timestamp
+      AND created_at < sqlc.arg('created_at_to')::timestamp
       AND type = 1
       AND upstream_cost IS NOT NULL
       AND upstream_cost_currency IS NOT NULL
@@ -91,6 +99,8 @@ LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
   WHERE parent_span_id = trace_base.parent_span_id
+    AND created_at >= sqlc.arg('created_at_from')::timestamp
+    AND created_at < sqlc.arg('created_at_to')::timestamp
     AND type = 0
     AND user_message_preview IS NOT NULL
   ORDER BY created_at DESC, id DESC
@@ -106,11 +116,14 @@ ORDER BY trace_base.last_request_at DESC, trace_base.parent_span_id DESC
 LIMIT sqlc.narg('limit')::int;
 
 -- name: GetRequest :one
-SELECT * FROM request WHERE id = $1;
+SELECT * FROM request WHERE id = $1 AND created_at = sqlc.arg('id_created_at')::timestamp;
 
 -- name: ListRequestsBySpan :many
 WITH anchor AS (
-  SELECT request.span_id FROM request WHERE request.id = $1
+  SELECT request.span_id
+  FROM request
+  WHERE request.id = sqlc.arg('id')::text
+    AND request.created_at = sqlc.arg('id_created_at')::timestamp
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
@@ -119,13 +132,15 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
        r.user_message_preview
 FROM request r, anchor
-WHERE r.span_id = anchor.span_id
+WHERE r.created_at >= sqlc.arg('created_at_from')::timestamp
+  AND r.created_at < sqlc.arg('created_at_to')::timestamp
+  AND r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC;
 
 -- name: UpdateRequestOnHeader :exec
 UPDATE request
 SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7
-WHERE id = $1;
+WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 
 -- name: UpdateRequestOnComplete :exec
 UPDATE request
@@ -135,13 +150,13 @@ SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     cache_write_1h_tokens = $11,
     model_cost = $12, model_cost_currency = $13,
     upstream_cost = $14, upstream_cost_currency = $15
-WHERE id = $1;
+WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 
 -- name: UpdateRequestModel :exec
-UPDATE request SET model = $2 WHERE id = $1;
+UPDATE request SET model = $2 WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 
 -- name: UpdateRequestMetrics :exec
 UPDATE request
 SET ttft_ms = $2, input_tokens = $3, output_tokens = $4,
     cache_read_tokens = $5, cache_write_tokens = $6, cache_write_1h_tokens = $7
-WHERE id = $1;
+WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;

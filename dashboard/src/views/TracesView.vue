@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/composables/useApi'
 import { useCurrency } from '@/composables/useCurrency'
+import { requestWindowPresets, useRequestTimeWindow, type RequestWindowPreset } from '@/composables/useRequestTimeWindow'
 import { useExchangeRatesStore } from '@/stores/exchangeRates'
 import type { RequestTraceView, TraceCostView } from '@/api'
 import {
@@ -11,6 +12,8 @@ import {
   DataCard,
   Icon,
   IconButton,
+  Field,
+  Select,
   type AutoDataTableColumn,
 } from '@/ui'
 
@@ -18,6 +21,7 @@ const api = useApi()
 const router = useRouter()
 const currency = useCurrency()
 const exchange = useExchangeRatesStore()
+const { requestWindow, requestWindowLabel, applyRequestWindowPreset } = useRequestTimeWindow()
 
 const traces = ref<RequestTraceView[]>([])
 const loading = ref(false)
@@ -42,6 +46,8 @@ async function fetchTraces(cursor?: string) {
         query: {
           limit: 30,
           cursor: cursor || undefined,
+          createdAtFrom: requestWindow.createdAtFrom,
+          createdAtTo: requestWindow.createdAtTo,
         },
       },
     })
@@ -65,6 +71,11 @@ onMounted(async () => {
   })
   fetchTraces()
 })
+
+watch(
+  () => [requestWindow.createdAtFrom, requestWindow.createdAtTo],
+  () => fetchTraces(),
+)
 
 function rowKey(row: RequestTraceView) {
   return row.parentSpanId
@@ -130,6 +141,10 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
     title: nativeCostText(items),
   }
 }
+
+function applyWindowPresetAndReload(value: string | number) {
+  applyRequestWindowPreset(value as RequestWindowPreset)
+}
 </script>
 
 <template>
@@ -138,9 +153,28 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
       <span class="text-xs text-ink-faint tabular-nums">
         {{ traces.length }} 条追踪<span v-if="hasMore">（还有更多）</span>
       </span>
-      <IconButton title="刷新" aria-label="刷新" :disabled="loading" @click="fetchTraces()">
-        <Icon name="refresh" :size="13" />
-      </IconButton>
+      <div class="flex items-end gap-2">
+        <Field label="时间窗口" as="div">
+          <div class="flex items-center gap-2">
+            <Select
+              :model-value="requestWindow.preset"
+              size="sm"
+              class="w-24"
+              @update:model-value="applyWindowPresetAndReload"
+            >
+              <option v-for="preset in requestWindowPresets" :key="preset.value" :value="preset.value">
+                {{ preset.label }}
+              </option>
+            </Select>
+            <span class="hidden sm:inline font-mono text-2xs text-ink-faint tabular-nums">
+              {{ requestWindowLabel }}
+            </span>
+          </div>
+        </Field>
+        <IconButton title="刷新" aria-label="刷新" :disabled="loading" @click="fetchTraces()">
+          <Icon name="refresh" :size="13" />
+        </IconButton>
+      </div>
     </div>
 
     <DataCard>

@@ -16,6 +16,7 @@ import (
 )
 
 const artifactPresignTTL = time.Hour
+const defaultSpanWindow = 24 * time.Hour
 
 // attachArtifactUrls fills in presigned URLs for the given view using id+createdAt.
 // Errors are logged and silently dropped (URL fields stay empty).
@@ -38,12 +39,46 @@ func (s *Server) attachArtifactUrls(ctx context.Context, v *contract.RequestView
 	}
 }
 
+func parseRequiredRequestTimeWindow(fromRaw, toRaw string) (pgtype.Timestamp, pgtype.Timestamp, error) {
+	if fromRaw == "" || toRaw == "" {
+		return pgtype.Timestamp{}, pgtype.Timestamp{}, huma.Error400BadRequest("createdAtFrom and createdAtTo are required")
+	}
+	from, err := time.Parse(time.RFC3339Nano, fromRaw)
+	if err != nil {
+		return pgtype.Timestamp{}, pgtype.Timestamp{}, huma.Error400BadRequest("invalid createdAtFrom", err)
+	}
+	to, err := time.Parse(time.RFC3339Nano, toRaw)
+	if err != nil {
+		return pgtype.Timestamp{}, pgtype.Timestamp{}, huma.Error400BadRequest("invalid createdAtTo", err)
+	}
+	from = from.UTC()
+	to = to.UTC()
+	if !from.Before(to) {
+		return pgtype.Timestamp{}, pgtype.Timestamp{}, huma.Error400BadRequest("createdAtFrom must be earlier than createdAtTo")
+	}
+	return pgtype.Timestamp{Time: from, Valid: true}, pgtype.Timestamp{Time: to, Valid: true}, nil
+}
+
+func parseOptionalRequestTimeWindow(fromRaw, toRaw string, fallbackFrom, fallbackTo time.Time) (pgtype.Timestamp, pgtype.Timestamp, error) {
+	if fromRaw == "" && toRaw == "" {
+		return pgtype.Timestamp{Time: fallbackFrom.UTC(), Valid: true}, pgtype.Timestamp{Time: fallbackTo.UTC(), Valid: true}, nil
+	}
+	if fromRaw == "" || toRaw == "" {
+		return pgtype.Timestamp{}, pgtype.Timestamp{}, huma.Error400BadRequest("createdAtFrom and createdAtTo must be supplied together")
+	}
+	return parseRequiredRequestTimeWindow(fromRaw, toRaw)
+}
+
 func (s *Server) handleListRequests(ctx context.Context, input *contract.ListRequestsRequest) (*contract.ListRequestsResponse, error) {
 	limit := input.Limit
 	if limit <= 0 {
 		limit = 20
 	}
 	fetchLimit := limit + 1
+	createdAtFrom, createdAtTo, err := parseRequiredRequestTimeWindow(input.CreatedAtFrom, input.CreatedAtTo)
+	if err != nil {
+		return nil, err
+	}
 
 	var cursorCreatedAt pgtype.Timestamp
 	var cursorID pgtype.Text
@@ -86,6 +121,8 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 	}
 
 	rows, err := s.queries.ListRequests(ctx, db.ListRequestsParams{
+		CreatedAtFrom:   createdAtFrom,
+		CreatedAtTo:     createdAtTo,
 		Type:            filterType,
 		ProviderID:      filterProviderID,
 		EndpointPath:    filterEndpointPath,
@@ -139,6 +176,10 @@ func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.Li
 		limit = 20
 	}
 	fetchLimit := limit + 1
+	createdAtFrom, createdAtTo, err := parseRequiredRequestTimeWindow(input.CreatedAtFrom, input.CreatedAtTo)
+	if err != nil {
+		return nil, err
+	}
 
 	var cursorLastRequestAt pgtype.Timestamp
 	var cursorParentSpanID pgtype.Text
@@ -156,6 +197,8 @@ func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.Li
 	}
 
 	rows, err := s.queries.ListRequestTraces(ctx, db.ListRequestTracesParams{
+		CreatedAtFrom:       createdAtFrom,
+		CreatedAtTo:         createdAtTo,
 		CursorLastRequestAt: cursorLastRequestAt,
 		CursorParentSpanID:  cursorParentSpanID,
 		Limit:               pgtype.Int4{Int32: fetchLimit, Valid: true},
@@ -205,7 +248,14 @@ func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.Li
 }
 
 func (s *Server) handleGetRequest(ctx context.Context, input *contract.GetRequestRequest) (*contract.GetRequestResponse, error) {
-	req, err := s.queries.GetRequest(ctx, input.ID)
+	idCreatedAt, err := requestIDCreatedAt(input.ID)
+	if err != nil {
+		return nil, err
+	}
+	req, err := s.queries.GetRequest(ctx, db.GetRequestParams{
+		ID:          input.ID,
+		IDCreatedAt: pgtype.Timestamp{Time: idCreatedAt, Valid: true},
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, huma.Error404NotFound("request not found", errorx.RequestNotFound)
@@ -218,12 +268,48 @@ func (s *Server) handleGetRequest(ctx context.Context, input *contract.GetReques
 }
 
 func (s *Server) handleListRequestSpans(ctx context.Context, input *contract.ListRequestSpansRequest) (*contract.ListRequestSpansResponse, error) {
-	rows, err := s.queries.ListRequestsBySpan(ctx, input.ID)
+	idCreatedAt, err := requestIDCreatedAt(input.ID)
+	if err != nil {
+		return nil, err
+	}
+	createdAtFrom, createdAtTo, err := parseOptionalRequestTimeWindow(
+		input.CreatedAtFrom,
+		input.CreatedAtTo,
+		idCreatedAt.Add(-defaultSpanWindow),
+		idCreatedAt.Add(defaultSpanWindow),
+	)
+	if err != nil {
+		return nil, err
+	}
+	req, err := s.queries.GetRequest(ctx, db.GetRequestParams{
+		ID:          input.ID,
+		IDCreatedAt: pgtype.Timestamp{Time: idCreatedAt, Valid: true},
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, huma.Error404NotFound("request not found", errorx.RequestNotFound)
+		}
+		return nil, huma.Error500InternalServerError("failed to get request", err)
+	}
+	if input.CreatedAtFrom != "" || input.CreatedAtTo != "" {
+		requestCreatedAt := req.CreatedAt.Time.UTC()
+		if !req.CreatedAt.Valid || requestCreatedAt.Before(createdAtFrom.Time) || !requestCreatedAt.Before(createdAtTo.Time) {
+			return nil, huma.Error400BadRequest("createdAtFrom and createdAtTo must include the anchor request createdAt")
+		}
+	}
+	rows, err := s.queries.ListRequestsBySpan(ctx, db.ListRequestsBySpanParams{
+		ID:            input.ID,
+		IDCreatedAt:   pgtype.Timestamp{Time: idCreatedAt, Valid: true},
+		CreatedAtFrom: createdAtFrom,
+		CreatedAtTo:   createdAtTo,
+	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list request spans", err)
 	}
 	if len(rows) == 0 {
-		return nil, huma.Error404NotFound("request not found", errorx.RequestNotFound)
+		view := contract.ToRequestView(&req)
+		s.attachArtifactUrls(ctx, view, req.CreatedAt)
+		return &contract.ListRequestSpansResponse{Body: []contract.RequestView{*view}}, nil
 	}
 	items := make([]contract.RequestView, len(rows))
 	for i, row := range rows {

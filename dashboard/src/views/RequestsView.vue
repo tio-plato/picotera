@@ -3,6 +3,7 @@ import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useApi } from '@/composables/useApi'
 import { useProvidersMap } from '@/composables/useProvidersMap'
+import { requestWindowPresets, useRequestTimeWindow, type RequestWindowPreset } from '@/composables/useRequestTimeWindow'
 import type {
   RequestView,
   EndpointView,
@@ -19,6 +20,7 @@ import {
   Field,
   Icon,
   SegmentedControl,
+  Select,
   ColumnFilter,
   MoneyDisplay,
   type AutoDataTableColumn,
@@ -29,6 +31,7 @@ const api = useApi()
 const panel = useSidePanel()
 const route = useRoute()
 const { providers, providerLabel, fetchProviders } = useProvidersMap()
+const { requestWindow, requestWindowLabel, applyRequestWindowPreset } = useRequestTimeWindow()
 
 const requests = ref<RequestView[]>([])
 const loading = ref(false)
@@ -71,6 +74,8 @@ async function fetchRequests(cursor?: string) {
   const query: Record<string, string | number | undefined> = {
     limit: 30,
     cursor: cursor || undefined,
+    createdAtFrom: requestWindow.createdAtFrom,
+    createdAtTo: requestWindow.createdAtTo,
   }
   if (filters.type === 'meta') query.type = 0
   else if (filters.type === 'upstream') query.type = 1
@@ -101,7 +106,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => [filters.type, filters.providerId, filters.endpointPath, filters.model, filters.upstreamModel, filters.parentSpanId],
+  () => [filters.type, filters.providerId, filters.endpointPath, filters.model, filters.upstreamModel, filters.parentSpanId, requestWindow.createdAtFrom, requestWindow.createdAtTo],
   () => {
     syncParentSpanFilterToQuery()
     fetchRequests()
@@ -340,6 +345,10 @@ function cacheHitRate(r: RequestView): number | null {
 function resetCursorAndReload() {
   fetchRequests()
 }
+
+function applyWindowPresetAndReload(value: string | number) {
+  applyRequestWindowPreset(value as RequestWindowPreset)
+}
 </script>
 
 <template>
@@ -349,6 +358,23 @@ function resetCursorAndReload() {
         <SegmentedControl v-model="filters.type" :options="typeOptions" />
       </Field>
       <div class="flex items-center gap-2">
+        <Field label="时间窗口" as="div">
+          <div class="flex items-center gap-2">
+            <Select
+              :model-value="requestWindow.preset"
+              size="sm"
+              class="w-24"
+              @update:model-value="applyWindowPresetAndReload"
+            >
+              <option v-for="preset in requestWindowPresets" :key="preset.value" :value="preset.value">
+                {{ preset.label }}
+              </option>
+            </Select>
+            <span class="hidden sm:inline font-mono text-2xs text-ink-faint tabular-nums">
+              {{ requestWindowLabel }}
+            </span>
+          </div>
+        </Field>
         <button
           v-if="activeFilterCount() > 0"
           type="button"

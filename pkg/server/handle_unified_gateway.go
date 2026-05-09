@@ -21,7 +21,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/rs/xid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -64,7 +63,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		}
 
 		// 3. Insert the meta request row.
-		metaID := xid.New().String()
+		metaID, metaIDCreatedAt := newRequestID()
 		metaReqHeader := r.Header.Clone()
 		parentSpanID := extractParentSpanID(metaReqHeader)
 		parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
@@ -84,6 +83,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			ErrorMessage:       pgtype.Text{Valid: false},
 			TimeSpentMs:        pgtype.Int4{Valid: false},
 			UserMessagePreview: userMessagePreview,
+			CreatedAt:          pgtype.Timestamp{Time: metaIDCreatedAt, Valid: true},
 		})
 		h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, r.Method, r.URL.String(), metaReqHeader, body)
 
@@ -112,6 +112,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 				TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(gatewayStart).Milliseconds()), Valid: true},
 				Status:       db.RequestStatusFailed,
+				CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 			})
 		}
 		failMetaResponse := func(err error) {
@@ -151,6 +152,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			EndpointPath: pgtype.Text{String: virtualEndpoint.Path, Valid: true},
 			ApiKeyID:     apiKeyID,
 			Status:       db.RequestStatusPending,
+			CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 		})
 
 		// 6. Resolve model name and stream flag. Format-specific.
@@ -166,8 +168,9 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			return
 		}
 		h.updateRequestModel(bgCtx, db.UpdateRequestModelParams{
-			ID:    metaID,
-			Model: pgtype.Text{String: modelName, Valid: modelName != ""},
+			ID:        metaID,
+			Model:     pgtype.Text{String: modelName, Valid: modelName != ""},
+			CreatedAt: pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 		})
 
 		// 7. Build the JS session and run rewriteModel once.
@@ -375,7 +378,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				upstreamModel = modelName
 			}
 
-			upstreamID := xid.New().String()
+			upstreamID, upstreamIDCreatedAt := newRequestID()
 			upstreamCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
 				ID:                 upstreamID,
 				SpanID:             pgtype.Text{String: metaID, Valid: true},
@@ -391,6 +394,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				ErrorMessage:       pgtype.Text{Valid: false},
 				TimeSpentMs:        pgtype.Int4{Valid: false},
 				UserMessagePreview: pgtype.Text{Valid: false},
+				CreatedAt:          pgtype.Timestamp{Time: upstreamIDCreatedAt, Valid: true},
 			})
 
 			// Build the upstream request in source format. The body has the
@@ -402,7 +406,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				srcBody, err = setUnifiedModel(srcFormat, body, upstreamModel)
 				if err != nil {
 					cancel()
-					h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, err.Error())
+					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, err.Error())
 					lastErr = err
 					lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: err.Error()}
 					currentRetryCount++
@@ -413,7 +417,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			req, reqBody, berr := buildUpstreamRequest(ctx, r, srcBody, side.upstreamURL, "", side.credentials, side.sendResolver, pathVars)
 			if berr != nil {
 				cancel()
-				h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, berr.Error())
+				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, berr.Error())
 				lastErr = berr
 				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: berr.Error()}
 				currentRetryCount++
@@ -449,7 +453,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			baseProfile, perr := llmbridge.DefaultOutboundProfileForFormat(side.upFormat)
 			if perr != nil {
 				cancel()
-				h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, perr.Error())
+				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, perr.Error())
 				lastErr = perr
 				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: perr.Error()}
 				currentRetryCount++
@@ -498,7 +502,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				upBody, upCT, brerr := llmbridge.BridgeRequest(ctx, srcFormat, side.upFormat, reqBody, req.Header, bridgeURL, outboundProfile)
 				if brerr != nil {
 					cancel()
-					h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, brerr.Error())
+					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, brerr.Error())
 					lastErr = brerr
 					lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: brerr.Error()}
 					currentRetryCount++
@@ -526,7 +530,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			resp, ferr := h.forwardRequest(req)
 			if ferr != nil {
 				cancel()
-				h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, ferr.Error())
+				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, ferr.Error())
 				lastErr = ferr
 				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: ferr.Error()}
 				currentRetryCount++
@@ -573,6 +577,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 				TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true},
 				Status:       db.RequestStatusFailed,
+				CreatedAt:    pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
 			})
 			lastErr = fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg)
 			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
@@ -880,6 +885,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		EndpointPath:  pgtype.Text{String: a.metaEndpointPath, Valid: a.metaEndpointPath != ""},
 		ApiKeyID:      a.apiKeyID,
 		Status:        db.RequestStatusHeaderReceived,
+		CreatedAt:     pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	h.updateRequestOnHeader(a.bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            a.upstreamID,
@@ -889,6 +895,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		EndpointPath:  pgtype.Text{String: a.upstreamPath, Valid: a.upstreamPath != ""},
 		ApiKeyID:      a.apiKeyID,
 		Status:        db.RequestStatusHeaderReceived,
+		CreatedAt:     pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 
 	// Forward upstream headers as-is when there's no bridge. When bridging,
@@ -1022,6 +1029,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		ModelCostCurrency:    modelCcy,
 		UpstreamCost:         upstreamCost,
 		UpstreamCostCurrency: upstreamCcy,
+		CreatedAt:            pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(a.gatewayStart).Milliseconds())
 	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
@@ -1040,6 +1048,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		ModelCostCurrency:    modelCcy,
 		UpstreamCost:         upstreamCost,
 		UpstreamCostCurrency: upstreamCcy,
+		CreatedAt:            pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	_ = r
 }
@@ -1055,6 +1064,7 @@ func (h *gatewayHandler) failUnifiedSuccess(a unifiedStreamArgs, errMsg string) 
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(a.attemptStart).Milliseconds()), Valid: true},
 		Status:       db.RequestStatusFailed,
+		CreatedAt:    pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	respBody := writeGatewayError(a.w, http.StatusBadGateway, "bridge failed: "+errMsg, errorx.UpstreamError.Error())
 	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
@@ -1063,6 +1073,7 @@ func (h *gatewayHandler) failUnifiedSuccess(a unifiedStreamArgs, errMsg string) 
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(a.gatewayStart).Milliseconds()), Valid: true},
 		Status:       db.RequestStatusFailed,
+		CreatedAt:    pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	h.uploadMetaResponseArtifact(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), respBody, a.metaLogs)
 	_ = a.resp.Body.Close()

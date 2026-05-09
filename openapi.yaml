@@ -1437,6 +1437,16 @@ paths:
           schema:
             example: eyJpZCI6MX0=
             type: string
+        - explode: false
+          in: query
+          name: createdAtFrom
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: createdAtTo
+          schema:
+            type: string
       responses:
         "200":
           content:
@@ -1470,6 +1480,16 @@ paths:
           name: cursor
           schema:
             example: eyJpZCI6MX0=
+            type: string
+        - explode: false
+          in: query
+          name: createdAtFrom
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: createdAtTo
+          schema:
             type: string
         - explode: false
           in: query
@@ -1548,6 +1568,16 @@ paths:
         - in: path
           name: id
           required: true
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: createdAtFrom
+          schema:
+            type: string
+        - explode: false
+          in: query
+          name: createdAtTo
           schema:
             type: string
       responses:

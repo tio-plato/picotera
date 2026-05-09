@@ -38,7 +38,7 @@ type Querier interface {
 	// and call this. Returns the same column shape as the path-based query plus
 	// e.endpoint_type so the handler can pick the right transformer per row.
 	GetProvidersByEndpointTypesAndModel(ctx context.Context, arg GetProvidersByEndpointTypesAndModelParams) ([]GetProvidersByEndpointTypesAndModelRow, error)
-	GetRequest(ctx context.Context, id string) (Request, error)
+	GetRequest(ctx context.Context, arg GetRequestParams) (Request, error)
 	GetScript(ctx context.Context, id string) (Script, error)
 	InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error)
 	InsertRequest(ctx context.Context, arg InsertRequestParams) (pgtype.Timestamp, error)
@@ -48,7 +48,7 @@ type Querier interface {
 	ListProviderEndpoints(ctx context.Context, providerID pgtype.Int4) ([]ProviderEndpoint, error)
 	ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error)
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
-	ListRequestsBySpan(ctx context.Context, id string) ([]ListRequestsBySpanRow, error)
+	ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error)
 	ListScripts(ctx context.Context) ([]Script, error)
 	UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (ApiKey, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)

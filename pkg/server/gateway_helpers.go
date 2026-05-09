@@ -470,18 +470,24 @@ func (s *Server) forwardRequest(req *http.Request) (*http.Response, error) {
 	return s.httpClient.Do(req)
 }
 
-// insertRequest inserts a request record and returns the DB-assigned created_at.
-// On error, returns time.Now().UTC() so artifact keys remain computable.
+// insertRequest inserts a request record and returns the inserted created_at.
+// On error, returns the caller-supplied created_at so artifact keys remain computable.
 func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) time.Time {
 	createdAt, err := s.queries.InsertRequest(ctx, arg)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).Error("failed to insert request")
+		if arg.CreatedAt.Valid {
+			return arg.CreatedAt.Time.UTC()
+		}
 		return time.Now().UTC()
 	}
 	if !createdAt.Valid {
+		if arg.CreatedAt.Valid {
+			return arg.CreatedAt.Time.UTC()
+		}
 		return time.Now().UTC()
 	}
-	return createdAt.Time
+	return createdAt.Time.UTC()
 }
 
 // updateRequestOnHeader backfills provider and request metadata. Errors are logged but do not affect the response.
@@ -664,13 +670,14 @@ func buildRequestFromPending(ctx context.Context, p jsx.PendingRequestShape, fal
 
 // completeFailedAttempt is a small wrapper around updateRequestOnComplete for the
 // retry loop's error path.
-func (s *Server) completeFailedAttempt(ctx context.Context, upstreamID string, attemptStart time.Time, statusCode int32, errMsg string) {
+func (s *Server) completeFailedAttempt(ctx context.Context, upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time, statusCode int32, errMsg string) {
 	s.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
 		ID:           upstreamID,
 		StatusCode:   pgtype.Int4{Int32: statusCode, Valid: true},
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true},
 		Status:       db.RequestStatusFailed,
+		CreatedAt:    pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
 	})
 }
 

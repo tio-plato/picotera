@@ -15,6 +15,11 @@ services:
       POSTGRES_INITDB_ARGS: '--data-checksums --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8'
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 1G
 
   minio:
     image: ghcr.io/featuredcontainers/minio:sha-ff4c330

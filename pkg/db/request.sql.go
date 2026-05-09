@@ -12,11 +12,16 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency, user_message_preview, cache_write_1h_tokens FROM request WHERE id = $1
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency, user_message_preview, cache_write_1h_tokens FROM request WHERE id = $1 AND created_at = $2::timestamp
 `
 
-func (q *Queries) GetRequest(ctx context.Context, id string) (Request, error) {
-	row := q.db.QueryRow(ctx, getRequest, id)
+type GetRequestParams struct {
+	ID          string           `json:"id"`
+	IDCreatedAt pgtype.Timestamp `json:"idCreatedAt"`
+}
+
+func (q *Queries) GetRequest(ctx context.Context, arg GetRequestParams) (Request, error) {
+	row := q.db.QueryRow(ctx, getRequest, arg.ID, arg.IDCreatedAt)
 	var i Request
 	err := row.Scan(
 		&i.ID,
@@ -68,7 +73,9 @@ WITH trace_base AS (
     COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens,
     MAX(created_at)::timestamp AS last_request_at
   FROM request
-  WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
+  WHERE created_at >= $1::timestamp
+    AND created_at < $2::timestamp
+    AND parent_span_id IS NOT NULL AND parent_span_id <> ''
   GROUP BY parent_span_id
 )
 SELECT
@@ -95,6 +102,8 @@ LEFT JOIN LATERAL (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
+      AND created_at >= $1::timestamp
+      AND created_at < $2::timestamp
       AND type = 1
       AND model_cost IS NOT NULL
       AND model_cost_currency IS NOT NULL
@@ -110,6 +119,8 @@ LEFT JOIN LATERAL (
     SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = trace_base.parent_span_id
+      AND created_at >= $1::timestamp
+      AND created_at < $2::timestamp
       AND type = 1
       AND upstream_cost IS NOT NULL
       AND upstream_cost_currency IS NOT NULL
@@ -120,22 +131,26 @@ LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
   WHERE parent_span_id = trace_base.parent_span_id
+    AND created_at >= $1::timestamp
+    AND created_at < $2::timestamp
     AND type = 0
     AND user_message_preview IS NOT NULL
   ORDER BY created_at DESC, id DESC
   LIMIT 1
 ) preview ON true
 WHERE
-  $1::timestamp IS NULL
+  $3::timestamp IS NULL
   OR (trace_base.last_request_at, trace_base.parent_span_id) < (
-    $1::timestamp,
-    $2::text
+    $3::timestamp,
+    $4::text
   )
 ORDER BY trace_base.last_request_at DESC, trace_base.parent_span_id DESC
-LIMIT $3::int
+LIMIT $5::int
 `
 
 type ListRequestTracesParams struct {
+	CreatedAtFrom       pgtype.Timestamp `json:"createdAtFrom"`
+	CreatedAtTo         pgtype.Timestamp `json:"createdAtTo"`
 	CursorLastRequestAt pgtype.Timestamp `json:"cursorLastRequestAt"`
 	CursorParentSpanID  pgtype.Text      `json:"cursorParentSpanId"`
 	Limit               pgtype.Int4      `json:"limit"`
@@ -158,7 +173,13 @@ type ListRequestTracesRow struct {
 }
 
 func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
-	rows, err := q.db.Query(ctx, listRequestTraces, arg.CursorLastRequestAt, arg.CursorParentSpanID, arg.Limit)
+	rows, err := q.db.Query(ctx, listRequestTraces,
+		arg.CreatedAtFrom,
+		arg.CreatedAtTo,
+		arg.CursorLastRequestAt,
+		arg.CursorParentSpanID,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -199,21 +220,25 @@ SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, ap
        user_message_preview
 FROM request
 WHERE
-  ($1::int IS NULL OR type = $1)
-  AND ($2::int IS NULL OR provider_id = $2)
-  AND ($3::text IS NULL OR endpoint_path = $3)
-  AND ($4::text IS NULL OR model = $4)
-  AND ($5::text IS NULL OR upstream_model = $5)
-  AND ($6::text IS NULL OR parent_span_id = $6)
+  created_at >= $1::timestamp
+  AND created_at < $2::timestamp
+  AND ($3::int IS NULL OR type = $3)
+  AND ($4::int IS NULL OR provider_id = $4)
+  AND ($5::text IS NULL OR endpoint_path = $5)
+  AND ($6::text IS NULL OR model = $6)
+  AND ($7::text IS NULL OR upstream_model = $7)
+  AND ($8::text IS NULL OR parent_span_id = $8)
   AND (
-    $7::timestamp IS NULL
-    OR (created_at, id) < ($7::timestamp, $8::text)
+    $9::timestamp IS NULL
+    OR (created_at, id) < ($9::timestamp, $10::text)
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $9::int
+LIMIT $11::int
 `
 
 type ListRequestsParams struct {
+	CreatedAtFrom   pgtype.Timestamp `json:"createdAtFrom"`
+	CreatedAtTo     pgtype.Timestamp `json:"createdAtTo"`
 	Type            pgtype.Int4      `json:"type"`
 	ProviderID      pgtype.Int4      `json:"providerId"`
 	EndpointPath    pgtype.Text      `json:"endpointPath"`
@@ -255,6 +280,8 @@ type ListRequestsRow struct {
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listRequests,
+		arg.CreatedAtFrom,
+		arg.CreatedAtTo,
 		arg.Type,
 		arg.ProviderID,
 		arg.EndpointPath,
@@ -311,7 +338,10 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 
 const listRequestsBySpan = `-- name: ListRequestsBySpan :many
 WITH anchor AS (
-  SELECT request.span_id FROM request WHERE request.id = $1
+  SELECT request.span_id
+  FROM request
+  WHERE request.id = $3::text
+    AND request.created_at = $4::timestamp
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
@@ -320,9 +350,18 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
        r.user_message_preview
 FROM request r, anchor
-WHERE r.span_id = anchor.span_id
+WHERE r.created_at >= $1::timestamp
+  AND r.created_at < $2::timestamp
+  AND r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC
 `
+
+type ListRequestsBySpanParams struct {
+	CreatedAtFrom pgtype.Timestamp `json:"createdAtFrom"`
+	CreatedAtTo   pgtype.Timestamp `json:"createdAtTo"`
+	ID            string           `json:"id"`
+	IDCreatedAt   pgtype.Timestamp `json:"idCreatedAt"`
+}
 
 type ListRequestsBySpanRow struct {
 	ID                   string           `json:"id"`
@@ -352,8 +391,13 @@ type ListRequestsBySpanRow struct {
 	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
 }
 
-func (q *Queries) ListRequestsBySpan(ctx context.Context, id string) ([]ListRequestsBySpanRow, error) {
-	rows, err := q.db.Query(ctx, listRequestsBySpan, id)
+func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error) {
+	rows, err := q.db.Query(ctx, listRequestsBySpan,
+		arg.CreatedAtFrom,
+		arg.CreatedAtTo,
+		arg.ID,
+		arg.IDCreatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -402,17 +446,18 @@ const updateRequestMetrics = `-- name: UpdateRequestMetrics :exec
 UPDATE request
 SET ttft_ms = $2, input_tokens = $3, output_tokens = $4,
     cache_read_tokens = $5, cache_write_tokens = $6, cache_write_1h_tokens = $7
-WHERE id = $1
+WHERE id = $1 AND created_at = $8::timestamp
 `
 
 type UpdateRequestMetricsParams struct {
-	ID                 string      `json:"id"`
-	TtftMs             pgtype.Int4 `json:"ttftMs"`
-	InputTokens        pgtype.Int4 `json:"inputTokens"`
-	OutputTokens       pgtype.Int4 `json:"outputTokens"`
-	CacheReadTokens    pgtype.Int4 `json:"cacheReadTokens"`
-	CacheWriteTokens   pgtype.Int4 `json:"cacheWriteTokens"`
-	CacheWrite1hTokens pgtype.Int4 `json:"cacheWrite1hTokens"`
+	ID                 string           `json:"id"`
+	TtftMs             pgtype.Int4      `json:"ttftMs"`
+	InputTokens        pgtype.Int4      `json:"inputTokens"`
+	OutputTokens       pgtype.Int4      `json:"outputTokens"`
+	CacheReadTokens    pgtype.Int4      `json:"cacheReadTokens"`
+	CacheWriteTokens   pgtype.Int4      `json:"cacheWriteTokens"`
+	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
+	CreatedAt          pgtype.Timestamp `json:"createdAt"`
 }
 
 func (q *Queries) UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error {
@@ -424,21 +469,23 @@ func (q *Queries) UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMet
 		arg.CacheReadTokens,
 		arg.CacheWriteTokens,
 		arg.CacheWrite1hTokens,
+		arg.CreatedAt,
 	)
 	return err
 }
 
 const updateRequestModel = `-- name: UpdateRequestModel :exec
-UPDATE request SET model = $2 WHERE id = $1
+UPDATE request SET model = $2 WHERE id = $1 AND created_at = $3::timestamp
 `
 
 type UpdateRequestModelParams struct {
-	ID    string      `json:"id"`
-	Model pgtype.Text `json:"model"`
+	ID        string           `json:"id"`
+	Model     pgtype.Text      `json:"model"`
+	CreatedAt pgtype.Timestamp `json:"createdAt"`
 }
 
 func (q *Queries) UpdateRequestModel(ctx context.Context, arg UpdateRequestModelParams) error {
-	_, err := q.db.Exec(ctx, updateRequestModel, arg.ID, arg.Model)
+	_, err := q.db.Exec(ctx, updateRequestModel, arg.ID, arg.Model, arg.CreatedAt)
 	return err
 }
 
@@ -450,25 +497,26 @@ SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     cache_write_1h_tokens = $11,
     model_cost = $12, model_cost_currency = $13,
     upstream_cost = $14, upstream_cost_currency = $15
-WHERE id = $1
+WHERE id = $1 AND created_at = $16::timestamp
 `
 
 type UpdateRequestOnCompleteParams struct {
-	ID                   string         `json:"id"`
-	StatusCode           pgtype.Int4    `json:"statusCode"`
-	ErrorMessage         pgtype.Text    `json:"errorMessage"`
-	TimeSpentMs          pgtype.Int4    `json:"timeSpentMs"`
-	Status               int32          `json:"status"`
-	TtftMs               pgtype.Int4    `json:"ttftMs"`
-	InputTokens          pgtype.Int4    `json:"inputTokens"`
-	OutputTokens         pgtype.Int4    `json:"outputTokens"`
-	CacheReadTokens      pgtype.Int4    `json:"cacheReadTokens"`
-	CacheWriteTokens     pgtype.Int4    `json:"cacheWriteTokens"`
-	CacheWrite1hTokens   pgtype.Int4    `json:"cacheWrite1hTokens"`
-	ModelCost            pgtype.Numeric `json:"modelCost"`
-	ModelCostCurrency    pgtype.Text    `json:"modelCostCurrency"`
-	UpstreamCost         pgtype.Numeric `json:"upstreamCost"`
-	UpstreamCostCurrency pgtype.Text    `json:"upstreamCostCurrency"`
+	ID                   string           `json:"id"`
+	StatusCode           pgtype.Int4      `json:"statusCode"`
+	ErrorMessage         pgtype.Text      `json:"errorMessage"`
+	TimeSpentMs          pgtype.Int4      `json:"timeSpentMs"`
+	Status               int32            `json:"status"`
+	TtftMs               pgtype.Int4      `json:"ttftMs"`
+	InputTokens          pgtype.Int4      `json:"inputTokens"`
+	OutputTokens         pgtype.Int4      `json:"outputTokens"`
+	CacheReadTokens      pgtype.Int4      `json:"cacheReadTokens"`
+	CacheWriteTokens     pgtype.Int4      `json:"cacheWriteTokens"`
+	CacheWrite1hTokens   pgtype.Int4      `json:"cacheWrite1hTokens"`
+	ModelCost            pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency    pgtype.Text      `json:"modelCostCurrency"`
+	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
+	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
+	CreatedAt            pgtype.Timestamp `json:"createdAt"`
 }
 
 func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error {
@@ -488,6 +536,7 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 		arg.ModelCostCurrency,
 		arg.UpstreamCost,
 		arg.UpstreamCostCurrency,
+		arg.CreatedAt,
 	)
 	return err
 }
@@ -495,17 +544,18 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 const updateRequestOnHeader = `-- name: UpdateRequestOnHeader :exec
 UPDATE request
 SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7
-WHERE id = $1
+WHERE id = $1 AND created_at = $8::timestamp
 `
 
 type UpdateRequestOnHeaderParams struct {
-	ID            string      `json:"id"`
-	ProviderID    pgtype.Int4 `json:"providerId"`
-	Model         pgtype.Text `json:"model"`
-	UpstreamModel pgtype.Text `json:"upstreamModel"`
-	EndpointPath  pgtype.Text `json:"endpointPath"`
-	ApiKeyID      pgtype.Int4 `json:"apiKeyId"`
-	Status        int32       `json:"status"`
+	ID            string           `json:"id"`
+	ProviderID    pgtype.Int4      `json:"providerId"`
+	Model         pgtype.Text      `json:"model"`
+	UpstreamModel pgtype.Text      `json:"upstreamModel"`
+	EndpointPath  pgtype.Text      `json:"endpointPath"`
+	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
+	Status        int32            `json:"status"`
+	CreatedAt     pgtype.Timestamp `json:"createdAt"`
 }
 
 func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error {
@@ -517,6 +567,7 @@ func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOn
 		arg.EndpointPath,
 		arg.ApiKeyID,
 		arg.Status,
+		arg.CreatedAt,
 	)
 	return err
 }

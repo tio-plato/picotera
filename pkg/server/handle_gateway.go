@@ -18,7 +18,6 @@ import (
 	"picotera/pkg/logx"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/rs/xid"
 	"github.com/tidwall/sjson"
 )
 
@@ -55,7 +54,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Insert meta request now that we know the endpoint matched.
-	metaID := xid.New().String()
+	metaID, metaIDCreatedAt := newRequestID()
 	metaReqHeader := r.Header.Clone()
 	parentSpanID := extractParentSpanID(metaReqHeader)
 	parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
@@ -77,6 +76,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ErrorMessage:       pgtype.Text{Valid: false},
 		TimeSpentMs:        pgtype.Int4{Valid: false},
 		UserMessagePreview: userMessagePreview,
+		CreatedAt:          pgtype.Timestamp{Time: metaIDCreatedAt, Valid: true},
 	})
 
 	h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, metaReqMethod, metaReqURL, metaReqHeader, body)
@@ -107,6 +107,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(gatewayStart).Milliseconds()), Valid: true},
 			Status:       db.RequestStatusFailed,
+			CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 		})
 	}
 
@@ -150,6 +151,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		EndpointPath: pgtype.Text{String: endpoint.Path, Valid: true},
 		ApiKeyID:     apiKeyID,
 		Status:       db.RequestStatusPending,
+		CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
 
 	// 5. Extract model name
@@ -166,8 +168,9 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.updateRequestModel(bgCtx, db.UpdateRequestModelParams{
-		ID:    metaID,
-		Model: pgtype.Text{String: modelName, Valid: modelName != ""},
+		ID:        metaID,
+		Model:     pgtype.Text{String: modelName, Valid: modelName != ""},
+		CreatedAt: pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
 
 	// 6. Build jsx session up front so the rewriteModel hook can run before
@@ -379,7 +382,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			upstreamModel = modelName
 		}
 
-		upstreamID := xid.New().String()
+		upstreamID, upstreamIDCreatedAt := newRequestID()
 		upstreamCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
 			ID:                 upstreamID,
 			SpanID:             pgtype.Text{String: metaID, Valid: true},
@@ -395,12 +398,13 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ErrorMessage:       pgtype.Text{Valid: false},
 			TimeSpentMs:        pgtype.Int4{Valid: false},
 			UserMessagePreview: pgtype.Text{Valid: false},
+			CreatedAt:          pgtype.Timestamp{Time: upstreamIDCreatedAt, Valid: true},
 		})
 
 		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, side.sendResolver, pathVars)
 		if berr != nil {
 			cancel()
-			h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, berr.Error())
+			h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, berr.Error())
 			lastErr = berr
 			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: berr.Error()}
 			currentRetryCount++
@@ -443,7 +447,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resp, err := h.forwardRequest(req)
 		if err != nil {
 			cancel()
-			h.completeFailedAttempt(bgCtx, upstreamID, attemptStart, 0, err.Error())
+			h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, err.Error())
 			lastErr = err
 			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: err.Error()}
 			currentRetryCount++
@@ -469,6 +473,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true},
 			Status:       db.RequestStatusFailed,
+			CreatedAt:    pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
 		})
 		lastErr = fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg)
 		lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
@@ -580,6 +585,7 @@ func (h *gatewayHandler) streamSuccess(
 		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
 		ApiKeyID:      apiKeyID,
 		Status:        db.RequestStatusHeaderReceived,
+		CreatedAt:     pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            upstreamID,
@@ -589,6 +595,7 @@ func (h *gatewayHandler) streamSuccess(
 		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
 		ApiKeyID:      apiKeyID,
 		Status:        db.RequestStatusHeaderReceived,
+		CreatedAt:     pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
 	})
 
 	for key, values := range resp.Header {
@@ -655,6 +662,7 @@ func (h *gatewayHandler) streamSuccess(
 		ModelCostCurrency:    modelCcy,
 		UpstreamCost:         upstreamCost,
 		UpstreamCostCurrency: upstreamCcy,
+		CreatedAt:            pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
 	})
 
 	metaTimeSpent := int32(time.Since(gatewayStart).Milliseconds())
@@ -674,6 +682,7 @@ func (h *gatewayHandler) streamSuccess(
 		ModelCostCurrency:    modelCcy,
 		UpstreamCost:         upstreamCost,
 		UpstreamCostCurrency: upstreamCcy,
+		CreatedAt:            pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
 	_ = r // kept for interface symmetry; r.Context() may be useful for future hooks
 }
