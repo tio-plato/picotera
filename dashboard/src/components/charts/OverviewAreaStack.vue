@@ -91,6 +91,7 @@ function compactNumber(v: number) {
 function tooltipTemplate(datum: Datum | undefined) {
   if (!datum) return ''
   const lines = props.groups
+    .filter(g => datum.values[g.key] !== undefined && datum.values[g.key] !== 0)
     .map((g, i) => {
       const v = datum.values[g.key] ?? 0
       const formatted = props.valueFormat ? props.valueFormat(v) : compactNumber(v)

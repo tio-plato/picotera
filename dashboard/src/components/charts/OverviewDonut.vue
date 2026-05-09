@@ -10,6 +10,11 @@ interface DonutDatum {
   value: number
 }
 
+interface DonutArcDatum {
+  data?: DonutDatum & { _color: string }
+  value?: number
+}
+
 const props = defineProps<{
   data: DonutDatum[]
   centralLabel?: string
@@ -28,10 +33,12 @@ const colorFn = (d: DonutDatum & { _color: string }) => d._color
 
 const tooltipTriggers = computed(() => ({
   [VisDonutSelectors.segment]: (d: unknown) => {
-    const datum = d as DonutDatum & { _color: string }
+    const arc = d as DonutArcDatum | null
+    const datum = arc?.data
     if (!datum) return ''
-    const formatted = props.valueFormat ? props.valueFormat(datum.value, datum) : String(datum.value)
-    const pct = total.value === 0 ? '0' : ((datum.value / total.value) * 100).toFixed(1)
+    const value = datum.value ?? arc?.value ?? 0
+    const formatted = props.valueFormat ? props.valueFormat(value, datum) : String(value)
+    const pct = total.value === 0 ? '0' : ((value / total.value) * 100).toFixed(1)
     return `<div class="text-xs"><div class="font-medium">${escape(datum.label)}</div><div class="mono tabular text-ink-muted">${formatted} · ${pct}%</div></div>`
   },
 }))
