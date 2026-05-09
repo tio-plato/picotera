@@ -3,11 +3,7 @@ import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useApi } from '@/composables/useApi'
 import { useProvidersMap } from '@/composables/useProvidersMap'
-import type {
-  RequestView,
-  EndpointView,
-  ModelView,
-} from '@/api'
+import type { RequestView, EndpointView, ModelView } from '@/api'
 import RequestDetailsPanel from '@/components/RequestDetailsPanel.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
 import {
@@ -46,7 +42,7 @@ const filters = reactive({
   endpointPath: '',
   model: '',
   upstreamModel: '',
-  parentSpanId: typeof route.query.parentSpanId === 'string' ? route.query.parentSpanId : '',
+  traceId: typeof route.query.traceId === 'string' ? route.query.traceId : '',
 })
 
 const typeOptions: { value: RequestKind; label: string }[] = [
@@ -78,7 +74,7 @@ async function fetchRequests(cursor?: string) {
   if (filters.endpointPath) query.endpointPath = filters.endpointPath
   if (filters.model) query.model = filters.model
   if (filters.upstreamModel) query.upstreamModel = filters.upstreamModel
-  if (filters.parentSpanId) query.parentSpanId = filters.parentSpanId
+  if (filters.traceId) query.traceId = filters.traceId
 
   const { data, error } = await api.GET('/api/picotera/requests', {
     params: { query: query as never },
@@ -101,19 +97,26 @@ onMounted(async () => {
 })
 
 watch(
-  () => [filters.type, filters.providerId, filters.endpointPath, filters.model, filters.upstreamModel, filters.parentSpanId],
+  () => [
+    filters.type,
+    filters.providerId,
+    filters.endpointPath,
+    filters.model,
+    filters.upstreamModel,
+    filters.traceId,
+  ],
   () => {
-    syncParentSpanFilterToQuery()
+    syncTraceFilterToQuery()
     fetchRequests()
   },
 )
 
 watch(
-  () => route.query.parentSpanId,
+  () => route.query.traceId,
   (value) => {
     const next = typeof value === 'string' ? value : ''
-    if (filters.parentSpanId !== next) {
-      filters.parentSpanId = next
+    if (filters.traceId !== next) {
+      filters.traceId = next
     }
   },
 )
@@ -137,11 +140,7 @@ function currentAppPathname(): string {
 function replaceBrowserUrl(pathname: string, searchParams = currentSearchParams()) {
   const query = searchParams.toString()
   const basePath = appBase ? `${appBase}${pathname}` : pathname
-  window.history.replaceState(
-    window.history.state,
-    '',
-    `${basePath}${query ? `?${query}` : ''}`,
-  )
+  window.history.replaceState(window.history.state, '', `${basePath}${query ? `?${query}` : ''}`)
 }
 
 function replaceRequestDetailUrl(requestId: string) {
@@ -185,9 +184,7 @@ watch(
 )
 
 const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
-  const base: AutoDataTableColumn<RequestView>[] = [
-    { key: 'createdAt', header: '时间' },
-  ]
+  const base: AutoDataTableColumn<RequestView>[] = [{ key: 'createdAt', header: '时间' }]
   if (filters.type === 'all') {
     base.push({ key: 'type', header: '类型' })
   }
@@ -205,7 +202,8 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
     },
     {
       key: 'model',
-      headerClass: (filters.model || filters.upstreamModel) ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
+      headerClass:
+        filters.model || filters.upstreamModel ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
     },
     { key: 'status', header: '状态' },
     { key: 'tokens', header: 'Token' },
@@ -255,7 +253,7 @@ function activeFilterCount(): number {
   if (filters.endpointPath) n++
   if (filters.model) n++
   if (filters.upstreamModel) n++
-  if (filters.parentSpanId) n++
+  if (filters.traceId) n++
   return n
 }
 
@@ -264,21 +262,21 @@ function clearAllFilters() {
   filters.endpointPath = ''
   filters.model = ''
   filters.upstreamModel = ''
-  filters.parentSpanId = ''
+  filters.traceId = ''
 }
 
-function clearParentSpanFilter() {
-  filters.parentSpanId = ''
+function clearTraceFilter() {
+  filters.traceId = ''
 }
 
-function syncParentSpanFilterToQuery() {
+function syncTraceFilterToQuery() {
   const query = currentSearchParams()
-  const current = query.get('parentSpanId') ?? ''
-  if (filters.parentSpanId === current) return
-  if (filters.parentSpanId) {
-    query.set('parentSpanId', filters.parentSpanId)
+  const current = query.get('traceId') ?? ''
+  if (filters.traceId === current) return
+  if (filters.traceId) {
+    query.set('traceId', filters.traceId)
   } else {
-    query.delete('parentSpanId')
+    query.delete('traceId')
   }
   replaceBrowserUrl(currentAppPathname(), query)
 }
@@ -321,10 +319,12 @@ function outputSpeed(r: RequestView): string | null {
 }
 
 function inputSideTokens(r: RequestView): number {
-  return (r.inputTokens || 0)
-    + (r.cacheReadTokens || 0)
-    + (r.cacheWriteTokens || 0)
-    + (r.cacheWrite1hTokens || 0)
+  return (
+    (r.inputTokens || 0) +
+    (r.cacheReadTokens || 0) +
+    (r.cacheWriteTokens || 0) +
+    (r.cacheWrite1hTokens || 0)
+  )
 }
 
 function totalTokens(r: RequestView): number {
@@ -368,19 +368,19 @@ function resetCursorAndReload() {
     </div>
 
     <div
-      v-if="filters.parentSpanId"
+      v-if="filters.traceId"
       class="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-0 px-3 py-2"
     >
       <div class="min-w-0 flex items-center gap-2">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">追踪</span>
-        <span class="min-w-0 truncate font-mono text-xs text-ink" :title="filters.parentSpanId">
-          {{ filters.parentSpanId }}
+        <span class="min-w-0 truncate font-mono text-xs text-ink" :title="filters.traceId">
+          {{ filters.traceId }}
         </span>
       </div>
       <button
         type="button"
         class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-transparent border-0 rounded-xs text-xs text-ink-faint cursor-pointer transition-colors hover:text-ink hover:bg-surface-100"
-        @click="clearParentSpanFilter"
+        @click="clearTraceFilter"
       >
         <Icon name="close" :size="11" />
         <span>清除</span>
@@ -428,12 +428,18 @@ function resetCursorAndReload() {
         </template>
         <template #cell-createdAt="{ row }">
           <div class="flex flex-col leading-tight">
-            <span class="font-mono tabular-nums text-ink">{{ formatTimeParts(row.createdAt).time }}</span>
-            <span class="font-mono text-2xs text-ink-faint">{{ formatTimeParts(row.createdAt).date }}</span>
+            <span class="font-mono tabular-nums text-ink">{{
+              formatTimeParts(row.createdAt).time
+            }}</span>
+            <span class="font-mono text-2xs text-ink-faint">{{
+              formatTimeParts(row.createdAt).date
+            }}</span>
           </div>
         </template>
         <template #cell-type="{ row }">
-          <Tag :variant="row.type === 0 ? 'accent' : 'muted'">{{ row.type === 0 ? 'META' : 'UP' }}</Tag>
+          <Tag :variant="row.type === 0 ? 'accent' : 'muted'">{{
+            row.type === 0 ? 'META' : 'UP'
+          }}</Tag>
         </template>
         <template #cell-userMessagePreview="{ row }">
           <span
@@ -459,7 +465,8 @@ function resetCursorAndReload() {
             <span
               v-if="row.model && row.upstreamModel && row.model !== row.upstreamModel"
               class="font-mono text-2xs text-ink-faint"
-            >{{ row.model }}</span>
+              >{{ row.model }}</span
+            >
           </div>
         </template>
         <template #cell-status="{ row }">
@@ -467,7 +474,8 @@ function resetCursorAndReload() {
             <span
               v-if="requestState(row) === 'pending'"
               class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2] bg-surface-100 text-ink-muted border border-line-soft"
-            >...</span>
+              >...</span
+            >
             <span
               v-else
               class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2] border border-transparent"
@@ -476,7 +484,8 @@ function resetCursorAndReload() {
                 'bg-warn-faint text-warn-ink': requestState(row) === 'warn',
                 'bg-err-faint text-err-ink': requestState(row) === 'err',
               }"
-            >{{ row.statusCode }}</span>
+              >{{ row.statusCode }}</span
+            >
           </div>
         </template>
         <template #cell-tokens="{ row }">
@@ -484,8 +493,13 @@ function resetCursorAndReload() {
             <span class="font-mono tabular-nums text-ink">
               {{ totalTokens(row).toLocaleString() }}
             </span>
-            <div v-if="row.cacheReadTokens || row.cacheWriteTokens || row.cacheWrite1hTokens" class="flex items-center gap-1.5 mt-0.5 text-ink-faint text-2xs">
-              <span v-if="cacheHitRate(row) != null">{{ parseFloat(((cacheHitRate(row) ?? 0) * 100).toFixed(2)) }}%</span>
+            <div
+              v-if="row.cacheReadTokens || row.cacheWriteTokens || row.cacheWrite1hTokens"
+              class="flex items-center gap-1.5 mt-0.5 text-ink-faint text-2xs"
+            >
+              <span v-if="cacheHitRate(row) != null"
+                >{{ parseFloat(((cacheHitRate(row) ?? 0) * 100).toFixed(2)) }}%</span
+              >
             </div>
           </div>
         </template>
@@ -499,11 +513,18 @@ function resetCursorAndReload() {
         </template>
         <template #cell-timeSpentMs="{ row }">
           <div class="flex flex-col items-end leading-tight">
-            <span class="font-mono tabular-nums text-ink">{{ formatTimeSpent(row.timeSpentMs) }}</span>
-            <span v-if="row.ttftMs != null || outputSpeed(row)" class="font-mono text-2xs text-ink-faint tabular-nums">
+            <span class="font-mono tabular-nums text-ink">{{
+              formatTimeSpent(row.timeSpentMs)
+            }}</span>
+            <span
+              v-if="row.ttftMs != null || outputSpeed(row)"
+              class="font-mono text-2xs text-ink-faint tabular-nums"
+            >
               <span v-if="row.ttftMs != null" title="TTFT">{{ formatTimeSpent(row.ttftMs) }}</span>
               <span v-if="row.ttftMs != null && outputSpeed(row)" class="px-0.5">&middot;</span>
-              <span v-if="outputSpeed(row)" title="输出速度">{{ outputSpeed(row) }}<span class="pl-0.5">tps</span></span>
+              <span v-if="outputSpeed(row)" title="输出速度"
+                >{{ outputSpeed(row) }}<span class="pl-0.5">tps</span></span
+              >
             </span>
           </div>
         </template>

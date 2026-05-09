@@ -54,9 +54,25 @@ func (q *Queries) GetRequest(ctx context.Context, arg GetRequestParams) (Request
 }
 
 const listRequestTraces = `-- name: ListRequestTraces :many
-WITH trace_base AS (
+SELECT
+  traces.id,
+  traces.parent_span_id,
+  COALESCE(metrics.meta_request_count, 0)::bigint AS meta_request_count,
+  COALESCE(metrics.upstream_request_count, 0)::bigint AS upstream_request_count,
+  COALESCE(metrics.total_tokens, 0)::bigint AS total_tokens,
+  COALESCE(metrics.input_tokens, 0)::bigint AS input_tokens,
+  COALESCE(metrics.cache_read_tokens, 0)::bigint AS cache_read_tokens,
+  COALESCE(metrics.output_tokens, 0)::bigint AS output_tokens,
+  COALESCE(metrics.cache_write_tokens, 0)::bigint AS cache_write_tokens,
+  COALESCE(metrics.cache_write_1h_tokens, 0)::bigint AS cache_write_1h_tokens,
+  COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
+  COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
+  traces.first_request_at,
+  traces.last_request_at,
+  preview.user_message_preview
+FROM traces
+LEFT JOIN LATERAL (
   SELECT
-    parent_span_id,
     COUNT(*) FILTER (WHERE type = 0)::bigint AS meta_request_count,
     COUNT(*) FILTER (WHERE type = 1)::bigint AS upstream_request_count,
     COALESCE(SUM(
@@ -70,27 +86,12 @@ WITH trace_base AS (
     COALESCE(SUM(COALESCE(cache_read_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_read_tokens,
     COALESCE(SUM(COALESCE(output_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS output_tokens,
     COALESCE(SUM(COALESCE(cache_write_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_tokens,
-    COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens,
-    MAX(created_at)::timestamp AS last_request_at
+    COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens
   FROM request
-  WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
-  GROUP BY parent_span_id
-)
-SELECT
-  trace_base.parent_span_id,
-  trace_base.meta_request_count,
-  trace_base.upstream_request_count,
-  trace_base.total_tokens,
-  trace_base.input_tokens,
-  trace_base.cache_read_tokens,
-  trace_base.output_tokens,
-  trace_base.cache_write_tokens,
-  trace_base.cache_write_1h_tokens,
-  COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
-  COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
-  trace_base.last_request_at,
-  preview.user_message_preview
-FROM trace_base
+  WHERE parent_span_id = traces.parent_span_id
+    AND created_at >= traces.first_request_at
+    AND created_at <= traces.last_request_at
+) metrics ON true
 LEFT JOIN LATERAL (
   SELECT jsonb_agg(
     jsonb_build_object('currency', grouped.currency, 'amount', grouped.amount)
@@ -99,7 +100,9 @@ LEFT JOIN LATERAL (
   FROM (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
-    WHERE parent_span_id = trace_base.parent_span_id
+    WHERE parent_span_id = traces.parent_span_id
+      AND created_at >= traces.first_request_at
+      AND created_at <= traces.last_request_at
       AND type = 1
       AND model_cost IS NOT NULL
       AND model_cost_currency IS NOT NULL
@@ -114,7 +117,9 @@ LEFT JOIN LATERAL (
   FROM (
     SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
     FROM request
-    WHERE parent_span_id = trace_base.parent_span_id
+    WHERE parent_span_id = traces.parent_span_id
+      AND created_at >= traces.first_request_at
+      AND created_at <= traces.last_request_at
       AND type = 1
       AND upstream_cost IS NOT NULL
       AND upstream_cost_currency IS NOT NULL
@@ -124,7 +129,9 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
-  WHERE parent_span_id = trace_base.parent_span_id
+  WHERE parent_span_id = traces.parent_span_id
+    AND created_at >= traces.first_request_at
+    AND created_at <= traces.last_request_at
     AND type = 0
     AND user_message_preview IS NOT NULL
   ORDER BY created_at DESC, id DESC
@@ -132,22 +139,23 @@ LEFT JOIN LATERAL (
 ) preview ON true
 WHERE
   $1::timestamp IS NULL
-  OR (trace_base.last_request_at, trace_base.parent_span_id) < (
+  OR (traces.last_request_at, traces.id) < (
     $1::timestamp,
     $2::text
   )
-ORDER BY trace_base.last_request_at DESC, trace_base.parent_span_id DESC
+ORDER BY traces.last_request_at DESC, traces.id DESC
 LIMIT $3::int
 `
 
 type ListRequestTracesParams struct {
 	CursorLastRequestAt pgtype.Timestamp `json:"cursorLastRequestAt"`
-	CursorParentSpanID  pgtype.Text      `json:"cursorParentSpanId"`
+	CursorTraceID       pgtype.Text      `json:"cursorTraceId"`
 	Limit               pgtype.Int4      `json:"limit"`
 }
 
 type ListRequestTracesRow struct {
-	ParentSpanID         pgtype.Text      `json:"parentSpanId"`
+	ID                   string           `json:"id"`
+	ParentSpanID         string           `json:"parentSpanId"`
 	MetaRequestCount     int64            `json:"metaRequestCount"`
 	UpstreamRequestCount int64            `json:"upstreamRequestCount"`
 	TotalTokens          int64            `json:"totalTokens"`
@@ -158,12 +166,13 @@ type ListRequestTracesRow struct {
 	CacheWrite1hTokens   int64            `json:"cacheWrite1hTokens"`
 	ModelCosts           []byte           `json:"modelCosts"`
 	UpstreamCosts        []byte           `json:"upstreamCosts"`
+	FirstRequestAt       pgtype.Timestamp `json:"firstRequestAt"`
 	LastRequestAt        pgtype.Timestamp `json:"lastRequestAt"`
 	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
 }
 
 func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
-	rows, err := q.db.Query(ctx, listRequestTraces, arg.CursorLastRequestAt, arg.CursorParentSpanID, arg.Limit)
+	rows, err := q.db.Query(ctx, listRequestTraces, arg.CursorLastRequestAt, arg.CursorTraceID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +181,7 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 	for rows.Next() {
 		var i ListRequestTracesRow
 		if err := rows.Scan(
+			&i.ID,
 			&i.ParentSpanID,
 			&i.MetaRequestCount,
 			&i.UpstreamRequestCount,
@@ -183,6 +193,7 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 			&i.CacheWrite1hTokens,
 			&i.ModelCosts,
 			&i.UpstreamCosts,
+			&i.FirstRequestAt,
 			&i.LastRequestAt,
 			&i.UserMessagePreview,
 		); err != nil {
@@ -197,34 +208,42 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 }
 
 const listRequests = `-- name: ListRequests :many
-SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
-       upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, cache_write_1h_tokens,
-       status_code, error_message, ttft_ms, time_spent_ms, created_at,
-       model_cost, model_cost_currency, upstream_cost, upstream_cost_currency,
-       user_message_preview
-FROM request
+SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path, r.api_key_id, r.model,
+       r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens, r.cache_write_tokens, r.cache_write_1h_tokens,
+       r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
+       r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
+       r.user_message_preview
+FROM request r
+LEFT JOIN traces selected_trace ON selected_trace.id = $1::text
 WHERE
-  ($1::int IS NULL OR type = $1)
-  AND ($2::int IS NULL OR provider_id = $2)
-  AND ($3::text IS NULL OR endpoint_path = $3)
-  AND ($4::text IS NULL OR model = $4)
-  AND ($5::text IS NULL OR upstream_model = $5)
-  AND ($6::text IS NULL OR parent_span_id = $6)
+  ($2::int IS NULL OR r.type = $2)
+  AND ($3::int IS NULL OR r.provider_id = $3)
+  AND ($4::text IS NULL OR r.endpoint_path = $4)
+  AND ($5::text IS NULL OR r.model = $5)
+  AND ($6::text IS NULL OR r.upstream_model = $6)
+  AND (
+    $1::text IS NULL
+    OR (
+      r.parent_span_id = selected_trace.parent_span_id
+      AND r.created_at >= selected_trace.first_request_at
+      AND r.created_at <= selected_trace.last_request_at
+    )
+  )
   AND (
     $7::timestamp IS NULL
-    OR (created_at, id) < ($7::timestamp, $8::text)
+    OR (r.created_at, r.id) < ($7::timestamp, $8::text)
   )
-ORDER BY created_at DESC, id DESC
+ORDER BY r.created_at DESC, r.id DESC
 LIMIT $9::int
 `
 
 type ListRequestsParams struct {
+	TraceID         pgtype.Text      `json:"traceId"`
 	Type            pgtype.Int4      `json:"type"`
 	ProviderID      pgtype.Int4      `json:"providerId"`
 	EndpointPath    pgtype.Text      `json:"endpointPath"`
 	Model           pgtype.Text      `json:"model"`
 	UpstreamModel   pgtype.Text      `json:"upstreamModel"`
-	ParentSpanID    pgtype.Text      `json:"parentSpanId"`
 	CursorCreatedAt pgtype.Timestamp `json:"cursorCreatedAt"`
 	CursorID        pgtype.Text      `json:"cursorId"`
 	Limit           pgtype.Int4      `json:"limit"`
@@ -260,12 +279,12 @@ type ListRequestsRow struct {
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listRequests,
+		arg.TraceID,
 		arg.Type,
 		arg.ProviderID,
 		arg.EndpointPath,
 		arg.Model,
 		arg.UpstreamModel,
-		arg.ParentSpanID,
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.Limit,

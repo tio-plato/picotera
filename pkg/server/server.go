@@ -42,7 +42,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}
 
 	logx.WithContext(ctx).Info("running migrations")
-	err = migrations.Up(config.DatabaseURL)
+	migrationResult, err := migrations.UpWithResult(config.DatabaseURL)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).Error("failed to run migrations")
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
@@ -55,6 +55,18 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}
 
 	queries := db.New(conn)
+	if migrationResult.PreviousVersion < traceBackfillMigrationVersion && migrationResult.CurrentVersion >= traceBackfillMigrationVersion {
+		logx.WithContext(ctx).Info("backfilling historical traces")
+		if err := backfillTraces(ctx, queries); err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("failed to backfill traces: %w", err)
+		}
+	} else {
+		logx.WithContext(ctx).WithFields(logrus.Fields{
+			"previousVersion": migrationResult.PreviousVersion,
+			"currentVersion":  migrationResult.CurrentVersion,
+		}).Debug("skipping historical trace backfill")
+	}
 
 	logx.WithContext(ctx).Info("connected to database")
 

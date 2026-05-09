@@ -25,3 +25,13 @@ func requestIDCreatedAt(id string) (time.Time, error) {
 	}
 	return parsed.Time().UTC(), nil
 }
+
+func validateTraceID(id string) error {
+	if !strictXIDPattern.MatchString(id) {
+		return huma.Error400BadRequest("invalid trace id")
+	}
+	if _, err := xid.FromString(id); err != nil {
+		return huma.Error400BadRequest("invalid trace id", err)
+	}
+	return nil
+}

@@ -5,14 +5,7 @@ import { useApi } from '@/composables/useApi'
 import { useCurrency } from '@/composables/useCurrency'
 import { useExchangeRatesStore } from '@/stores/exchangeRates'
 import type { RequestTraceView, TraceCostView } from '@/api'
-import {
-  AutoDataTable,
-  Button,
-  DataCard,
-  Icon,
-  IconButton,
-  type AutoDataTableColumn,
-} from '@/ui'
+import { AutoDataTable, Button, DataCard, Icon, IconButton, type AutoDataTableColumn } from '@/ui'
 
 const api = useApi()
 const router = useRouter()
@@ -26,7 +19,9 @@ const nextCursor = ref('')
 
 const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'lastRequestAt', header: '最近请求' },
+  { key: 'firstRequestAt', header: '首次请求' },
   { key: 'userMessagePreview', header: '用户消息' },
+  { key: 'id', header: 'Trace ID' },
   { key: 'metaRequestCount', header: '请求', align: 'right' },
   { key: 'totalTokens', header: 'Token', align: 'right' },
   { key: 'cacheHitRate', header: '缓存命中', align: 'right' },
@@ -67,11 +62,11 @@ onMounted(async () => {
 })
 
 function rowKey(row: RequestTraceView) {
-  return row.parentSpanId
+  return row.id
 }
 
 function openTrace(row: RequestTraceView) {
-  router.push({ name: 'requests', query: { parentSpanId: row.parentSpanId } })
+  router.push({ name: 'requests', query: { traceId: row.id } })
 }
 
 function formatTimeParts(iso: string | undefined): { time: string; date: string } {
@@ -89,7 +84,8 @@ function formatNumber(value: number): string {
 }
 
 function cacheHitRate(row: RequestTraceView): number | null {
-  const denominator = row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens + row.cacheWrite1hTokens
+  const denominator =
+    row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens + row.cacheWrite1hTokens
   if (denominator <= 0) return null
   return row.cacheReadTokens / denominator
 }
@@ -146,16 +142,25 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
     </div>
 
     <DataCard>
-      <AutoDataTable
-        :columns="columns"
-        :items="traces"
-        :row-key="rowKey"
-        :on-row-click="openTrace"
-      >
+      <AutoDataTable :columns="columns" :items="traces" :row-key="rowKey" :on-row-click="openTrace">
         <template #cell-lastRequestAt="{ row }">
           <div class="flex flex-col leading-tight">
-            <span class="font-mono tabular-nums text-ink">{{ formatTimeParts(row.lastRequestAt).time }}</span>
-            <span class="font-mono text-2xs text-ink-faint">{{ formatTimeParts(row.lastRequestAt).date }}</span>
+            <span class="font-mono tabular-nums text-ink">{{
+              formatTimeParts(row.lastRequestAt).time
+            }}</span>
+            <span class="font-mono text-2xs text-ink-faint">{{
+              formatTimeParts(row.lastRequestAt).date
+            }}</span>
+          </div>
+        </template>
+        <template #cell-firstRequestAt="{ row }">
+          <div class="flex flex-col leading-tight">
+            <span class="font-mono tabular-nums text-ink">{{
+              formatTimeParts(row.firstRequestAt).time
+            }}</span>
+            <span class="font-mono text-2xs text-ink-faint">{{
+              formatTimeParts(row.firstRequestAt).date
+            }}</span>
           </div>
         </template>
         <template #cell-userMessagePreview="{ row }">
@@ -167,15 +172,29 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
             {{ row.userMessagePreview || '—' }}
           </span>
         </template>
+        <template #cell-id="{ row }">
+          <div class="flex max-w-[13rem] flex-col leading-tight">
+            <span class="truncate font-mono text-xs text-ink" :title="row.id">{{ row.id }}</span>
+            <span class="truncate font-mono text-2xs text-ink-faint" :title="row.parentSpanId">
+              {{ row.parentSpanId }}
+            </span>
+          </div>
+        </template>
         <template #cell-metaRequestCount="{ row }">
           <div class="flex flex-col items-end leading-tight">
-            <span class="font-mono tabular-nums text-ink">{{ row.metaRequestCount.toLocaleString() }}</span>
+            <span class="font-mono tabular-nums text-ink">{{
+              row.metaRequestCount.toLocaleString()
+            }}</span>
             <span
               v-if="row.metaRequestCount !== row.upstreamRequestCount"
               class="font-mono text-2xs text-ink-faint tabular-nums"
               title="上游（实际）请求数"
             >
-              {{ (row.upstreamRequestCount - row.metaRequestCount) > 0 ? `+${row.upstreamRequestCount - row.metaRequestCount}` : row.upstreamRequestCount - row.metaRequestCount }}
+              {{
+                row.upstreamRequestCount - row.metaRequestCount > 0
+                  ? `+${row.upstreamRequestCount - row.metaRequestCount}`
+                  : row.upstreamRequestCount - row.metaRequestCount
+              }}
             </span>
           </div>
         </template>
@@ -183,7 +202,15 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
           <div class="flex flex-col items-end leading-tight">
             <span class="font-mono tabular-nums text-ink">{{ formatNumber(row.totalTokens) }}</span>
             <span class="font-mono text-2xs text-ink-faint tabular-nums">
-              {{ formatNumber(row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens + row.cacheWrite1hTokens) }} / {{ formatNumber(row.outputTokens) }}
+              {{
+                formatNumber(
+                  row.inputTokens +
+                    row.cacheReadTokens +
+                    row.cacheWriteTokens +
+                    row.cacheWrite1hTokens,
+                )
+              }}
+              / {{ formatNumber(row.outputTokens) }}
             </span>
           </div>
         </template>

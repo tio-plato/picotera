@@ -620,6 +620,10 @@ components:
         cacheWriteTokens:
           format: int64
           type: integer
+        firstRequestAt:
+          type: string
+        id:
+          type: string
         inputTokens:
           format: int64
           type: integer
@@ -652,6 +656,7 @@ components:
         userMessagePreview:
           type: string
       required:
+        - id
         - parentSpanId
         - metaRequestCount
         - upstreamRequestCount
@@ -1501,7 +1506,7 @@ paths:
             type: string
         - explode: false
           in: query
-          name: parentSpanId
+          name: traceId
           schema:
             type: string
       responses:

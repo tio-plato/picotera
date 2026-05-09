@@ -80,18 +80,21 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 	if input.UpstreamModel != "" {
 		filterUpstreamModel = pgtype.Text{String: input.UpstreamModel, Valid: true}
 	}
-	var filterParentSpanID pgtype.Text
-	if input.ParentSpanID != "" {
-		filterParentSpanID = pgtype.Text{String: input.ParentSpanID, Valid: true}
+	var filterTraceID pgtype.Text
+	if input.TraceID != "" {
+		if err := validateTraceID(input.TraceID); err != nil {
+			return nil, err
+		}
+		filterTraceID = pgtype.Text{String: input.TraceID, Valid: true}
 	}
 
 	rows, err := s.queries.ListRequests(ctx, db.ListRequestsParams{
+		TraceID:         filterTraceID,
 		Type:            filterType,
 		ProviderID:      filterProviderID,
 		EndpointPath:    filterEndpointPath,
 		Model:           filterModel,
 		UpstreamModel:   filterUpstreamModel,
-		ParentSpanID:    filterParentSpanID,
 		CursorCreatedAt: cursorCreatedAt,
 		CursorID:        cursorID,
 		Limit:           pgtype.Int4{Int32: fetchLimit, Valid: true},
@@ -137,23 +140,26 @@ func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.Li
 	fetchLimit := limit + 1
 
 	var cursorLastRequestAt pgtype.Timestamp
-	var cursorParentSpanID pgtype.Text
+	var cursorTraceID pgtype.Text
 	if input.Cursor != "" {
-		var lastRequestAt, parentSpanID string
-		if err := contract.DecodeCursor(input.Cursor, "lastRequestAt", &lastRequestAt, "parentSpanId", &parentSpanID); err != nil {
+		var lastRequestAt, traceID string
+		if err := contract.DecodeCursor(input.Cursor, "lastRequestAt", &lastRequestAt, "traceId", &traceID); err != nil {
 			return nil, huma.Error400BadRequest("invalid cursor", err)
 		}
 		t, err := time.Parse(time.RFC3339Nano, lastRequestAt)
 		if err != nil {
 			return nil, huma.Error400BadRequest("invalid cursor", err)
 		}
+		if err := validateTraceID(traceID); err != nil {
+			return nil, huma.Error400BadRequest("invalid cursor", err)
+		}
 		cursorLastRequestAt = pgtype.Timestamp{Time: t.UTC(), Valid: true}
-		cursorParentSpanID = pgtype.Text{String: parentSpanID, Valid: true}
+		cursorTraceID = pgtype.Text{String: traceID, Valid: true}
 	}
 
 	rows, err := s.queries.ListRequestTraces(ctx, db.ListRequestTracesParams{
 		CursorLastRequestAt: cursorLastRequestAt,
-		CursorParentSpanID:  cursorParentSpanID,
+		CursorTraceID:       cursorTraceID,
 		Limit:               pgtype.Int4{Int32: fetchLimit, Valid: true},
 	})
 	if err != nil {
@@ -181,11 +187,7 @@ func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.Li
 		if last.LastRequestAt.Valid {
 			lastRequestAt = last.LastRequestAt.Time.UTC().Format(time.RFC3339Nano)
 		}
-		parentSpanID := ""
-		if last.ParentSpanID.Valid {
-			parentSpanID = last.ParentSpanID.String
-		}
-		cursor, err := contract.EncodeCursor("lastRequestAt", lastRequestAt, "parentSpanId", parentSpanID)
+		cursor, err := contract.EncodeCursor("lastRequestAt", lastRequestAt, "traceId", last.ID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to encode cursor", err)
 		}

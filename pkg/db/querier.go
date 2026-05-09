@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	BackfillTrace(ctx context.Context, arg BackfillTraceParams) error
 	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
 	DeleteApiKey(ctx context.Context, id int32) error
 	DeleteEndpoint(ctx context.Context, path string) error
@@ -50,6 +51,7 @@ type Querier interface {
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
 	ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error)
 	ListScripts(ctx context.Context) ([]Script, error)
+	ListTraceBackfillCandidates(ctx context.Context) ([]ListTraceBackfillCandidatesRow, error)
 	UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (ApiKey, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
 	UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error
@@ -61,6 +63,7 @@ type Querier interface {
 	UpsertExchangeRate(ctx context.Context, arg UpsertExchangeRateParams) (ExchangeRate, error)
 	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
 	UpsertProviderEndpoint(ctx context.Context, arg UpsertProviderEndpointParams) (ProviderEndpoint, error)
+	UpsertTrace(ctx context.Context, arg UpsertTraceParams) (UpsertTraceRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

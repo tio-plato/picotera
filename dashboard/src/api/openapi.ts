@@ -766,6 +766,8 @@ export interface components {
             cacheWrite1hTokens: number;
             /** Format: int64 */
             cacheWriteTokens: number;
+            firstRequestAt?: string;
+            id: string;
             /** Format: int64 */
             inputTokens: number;
             lastRequestAt?: string;
@@ -1749,7 +1751,7 @@ export interface operations {
                 endpointPath?: string;
                 model?: string;
                 upstreamModel?: string;
-                parentSpanId?: string;
+                traceId?: string;
             };
             header?: never;
             path?: never;

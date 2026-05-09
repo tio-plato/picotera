@@ -47,6 +47,7 @@ type TraceCostView struct {
 }
 
 type RequestTraceView struct {
+	ID                   string          `json:"id"`
 	ParentSpanID         string          `json:"parentSpanId"`
 	MetaRequestCount     int64           `json:"metaRequestCount"`
 	UpstreamRequestCount int64           `json:"upstreamRequestCount"`
@@ -58,6 +59,7 @@ type RequestTraceView struct {
 	CacheWrite1HTokens   int64           `json:"cacheWrite1hTokens"`
 	ModelCosts           []TraceCostView `json:"modelCosts"`
 	UpstreamCosts        []TraceCostView `json:"upstreamCosts"`
+	FirstRequestAt       string          `json:"firstRequestAt,omitempty"`
 	LastRequestAt        string          `json:"lastRequestAt,omitempty"`
 	UserMessagePreview   string          `json:"userMessagePreview,omitempty"`
 }
@@ -290,6 +292,8 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 		return nil, err
 	}
 	view := &RequestTraceView{
+		ID:                   r.ID,
+		ParentSpanID:         r.ParentSpanID,
 		MetaRequestCount:     r.MetaRequestCount,
 		UpstreamRequestCount: r.UpstreamRequestCount,
 		TotalTokens:          r.TotalTokens,
@@ -301,8 +305,8 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 		ModelCosts:           modelCosts,
 		UpstreamCosts:        upstreamCosts,
 	}
-	if r.ParentSpanID.Valid {
-		view.ParentSpanID = r.ParentSpanID.String
+	if r.FirstRequestAt.Valid {
+		view.FirstRequestAt = r.FirstRequestAt.Time.UTC().Format(time.RFC3339Nano)
 	}
 	if r.LastRequestAt.Valid {
 		view.LastRequestAt = r.LastRequestAt.Time.UTC().Format(time.RFC3339Nano)
@@ -320,7 +324,7 @@ type ListRequestsRequest struct {
 	EndpointPath  string `query:"endpointPath,omitempty"`
 	Model         string `query:"model,omitempty"`
 	UpstreamModel string `query:"upstreamModel,omitempty"`
-	ParentSpanID  string `query:"parentSpanId,omitempty"`
+	TraceID       string `query:"traceId,omitempty"`
 }
 
 type ListRequestsResponse = PaginatedResponse[RequestView]

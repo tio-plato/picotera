@@ -22,6 +22,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/rs/xid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -487,7 +488,23 @@ func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) 
 		}
 		return time.Now().UTC()
 	}
-	return createdAt.Time.UTC()
+	insertedAt := createdAt.Time.UTC()
+	s.upsertTrace(ctx, arg.ParentSpanID, insertedAt)
+	return insertedAt
+}
+
+func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, requestCreatedAt time.Time) {
+	if !parentSpanID.Valid || parentSpanID.String == "" {
+		return
+	}
+	_, err := s.queries.UpsertTrace(ctx, db.UpsertTraceParams{
+		ID:             xid.New().String(),
+		ParentSpanID:   parentSpanID.String,
+		FirstRequestAt: pgtype.Timestamp{Time: requestCreatedAt.UTC(), Valid: true},
+	})
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).Error("failed to upsert trace")
+	}
 }
 
 // updateRequestOnHeader backfills provider and request metadata. Errors are logged but do not affect the response.

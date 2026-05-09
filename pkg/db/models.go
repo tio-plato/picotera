@@ -93,3 +93,11 @@ type Script struct {
 	CreatedAt pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
 }
+
+type Trace struct {
+	ID             string           `json:"id"`
+	ParentSpanID   string           `json:"parentSpanId"`
+	FirstRequestAt pgtype.Timestamp `json:"firstRequestAt"`
+	LastRequestAt  pgtype.Timestamp `json:"lastRequestAt"`
+	UpdatedAt      pgtype.Timestamp `json:"updatedAt"`
+}

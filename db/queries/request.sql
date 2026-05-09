@@ -1,28 +1,52 @@
 -- name: ListRequests :many
-SELECT id, span_id, parent_span_id, type, status, provider_id, endpoint_path, api_key_id, model,
-       upstream_model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, cache_write_1h_tokens,
-       status_code, error_message, ttft_ms, time_spent_ms, created_at,
-       model_cost, model_cost_currency, upstream_cost, upstream_cost_currency,
-       user_message_preview
-FROM request
+SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path, r.api_key_id, r.model,
+       r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens, r.cache_write_tokens, r.cache_write_1h_tokens,
+       r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
+       r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
+       r.user_message_preview
+FROM request r
+LEFT JOIN traces selected_trace ON selected_trace.id = sqlc.narg('trace_id')::text
 WHERE
-  (sqlc.narg('type')::int IS NULL OR type = sqlc.narg('type'))
-  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id'))
-  AND (sqlc.narg('endpoint_path')::text IS NULL OR endpoint_path = sqlc.narg('endpoint_path'))
-  AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model'))
-  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model'))
-  AND (sqlc.narg('parent_span_id')::text IS NULL OR parent_span_id = sqlc.narg('parent_span_id'))
+  (sqlc.narg('type')::int IS NULL OR r.type = sqlc.narg('type'))
+  AND (sqlc.narg('provider_id')::int IS NULL OR r.provider_id = sqlc.narg('provider_id'))
+  AND (sqlc.narg('endpoint_path')::text IS NULL OR r.endpoint_path = sqlc.narg('endpoint_path'))
+  AND (sqlc.narg('model')::text IS NULL OR r.model = sqlc.narg('model'))
+  AND (sqlc.narg('upstream_model')::text IS NULL OR r.upstream_model = sqlc.narg('upstream_model'))
+  AND (
+    sqlc.narg('trace_id')::text IS NULL
+    OR (
+      r.parent_span_id = selected_trace.parent_span_id
+      AND r.created_at >= selected_trace.first_request_at
+      AND r.created_at <= selected_trace.last_request_at
+    )
+  )
   AND (
     sqlc.narg('cursor_created_at')::timestamp IS NULL
-    OR (created_at, id) < (sqlc.narg('cursor_created_at')::timestamp, sqlc.narg('cursor_id')::text)
+    OR (r.created_at, r.id) < (sqlc.narg('cursor_created_at')::timestamp, sqlc.narg('cursor_id')::text)
   )
-ORDER BY created_at DESC, id DESC
+ORDER BY r.created_at DESC, r.id DESC
 LIMIT sqlc.narg('limit')::int;
 
 -- name: ListRequestTraces :many
-WITH trace_base AS (
+SELECT
+  traces.id,
+  traces.parent_span_id,
+  COALESCE(metrics.meta_request_count, 0)::bigint AS meta_request_count,
+  COALESCE(metrics.upstream_request_count, 0)::bigint AS upstream_request_count,
+  COALESCE(metrics.total_tokens, 0)::bigint AS total_tokens,
+  COALESCE(metrics.input_tokens, 0)::bigint AS input_tokens,
+  COALESCE(metrics.cache_read_tokens, 0)::bigint AS cache_read_tokens,
+  COALESCE(metrics.output_tokens, 0)::bigint AS output_tokens,
+  COALESCE(metrics.cache_write_tokens, 0)::bigint AS cache_write_tokens,
+  COALESCE(metrics.cache_write_1h_tokens, 0)::bigint AS cache_write_1h_tokens,
+  COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
+  COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
+  traces.first_request_at,
+  traces.last_request_at,
+  preview.user_message_preview
+FROM traces
+LEFT JOIN LATERAL (
   SELECT
-    parent_span_id,
     COUNT(*) FILTER (WHERE type = 0)::bigint AS meta_request_count,
     COUNT(*) FILTER (WHERE type = 1)::bigint AS upstream_request_count,
     COALESCE(SUM(
@@ -36,27 +60,12 @@ WITH trace_base AS (
     COALESCE(SUM(COALESCE(cache_read_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_read_tokens,
     COALESCE(SUM(COALESCE(output_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS output_tokens,
     COALESCE(SUM(COALESCE(cache_write_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_tokens,
-    COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens,
-    MAX(created_at)::timestamp AS last_request_at
+    COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens
   FROM request
-  WHERE parent_span_id IS NOT NULL AND parent_span_id <> ''
-  GROUP BY parent_span_id
-)
-SELECT
-  trace_base.parent_span_id,
-  trace_base.meta_request_count,
-  trace_base.upstream_request_count,
-  trace_base.total_tokens,
-  trace_base.input_tokens,
-  trace_base.cache_read_tokens,
-  trace_base.output_tokens,
-  trace_base.cache_write_tokens,
-  trace_base.cache_write_1h_tokens,
-  COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
-  COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
-  trace_base.last_request_at,
-  preview.user_message_preview
-FROM trace_base
+  WHERE parent_span_id = traces.parent_span_id
+    AND created_at >= traces.first_request_at
+    AND created_at <= traces.last_request_at
+) metrics ON true
 LEFT JOIN LATERAL (
   SELECT jsonb_agg(
     jsonb_build_object('currency', grouped.currency, 'amount', grouped.amount)
@@ -65,7 +74,9 @@ LEFT JOIN LATERAL (
   FROM (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
-    WHERE parent_span_id = trace_base.parent_span_id
+    WHERE parent_span_id = traces.parent_span_id
+      AND created_at >= traces.first_request_at
+      AND created_at <= traces.last_request_at
       AND type = 1
       AND model_cost IS NOT NULL
       AND model_cost_currency IS NOT NULL
@@ -80,7 +91,9 @@ LEFT JOIN LATERAL (
   FROM (
     SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
     FROM request
-    WHERE parent_span_id = trace_base.parent_span_id
+    WHERE parent_span_id = traces.parent_span_id
+      AND created_at >= traces.first_request_at
+      AND created_at <= traces.last_request_at
       AND type = 1
       AND upstream_cost IS NOT NULL
       AND upstream_cost_currency IS NOT NULL
@@ -90,7 +103,9 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
-  WHERE parent_span_id = trace_base.parent_span_id
+  WHERE parent_span_id = traces.parent_span_id
+    AND created_at >= traces.first_request_at
+    AND created_at <= traces.last_request_at
     AND type = 0
     AND user_message_preview IS NOT NULL
   ORDER BY created_at DESC, id DESC
@@ -98,11 +113,11 @@ LEFT JOIN LATERAL (
 ) preview ON true
 WHERE
   sqlc.narg('cursor_last_request_at')::timestamp IS NULL
-  OR (trace_base.last_request_at, trace_base.parent_span_id) < (
+  OR (traces.last_request_at, traces.id) < (
     sqlc.narg('cursor_last_request_at')::timestamp,
-    sqlc.narg('cursor_parent_span_id')::text
+    sqlc.narg('cursor_trace_id')::text
   )
-ORDER BY trace_base.last_request_at DESC, trace_base.parent_span_id DESC
+ORDER BY traces.last_request_at DESC, traces.id DESC
 LIMIT sqlc.narg('limit')::int;
 
 -- name: GetRequest :one
