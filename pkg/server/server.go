@@ -24,15 +24,17 @@ import (
 )
 
 type Server struct {
-	queries        *db.Queries
-	router         *chi.Mux
-	api            huma.API
-	config         *configx.Config
-	httpClient     *http.Client
-	artifacts      artifacts.Sink
-	jsxEngine      *jsx.Engine
-	staticHandler  http.Handler
-	endpointRouter *endpointRouter
+	queries          *db.Queries
+	router           *chi.Mux
+	api              huma.API
+	config           *configx.Config
+	httpClient       *http.Client
+	artifacts        artifacts.Sink
+	jsxEngine        *jsx.Engine
+	staticHandler    http.Handler
+	endpointRouter   *endpointRouter
+	projectRouter    *projectRouter
+	projectExtractor *projectExtractor
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -92,16 +94,19 @@ func NewServer(ctx context.Context) (*Server, error) {
 		MaxDelay:         config.JSMaxDelay,
 	}, queries)
 
+	projectRouter := newProjectRouter(queries)
 	server := &Server{
-		config:         config,
-		queries:        queries,
-		router:         router,
-		api:            api,
-		httpClient:     httpClient,
-		artifacts:      sink,
-		jsxEngine:      jsxEngine,
-		staticHandler:  static.Handler(),
-		endpointRouter: newEndpointRouter(queries),
+		config:           config,
+		queries:          queries,
+		router:           router,
+		api:              api,
+		httpClient:       httpClient,
+		artifacts:        sink,
+		jsxEngine:        jsxEngine,
+		staticHandler:    static.Handler(),
+		endpointRouter:   newEndpointRouter(queries),
+		projectRouter:    projectRouter,
+		projectExtractor: newProjectExtractor(projectRouter),
 	}
 	server.registerOperations()
 	server.registerEndpoints()
@@ -152,6 +157,10 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationGetOverviewSummary, s.handleGetOverviewSummary)
 	huma.Register(mgmt, contract.OperationGetOverviewDistribution, s.handleGetOverviewDistribution)
 	huma.Register(mgmt, contract.OperationGetOverviewSeries, s.handleGetOverviewSeries)
+	huma.Register(mgmt, contract.OperationListProjects, s.handleListProjects)
+	huma.Register(mgmt, contract.OperationGetProject, s.handleGetProject)
+	huma.Register(mgmt, contract.OperationUpsertProject, s.handleUpsertProject)
+	huma.Register(mgmt, contract.OperationDeleteProject, s.handleDeleteProject)
 	huma.Register(mgmt, contract.OperationListScripts, s.handleListScripts)
 	huma.Register(mgmt, contract.OperationGetScript, s.handleGetScript)
 	huma.Register(mgmt, contract.OperationCreateScript, s.handleCreateScript)

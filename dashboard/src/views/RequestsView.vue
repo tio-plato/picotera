@@ -3,6 +3,7 @@ import { reactive, watch, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { useProvidersMap } from '@/composables/useProvidersMap'
+import { useProjectsMap } from '@/composables/useProjectsMap'
 import type { RequestView, EndpointView, ModelView } from '@/api'
 import { listEndpoints, listModels, listRequests } from '@/api/client'
 import { queryKeys, type RequestsFilters } from '@/api/queryKeys'
@@ -27,6 +28,7 @@ const panel = useSidePanel()
 const route = useRoute()
 const router = useRouter()
 const { providers, providerLabel } = useProvidersMap()
+const { projects, projectLabel } = useProjectsMap()
 
 type RequestKind = 'meta' | 'upstream' | 'all'
 
@@ -37,6 +39,7 @@ const filters = reactive({
   model: '',
   upstreamModel: '',
   traceId: typeof route.query.traceId === 'string' ? route.query.traceId : '',
+  projectId: typeof route.query.projectId === 'string' ? Number(route.query.projectId) || 0 : 0,
 })
 
 const typeOptions: { value: RequestKind; label: string }[] = [
@@ -70,6 +73,7 @@ const requestFilters = computed<RequestsFilters>(() => {
     model?: string
     upstreamModel?: string
     traceId?: string
+    projectId?: number
   } = {}
   if (filters.type === 'meta') out.type = 0
   else if (filters.type === 'upstream') out.type = 1
@@ -78,6 +82,7 @@ const requestFilters = computed<RequestsFilters>(() => {
   if (filters.model) out.model = filters.model
   if (filters.upstreamModel) out.upstreamModel = filters.upstreamModel
   if (filters.traceId) out.traceId = filters.traceId
+  if (filters.projectId) out.projectId = filters.projectId
   return out
 })
 
@@ -114,6 +119,7 @@ watch(
     filters.model,
     filters.upstreamModel,
     filters.traceId,
+    filters.projectId,
   ],
   () => {
     resetPaginationMemory()
@@ -136,6 +142,16 @@ watch(
     const next = typeof value === 'string' ? value : ''
     if (filters.traceId !== next) {
       filters.traceId = next
+    }
+  },
+)
+
+watch(
+  () => route.query.projectId,
+  (value) => {
+    const next = typeof value === 'string' ? Number(value) || 0 : 0
+    if (filters.projectId !== next) {
+      filters.projectId = next
     }
   },
 )
@@ -217,6 +233,11 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
   base.push(
     { key: 'userMessagePreview', header: '用户消息' },
     {
+      key: 'projectId',
+      header: '项目',
+      headerClass: filters.projectId ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
+    },
+    {
       key: 'providerId',
       header: '渠道',
       headerClass: filters.providerId ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : '',
@@ -241,6 +262,9 @@ const columns = computed<AutoDataTableColumn<RequestView>[]>(() => {
 
 const providerOptions = computed<ColumnFilterOption<number>[]>(() =>
   providers.value.map((p) => ({ value: p.id, label: p.name })),
+)
+const projectOptions = computed<ColumnFilterOption<number>[]>(() =>
+  projects.value.map((p) => ({ value: p.id, label: p.name })),
 )
 const endpointOptions = computed<ColumnFilterOption<string>[]>(() =>
   endpoints.value.map((e) => ({ value: e.path, label: e.path })),
@@ -280,6 +304,7 @@ function activeFilterCount(): number {
   if (filters.model) n++
   if (filters.upstreamModel) n++
   if (filters.traceId) n++
+  if (filters.projectId) n++
   return n
 }
 
@@ -289,6 +314,7 @@ function clearAllFilters() {
   filters.model = ''
   filters.upstreamModel = ''
   filters.traceId = ''
+  filters.projectId = 0
 }
 
 function clearTraceFilter() {
@@ -297,14 +323,25 @@ function clearTraceFilter() {
 
 function syncFiltersToQuery() {
   const query = currentSearchParams()
-  const current = query.get('traceId') ?? ''
+  const currentTrace = query.get('traceId') ?? ''
+  const currentProject = Number(query.get('projectId') ?? '') || 0
   if (filters.traceId) {
     query.set('traceId', filters.traceId)
   } else {
     query.delete('traceId')
   }
+  if (filters.projectId) {
+    query.set('projectId', String(filters.projectId))
+  } else {
+    query.delete('projectId')
+  }
   query.delete('cursor')
-  if (filters.traceId === current && !currentCursor.value) return
+  if (
+    filters.traceId === currentTrace &&
+    filters.projectId === currentProject &&
+    !currentCursor.value
+  )
+    return
   replaceBrowserUrl(currentAppPathname(), query)
 }
 
@@ -451,6 +488,15 @@ function resetCursorAndReload() {
         :selected="rowSelected"
         :on-row-click="(r) => openDetails(r)"
       >
+        <template #header-projectId>
+          <ColumnFilter
+            v-model.number="filters.projectId"
+            label="项目"
+            :options="projectOptions"
+            :empty-value="0"
+            placeholder="过滤项目…"
+          />
+        </template>
         <template #header-providerId>
           <ColumnFilter
             v-model.number="filters.providerId"
@@ -505,6 +551,10 @@ function resetCursorAndReload() {
           >
             {{ row.userMessagePreview || '—' }}
           </span>
+        </template>
+        <template #cell-projectId="{ row }">
+          <span v-if="row.projectId" class="font-medium">{{ projectLabel(row.projectId) }}</span>
+          <span v-else class="text-ink-faint">—</span>
         </template>
         <template #cell-providerId="{ row }">
           <span v-if="row.providerId" class="font-medium">{{ providerLabel(row.providerId) }}</span>

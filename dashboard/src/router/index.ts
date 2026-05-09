@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/requests/:requestId', name: 'requestDetail', component: () => import('@/views/RequestDetailView.vue') },
     { path: '/traces', name: 'traces', component: () => import('@/views/TracesView.vue') },
     { path: '/api-keys', name: 'apiKeys', component: () => import('@/views/ApiKeysView.vue') },
+    { path: '/projects', name: 'projects', component: () => import('@/views/ProjectsView.vue') },
     { path: '/scripts', name: 'scripts', component: () => import('@/views/ScriptsView.vue') },
     { path: '/rates', name: 'rates', component: () => import('@/views/RatesView.vue') },
   ],

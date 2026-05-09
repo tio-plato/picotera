@@ -40,6 +40,16 @@ type Model struct {
 	Annotations []byte `json:"annotations"`
 }
 
+type Project struct {
+	ID          int32              `json:"id"`
+	Name        string             `json:"name"`
+	Paths       []byte             `json:"paths"`
+	FirstSeenAt pgtype.Timestamp   `json:"firstSeenAt"`
+	LastSeenAt  pgtype.Timestamp   `json:"lastSeenAt"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type Provider struct {
 	ID             int32  `json:"id"`
 	Name           string `json:"name"`
@@ -83,6 +93,7 @@ type Request struct {
 	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
 	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
 	CacheWrite1hTokens   pgtype.Int4      `json:"cacheWrite1hTokens"`
+	ProjectID            pgtype.Int4      `json:"projectId"`
 }
 
 type RequestOverviewHourly struct {

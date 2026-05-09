@@ -493,6 +493,38 @@ func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) 
 	return insertedAt
 }
 
+// extractProjectID runs the project regexes over body and asks the project
+// router for a match. Errors are logged and treated as "no match".
+func (s *Server) extractProjectID(ctx context.Context, body []byte) pgtype.Int4 {
+	if s.projectExtractor == nil {
+		return pgtype.Int4{Valid: false}
+	}
+	id, ok, err := s.projectExtractor.Extract(ctx, body)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).Warn("project extractor failed")
+		return pgtype.Int4{Valid: false}
+	}
+	if !ok {
+		return pgtype.Int4{Valid: false}
+	}
+	return pgtype.Int4{Int32: id, Valid: true}
+}
+
+// upsertProjectSeen updates project.first_seen_at / last_seen_at for the
+// matched project id. Errors are logged at warn and swallowed — they must not
+// affect request handling.
+func (s *Server) upsertProjectSeen(projectID int32, seenAt time.Time) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := s.queries.UpsertProjectSeen(ctx, db.UpsertProjectSeenParams{
+		ID:     projectID,
+		SeenAt: pgtype.Timestamp{Time: seenAt.UTC(), Valid: true},
+	})
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("projectId", projectID).Warn("failed to upsert project seen")
+	}
+}
+
 func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, requestCreatedAt time.Time) {
 	if !parentSpanID.Valid || parentSpanID.String == "" {
 		return

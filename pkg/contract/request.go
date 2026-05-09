@@ -39,6 +39,7 @@ type RequestView struct {
 	ModelCostCurrency    string   `json:"modelCostCurrency,omitempty"`
 	UpstreamCost         *float64 `json:"upstreamCost,omitempty"`
 	UpstreamCostCurrency string   `json:"upstreamCostCurrency,omitempty"`
+	ProjectID            *int32   `json:"projectId,omitempty"`
 }
 
 type TraceCostView struct {
@@ -62,6 +63,7 @@ type RequestTraceView struct {
 	FirstRequestAt       string          `json:"firstRequestAt,omitempty"`
 	LastRequestAt        string          `json:"lastRequestAt,omitempty"`
 	UserMessagePreview   string          `json:"userMessagePreview,omitempty"`
+	ProjectID            *int32          `json:"projectId,omitempty"`
 }
 
 type requestLike struct {
@@ -90,6 +92,7 @@ type requestLike struct {
 	UpstreamCost         pgtype.Numeric
 	UpstreamCostCurrency pgtype.Text
 	UserMessagePreview   pgtype.Text
+	ProjectID            pgtype.Int4
 }
 
 func toRequestView(r requestLike) *RequestView {
@@ -178,6 +181,10 @@ func toRequestView(r requestLike) *RequestView {
 	if r.UserMessagePreview.Valid {
 		view.UserMessagePreview = r.UserMessagePreview.String
 	}
+	if r.ProjectID.Valid {
+		v := r.ProjectID.Int32
+		view.ProjectID = &v
+	}
 	return view
 }
 
@@ -208,6 +215,7 @@ func ToRequestView(r *db.Request) *RequestView {
 		UpstreamCost:         r.UpstreamCost,
 		UpstreamCostCurrency: r.UpstreamCostCurrency,
 		UserMessagePreview:   r.UserMessagePreview,
+		ProjectID:            r.ProjectID,
 	})
 }
 
@@ -238,6 +246,7 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		UpstreamCost:         r.UpstreamCost,
 		UpstreamCostCurrency: r.UpstreamCostCurrency,
 		UserMessagePreview:   r.UserMessagePreview,
+		ProjectID:            r.ProjectID,
 	})
 }
 
@@ -268,6 +277,7 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		UpstreamCost:         r.UpstreamCost,
 		UpstreamCostCurrency: r.UpstreamCostCurrency,
 		UserMessagePreview:   r.UserMessagePreview,
+		ProjectID:            r.ProjectID,
 	})
 }
 
@@ -314,6 +324,10 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 	if r.UserMessagePreview.Valid {
 		view.UserMessagePreview = r.UserMessagePreview.String
 	}
+	if r.ProjectID.Valid {
+		v := r.ProjectID.Int32
+		view.ProjectID = &v
+	}
 	return view, nil
 }
 
@@ -325,6 +339,7 @@ type ListRequestsRequest struct {
 	Model         string `query:"model,omitempty"`
 	UpstreamModel string `query:"upstreamModel,omitempty"`
 	TraceID       string `query:"traceId,omitempty"`
+	ProjectID     int32  `query:"projectId,omitempty"`
 }
 
 type ListRequestsResponse = PaginatedResponse[RequestView]

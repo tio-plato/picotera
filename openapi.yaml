@@ -149,6 +149,21 @@ components:
       required:
         - name
       type: object
+    DeleteProjectRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/DeleteProjectRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          format: int32
+          type: integer
+      required:
+        - id
+      type: object
     DeleteProviderEndpointRequestBody:
       additionalProperties: false
       properties:
@@ -756,6 +771,40 @@ components:
         - cacheWrite1h
         - implicitCacheRead
       type: object
+    ProjectView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/ProjectView.json
+          format: uri
+          readOnly: true
+          type: string
+        createdAt:
+          type: string
+        firstSeenAt:
+          type: string
+        id:
+          format: int32
+          type: integer
+        lastSeenAt:
+          type: string
+        name:
+          type: string
+        paths:
+          items:
+            type: string
+          nullable: true
+          type: array
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - paths
+        - createdAt
+        - updatedAt
+      type: object
     ProviderEndpointView:
       additionalProperties: false
       properties:
@@ -885,6 +934,9 @@ components:
           type: integer
         parentSpanId:
           type: string
+        projectId:
+          format: int32
+          type: integer
         totalTokens:
           format: int64
           type: integer
@@ -956,6 +1008,9 @@ components:
           type: integer
         parentSpanId:
           type: string
+        projectId:
+          format: int32
+          type: integer
         providerId:
           format: int32
           type: integer
@@ -1054,6 +1109,29 @@ components:
       required:
         - currency
         - amount
+      type: object
+    UpsertProjectRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/UpsertProjectRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          format: int32
+          type: integer
+        name:
+          type: string
+        paths:
+          items:
+            type: string
+          nullable: true
+          type: array
+      required:
+        - name
+        - paths
       type: object
     UpsertProviderRequestBody:
       additionalProperties: false
@@ -1651,6 +1729,91 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Match built-in pricing candidates for a model
+  /api/picotera/projects:
+    get:
+      operationId: listProjects
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ProjectView"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List all projects
+    put:
+      operationId: upsertProject
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertProjectRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Upsert a project
+  /api/picotera/projects/delete:
+    post:
+      operationId: deleteProject
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteProjectRequestBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Delete a project
+  /api/picotera/projects/{id}:
+    get:
+      operationId: getProject
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            format: int32
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get a project by ID
   /api/picotera/provider-endpoints:
     get:
       operationId: listProviderEndpoints
@@ -1937,6 +2100,12 @@ paths:
           name: traceId
           schema:
             type: string
+        - explode: false
+          in: query
+          name: projectId
+          schema:
+            format: int32
+            type: integer
       responses:
         "200":
           content:

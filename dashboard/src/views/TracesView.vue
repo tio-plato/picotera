@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { useCurrencyContext } from '@/composables/useCurrencyContext'
+import { useProjectsMap } from '@/composables/useProjectsMap'
 import { listRequestTraces } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import type { RequestTraceView, TraceCostView } from '@/api'
@@ -11,6 +12,7 @@ import { AutoDataTable, Button, DataCard, Icon, IconButton, type AutoDataTableCo
 const router = useRouter()
 const route = useRoute()
 const currency = useCurrencyContext()
+const { projectLabel } = useProjectsMap()
 const pageSize = 30
 const initialCursor = typeof route.query.cursor === 'string' ? route.query.cursor : ''
 const cursorIndex = ref(initialCursor ? 1 : 0)
@@ -50,6 +52,7 @@ const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'lastRequestAt', header: '最近请求' },
   { key: 'firstRequestAt', header: '首次请求' },
   { key: 'userMessagePreview', header: '用户消息' },
+  { key: 'projectId', header: '项目' },
   { key: 'id', header: 'Trace ID' },
   { key: 'metaRequestCount', header: '请求', align: 'right' },
   { key: 'totalTokens', header: 'Token', align: 'right' },
@@ -64,6 +67,11 @@ function rowKey(row: RequestTraceView) {
 
 function openTrace(row: RequestTraceView) {
   router.push({ name: 'requests', query: { traceId: row.id } })
+}
+
+function openProject(event: Event, projectId: number) {
+  event.stopPropagation()
+  router.push({ name: 'requests', query: { projectId: String(projectId) } })
 }
 
 function pushCursorQuery(nextCursor: string) {
@@ -204,6 +212,17 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
           >
             {{ row.userMessagePreview || '—' }}
           </span>
+        </template>
+        <template #cell-projectId="{ row }">
+          <button
+            v-if="row.projectId"
+            type="button"
+            class="font-medium text-ink hover:text-accent transition-colors bg-transparent border-0 p-0 cursor-pointer"
+            @click="(ev: Event) => openProject(ev, row.projectId!)"
+          >
+            {{ projectLabel(row.projectId) }}
+          </button>
+          <span v-else class="text-ink-faint">—</span>
         </template>
         <template #cell-id="{ row }">
           <div class="flex max-w-[13rem] flex-col leading-tight">

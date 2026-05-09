@@ -264,6 +264,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all projects */
+        get: operations["listProjects"];
+        /** Upsert a project */
+        put: operations["upsertProject"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/projects/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a project */
+        post: operations["deleteProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a project by ID */
+        get: operations["getProject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/provider-endpoints": {
         parameters: {
             query?: never;
@@ -580,6 +632,16 @@ export interface components {
             readonly $schema?: string;
             name: string;
         };
+        DeleteProjectRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteProjectRequestBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            id: number;
+        };
         DeleteProviderEndpointRequestBody: {
             /**
              * Format: uri
@@ -864,6 +926,22 @@ export interface components {
             /** Format: double */
             output: number;
         };
+        ProjectView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ProjectView.json
+             */
+            readonly $schema?: string;
+            createdAt: string;
+            firstSeenAt?: string;
+            /** Format: int32 */
+            id: number;
+            lastSeenAt?: string;
+            name: string;
+            paths: string[] | null;
+            updatedAt: string;
+        };
         ProviderEndpointView: {
             /**
              * Format: uri
@@ -927,6 +1005,8 @@ export interface components {
             /** Format: int64 */
             outputTokens: number;
             parentSpanId: string;
+            /** Format: int32 */
+            projectId?: number;
             /** Format: int64 */
             totalTokens: number;
             upstreamCosts: components["schemas"]["TraceCostView"][] | null;
@@ -962,6 +1042,8 @@ export interface components {
             /** Format: int32 */
             outputTokens?: number;
             parentSpanId?: string;
+            /** Format: int32 */
+            projectId?: number;
             /** Format: int32 */
             providerId?: number;
             requestArtifactUrl?: string;
@@ -1012,6 +1094,18 @@ export interface components {
             /** Format: double */
             amount: number;
             currency: string;
+        };
+        UpsertProjectRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpsertProjectRequestBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            id?: number;
+            name: string;
+            paths: string[] | null;
         };
         UpsertProviderRequestBody: {
             /**
@@ -1681,6 +1775,130 @@ export interface operations {
             };
         };
     };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    upsertProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertProjectRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    deleteProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteProjectRequestBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     listProviderEndpoints: {
         parameters: {
             query?: {
@@ -2009,6 +2227,7 @@ export interface operations {
                 model?: string;
                 upstreamModel?: string;
                 traceId?: string;
+                projectId?: number;
             };
             header?: never;
             path?: never;

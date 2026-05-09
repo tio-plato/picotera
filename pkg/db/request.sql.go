@@ -12,7 +12,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency, user_message_preview, cache_write_1h_tokens FROM request WHERE id = $1 AND created_at = $2::timestamp
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, upstream_cost, upstream_cost_currency, user_message_preview, cache_write_1h_tokens, project_id FROM request WHERE id = $1 AND created_at = $2::timestamp
 `
 
 type GetRequestParams struct {
@@ -49,6 +49,7 @@ func (q *Queries) GetRequest(ctx context.Context, arg GetRequestParams) (Request
 		&i.UpstreamCostCurrency,
 		&i.UserMessagePreview,
 		&i.CacheWrite1hTokens,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -69,7 +70,8 @@ SELECT
   COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
   traces.first_request_at,
   traces.last_request_at,
-  preview.user_message_preview
+  preview.user_message_preview,
+  trace_project.project_id AS project_id
 FROM traces
 LEFT JOIN LATERAL (
   SELECT
@@ -137,6 +139,17 @@ LEFT JOIN LATERAL (
   ORDER BY created_at DESC, id DESC
   LIMIT 1
 ) preview ON true
+LEFT JOIN LATERAL (
+  SELECT project_id
+  FROM request
+  WHERE parent_span_id = traces.parent_span_id
+    AND created_at >= traces.first_request_at
+    AND created_at <= traces.last_request_at
+    AND type = 0
+    AND project_id IS NOT NULL
+  ORDER BY created_at DESC, id DESC
+  LIMIT 1
+) trace_project ON true
 WHERE
   $1::timestamp IS NULL
   OR (traces.last_request_at, traces.id) < (
@@ -169,6 +182,7 @@ type ListRequestTracesRow struct {
 	FirstRequestAt       pgtype.Timestamp `json:"firstRequestAt"`
 	LastRequestAt        pgtype.Timestamp `json:"lastRequestAt"`
 	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
+	ProjectID            pgtype.Int4      `json:"projectId"`
 }
 
 func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
@@ -196,6 +210,7 @@ func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesPa
 			&i.FirstRequestAt,
 			&i.LastRequestAt,
 			&i.UserMessagePreview,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -212,7 +227,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens, r.cache_write_tokens, r.cache_write_1h_tokens,
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
-       r.user_message_preview
+       r.user_message_preview, r.project_id
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = $1::text
 WHERE
@@ -221,6 +236,7 @@ WHERE
   AND ($4::text IS NULL OR r.endpoint_path = $4)
   AND ($5::text IS NULL OR r.model = $5)
   AND ($6::text IS NULL OR r.upstream_model = $6)
+  AND ($7::int IS NULL OR r.project_id = $7)
   AND (
     $1::text IS NULL
     OR (
@@ -230,11 +246,11 @@ WHERE
     )
   )
   AND (
-    $7::timestamp IS NULL
-    OR (r.created_at, r.id) < ($7::timestamp, $8::text)
+    $8::timestamp IS NULL
+    OR (r.created_at, r.id) < ($8::timestamp, $9::text)
   )
 ORDER BY r.created_at DESC, r.id DESC
-LIMIT $9::int
+LIMIT $10::int
 `
 
 type ListRequestsParams struct {
@@ -244,6 +260,7 @@ type ListRequestsParams struct {
 	EndpointPath    pgtype.Text      `json:"endpointPath"`
 	Model           pgtype.Text      `json:"model"`
 	UpstreamModel   pgtype.Text      `json:"upstreamModel"`
+	ProjectID       pgtype.Int4      `json:"projectId"`
 	CursorCreatedAt pgtype.Timestamp `json:"cursorCreatedAt"`
 	CursorID        pgtype.Text      `json:"cursorId"`
 	Limit           pgtype.Int4      `json:"limit"`
@@ -275,6 +292,7 @@ type ListRequestsRow struct {
 	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
 	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
 	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
+	ProjectID            pgtype.Int4      `json:"projectId"`
 }
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
@@ -285,6 +303,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 		arg.EndpointPath,
 		arg.Model,
 		arg.UpstreamModel,
+		arg.ProjectID,
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.Limit,
@@ -322,6 +341,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 			&i.UpstreamCost,
 			&i.UpstreamCostCurrency,
 			&i.UserMessagePreview,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -345,7 +365,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.cache_write_tokens, r.cache_write_1h_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at,
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
-       r.user_message_preview
+       r.user_message_preview, r.project_id
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC
@@ -382,6 +402,7 @@ type ListRequestsBySpanRow struct {
 	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
 	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
 	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
+	ProjectID            pgtype.Int4      `json:"projectId"`
 }
 
 func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error) {
@@ -419,6 +440,7 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpan
 			&i.UpstreamCost,
 			&i.UpstreamCostCurrency,
 			&i.UserMessagePreview,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}

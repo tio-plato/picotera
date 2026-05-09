@@ -14,10 +14,12 @@ import type {
   OverviewSeriesView,
   OverviewSummaryView,
   PricingMatchCandidate,
+  ProjectView,
   ProviderEndpointView,
   ProviderView,
   RequestView,
   ScriptView,
+  UpsertProjectRequestBody,
 } from '@/api'
 import type { components } from '@/openapi-types'
 import { queryKeys, type OverviewFilters, type RequestsFilters } from '@/api/queryKeys'
@@ -185,6 +187,31 @@ export async function deleteApiKey(id: number): Promise<void> {
   if (error) fail(error, '删除 API Key 失败')
 }
 
+export async function listProjects(): Promise<ProjectView[]> {
+  const { data, error } = await api.GET('/api/picotera/projects')
+  if (error) fail(error, '加载项目失败')
+  return data ?? []
+}
+
+export async function getProject(id: number): Promise<ProjectView> {
+  const { data, error } = await api.GET('/api/picotera/projects/{id}', {
+    params: { path: { id } },
+  })
+  if (error) fail(error, '加载项目失败')
+  return data
+}
+
+export async function upsertProject(body: UpsertProjectRequestBody): Promise<ProjectView> {
+  const { data, error } = await api.PUT('/api/picotera/projects', { body })
+  if (error) fail(error, '保存项目失败')
+  return data
+}
+
+export async function deleteProject(id: number): Promise<void> {
+  const { error } = await api.POST('/api/picotera/projects/delete', { body: { id } })
+  if (error) fail(error, '删除项目失败')
+}
+
 export async function listExchangeRates(): Promise<ExchangeRateView[]> {
   const { data, error } = await api.GET('/api/picotera/exchange-rates')
   if (error) fail(error, '加载汇率失败')
@@ -260,6 +287,12 @@ export function invalidateScripts(client: QueryClient) {
 
 export function invalidateApiKeys(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.apiKeys.all })
+}
+
+export function invalidateProjects(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.projects.all })
+  client.invalidateQueries({ queryKey: queryKeys.requests.all })
+  client.invalidateQueries({ queryKey: queryKeys.requestTraces.all })
 }
 
 export function invalidateExchangeRates(client: QueryClient) {

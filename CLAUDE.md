@@ -90,6 +90,7 @@ Hooks are run as priority-sorted waterfalls (higher priority first); each tap ma
 ### Key Patterns
 
 - **Endpoint matching**: request paths are matched against `endpoint.path` patterns (which may contain `{name}` placeholders matching any non-empty string, including `/`). The matcher is an in-memory cache (`pkg/server/endpoint_router.go`) loaded lazily from `GetEndpoints` and sorted by literal-character specificity. Any mutation of the `endpoint` table **must** call `Server.endpointRouter.Invalidate()`. Do not reintroduce `GetEndpointByPath` for gateway routing — it only remains for exact-path validation in `handle_provider_endpoint.go`.
+- **Project matching**: every gateway request body is scanned by `pkg/server/project_extractor.go` against three fixed regexes (`Workspace root folder:`, `Primary working directory:`, `<cwd>…</cwd>`). Captures are JSON-string unescaped and looked up in `Server.projectRouter` (in-memory longest-prefix cache from `db/queries/project.sql:ListProjectPaths`, mirrors `endpointRouter`). The matched `project_id` is written onto every `request` row for that gateway call (meta + upstream attempts) and triggers an asynchronous `UpsertProjectSeen` updating `project.first_seen_at` / `project.last_seen_at`. Any mutation of the `project` table **must** call `Server.projectRouter.Invalidate()`.
 - **sqlc workflow**: Write queries in `db/queries/*.sql` → run `sqlc generate` → use generated code in `pkg/db/`. The `Querier` interface in `pkg/db/querier.go` lists all available DB methods. sqlc is configured in `sqlc.yaml` (pgx/v5 driver, `emit_interface: true`, camelCase JSON tags).
 - **Adding an API operation**: Define operation + request/response types in `pkg/contract/`, add handler method on `*Server` in `pkg/server/`, register in `registerOperations()`. After the change, regenerate `openapi.yaml` so the dashboard's typed client picks it up.
 - **Config**: All settings via env vars with `PICOTERA_` prefix (e.g., `PICOTERA_DATABASE_URL`, `PICOTERA_PORT`). Default port is 9898.
@@ -111,7 +112,7 @@ These are NOT rows in the `endpoint` table — operators only configure the unde
 
 ### Database Schema
 
-Nine tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request` (hypertable), `script`, `traces`. Uses JSONB for flexible fields (provider models, annotations). Upsert pattern via `ON CONFLICT DO UPDATE`.
+Ten tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request` (hypertable), `script`, `traces`, `project`. Uses JSONB for flexible fields (provider models, annotations, project paths). Upsert pattern via `ON CONFLICT DO UPDATE`. The `request` hypertable also carries a nullable `project_id` foreign reference (no FK constraint) populated by the project extractor on insert.
 
 ## Dashboard
 
@@ -124,8 +125,8 @@ Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pini
 - `src/main.ts`, `src/App.vue` — app bootstrap; `AppSidebar` + router-view shell.
 - `src/router/` — Vue Router config.
 - `src/stores/` — Pinia stores (`preferences.ts` holds user-configurable UI state).
-- `src/views/` — route-level pages: `ProvidersView`, `EndpointsView`, `ModelsView`, `MappingsView`, `ScriptsView`, plus request history. One view per management resource.
-- `src/components/` — feature-level components: forms (`ProviderForm`, `EndpointForm`, `ModelForm`, `MappingForm`, `ScriptForm`), editors (`AnnotationsEditor`, `ModelListEditor`), side panels (`SidePanelHost`, `ProviderEndpointsPanel`), chrome (`AppSidebar`, `PreferencesMenu`).
+- `src/views/` — route-level pages: `ProvidersView`, `EndpointsView`, `ModelsView`, `MappingsView`, `ScriptsView`, `ProjectsView`, plus request history. One view per management resource.
+- `src/components/` — feature-level components: forms (`ProviderForm`, `EndpointForm`, `ModelForm`, `MappingForm`, `ScriptForm`, `ProjectForm`), editors (`AnnotationsEditor`, `ModelListEditor`), side panels (`SidePanelHost`, `ProviderEndpointsPanel`), chrome (`AppSidebar`, `PreferencesMenu`).
 - `src/composables/` — `useApi` (typed fetch client), `useConfirm` (global confirm dialog), `useSidePanel` (global slide-over stack).
 - `src/api/` — `openapi-fetch` client (`plugin.ts`), shared `QueryClient` (`queryClient.ts`), typed `queryKeys` registry (`queryKeys.ts`), thin async fetcher wrappers + invalidation helpers (`client.ts`), and re-exported schema types (`index.ts`). Generated types live at `src/openapi-types.d.ts` (output of `pnpm --dir dashboard generate-openapi`).
 - `src/ui/` — **local UI primitive library. No third-party UI kit. No variant-authoring libs (cva/tv).** Style with Tailwind classes directly inside each component.

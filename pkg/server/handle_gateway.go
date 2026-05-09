@@ -61,6 +61,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metaReqMethod := r.Method
 	metaReqURL := r.URL.String()
 	userMessagePreview := extractUserMessagePreview(body, endpoint.EndpointType)
+	projectIDPg := h.extractProjectID(r.Context(), body)
 	metaCreatedAt := h.insertRequest(bgCtx, db.InsertRequestParams{
 		ID:                 metaID,
 		SpanID:             pgtype.Text{String: metaID, Valid: true},
@@ -76,8 +77,12 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ErrorMessage:       pgtype.Text{Valid: false},
 		TimeSpentMs:        pgtype.Int4{Valid: false},
 		UserMessagePreview: userMessagePreview,
+		ProjectID:          projectIDPg,
 		CreatedAt:          pgtype.Timestamp{Time: metaIDCreatedAt, Valid: true},
 	})
+	if projectIDPg.Valid {
+		go h.upsertProjectSeen(projectIDPg.Int32, metaCreatedAt)
+	}
 
 	h.uploadRequestArtifact(bgCtx, metaID, metaCreatedAt, metaReqMethod, metaReqURL, metaReqHeader, body)
 
@@ -398,6 +403,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ErrorMessage:       pgtype.Text{Valid: false},
 			TimeSpentMs:        pgtype.Int4{Valid: false},
 			UserMessagePreview: pgtype.Text{Valid: false},
+			ProjectID:          projectIDPg,
 			CreatedAt:          pgtype.Timestamp{Time: upstreamIDCreatedAt, Valid: true},
 		})
 

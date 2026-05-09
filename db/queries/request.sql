@@ -3,7 +3,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens, r.cache_write_tokens, r.cache_write_1h_tokens,
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
-       r.user_message_preview
+       r.user_message_preview, r.project_id
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = sqlc.narg('trace_id')::text
 WHERE
@@ -12,6 +12,7 @@ WHERE
   AND (sqlc.narg('endpoint_path')::text IS NULL OR r.endpoint_path = sqlc.narg('endpoint_path'))
   AND (sqlc.narg('model')::text IS NULL OR r.model = sqlc.narg('model'))
   AND (sqlc.narg('upstream_model')::text IS NULL OR r.upstream_model = sqlc.narg('upstream_model'))
+  AND (sqlc.narg('project_id')::int IS NULL OR r.project_id = sqlc.narg('project_id'))
   AND (
     sqlc.narg('trace_id')::text IS NULL
     OR (
@@ -43,7 +44,8 @@ SELECT
   COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
   traces.first_request_at,
   traces.last_request_at,
-  preview.user_message_preview
+  preview.user_message_preview,
+  trace_project.project_id AS project_id
 FROM traces
 LEFT JOIN LATERAL (
   SELECT
@@ -111,6 +113,17 @@ LEFT JOIN LATERAL (
   ORDER BY created_at DESC, id DESC
   LIMIT 1
 ) preview ON true
+LEFT JOIN LATERAL (
+  SELECT project_id
+  FROM request
+  WHERE parent_span_id = traces.parent_span_id
+    AND created_at >= traces.first_request_at
+    AND created_at <= traces.last_request_at
+    AND type = 0
+    AND project_id IS NOT NULL
+  ORDER BY created_at DESC, id DESC
+  LIMIT 1
+) trace_project ON true
 WHERE
   sqlc.narg('cursor_last_request_at')::timestamp IS NULL
   OR (traces.last_request_at, traces.id) < (
@@ -135,7 +148,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.cache_write_tokens, r.cache_write_1h_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at,
        r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
-       r.user_message_preview
+       r.user_message_preview, r.project_id
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC;

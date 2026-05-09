@@ -16,6 +16,7 @@ import {
   IconEdit,
   IconEye,
   IconEyeOff,
+  IconFolder,
   IconGitBranch,
   IconKey,
   IconCopy,
@@ -68,6 +69,7 @@ export type IconName =
   | 'currency-dollar'
   | 'key'
   | 'copy'
+  | 'folder'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -103,4 +105,5 @@ export const iconComponents: Record<IconName, Component> = {
   'currency-dollar': IconCurrencyDollar,
   key: IconKey,
   copy: IconCopy,
+  folder: IconFolder,
 }

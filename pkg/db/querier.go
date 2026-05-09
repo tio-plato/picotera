@@ -19,6 +19,7 @@ type Querier interface {
 	DeleteEndpoint(ctx context.Context, path string) error
 	DeleteExchangeRate(ctx context.Context, code string) error
 	DeleteModel(ctx context.Context, name string) error
+	DeleteProject(ctx context.Context, id int32) error
 	DeleteProvider(ctx context.Context, id int32) error
 	DeleteProviderEndpoint(ctx context.Context, arg DeleteProviderEndpointParams) error
 	DeleteScript(ctx context.Context, id string) error
@@ -32,6 +33,8 @@ type Querier interface {
 	GetModels(ctx context.Context) ([]Model, error)
 	GetOverviewTokenBreakdown(ctx context.Context, arg GetOverviewTokenBreakdownParams) (GetOverviewTokenBreakdownRow, error)
 	GetOverviewTotals(ctx context.Context, arg GetOverviewTotalsParams) (GetOverviewTotalsRow, error)
+	GetProject(ctx context.Context, id int32) (Project, error)
+	GetProjectByName(ctx context.Context, name string) (Project, error)
 	GetProviderByID(ctx context.Context, id int32) (Provider, error)
 	GetProviderEndpoint(ctx context.Context, arg GetProviderEndpointParams) (ProviderEndpoint, error)
 	GetProviders(ctx context.Context) ([]Provider, error)
@@ -46,6 +49,7 @@ type Querier interface {
 	GetRequest(ctx context.Context, arg GetRequestParams) (Request, error)
 	GetScript(ctx context.Context, id string) (Script, error)
 	InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error)
+	InsertProject(ctx context.Context, arg InsertProjectParams) (Project, error)
 	InsertRequest(ctx context.Context, arg InsertRequestParams) (pgtype.Timestamp, error)
 	InsertScript(ctx context.Context, arg InsertScriptParams) (Script, error)
 	ListApiKeys(ctx context.Context) ([]ApiKey, error)
@@ -57,6 +61,8 @@ type Querier interface {
 	ListOverviewSeriesMetrics(ctx context.Context, arg ListOverviewSeriesMetricsParams) ([]ListOverviewSeriesMetricsRow, error)
 	ListOverviewSeriesTraces(ctx context.Context, arg ListOverviewSeriesTracesParams) ([]ListOverviewSeriesTracesRow, error)
 	ListOverviewTraceCountsByDimension(ctx context.Context, arg ListOverviewTraceCountsByDimensionParams) ([]ListOverviewTraceCountsByDimensionRow, error)
+	ListProjectPaths(ctx context.Context) ([]ListProjectPathsRow, error)
+	ListProjects(ctx context.Context) ([]Project, error)
 	ListProviderEndpoints(ctx context.Context, providerID pgtype.Int4) ([]ProviderEndpoint, error)
 	ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error)
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
@@ -64,6 +70,7 @@ type Querier interface {
 	ListScripts(ctx context.Context) ([]Script, error)
 	ListTraceBackfillCandidates(ctx context.Context) ([]ListTraceBackfillCandidatesRow, error)
 	UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (ApiKey, error)
+	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
 	UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error
 	UpdateRequestModel(ctx context.Context, arg UpdateRequestModelParams) error
@@ -73,6 +80,7 @@ type Querier interface {
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertExchangeRate(ctx context.Context, arg UpsertExchangeRateParams) (ExchangeRate, error)
 	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
+	UpsertProjectSeen(ctx context.Context, arg UpsertProjectSeenParams) error
 	UpsertProviderEndpoint(ctx context.Context, arg UpsertProviderEndpointParams) (ProviderEndpoint, error)
 	UpsertTrace(ctx context.Context, arg UpsertTraceParams) (UpsertTraceRow, error)
 }

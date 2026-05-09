@@ -17,6 +17,7 @@ export type RequestsFilters = Readonly<{
   model?: string
   upstreamModel?: string
   traceId?: string
+  projectId?: number
 }>
 
 export type CursorFilters = Readonly<{ limit: number; cursor?: string }>
@@ -46,6 +47,10 @@ export const queryKeys = {
   apiKeys: {
     all: ['apiKeys'] as const,
     detail: (id: number) => ['apiKeys', id] as const,
+  },
+  projects: {
+    all: ['projects'] as const,
+    detail: (id: number) => ['projects', id] as const,
   },
   exchangeRates: {
     all: ['exchangeRates'] as const,
