@@ -415,6 +415,59 @@ const tokensOutSankey = computed(() =>
   ),
 )
 
+const breakdownCurrenciesPresent = computed(() => {
+  const set = new Set<string>()
+  for (const row of breakdownRows.value) {
+    for (const c of row.costs ?? []) {
+      if (c.currency) set.add(c.currency)
+    }
+  }
+  return [...set].sort()
+})
+
+function rowCostInCurrency(row: OverviewBreakdownRowView, currency: string): number {
+  const c = (row.costs ?? []).find((x) => x.currency === currency)
+  return c?.amount ?? 0
+}
+
+function rowCostConverted(row: OverviewBreakdownRowView): number {
+  return (row.costs ?? []).reduce((acc, c) => acc + ccy.convert(c.amount, c.currency).amount, 0)
+}
+
+const costInLayers: DimKind[] = ['provider', 'upstreamModel', 'model', 'apiKey']
+const costOutLayers: DimKind[] = ['apiKey', 'model', 'upstreamModel', 'provider']
+
+const costInSankeyConverted = computed(() => {
+  const target = ccy.targetCurrency.value
+  if (!target) return { nodes: [], links: [] }
+  return buildDimensionSankey(breakdownRows.value, costInLayers, 'root', '总费用', rowCostConverted)
+})
+
+const costOutSankeyConverted = computed(() => {
+  const target = ccy.targetCurrency.value
+  if (!target) return { nodes: [], links: [] }
+  return buildDimensionSankey(breakdownRows.value, costOutLayers, 'root', '总费用', rowCostConverted)
+})
+
+function buildCostInSankeyForCurrency(currency: string) {
+  return buildDimensionSankey(
+    breakdownRows.value,
+    costInLayers,
+    'root',
+    `总费用 · ${currency}`,
+    (row) => rowCostInCurrency(row, currency),
+  )
+}
+function buildCostOutSankeyForCurrency(currency: string) {
+  return buildDimensionSankey(
+    breakdownRows.value,
+    costOutLayers,
+    'root',
+    `总费用 · ${currency}`,
+    (row) => rowCostInCurrency(row, currency),
+  )
+}
+
 function compactNumber(v: number) {
   if (!Number.isFinite(v)) return ''
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(1)}B`
@@ -588,9 +641,79 @@ function formatCurrencyCompact(v: number, code: string) {
             />
           </template>
 
-          <StateText v-else compact>暂无数据</StateText>
+          <template v-else-if="sankeyVariant === 'costIn' && !isOriginalMode">
+            <StateText v-if="!costInSankeyConverted.links.length" compact>暂无数据</StateText>
+            <OverviewSankey
+              v-else
+              :nodes="costInSankeyConverted.nodes"
+              :links="costInSankeyConverted.links"
+              :value-format="(v) => formatCurrencyCompact(v, ccy.targetCurrency.value ?? '')"
+            />
+          </template>
+          <template v-else-if="sankeyVariant === 'costOut' && !isOriginalMode">
+            <StateText v-if="!costOutSankeyConverted.links.length" compact>暂无数据</StateText>
+            <OverviewSankey
+              v-else
+              :nodes="costOutSankeyConverted.nodes"
+              :links="costOutSankeyConverted.links"
+              :value-format="(v) => formatCurrencyCompact(v, ccy.targetCurrency.value ?? '')"
+            />
+          </template>
+
+          <template
+            v-else-if="
+              isOriginalMode &&
+              (sankeyVariant === 'costIn' || sankeyVariant === 'costOut') &&
+              breakdownCurrenciesPresent.length === 0
+            "
+          >
+            <StateText compact>暂无数据</StateText>
+          </template>
         </div>
       </DataCard>
+      <template
+        v-if="
+          isOriginalMode &&
+          (sankeyVariant === 'costIn' || sankeyVariant === 'costOut') &&
+          breakdownCurrenciesPresent.length > 0
+        "
+      >
+        <DataCard
+          v-for="currency in breakdownCurrenciesPresent"
+          :key="`${sankeyVariant}-${currency}`"
+        >
+          <div class="p-4 flex flex-col gap-3">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">
+              费用 · {{ currency }}
+            </span>
+            <StateText
+              v-if="
+                (sankeyVariant === 'costIn'
+                  ? buildCostInSankeyForCurrency(currency)
+                  : buildCostOutSankeyForCurrency(currency)
+                ).links.length === 0
+              "
+              compact
+            >暂无数据</StateText>
+            <OverviewSankey
+              v-else
+              :nodes="
+                (sankeyVariant === 'costIn'
+                  ? buildCostInSankeyForCurrency(currency)
+                  : buildCostOutSankeyForCurrency(currency)
+                ).nodes
+              "
+              :links="
+                (sankeyVariant === 'costIn'
+                  ? buildCostInSankeyForCurrency(currency)
+                  : buildCostOutSankeyForCurrency(currency)
+                ).links
+              "
+              :value-format="(v) => formatCurrencyCompact(v, currency)"
+            />
+          </div>
+        </DataCard>
+      </template>
     </div>
 
     <!-- Distribution -->
