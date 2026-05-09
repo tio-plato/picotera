@@ -36,7 +36,7 @@ function select(v: string | number) {
       type="button"
       role="radio"
       :aria-checked="modelValue === opt.value"
-      class="px-1 py-1.5 text-xs font-medium rounded-sm cursor-pointer transition-colors"
+      class="px-2 py-1.5 text-xs font-medium rounded-sm cursor-pointer transition-colors"
       :class="
         modelValue === opt.value
           ? 'bg-surface-0 text-accent-ink shadow-[0_0_0_1px_var(--color-line),0_1px_2px_oklch(0_0_0/0.06)]'

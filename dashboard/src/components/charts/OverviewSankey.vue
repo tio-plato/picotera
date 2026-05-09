@@ -81,7 +81,7 @@ const tooltipTriggers = computed(() => ({
 </script>
 
 <template>
-  <div class="h-72">
+  <div>
     <VisSingleContainer :data="graphData" :height="288">
       <VisSankey
         :node-color="nodeColor"

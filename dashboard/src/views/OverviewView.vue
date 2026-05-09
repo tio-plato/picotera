@@ -38,11 +38,11 @@ type SankeyVariant = 'tokenComposition' | 'tokensIn' | 'tokensOut' | 'costIn' | 
 
 const sankeyVariant = ref<SankeyVariant>('tokenComposition')
 const sankeyVariantOptions: { value: SankeyVariant; label: string }[] = [
-  { value: 'tokenComposition', label: 'Token 构成' },
-  { value: 'tokensIn',         label: 'Token 上游' },
-  { value: 'tokensOut',        label: 'Token 下游' },
-  { value: 'costIn',           label: '费用上游' },
-  { value: 'costOut',          label: '费用下游' },
+  { value: 'tokenComposition', label: '词元类型' },
+  { value: 'tokensIn',         label: '词元渠道' },
+  { value: 'tokensOut',        label: '词元请求' },
+  { value: 'costIn',           label: '费用渠道' },
+  { value: 'costOut',          label: '费用请求' },
 ]
 
 const ccy = useCurrency()
@@ -600,7 +600,12 @@ function formatCurrencyCompact(v: number, code: string) {
       </div>
     </div>
     <div class="grid grid-cols-1 gap-3">
-      <DataCard>
+      <DataCard
+        v-if="
+          !isOriginalMode ||
+          (sankeyVariant !== 'costIn' && sankeyVariant !== 'costOut') ||
+          breakdownCurrenciesPresent.length <= 0
+        ">
         <div class="p-4 flex flex-col gap-3">
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText
