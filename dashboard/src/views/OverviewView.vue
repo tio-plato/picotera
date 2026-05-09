@@ -12,6 +12,7 @@ import {
 import { OPERATIONAL_STALE_TIME } from '@/api/queryClient'
 import { queryKeys, type OverviewFilters } from '@/api/queryKeys'
 import type {
+  OverviewBreakdownRowView,
   OverviewDimension,
   OverviewRange,
   OverviewSeriesDimension,
@@ -299,6 +300,121 @@ const tokenCompositionSankey = computed<{ nodes: SankeyNode[]; links: SankeyLink
   return { nodes: allNodes.filter((n) => used.has(n.id)), links }
 })
 
+type DimKind = 'apiKey' | 'model' | 'upstreamModel' | 'provider'
+
+const TOP_PER_LAYER = 8
+
+function rowDimKey(row: OverviewBreakdownRowView, dim: DimKind): string {
+  switch (dim) {
+    case 'apiKey':        return `apiKey:${row.apiKeyId || 0}`
+    case 'model':         return `model:${row.model || ''}`
+    case 'upstreamModel': return `upstreamModel:${row.upstreamModel || ''}`
+    case 'provider':      return `provider:${row.providerId || 0}`
+  }
+}
+
+function rawValueFromKey(key: string): { dim: DimKind; raw: string } | null {
+  const idx = key.indexOf(':')
+  if (idx < 0) return null
+  const dim = key.slice(0, idx) as DimKind
+  if (dim !== 'apiKey' && dim !== 'model' && dim !== 'upstreamModel' && dim !== 'provider') return null
+  return { dim, raw: key.slice(idx + 1) }
+}
+
+function dimNodeLabel(dim: DimKind, raw: string): string {
+  if (raw === '' || raw === '0') return '未知'
+  return dimensionLabel(dim, raw)
+}
+
+function buildDimensionSankey(
+  rows: OverviewBreakdownRowView[],
+  layers: DimKind[],
+  rootId: string,
+  rootLabel: string,
+  valueOf: (row: OverviewBreakdownRowView) => number,
+): { nodes: SankeyNode[]; links: SankeyLink[] } {
+  // Per-layer aggregate value per raw key, used to pick top N per layer.
+  const totalsByLayer: Map<string, number>[] = layers.map(() => new Map())
+  for (const row of rows) {
+    const v = valueOf(row)
+    if (v <= 0) continue
+    layers.forEach((dim, i) => {
+      const k = rowDimKey(row, dim)
+      totalsByLayer[i]!.set(k, (totalsByLayer[i]!.get(k) ?? 0) + v)
+    })
+  }
+  const keepPerLayer: Set<string>[] = totalsByLayer.map((m) =>
+    new Set([...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_PER_LAYER).map(([k]) => k)),
+  )
+  const folded = (layerIdx: number, rawKey: string) =>
+    (keepPerLayer[layerIdx]?.has(rawKey) ? rawKey : `__other__@${layerIdx}`)
+
+  const linkSums = new Map<string, number>()
+  const addLink = (source: string, target: string, v: number) => {
+    const k = `${source}|${target}`
+    linkSums.set(k, (linkSums.get(k) ?? 0) + v)
+  }
+  for (const row of rows) {
+    const v = valueOf(row)
+    if (v <= 0) continue
+    const fold0 = folded(0, rowDimKey(row, layers[0]!))
+    addLink(rootId, fold0, v)
+    for (let i = 1; i < layers.length; i++) {
+      const a = folded(i - 1, rowDimKey(row, layers[i - 1]!))
+      const b = folded(i, rowDimKey(row, layers[i]!))
+      addLink(a, b, v)
+    }
+  }
+
+  const usedIds = new Set<string>([rootId])
+  for (const k of linkSums.keys()) {
+    const [s, t] = k.split('|')
+    if (s) usedIds.add(s)
+    if (t) usedIds.add(t)
+  }
+
+  const nodeFor = (id: string): SankeyNode => {
+    if (id === rootId) return { id, label: rootLabel, layer: 0 }
+    if (id.startsWith('__other__@')) {
+      const layerIdx = Number(id.slice('__other__@'.length))
+      return { id, label: '其他', layer: layerIdx + 1 }
+    }
+    const parsed = rawValueFromKey(id)
+    if (!parsed) return { id, label: id, layer: 0 }
+    const layerIdx = layers.indexOf(parsed.dim)
+    return { id, label: dimNodeLabel(parsed.dim, parsed.raw), layer: layerIdx + 1 }
+  }
+
+  const nodes: SankeyNode[] = [...usedIds].map(nodeFor)
+  const links: SankeyLink[] = [...linkSums.entries()].map(([k, v]) => {
+    const [source = '', target = ''] = k.split('|')
+    return { source, target, value: v }
+  })
+  return { nodes, links }
+}
+
+const breakdownRows = computed<OverviewBreakdownRowView[]>(() => summaryQuery.data.value?.breakdown ?? [])
+
+const tokensInSankey = computed(() =>
+  buildDimensionSankey(
+    breakdownRows.value,
+    ['provider', 'upstreamModel', 'model', 'apiKey'],
+    'root',
+    '总 Token',
+    (row) => row.totalTokens,
+  ),
+)
+
+const tokensOutSankey = computed(() =>
+  buildDimensionSankey(
+    breakdownRows.value,
+    ['apiKey', 'model', 'upstreamModel', 'provider'],
+    'root',
+    '总 Token',
+    (row) => row.totalTokens,
+  ),
+)
+
 function compactNumber(v: number) {
   if (!Number.isFinite(v)) return ''
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(1)}B`
@@ -449,6 +565,25 @@ function formatCurrencyCompact(v: number, code: string) {
               v-else
               :nodes="tokenCompositionSankey.nodes"
               :links="tokenCompositionSankey.links"
+              :value-format="(v) => compactNumber(v)"
+            />
+          </template>
+
+          <template v-else-if="sankeyVariant === 'tokensIn'">
+            <StateText v-if="!tokensInSankey.links.length" compact>暂无数据</StateText>
+            <OverviewSankey
+              v-else
+              :nodes="tokensInSankey.nodes"
+              :links="tokensInSankey.links"
+              :value-format="(v) => compactNumber(v)"
+            />
+          </template>
+          <template v-else-if="sankeyVariant === 'tokensOut'">
+            <StateText v-if="!tokensOutSankey.links.length" compact>暂无数据</StateText>
+            <OverviewSankey
+              v-else
+              :nodes="tokensOutSankey.nodes"
+              :links="tokensOutSankey.links"
               :value-format="(v) => compactNumber(v)"
             />
           </template>
