@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import {
   getOverviewDistribution,
@@ -18,6 +18,7 @@ import type {
   OverviewSeriesPointView,
 } from '@/api'
 import { DataCard, MoneyDisplay, SegmentedControl, Select, StateText } from '@/ui'
+import { useCurrency } from '@/composables/useCurrency'
 import OverviewDonut from '@/components/charts/OverviewDonut.vue'
 import OverviewAreaStack from '@/components/charts/OverviewAreaStack.vue'
 
@@ -30,7 +31,9 @@ const filters = reactive({
 })
 const distributionDimension = ref<OverviewDimension>('provider')
 const seriesDimension = ref<OverviewSeriesDimension>('none')
-const costCurrency = ref<string>('')
+
+const ccy = useCurrency()
+const isOriginalMode = computed(() => ccy.targetCurrency.value == null)
 
 const rangeOptions: { value: OverviewRange; label: string }[] = [
   { value: '1d', label: '24 小时' },
@@ -133,33 +136,59 @@ const TOP_N = 8
 
 const distributionRows = computed(() => distributionQuery.data.value?.rows ?? [])
 
-function buildDonutData(metric: 'tokens' | 'cost') {
-  const rows = distributionRows.value
-  if (!rows.length) return [] as { key: string; label: string; value: number }[]
-  const items = rows
-    .map((r) => {
-      let value = 0
-      if (metric === 'tokens') value = r.totalTokens ?? 0
-      else value = (r.costs ?? []).find((c) => c.currency === costCurrency.value)?.amount ?? 0
-      return {
-        key: r.key,
-        label: dimensionLabel(distributionDimension.value, r.key),
-        value,
-      }
-    })
-    .filter((d) => d.value > 0)
-    .sort((a, b) => b.value - a.value)
-  if (items.length <= TOP_N) return items
-  const top = items.slice(0, TOP_N)
-  const restValue = items.slice(TOP_N).reduce((acc, d) => acc + d.value, 0)
+interface DonutItem { key: string; label: string; value: number }
+
+function buildItemsAndTopN(items: DonutItem[]): DonutItem[] {
+  const sorted = items.filter((d) => d.value > 0).sort((a, b) => b.value - a.value)
+  if (sorted.length <= TOP_N) return sorted
+  const top = sorted.slice(0, TOP_N)
+  const restValue = sorted.slice(TOP_N).reduce((acc, d) => acc + d.value, 0)
   if (restValue > 0) top.push({ key: '__other__', label: '其他', value: restValue })
   return top
 }
 
-const tokenDonutData = computed(() => buildDonutData('tokens'))
-const costDonutData = computed(() => buildDonutData('cost'))
+const tokenDonutData = computed<DonutItem[]>(() =>
+  buildItemsAndTopN(
+    distributionRows.value.map((r) => ({
+      key: r.key,
+      label: dimensionLabel(distributionDimension.value, r.key),
+      value: r.totalTokens ?? 0,
+    })),
+  ),
+)
 
-const distributionCurrencies = computed(() => {
+function buildCostDonutDataForCurrency(currency: string): DonutItem[] {
+  return buildItemsAndTopN(
+    distributionRows.value.map((r) => {
+      const cost = (r.costs ?? []).find((c) => c.currency === currency)
+      return {
+        key: r.key,
+        label: dimensionLabel(distributionDimension.value, r.key),
+        value: cost?.amount ?? 0,
+      }
+    }),
+  )
+}
+
+const costDonutDataConverted = computed<DonutItem[]>(() => {
+  const target = ccy.targetCurrency.value
+  if (!target) return []
+  return buildItemsAndTopN(
+    distributionRows.value.map((r) => {
+      const sum = (r.costs ?? []).reduce(
+        (acc, c) => acc + ccy.convert(c.amount, c.currency).amount,
+        0,
+      )
+      return {
+        key: r.key,
+        label: dimensionLabel(distributionDimension.value, r.key),
+        value: sum,
+      }
+    }),
+  )
+})
+
+const distributionCurrenciesPresent = computed(() => {
   const set = new Set<string>()
   for (const row of distributionRows.value) {
     for (const c of row.costs ?? []) if (c.currency) set.add(c.currency)
@@ -167,35 +196,15 @@ const distributionCurrencies = computed(() => {
   return Array.from(set).sort()
 })
 
-watch(distributionCurrencies, (currencies) => {
-  if (!currencies.length) {
-    costCurrency.value = ''
-    return
-  }
-  const first = currencies[0]
-  if (first && !currencies.includes(costCurrency.value)) {
-    costCurrency.value = first
-  }
-}, { immediate: true })
-
 const seriesData = computed(() => seriesQuery.data.value)
 
-const seriesCurrencies = computed(() => {
+const seriesCurrenciesPresent = computed(() => {
   const set = new Set<string>()
-  const points = seriesData.value?.points ?? []
-  for (const p of points) {
+  for (const p of seriesData.value?.points ?? []) {
     if (p.metric === 'cost' && p.currency) set.add(p.currency)
   }
   return Array.from(set).sort()
 })
-
-watch(seriesCurrencies, (currencies) => {
-  if (!currencies.length) return
-  const first = currencies[0]
-  if (first && !currencies.includes(costCurrency.value)) {
-    costCurrency.value = first
-  }
-}, { immediate: true })
 
 const seriesGroups = computed(() => {
   const groups = seriesData.value?.groups ?? []
@@ -203,18 +212,51 @@ const seriesGroups = computed(() => {
 })
 const seriesBuckets = computed(() => seriesData.value?.buckets ?? [])
 
-function metricPoints(metric: 'tokens' | 'cost' | 'requests' | 'traces') {
+interface SeriesPointVM { groupKey: string; bucketAt: string; value: number }
+
+function nonCostPoints(metric: 'tokens' | 'requests' | 'traces'): SeriesPointVM[] {
   const points: OverviewSeriesPointView[] = seriesData.value?.points ?? []
   return points
     .filter((p) => p.metric === metric)
-    .filter((p) => metric !== 'cost' || p.currency === costCurrency.value)
     .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
 }
 
-const seriesTokens = computed(() => metricPoints('tokens'))
-const seriesCost = computed(() => metricPoints('cost'))
-const seriesRequests = computed(() => metricPoints('requests'))
-const seriesTraces = computed(() => metricPoints('traces'))
+function costPointsForCurrency(currency: string): SeriesPointVM[] {
+  return (seriesData.value?.points ?? [])
+    .filter((p) => p.metric === 'cost' && p.currency === currency)
+    .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
+}
+
+const costPointsConverted = computed<SeriesPointVM[]>(() => {
+  const target = ccy.targetCurrency.value
+  if (!target) return []
+  const byGroup = new Map<string, Map<string, number>>()
+  for (const p of seriesData.value?.points ?? []) {
+    if (p.metric !== 'cost' || !p.currency) continue
+    let m = byGroup.get(p.groupKey)
+    if (!m) { m = new Map(); byGroup.set(p.groupKey, m) }
+    const v = ccy.convert(p.value, p.currency).amount
+    m.set(p.bucketAt, (m.get(p.bucketAt) ?? 0) + v)
+  }
+  const out: SeriesPointVM[] = []
+  for (const [groupKey, m] of byGroup) {
+    for (const [bucketAt, value] of m) out.push({ groupKey, bucketAt, value })
+  }
+  return out
+})
+
+const seriesTokens = computed(() => nonCostPoints('tokens'))
+const seriesRequests = computed(() => nonCostPoints('requests'))
+const seriesTraces = computed(() => nonCostPoints('traces'))
+
+const summaryConvertedTotal = computed(() => {
+  const target = ccy.targetCurrency.value
+  if (!target) return 0
+  return (summaryQuery.data.value?.costs ?? []).reduce(
+    (acc, c) => acc + ccy.convert(c.amount, c.currency).amount,
+    0,
+  )
+})
 
 function compactNumber(v: number) {
   if (!Number.isFinite(v)) return ''
@@ -237,8 +279,16 @@ function formatBucket(iso: string) {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-function compactCurrency(v: number) {
-  return v.toFixed(2)
+function formatCurrencyCompact(v: number, code: string) {
+  if (!Number.isFinite(v)) return ''
+  const abs = Math.abs(v)
+  let scaled = v
+  let suffix = ''
+  if (abs >= 1e9) { scaled = v / 1e9; suffix = 'B' }
+  else if (abs >= 1e6) { scaled = v / 1e6; suffix = 'M' }
+  else if (abs >= 1e3) { scaled = v / 1e3; suffix = 'k' }
+  const digits = suffix ? 1 : 2
+  return ccy.format(scaled, code, { minDigits: digits, maxDigits: digits }) + suffix
 }
 </script>
 
@@ -304,14 +354,21 @@ function compactCurrency(v: number) {
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
           <div v-else-if="(summaryQuery.data.value?.costs ?? []).length === 0" class="text-xl text-ink-faint">—</div>
-          <div v-else class="flex flex-col gap-0.5">
-            <MoneyDisplay
-              v-for="c in summaryQuery.data.value?.costs ?? []"
-              :key="c.currency"
-              class="text-xl font-semibold mono tabular text-ink"
-              :amount="c.amount"
-              :currency="c.currency"
-            />
+          <MoneyDisplay
+            v-else-if="!isOriginalMode"
+            class="text-xl font-semibold mono tabular text-ink"
+            :amount="summaryConvertedTotal"
+            :currency="ccy.targetCurrency.value"
+          />
+          <div v-else class="flex flex-row flex-wrap items-baseline gap-x-1 gap-y-0.5">
+            <template v-for="(c, i) in summaryQuery.data.value?.costs ?? []" :key="c.currency">
+              <span v-if="i > 0" class="text-ink-faint text-base">+</span>
+              <MoneyDisplay
+                class="text-xl font-semibold mono tabular text-ink"
+                :amount="c.amount"
+                :currency="c.currency"
+              />
+            </template>
           </div>
         </div>
       </DataCard>
@@ -331,12 +388,6 @@ function compactCurrency(v: number) {
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">分布统计</span>
         <SegmentedControl v-model="distributionDimension" :options="distributionDimensionOptions" />
       </div>
-      <div v-if="distributionCurrencies.length > 1" class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">币种</span>
-        <Select v-model="costCurrency" size="sm">
-          <option v-for="c in distributionCurrencies" :key="c" :value="c">{{ c }}</option>
-        </Select>
-      </div>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <DataCard>
@@ -352,19 +403,46 @@ function compactCurrency(v: number) {
           />
         </div>
       </DataCard>
-      <DataCard>
-        <div class="p-4 flex flex-col gap-3">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布<span v-if="costCurrency" class="ml-1 text-ink-faint normal-case">· {{ costCurrency }}</span></span>
-          <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
-          <StateText v-else-if="!costDonutData.length" compact>暂无数据</StateText>
-          <OverviewDonut
-            v-else
-            :data="costDonutData"
-            :value-format="(v) => compactCurrency(v)"
-          />
-        </div>
-      </DataCard>
+      <template v-if="!isOriginalMode">
+        <DataCard>
+          <div class="p-4 flex flex-col gap-3">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布<span class="ml-1 text-ink-faint normal-case">· {{ ccy.targetCurrency.value }}</span></span>
+            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <StateText v-else-if="!costDonutDataConverted.length" compact>暂无数据</StateText>
+            <OverviewDonut
+              v-else
+              :data="costDonutDataConverted"
+              :value-format="(v) => formatCurrencyCompact(v, ccy.targetCurrency.value ?? '')"
+            />
+          </div>
+        </DataCard>
+      </template>
+      <template v-else-if="distributionCurrenciesPresent.length === 0">
+        <DataCard>
+          <div class="p-4 flex flex-col gap-3">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布</span>
+            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <StateText v-else compact>暂无数据</StateText>
+          </div>
+        </DataCard>
+      </template>
+      <template v-else>
+        <DataCard v-for="currency in distributionCurrenciesPresent" :key="currency">
+          <div class="p-4 flex flex-col gap-3">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布<span class="ml-1 text-ink-faint normal-case">· {{ currency }}</span></span>
+            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <StateText v-else-if="!buildCostDonutDataForCurrency(currency).length" compact>暂无数据</StateText>
+            <OverviewDonut
+              v-else
+              :data="buildCostDonutDataForCurrency(currency)"
+              :value-format="(v) => formatCurrencyCompact(v, currency)"
+            />
+          </div>
+        </DataCard>
+      </template>
     </div>
 
     <!-- Series -->
@@ -372,12 +450,6 @@ function compactCurrency(v: number) {
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">用量统计</span>
         <SegmentedControl v-model="seriesDimension" :options="seriesDimensionOptions" />
-      </div>
-      <div v-if="seriesCurrencies.length > 1" class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用币种</span>
-        <Select v-model="costCurrency" size="sm">
-          <option v-for="c in seriesCurrencies" :key="c" :value="c">{{ c }}</option>
-        </Select>
       </div>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -396,21 +468,50 @@ function compactCurrency(v: number) {
           />
         </div>
       </DataCard>
-      <DataCard>
-        <div class="p-4 flex flex-col gap-3">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用<span v-if="costCurrency" class="ml-1 text-ink-faint normal-case">· {{ costCurrency }}</span></span>
-          <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
-          <OverviewAreaStack
-            v-else
-            :groups="seriesGroups"
-            :buckets="seriesBuckets"
-            :points="seriesCost"
-            :value-format="(v) => compactCurrency(v)"
-            :bucket-format="formatBucket"
-          />
-        </div>
-      </DataCard>
+      <template v-if="!isOriginalMode">
+        <DataCard>
+          <div class="p-4 flex flex-col gap-3">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用<span class="ml-1 text-ink-faint normal-case">· {{ ccy.targetCurrency.value }}</span></span>
+            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <OverviewAreaStack
+              v-else
+              :groups="seriesGroups"
+              :buckets="seriesBuckets"
+              :points="costPointsConverted"
+              :value-format="(v) => formatCurrencyCompact(v, ccy.targetCurrency.value ?? '')"
+              :bucket-format="formatBucket"
+            />
+          </div>
+        </DataCard>
+      </template>
+      <template v-else-if="seriesCurrenciesPresent.length === 0">
+        <DataCard>
+          <div class="p-4 flex flex-col gap-3">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用</span>
+            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <StateText v-else compact>暂无数据</StateText>
+          </div>
+        </DataCard>
+      </template>
+      <template v-else>
+        <DataCard v-for="currency in seriesCurrenciesPresent" :key="currency">
+          <div class="p-4 flex flex-col gap-3">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用<span class="ml-1 text-ink-faint normal-case">· {{ currency }}</span></span>
+            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <OverviewAreaStack
+              v-else
+              :groups="seriesGroups"
+              :buckets="seriesBuckets"
+              :points="costPointsForCurrency(currency)"
+              :value-format="(v) => formatCurrencyCompact(v, currency)"
+              :bucket-format="formatBucket"
+            />
+          </div>
+        </DataCard>
+      </template>
       <DataCard>
         <div class="p-4 flex flex-col gap-3">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">请求数</span>
