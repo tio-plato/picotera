@@ -46,16 +46,89 @@ func TestOverviewWindowInvalid(t *testing.T) {
 
 func TestOverviewBuckets(t *testing.T) {
 	start := time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
-	end := start.Add(3 * time.Hour)
-	got := overviewBuckets(start, end)
+	end := start.Add(12 * time.Hour)
+	got := overviewBuckets(start, end, 4*time.Hour)
 	if len(got) != 3 {
 		t.Fatalf("len = %d, want 3", len(got))
 	}
 	if !got[0].Equal(start) {
 		t.Errorf("first = %v, want %v", got[0], start)
 	}
-	if !got[2].Equal(start.Add(2 * time.Hour)) {
-		t.Errorf("last = %v, want %v", got[2], start.Add(2*time.Hour))
+	if !got[2].Equal(start.Add(8 * time.Hour)) {
+		t.Errorf("last = %v, want %v", got[2], start.Add(8*time.Hour))
+	}
+}
+
+func TestOverviewSeriesBucketInterval(t *testing.T) {
+	cases := []struct {
+		rangeKey string
+		want     time.Duration
+	}{
+		{"1d", time.Hour},
+		{"7d", 4 * time.Hour},
+		{"1m", 8 * time.Hour},
+	}
+	for _, tc := range cases {
+		t.Run(tc.rangeKey, func(t *testing.T) {
+			got, err := overviewSeriesBucketInterval(tc.rangeKey)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("interval = %s, want %s", got, tc.want)
+			}
+		})
+	}
+	if _, err := overviewSeriesBucketInterval("bogus"); err == nil {
+		t.Fatal("expected error for invalid range")
+	}
+}
+
+func TestOverviewSeriesBucketCounts(t *testing.T) {
+	now := time.Date(2026, 5, 9, 8, 17, 32, 0, time.UTC)
+	cases := []struct {
+		rangeKey string
+		want     int
+	}{
+		{"1d", 24},
+		{"7d", 42},
+		{"1m", 90},
+	}
+	for _, tc := range cases {
+		t.Run(tc.rangeKey, func(t *testing.T) {
+			start, end, err := overviewWindow(tc.rangeKey, now)
+			if err != nil {
+				t.Fatalf("overviewWindow error: %v", err)
+			}
+			interval, err := overviewSeriesBucketInterval(tc.rangeKey)
+			if err != nil {
+				t.Fatalf("overviewSeriesBucketInterval error: %v", err)
+			}
+			got := overviewBuckets(start, end, interval)
+			if len(got) != tc.want {
+				t.Fatalf("len = %d, want %d", len(got), tc.want)
+			}
+		})
+	}
+}
+
+func TestOverviewBucketAt(t *testing.T) {
+	start := time.Date(2026, 5, 2, 9, 0, 0, 0, time.UTC)
+	cases := []struct {
+		at   time.Time
+		want time.Time
+	}{
+		{start, start},
+		{start.Add(3 * time.Hour), start},
+		{start.Add(4 * time.Hour), start.Add(4 * time.Hour)},
+		{start.Add(7 * time.Hour), start.Add(4 * time.Hour)},
+		{start.Add(8 * time.Hour), start.Add(8 * time.Hour)},
+	}
+	for _, tc := range cases {
+		got := overviewBucketAt(start, tc.at, 4*time.Hour)
+		if !got.Equal(tc.want) {
+			t.Errorf("overviewBucketAt(%s) = %s, want %s", tc.at, got, tc.want)
+		}
 	}
 }
 

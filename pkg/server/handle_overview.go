@@ -16,6 +16,19 @@ import (
 
 const overviewBucket = "hour"
 
+func overviewSeriesBucketInterval(rangeKey string) (time.Duration, error) {
+	switch rangeKey {
+	case "1d":
+		return time.Hour, nil
+	case "7d":
+		return 4 * time.Hour, nil
+	case "1m":
+		return 8 * time.Hour, nil
+	default:
+		return 0, fmt.Errorf("invalid range %q", rangeKey)
+	}
+}
+
 func overviewWindow(rangeKey string, now time.Time) (start, end time.Time, err error) {
 	var lookback time.Duration
 	switch rangeKey {
@@ -33,12 +46,20 @@ func overviewWindow(rangeKey string, now time.Time) (start, end time.Time, err e
 	return start, end, nil
 }
 
-func overviewBuckets(start, end time.Time) []time.Time {
-	out := make([]time.Time, 0, int(end.Sub(start)/time.Hour))
-	for t := start; t.Before(end); t = t.Add(time.Hour) {
+func overviewBuckets(start, end time.Time, interval time.Duration) []time.Time {
+	out := make([]time.Time, 0, int(end.Sub(start)/interval))
+	for t := start; t.Before(end); t = t.Add(interval) {
 		out = append(out, t)
 	}
 	return out
+}
+
+func overviewBucketAt(start, at time.Time, interval time.Duration) time.Time {
+	elapsed := at.UTC().Sub(start.UTC())
+	if elapsed <= 0 {
+		return start.UTC()
+	}
+	return start.UTC().Add((elapsed / interval) * interval)
 }
 
 func toPgInt4(v int32) pgtype.Int4 {
@@ -274,6 +295,10 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
+	bucketInterval, err := overviewSeriesBucketInterval(in.Range)
+	if err != nil {
+		return nil, huma.Error400BadRequest(err.Error())
+	}
 	startTS := pgtype.Timestamp{Time: start, Valid: true}
 	endTS := pgtype.Timestamp{Time: end, Valid: true}
 
@@ -302,7 +327,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		return nil, huma.Error500InternalServerError("failed to query series traces", err)
 	}
 
-	buckets := overviewBuckets(start, end)
+	buckets := overviewBuckets(start, end, bucketInterval)
 	bucketStrs := make([]string, len(buckets))
 	for i, b := range buckets {
 		bucketStrs[i] = b.UTC().Format(time.RFC3339Nano)
@@ -337,7 +362,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		if !r.BucketAt.Valid {
 			continue
 		}
-		bucket := r.BucketAt.Time.UTC().Format(time.RFC3339Nano)
+		bucket := overviewBucketAt(start, r.BucketAt.Time, bucketInterval).Format(time.RFC3339Nano)
 		group := r.GroupKey
 		addGroup(group)
 		bg := tokensReqsKey{bucket: bucket, group: group}
@@ -359,10 +384,10 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		if !t.BucketAt.Valid {
 			continue
 		}
-		bucket := t.BucketAt.Time.UTC().Format(time.RFC3339Nano)
+		bucket := overviewBucketAt(start, t.BucketAt.Time, bucketInterval).Format(time.RFC3339Nano)
 		group := t.GroupKey
 		addGroup(group)
-		tracesByBG[tokensReqsKey{bucket: bucket, group: group}] = t.TraceCount
+		tracesByBG[tokensReqsKey{bucket: bucket, group: group}] += t.TraceCount
 	}
 
 	if len(groupKeys) == 0 {

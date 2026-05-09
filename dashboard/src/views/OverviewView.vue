@@ -18,7 +18,7 @@ import type {
   OverviewSeriesDimension,
   OverviewSeriesPointView,
 } from '@/api'
-import { DataCard, MoneyDisplay, SegmentedControl, Select, StateText } from '@/ui'
+import { Button, DataCard, Icon, MoneyDisplay, SegmentedControl, Select, StateText } from '@/ui'
 import { provideCurrencyContext, useCurrencyContext } from '@/composables/useCurrencyContext'
 import { usePreferencesStore } from '@/stores/preferences'
 import OverviewDonut from '@/components/charts/OverviewDonut.vue'
@@ -145,6 +145,21 @@ const seriesQuery = useQuery({
   queryFn: () => getOverviewSeries(overviewFilters.value, seriesDimension.value),
   staleTime: OPERATIONAL_STALE_TIME,
 })
+
+const overviewRefreshing = computed(
+  () =>
+    summaryQuery.isFetching.value ||
+    distributionQuery.isFetching.value ||
+    seriesQuery.isFetching.value,
+)
+
+function refreshOverview() {
+  void Promise.all([
+    summaryQuery.refetch(),
+    distributionQuery.refetch(),
+    seriesQuery.refetch(),
+  ])
+}
 
 function dimensionLabel(dim: OverviewDimension | OverviewSeriesDimension, key: string): string {
   if (key === '') return '全部'
@@ -562,6 +577,16 @@ function formatCurrencyCompact(v: number, code: string) {
           <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
         </Select>
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        class="mb-px"
+        :disabled="overviewRefreshing"
+        @click="refreshOverview"
+      >
+        <Icon name="refresh" :size="13" />
+        {{ overviewRefreshing ? '刷新中' : '刷新' }}
+      </Button>
     </div>
 
     <!-- Bento totals -->
