@@ -21,6 +21,7 @@ import { DataCard, MoneyDisplay, SegmentedControl, Select, StateText } from '@/u
 import { useCurrency } from '@/composables/useCurrency'
 import OverviewDonut from '@/components/charts/OverviewDonut.vue'
 import OverviewAreaStack from '@/components/charts/OverviewAreaStack.vue'
+import OverviewSankey, { type SankeyLink, type SankeyNode } from '@/components/charts/OverviewSankey.vue'
 
 const filters = reactive({
   range: '1d' as OverviewRange,
@@ -31,6 +32,17 @@ const filters = reactive({
 })
 const distributionDimension = ref<OverviewDimension>('provider')
 const seriesDimension = ref<OverviewSeriesDimension>('none')
+
+type SankeyVariant = 'tokenComposition' | 'tokensIn' | 'tokensOut' | 'costIn' | 'costOut'
+
+const sankeyVariant = ref<SankeyVariant>('tokenComposition')
+const sankeyVariantOptions: { value: SankeyVariant; label: string }[] = [
+  { value: 'tokenComposition', label: 'Token 构成' },
+  { value: 'tokensIn',         label: 'Token 上游' },
+  { value: 'tokensOut',        label: 'Token 下游' },
+  { value: 'costIn',           label: '费用上游' },
+  { value: 'costOut',          label: '费用下游' },
+]
 
 const ccy = useCurrency()
 const isOriginalMode = computed(() => ccy.targetCurrency.value == null)
@@ -258,6 +270,35 @@ const summaryConvertedTotal = computed(() => {
   )
 })
 
+const tokenCompositionSankey = computed<{ nodes: SankeyNode[]; links: SankeyLink[] }>(() => {
+  const tb = summaryQuery.data.value?.tokenBreakdown
+  if (!tb) return { nodes: [], links: [] }
+  const inputTotal = tb.input + tb.cacheRead + tb.cacheWrite + tb.cacheWrite1h
+  const outputTotal = tb.output
+  if (inputTotal === 0 && outputTotal === 0) return { nodes: [], links: [] }
+
+  const allNodes: SankeyNode[] = [
+    { id: 'root',                label: '总 Token',     layer: 0 },
+    { id: 'output',              label: '输出',          layer: 1 },
+    { id: 'input',               label: '输入',          layer: 1 },
+    { id: 'in_uncached',         label: '未缓存输入',     layer: 2 },
+    { id: 'in_cache_read',       label: '缓存读取',       layer: 2 },
+    { id: 'in_cache_write',      label: '缓存写入',       layer: 2 },
+    { id: 'in_cache_write_1h',   label: '长期缓存写入',   layer: 2 },
+  ]
+  const links: SankeyLink[] = []
+  if (outputTotal > 0)     links.push({ source: 'root',  target: 'output',              value: outputTotal })
+  if (inputTotal > 0)      links.push({ source: 'root',  target: 'input',               value: inputTotal })
+  if (tb.input > 0)        links.push({ source: 'input', target: 'in_uncached',         value: tb.input })
+  if (tb.cacheRead > 0)    links.push({ source: 'input', target: 'in_cache_read',       value: tb.cacheRead })
+  if (tb.cacheWrite > 0)   links.push({ source: 'input', target: 'in_cache_write',      value: tb.cacheWrite })
+  if (tb.cacheWrite1h > 0) links.push({ source: 'input', target: 'in_cache_write_1h',   value: tb.cacheWrite1h })
+
+  const used = new Set<string>(['root'])
+  for (const l of links) { used.add(l.source); used.add(l.target) }
+  return { nodes: allNodes.filter((n) => used.has(n.id)), links }
+})
+
 function compactNumber(v: number) {
   if (!Number.isFinite(v)) return ''
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(1)}B`
@@ -378,6 +419,41 @@ function formatCurrencyCompact(v: number, code: string) {
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
           <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalTraceCount ?? 0).toLocaleString() }}</span>
+        </div>
+      </DataCard>
+    </div>
+
+    <!-- Sankey -->
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">流向</span>
+        <SegmentedControl v-model="sankeyVariant" :options="sankeyVariantOptions" />
+      </div>
+    </div>
+    <div class="grid grid-cols-1 gap-3">
+      <DataCard>
+        <div class="p-4 flex flex-col gap-3">
+          <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText
+            v-else-if="summaryQuery.isError.value"
+            compact
+            :dashed="false"
+          >{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+
+          <template v-else-if="sankeyVariant === 'tokenComposition'">
+            <StateText
+              v-if="!tokenCompositionSankey.links.length"
+              compact
+            >暂无数据</StateText>
+            <OverviewSankey
+              v-else
+              :nodes="tokenCompositionSankey.nodes"
+              :links="tokenCompositionSankey.links"
+              :value-format="(v) => compactNumber(v)"
+            />
+          </template>
+
+          <StateText v-else compact>暂无数据</StateText>
         </div>
       </DataCard>
     </div>
