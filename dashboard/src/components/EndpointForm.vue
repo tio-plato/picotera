@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { SidePanel, Button, Input, Select, Field } from '@/ui'
 import type { EndpointView } from '@/api'
 import {
@@ -8,10 +8,11 @@ import {
   ENDPOINT_TYPE_LABELS,
 } from '@/api'
 import type { EndpointType } from '@/api'
+import { invalidateEndpoints, upsertEndpoint } from '@/api/client'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ endpoint?: EndpointView; onSave?: () => void }>()
-const api = useApi()
+const queryClient = useQueryClient()
 
 const isEdit = !!props.endpoint
 const form = ref({
@@ -23,6 +24,10 @@ const form = ref({
 })
 const saving = ref(false)
 const error = ref('')
+const saveMutation = useMutation({
+  mutationFn: upsertEndpoint,
+  onSuccess: () => invalidateEndpoints(queryClient),
+})
 
 const modelPathRequired = computed(() =>
   ENDPOINT_TYPES_MODEL_ROUTED.includes(form.value.endpointType),
@@ -41,12 +46,12 @@ async function submit() {
   }
   saving.value = true
   error.value = ''
-  const { error: err } = await api.PUT('/api/picotera/endpoints', { body: form.value })
-  if (err) {
-    error.value = err.message ?? '操作失败'
-  } else {
+  try {
+    await saveMutation.mutateAsync(form.value)
     props.onSave?.()
     emit('close')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '操作失败'
   }
   saving.value = false
 }

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
-import { storeToRefs } from 'pinia'
+import { computed } from 'vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { useSidePanel } from '@/composables/useSidePanel'
-import { useExchangeRatesStore } from '@/stores/exchangeRates'
+import { useExchangeRates } from '@/composables/useExchangeRates'
 import type { ExchangeRateView } from '@/api'
 import RateForm from '@/components/RateForm.vue'
 import {
@@ -21,14 +20,10 @@ import {
 
 const panel = useSidePanel()
 const confirm = useConfirm()
-const store = useExchangeRatesStore()
-const { rates, loaded, loading } = storeToRefs(store)
+const exchange = useExchangeRates()
+const { rates, loaded, loading, removeMutation } = exchange
 
 const count = computed(() => rates.value.length)
-
-onMounted(() => {
-  if (!loaded.value) store.fetch()
-})
 
 function openCreate() {
   panel.open(RateForm, {}, { key: 'rate:new' })
@@ -44,7 +39,7 @@ function confirmDelete(_event: Event, r: ExchangeRateView) {
     message: `确定要删除汇率「${r.code}」吗？`,
     accept: async () => {
       try {
-        await store.remove(r.code)
+        await exchange.remove(r.code)
       } catch {
         // surfaced in future via toast; ignore for now
       }
@@ -97,7 +92,7 @@ function confirmDelete(_event: Event, r: ExchangeRateView) {
                 </IconButton>
                 <IconButton
                   variant="danger"
-                  :disabled="r.code === 'USD'"
+                  :disabled="r.code === 'USD' || removeMutation.isPending.value"
                   :title="r.code === 'USD' ? '基准货币不可删除' : '删除'"
                   aria-label="删除"
                   @click="(e: Event) => confirmDelete(e, r)"

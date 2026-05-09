@@ -2,16 +2,17 @@
 import { computed, ref, watch } from 'vue'
 import { StateText, DataTable, Th, Td, Tr, Field, SegmentedControl } from '@/ui'
 import { isJsonContentType, parseJsonBody, rawBodyText } from './artifactBody'
-import type { ArtifactPayload } from './artifactTypes'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
 import ResponseArtifactView from './ResponseArtifactView.vue'
+import { useArtifact } from '@/composables/useArtifact'
 
 const props = defineProps<{ url?: string; kind: 'request' | 'response' }>()
 
-const loading = ref(false)
-const error = ref('')
-const payload = ref<ArtifactPayload | null>(null)
 const requestBodyView = ref<'raw' | 'json'>('json')
+const artifactQuery = useArtifact(() => props.url)
+const payload = computed(() => artifactQuery.data.value ?? null)
+const loading = computed(() => artifactQuery.isLoading.value)
+const error = computed(() => artifactQuery.error.value?.message ?? '')
 
 const requestJsonBody = computed(() => {
   if (
@@ -31,31 +32,6 @@ const requestBodyOptions = computed(() => {
     { value: 'json', label: 'JSON' },
   ]
 })
-
-async function load() {
-  payload.value = null
-  error.value = ''
-  if (!props.url) return
-  loading.value = true
-  try {
-    const res = await fetch(props.url)
-    if (!res.ok) {
-      if (res.status === 404) {
-        error.value = 'artifact 不可用'
-      } else {
-        error.value = `加载失败 (${res.status})`
-      }
-      return
-    }
-    payload.value = await res.json()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '加载失败'
-  } finally {
-    loading.value = false
-  }
-}
-
-watch(() => props.url, load, { immediate: true })
 
 function headerEntries(headers: Record<string, string[]> | undefined) {
   if (!headers) return []

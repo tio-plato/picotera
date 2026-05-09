@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted, computed } from 'vue'
+import { reactive, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { useApi } from '@/composables/useApi'
+import { useInfiniteQuery, useQuery } from '@tanstack/vue-query'
 import { useProvidersMap } from '@/composables/useProvidersMap'
 import type { RequestView, EndpointView, ModelView } from '@/api'
+import { listEndpoints, listModels, listRequests } from '@/api/client'
+import { queryKeys, type RequestsFilters } from '@/api/queryKeys'
 import RequestDetailsPanel from '@/components/RequestDetailsPanel.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
 import {
@@ -21,18 +23,9 @@ import {
   type ColumnFilterOption,
 } from '@/ui'
 
-const api = useApi()
 const panel = useSidePanel()
 const route = useRoute()
-const { providers, providerLabel, fetchProviders } = useProvidersMap()
-
-const requests = ref<RequestView[]>([])
-const loading = ref(false)
-const hasMore = ref(false)
-const nextCursor = ref('')
-
-const endpoints = ref<EndpointView[]>([])
-const models = ref<ModelView[]>([])
+const { providers, providerLabel } = useProvidersMap()
 
 type RequestKind = 'meta' | 'upstream' | 'all'
 
@@ -52,49 +45,49 @@ const typeOptions: { value: RequestKind; label: string }[] = [
 ]
 const appBase = import.meta.env.BASE_URL.replace(/\/$/, '')
 
-async function fetchReferenceData() {
-  const [, endpointsRes, modelsRes] = await Promise.all([
-    fetchProviders(),
-    api.GET('/api/picotera/endpoints'),
-    api.GET('/api/picotera/models'),
-  ])
-  endpoints.value = (endpointsRes.data as EndpointView[] | undefined) ?? []
-  models.value = (modelsRes.data as ModelView[] | undefined) ?? []
-}
-
-async function fetchRequests(cursor?: string) {
-  loading.value = true
-  const query: Record<string, string | number | undefined> = {
-    limit: 30,
-    cursor: cursor || undefined,
-  }
-  if (filters.type === 'meta') query.type = 0
-  else if (filters.type === 'upstream') query.type = 1
-  if (filters.providerId) query.providerId = filters.providerId
-  if (filters.endpointPath) query.endpointPath = filters.endpointPath
-  if (filters.model) query.model = filters.model
-  if (filters.upstreamModel) query.upstreamModel = filters.upstreamModel
-  if (filters.traceId) query.traceId = filters.traceId
-
-  const { data, error } = await api.GET('/api/picotera/requests', {
-    params: { query: query as never },
-  })
-  if (!error && data) {
-    if (cursor) {
-      requests.value.push(...(data.items ?? []))
-    } else {
-      requests.value = data.items ?? []
-    }
-    hasMore.value = data.pagination.hasMore
-    nextCursor.value = data.pagination.nextCursor ?? ''
-  }
-  loading.value = false
-}
-
-onMounted(async () => {
-  await fetchReferenceData()
-  fetchRequests()
+const endpointsQuery = useQuery({
+  queryKey: queryKeys.endpoints.all,
+  queryFn: listEndpoints,
 })
+const modelsQuery = useQuery({
+  queryKey: queryKeys.models.all,
+  queryFn: listModels,
+})
+const endpoints = computed<EndpointView[]>(() => endpointsQuery.data.value ?? [])
+const models = computed<ModelView[]>(() => modelsQuery.data.value ?? [])
+
+const requestFilters = computed<RequestsFilters>(() => {
+  const out: {
+    type?: number
+    providerId?: number
+    endpointPath?: string
+    model?: string
+    upstreamModel?: string
+    traceId?: string
+  } = {}
+  if (filters.type === 'meta') out.type = 0
+  else if (filters.type === 'upstream') out.type = 1
+  if (filters.providerId) out.providerId = filters.providerId
+  if (filters.endpointPath) out.endpointPath = filters.endpointPath
+  if (filters.model) out.model = filters.model
+  if (filters.upstreamModel) out.upstreamModel = filters.upstreamModel
+  if (filters.traceId) out.traceId = filters.traceId
+  return out
+})
+
+const requestsQuery = useInfiniteQuery({
+  queryKey: computed(() => queryKeys.requests.list(requestFilters.value)),
+  queryFn: ({ pageParam }) =>
+    listRequests({ ...requestFilters.value, limit: 30, cursor: pageParam || undefined }),
+  initialPageParam: '',
+  getNextPageParam: (lastPage) =>
+    lastPage.pagination.hasMore ? lastPage.pagination.nextCursor ?? '' : undefined,
+})
+const requests = computed<RequestView[]>(() =>
+  requestsQuery.data.value?.pages.flatMap((page) => page.items ?? []) ?? [],
+)
+const loading = computed(() => requestsQuery.isLoading.value || requestsQuery.isFetchingNextPage.value)
+const hasMore = computed(() => requestsQuery.hasNextPage.value)
 
 watch(
   () => [
@@ -107,7 +100,6 @@ watch(
   ],
   () => {
     syncTraceFilterToQuery()
-    fetchRequests()
   },
 )
 
@@ -338,7 +330,7 @@ function cacheHitRate(r: RequestView): number | null {
 }
 
 function resetCursorAndReload() {
-  fetchRequests()
+  requestsQuery.refetch()
 }
 </script>
 
@@ -536,7 +528,7 @@ function resetCursorAndReload() {
     </DataCard>
 
     <div v-if="hasMore" class="flex justify-center py-1">
-      <Button variant="ghost" :disabled="loading" @click="fetchRequests(nextCursor)">
+      <Button variant="ghost" :disabled="loading" @click="requestsQuery.fetchNextPage()">
         {{ loading ? '加载中…' : '加载更多' }}
       </Button>
     </div>

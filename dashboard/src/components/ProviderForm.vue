@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import { SidePanel, Button, Input, Field } from '@/ui'
 import type { ProviderView } from '@/api'
+import { invalidateProviders, upsertProvider } from '@/api/client'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ provider?: ProviderView; onSave?: () => void }>()
-const api = useApi()
+const queryClient = useQueryClient()
 
 const isEdit = !!props.provider
 const form = ref({
@@ -19,6 +20,10 @@ const form = ref({
 })
 const saving = ref(false)
 const error = ref('')
+const saveMutation = useMutation({
+  mutationFn: upsertProvider,
+  onSuccess: () => invalidateProviders(queryClient),
+})
 
 async function submit() {
   saving.value = true
@@ -32,12 +37,12 @@ async function submit() {
     annotations: form.value.annotations,
     disabled: form.value.disabled,
   }
-  const { error: err } = await api.PUT('/api/picotera/providers', { body })
-  if (err) {
-    error.value = err.message ?? '操作失败'
-  } else {
+  try {
+    await saveMutation.mutateAsync(body)
     props.onSave?.()
     emit('close')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '操作失败'
   }
   saving.value = false
 }

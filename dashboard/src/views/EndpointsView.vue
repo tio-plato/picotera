@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { computed } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useConfirm } from '@/composables/useConfirm'
-import { useApi } from '@/composables/useApi'
 import type { EndpointView } from '@/api'
 import { ENDPOINT_TYPE_LABELS, ENDPOINT_TYPES_MODEL_ROUTED, ENDPOINT_TYPES_DIRECT } from '@/api'
 import type { EndpointType } from '@/api'
+import { deleteEndpoint, invalidateEndpoints, listEndpoints } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import EndpointForm from '@/components/EndpointForm.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
 import {
@@ -22,27 +24,26 @@ import {
 
 const panel = useSidePanel()
 const confirm = useConfirm()
-const api = useApi()
+const queryClient = useQueryClient()
 
-const endpoints = ref<EndpointView[]>([])
-const loading = ref(true)
+const endpointsQuery = useQuery({
+  queryKey: queryKeys.endpoints.all,
+  queryFn: listEndpoints,
+})
+const endpoints = computed(() => endpointsQuery.data.value ?? [])
+const loading = computed(() => endpointsQuery.isLoading.value)
 const count = computed(() => endpoints.value.length)
-
-async function fetchEndpoints() {
-  loading.value = true
-  const { data, error } = await api.GET('/api/picotera/endpoints')
-  if (!error && data) endpoints.value = data as EndpointView[]
-  loading.value = false
-}
-
-onMounted(fetchEndpoints)
+const deleteEndpointMutation = useMutation({
+  mutationFn: deleteEndpoint,
+  onSuccess: () => invalidateEndpoints(queryClient),
+})
 
 function openCreate() {
-  panel.open(EndpointForm, { onSave: fetchEndpoints }, { key: 'endpoint:new' })
+  panel.open(EndpointForm, {}, { key: 'endpoint:new' })
 }
 
 function openEdit(ep: EndpointView) {
-  panel.open(EndpointForm, { endpoint: ep, onSave: fetchEndpoints }, { key: `endpoint:${ep.path}` })
+  panel.open(EndpointForm, { endpoint: ep }, { key: `endpoint:${ep.path}` })
 }
 
 function endpointTypeVariant(t: EndpointType): 'accent' | 'muted' | 'more' {
@@ -55,8 +56,7 @@ function confirmDeleteEndpoint(_event: Event, path: string) {
   confirm.require({
     message: `确定要删除端点「${path}」吗？此操作不可撤销。`,
     accept: async () => {
-      await api.POST('/api/picotera/endpoints/delete', { body: { path } })
-      fetchEndpoints()
+      await deleteEndpointMutation.mutateAsync(path)
     },
   })
 }

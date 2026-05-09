@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { computed } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useConfirm } from '@/composables/useConfirm'
-import { useApi } from '@/composables/useApi'
 import type { ProviderView } from '@/api'
+import { deleteProvider, invalidateProviders, upsertProvider } from '@/api/client'
+import { listProviders } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import ProviderForm from '@/components/ProviderForm.vue'
 import ProviderEndpointsPanel from '@/components/ProviderEndpointsPanel.vue'
 import ProviderModelsPanel from '@/components/ProviderModelsPanel.vue'
@@ -24,20 +27,24 @@ import {
 
 const panel = useSidePanel()
 const confirm = useConfirm()
-const api = useApi()
+const queryClient = useQueryClient()
 
-const providers = ref<ProviderView[]>([])
-const loading = ref(true)
+const providersQuery = useQuery({
+  queryKey: queryKeys.providers.all,
+  queryFn: listProviders,
+})
+const providers = computed(() => providersQuery.data.value ?? [])
+const loading = computed(() => providersQuery.isLoading.value)
 const count = computed(() => providers.value.length)
 
-async function fetchProviders() {
-  loading.value = true
-  const { data, error } = await api.GET('/api/picotera/providers')
-  if (!error && data) providers.value = data as ProviderView[]
-  loading.value = false
-}
-
-onMounted(fetchProviders)
+const updateProviderMutation = useMutation({
+  mutationFn: upsertProvider,
+  onSuccess: () => invalidateProviders(queryClient),
+})
+const deleteProviderMutation = useMutation({
+  mutationFn: deleteProvider,
+  onSuccess: () => invalidateProviders(queryClient),
+})
 
 function editKey(id: number) {
   return `provider:${id}:edit`
@@ -55,11 +62,11 @@ function modelNames(p: ProviderView): string[] {
 }
 
 function openCreate() {
-  panel.open(ProviderForm, { onSave: fetchProviders }, { key: 'provider:new' })
+  panel.open(ProviderForm, {}, { key: 'provider:new' })
 }
 
 function openEdit(p: ProviderView) {
-  panel.open(ProviderForm, { provider: p, onSave: fetchProviders }, { key: editKey(p.id) })
+  panel.open(ProviderForm, { provider: p }, { key: editKey(p.id) })
 }
 
 function toggleBindings(p: ProviderView) {
@@ -73,7 +80,7 @@ function toggleBindings(p: ProviderView) {
 function toggleModels(p: ProviderView) {
   panel.toggle(
     ProviderModelsPanel,
-    { providerId: p.id, providerName: p.name, onSave: fetchProviders },
+    { providerId: p.id, providerName: p.name },
     { key: modelsKey(p.id) },
   )
 }
@@ -88,22 +95,20 @@ async function toggleDisabled(p: ProviderView) {
     annotations: p.annotations,
     disabled: !p.disabled,
   }
-  const { error } = await api.PUT('/api/picotera/providers', { body })
-  if (!error) fetchProviders()
+  await updateProviderMutation.mutateAsync(body)
 }
 
 function confirmDelete(_event: Event, p: ProviderView) {
   confirm.require({
     message: `确定要删除渠道「${p.name}」吗？此操作不可撤销。`,
     accept: async () => {
-      await api.POST('/api/picotera/providers/delete', { body: { id: p.id } })
+      await deleteProviderMutation.mutateAsync(p.id)
       if (
         panel.isActive(editKey(p.id)) ||
         panel.isActive(bindingKey(p.id)) ||
         panel.isActive(modelsKey(p.id))
       )
         panel.close()
-      fetchProviders()
     },
   })
 }

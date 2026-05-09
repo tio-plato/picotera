@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import type { ModelView, PricingMatchCandidate } from '@/api'
-import { useApi } from '@/composables/useApi'
+import { invalidateModels, matchPricing, upsertModel } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import { Button, DataTable, SidePanel, StateText, Td, Th, Tr, Icon } from '@/ui'
 
 const props = defineProps<{
@@ -11,12 +13,20 @@ const props = defineProps<{
 
 const emit = defineEmits<{ close: [] }>()
 
-const api = useApi()
-const loading = ref(true)
-const saving = ref(false)
+const queryClient = useQueryClient()
 const error = ref('')
-const candidates = ref<PricingMatchCandidate[]>([])
 const selectedIndex = ref(0)
+const candidatesQuery = useQuery({
+  queryKey: queryKeys.pricingMatches.model(props.model.name),
+  queryFn: () => matchPricing(props.model.name),
+})
+const saveMutation = useMutation({
+  mutationFn: upsertModel,
+  onSuccess: () => invalidateModels(queryClient),
+})
+const candidates = computed<PricingMatchCandidate[]>(() => candidatesQuery.data.value ?? [])
+const loading = computed(() => candidatesQuery.isLoading.value || candidatesQuery.isFetching.value)
+const saving = computed(() => saveMutation.isPending.value)
 
 const selected = computed(() => candidates.value[selectedIndex.value] ?? null)
 
@@ -82,23 +92,18 @@ function pushDiff(out: DiffSegment[], text: string, kind: DiffSegment['kind']) {
 }
 
 async function load() {
-  loading.value = true
   error.value = ''
-  const { data, error: err } = await api.POST('/api/picotera/pricing/matches', {
-    body: { targetModel: props.model.name },
-  })
-  loading.value = false
-  if (err) {
-    error.value = err.message ?? '匹配价格失败'
-    return
+  try {
+    const res = await candidatesQuery.refetch()
+    if (res.error) throw res.error
+    selectedIndex.value = candidates.value.length ? 0 : -1
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '匹配价格失败'
   }
-  candidates.value = data?.candidates ?? []
-  selectedIndex.value = candidates.value.length ? 0 : -1
 }
 
 async function save() {
   if (!selected.value) return
-  saving.value = true
   error.value = ''
   const body = {
     name: props.model.name,
@@ -106,17 +111,14 @@ async function save() {
     annotations: props.model.annotations ?? {},
     pricing: selected.value.pricing,
   }
-  const { error: err } = await api.PUT('/api/picotera/models', { body })
-  saving.value = false
-  if (err) {
-    error.value = err.message ?? '保存价格失败'
-    return
+  try {
+    await saveMutation.mutateAsync(body)
+    props.onSave?.()
+    emit('close')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '保存价格失败'
   }
-  props.onSave?.()
-  emit('close')
 }
-
-onMounted(load)
 </script>
 
 <template>

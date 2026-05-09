@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useExchangeRatesStore } from '@/stores/exchangeRates'
 import { usePreferencesStore } from '@/stores/preferences'
+import { useExchangeRates } from '@/composables/useExchangeRates'
 
 export interface ConvertResult {
   amount: number
@@ -11,9 +11,9 @@ export interface ConvertResult {
 }
 
 export function useCurrency() {
-  const exchange = useExchangeRatesStore()
+  const exchange = useExchangeRates()
   const prefs = usePreferencesStore()
-  const { rates, byCode } = storeToRefs(exchange)
+  const { rates, byCode } = exchange
   const { displayCurrency } = storeToRefs(prefs)
 
   const targetCurrency = computed(() => displayCurrency.value ?? null)

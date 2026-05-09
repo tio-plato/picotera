@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, useTemplateRef, watch, onBeforeUnmount } from 'vue'
 import { useFloating, offset, flip, shift, autoUpdate } from '@floating-ui/vue'
-import { storeToRefs } from 'pinia'
 import { usePreferencesStore } from '@/stores/preferences'
 import type { Theme, PanelMode, FontSize } from '@/stores/preferences'
-import { useExchangeRatesStore } from '@/stores/exchangeRates'
+import { useExchangeRates } from '@/composables/useExchangeRates'
 import Icon from '@/ui/icons/Icon.vue'
 import SegmentedControl from '@/ui/SegmentedControl.vue'
 import Select from '@/ui/Select.vue'
 
 const prefs = usePreferencesStore()
-const exchange = useExchangeRatesStore()
-const { rates } = storeToRefs(exchange)
+const { rates } = useExchangeRates()
 const currencyValue = computed({
   get: () => prefs.displayCurrency ?? '',
   set: (v: string) => {

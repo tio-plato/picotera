@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Pricing, PricingTier } from '@/api'
-import { useExchangeRatesStore } from '@/stores/exchangeRates'
-import { storeToRefs } from 'pinia'
+import { useExchangeRates } from '@/composables/useExchangeRates'
 import { Button, IconButton, Input, Select, Icon } from '@/ui'
 
 const props = defineProps<{
@@ -12,8 +11,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: Pricing | null]
 }>()
 
-const exchange = useExchangeRatesStore()
-const { rates } = storeToRefs(exchange)
+const { rates } = useExchangeRates()
 
 const tiers = computed<PricingTier[]>(() => props.modelValue?.tiers ?? [])
 const currency = computed(() => props.modelValue?.currency ?? 'USD')

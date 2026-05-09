@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { ref, computed, watch } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import type { EndpointView, ProviderEndpointView } from '@/api'
+import {
+  deleteProviderEndpoint,
+  invalidateProviderEndpoints,
+  listEndpoints,
+  listProviderEndpoints,
+  upsertProviderEndpoint,
+} from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import {
   SidePanel,
   Button,
@@ -31,12 +39,20 @@ const RESOLVER_LABEL = Object.fromEntries(
 
 const props = defineProps<{ providerId: number; providerName: string }>()
 const emit = defineEmits<{ close: [] }>()
-const api = useApi()
+const queryClient = useQueryClient()
 
-const providerEndpoints = ref<ProviderEndpointView[]>([])
-const endpoints = ref<EndpointView[]>([])
-const loading = ref(false)
 const error = ref('')
+const endpointsQuery = useQuery({
+  queryKey: queryKeys.endpoints.all,
+  queryFn: listEndpoints,
+})
+const providerEndpointsQuery = useQuery({
+  queryKey: computed(() => queryKeys.providerEndpoints.list({ providerId: props.providerId })),
+  queryFn: () => listProviderEndpoints(props.providerId),
+})
+const endpoints = computed<EndpointView[]>(() => endpointsQuery.data.value ?? [])
+const providerEndpoints = computed<ProviderEndpointView[]>(() => providerEndpointsQuery.data.value ?? [])
+const loading = computed(() => endpointsQuery.isLoading.value || providerEndpointsQuery.isLoading.value)
 const form = ref<{ endpointPath: string; upstreamUrl: string; credentialsResolver: Resolver }>({
   endpointPath: '',
   upstreamUrl: '',
@@ -82,31 +98,13 @@ function onAddEndpointPathChange() {
   form.value.upstreamUrl = guessUpstreamUrl(form.value.endpointPath)
 }
 
-async function fetchEndpoints() {
-  const { data, error: err } = await api.GET('/api/picotera/endpoints')
-  if (err) {
-    error.value = err.message ?? '加载端点失败'
-    return
-  }
-  endpoints.value = (data as EndpointView[]) ?? []
-}
-
-async function fetchBindings() {
-  loading.value = true
-  error.value = ''
-  const { data, error: err } = await api.GET('/api/picotera/provider-endpoints', {
-    params: { query: { providerId: props.providerId } },
-  })
-  loading.value = false
-  if (err) {
-    error.value = err.message ?? '加载绑定失败'
-    return
-  }
-  providerEndpoints.value = (data as ProviderEndpointView[]) ?? []
-}
-
-onMounted(() => {
-  Promise.all([fetchEndpoints(), fetchBindings()])
+const upsertMutation = useMutation({
+  mutationFn: upsertProviderEndpoint,
+  onSuccess: () => invalidateProviderEndpoints(queryClient),
+})
+const deleteMutation = useMutation({
+  mutationFn: deleteProviderEndpoint,
+  onSuccess: () => invalidateProviderEndpoints(queryClient),
 })
 
 watch(
@@ -116,7 +114,6 @@ watch(
     form.value.upstreamUrl = ''
     form.value.credentialsResolver = 'unknown'
     editingPath.value = null
-    fetchBindings()
   },
 )
 
@@ -124,23 +121,21 @@ async function addBinding() {
   if (!form.value.endpointPath || !form.value.upstreamUrl) return
   saving.value = true
   error.value = ''
-  const { error: err } = await api.PUT('/api/picotera/provider-endpoints', {
-    body: {
+  try {
+    await upsertMutation.mutateAsync({
       providerId: props.providerId,
       endpointPath: form.value.endpointPath,
       upstreamUrl: form.value.upstreamUrl,
       credentialsResolver: form.value.credentialsResolver,
-    },
-  })
-  saving.value = false
-  if (err) {
-    error.value = err.message ?? '添加绑定失败'
-    return
+    })
+    form.value.endpointPath = ''
+    form.value.upstreamUrl = ''
+    form.value.credentialsResolver = 'unknown'
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '添加绑定失败'
+  } finally {
+    saving.value = false
   }
-  form.value.endpointPath = ''
-  form.value.upstreamUrl = ''
-  form.value.credentialsResolver = 'unknown'
-  await fetchBindings()
 }
 
 function startEdit(pe: ProviderEndpointView) {
@@ -171,33 +166,27 @@ async function saveEdit(pe: ProviderEndpointView) {
     return
   }
   error.value = ''
-  const { error: err } = await api.PUT('/api/picotera/provider-endpoints', {
-    body: {
+  try {
+    await upsertMutation.mutateAsync({
       providerId: props.providerId,
       endpointPath: pe.endpointPath,
       upstreamUrl: editDraft.value.upstreamUrl,
       credentialsResolver: editDraft.value.credentialsResolver,
-    },
-  })
-  if (err) {
-    error.value = err.message ?? '更新绑定失败'
-    return
+    })
+    editingPath.value = null
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '更新绑定失败'
   }
-  editingPath.value = null
-  await fetchBindings()
 }
 
 async function deleteBinding(path: string) {
   error.value = ''
-  const { error: err } = await api.POST('/api/picotera/provider-endpoints/delete', {
-    body: { providerId: props.providerId, endpointPath: path },
-  })
-  if (err) {
-    error.value = err.message ?? '删除绑定失败'
-    return
+  try {
+    await deleteMutation.mutateAsync({ providerId: props.providerId, endpointPath: path })
+    if (editingPath.value === path) editingPath.value = null
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '删除绑定失败'
   }
-  if (editingPath.value === path) editingPath.value = null
-  await fetchBindings()
 }
 
 function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {

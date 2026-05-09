@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useConfirm } from '@/composables/useConfirm'
-import { useApi } from '@/composables/useApi'
 import { useSidePanel } from '@/composables/useSidePanel'
 import type { ApiKeyView } from '@/api'
+import { deleteApiKey, invalidateApiKeys, listApiKeys, updateApiKey } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import ApiKeyForm from '@/components/ApiKeyForm.vue'
 import {
   Button,
@@ -20,31 +22,40 @@ import {
 
 const panel = useSidePanel()
 const confirm = useConfirm()
-const api = useApi()
+const queryClient = useQueryClient()
 
-const apiKeys = ref<ApiKeyView[]>([])
-const loading = ref(true)
+const apiKeysQuery = useQuery({
+  queryKey: queryKeys.apiKeys.all,
+  queryFn: listApiKeys,
+})
+const apiKeys = computed(() => apiKeysQuery.data.value ?? [])
+const loading = computed(() => apiKeysQuery.isLoading.value)
 const count = computed(() => apiKeys.value.length)
 const copiedId = ref<number | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
-
-async function fetchApiKeys() {
-  loading.value = true
-  const { data, error } = await api.GET('/api/picotera/api-keys')
-  if (!error && data) apiKeys.value = data as ApiKeyView[]
-  loading.value = false
-}
-
-onMounted(fetchApiKeys)
+const deleteApiKeyMutation = useMutation({
+  mutationFn: deleteApiKey,
+  onSuccess: () => invalidateApiKeys(queryClient),
+})
+const updateApiKeyMutation = useMutation({
+  mutationFn: (k: ApiKeyView) =>
+    updateApiKey(k.id, {
+      name: k.name,
+      key: k.key,
+      disabled: !k.disabled,
+      annotations: k.annotations ?? {},
+    }),
+  onSuccess: () => invalidateApiKeys(queryClient),
+})
 
 function openCreate() {
-  panel.open(ApiKeyForm, { onSave: fetchApiKeys }, { key: 'apiKey:new', width: '560px' })
+  panel.open(ApiKeyForm, {}, { key: 'apiKey:new', width: '560px' })
 }
 
 function openEdit(k: ApiKeyView) {
   panel.open(
     ApiKeyForm,
-    { apiKey: k, onSave: fetchApiKeys },
+    { apiKey: k },
     { key: `apiKey:${k.id}`, width: '560px' },
   )
 }
@@ -53,23 +64,13 @@ function confirmDelete(_event: Event, k: ApiKeyView) {
   confirm.require({
     message: `确定要删除 API Key「${k.name || k.id}」吗？此操作不可撤销。`,
     accept: async () => {
-      await api.POST('/api/picotera/api-keys/delete', { body: { id: k.id } })
-      fetchApiKeys()
+      await deleteApiKeyMutation.mutateAsync(k.id)
     },
   })
 }
 
 async function toggle(k: ApiKeyView) {
-  await api.PUT('/api/picotera/api-keys/{id}', {
-    params: { path: { id: k.id } },
-    body: {
-      name: k.name,
-      key: k.key,
-      disabled: !k.disabled,
-      annotations: k.annotations ?? {},
-    },
-  })
-  fetchApiKeys()
+  await updateApiKeyMutation.mutateAsync(k)
 }
 
 async function copyKey(k: ApiKeyView) {

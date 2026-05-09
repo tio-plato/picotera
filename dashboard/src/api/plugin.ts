@@ -8,9 +8,10 @@ export function createApi(baseURL = '/') {
   return createClient<paths>({ baseUrl: baseURL })
 }
 
+export const api = createApi()
+
 export const apiPlugin = {
   install(app: App, options?: { baseURL?: string }) {
-    const api = createApi(options?.baseURL)
-    app.provide('api', api)
+    app.provide('api', options?.baseURL ? createApi(options.baseURL) : api)
   },
 }

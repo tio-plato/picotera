@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { SidePanel, Button, Input, Field } from '@/ui'
 import PricingEditor from '@/components/PricingEditor.vue'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import type { ModelView, Pricing } from '@/api'
+import { invalidateModels, upsertModel } from '@/api/client'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{
@@ -13,7 +14,7 @@ const props = defineProps<{
   lockedName?: boolean
   onSave?: () => void
 }>()
-const api = useApi()
+const queryClient = useQueryClient()
 
 const isEdit = !!props.model
 const form = ref({
@@ -24,6 +25,10 @@ const form = ref({
 })
 const saving = ref(false)
 const error = ref('')
+const saveMutation = useMutation({
+  mutationFn: upsertModel,
+  onSuccess: () => invalidateModels(queryClient),
+})
 
 async function submit() {
   saving.value = true
@@ -34,12 +39,12 @@ async function submit() {
     annotations: form.value.annotations,
     ...(form.value.pricing ? { pricing: form.value.pricing } : {}),
   }
-  const { error: err } = await api.PUT('/api/picotera/models', { body })
-  if (err) {
-    error.value = err.message ?? '操作失败'
-  } else {
+  try {
+    await saveMutation.mutateAsync(body)
     props.onSave?.()
     emit('close')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '操作失败'
   }
   saving.value = false
 }

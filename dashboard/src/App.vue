@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute, RouterView } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import SidePanelHost from '@/components/SidePanelHost.vue'
 import ConfirmDialog from '@/ui/ConfirmDialog.vue'
-import { useExchangeRatesStore } from '@/stores/exchangeRates'
+import { useExchangeRates } from '@/composables/useExchangeRates'
 
 const route = useRoute()
+useExchangeRates()
 
 const pageMeta = computed(() => {
   const map: Record<string, { title: string; hint: string }> = {
@@ -23,11 +24,6 @@ const pageMeta = computed(() => {
   return map[route.name as string] ?? { title: '', hint: '' }
 })
 
-onMounted(() => {
-  useExchangeRatesStore().fetch().catch(() => {
-    // surfaced inside any consumer that needs the rates
-  })
-})
 </script>
 
 <template>

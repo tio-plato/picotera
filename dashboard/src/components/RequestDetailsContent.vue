@@ -1,19 +1,34 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { ref, watch, computed } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
 import type { RequestView, ProviderView } from '@/api'
+import { listRequestSpans } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay } from '@/ui'
 import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
 
 const props = defineProps<{ requestId: string; providers?: ProviderView[] }>()
 const emit = defineEmits<{ selectedRequest: [requestId: string] }>()
-const api = useApi()
 
-const spans = ref<RequestView[]>([])
 const selectedId = ref<string>('')
-const loading = ref(false)
-const error = ref('')
+const spansQuery = useQuery({
+  queryKey: computed(() => queryKeys.requestSpans.detail(props.requestId)),
+  queryFn: () => listRequestSpans(props.requestId),
+})
+const spans = computed<RequestView[]>(() => {
+  const items = spansQuery.data.value ?? []
+  return [...items].sort((a, b) => {
+    const aMeta = a.id === a.spanId ? 0 : 1
+    const bMeta = b.id === b.spanId ? 0 : 1
+    if (aMeta !== bMeta) return aMeta - bMeta
+    const at = a.createdAt || ''
+    const bt = b.createdAt || ''
+    return at < bt ? -1 : at > bt ? 1 : 0
+  })
+})
+const loading = computed(() => spansQuery.isLoading.value)
+const error = computed(() => spansQuery.error.value?.message ?? '')
 
 const providersMap = computed(() => {
   const m = new Map<number, ProviderView>()
@@ -29,39 +44,18 @@ const selected = computed(
   () => spans.value.find(s => s.id === selectedId.value) ?? null,
 )
 
-async function fetchSpans() {
-  loading.value = true
-  error.value = ''
-  const { data, error: err } = await api.GET(
-    '/api/picotera/requests/{id}/spans',
-    { params: { path: { id: props.requestId } } },
-  )
-  loading.value = false
-  if (err) {
-    error.value = err.message ?? '加载请求失败'
-    return
-  }
-  const items = (data as RequestView[] | undefined) ?? []
-  const sorted = [...items].sort((a, b) => {
-    const aMeta = a.id === a.spanId ? 0 : 1
-    const bMeta = b.id === b.spanId ? 0 : 1
-    if (aMeta !== bMeta) return aMeta - bMeta
-    const at = a.createdAt || ''
-    const bt = b.createdAt || ''
-    return at < bt ? -1 : at > bt ? 1 : 0
-  })
-  spans.value = sorted
+function ensureSelectedRequest(sorted = spans.value) {
   if (!selectedId.value || !sorted.find(s => s.id === selectedId.value)) {
     const match = sorted.find(s => s.id === props.requestId)
     selectedId.value = match?.id ?? sorted[0]?.id ?? ''
   }
 }
 
-onMounted(fetchSpans)
 watch(() => props.requestId, () => {
   selectedId.value = ''
-  fetchSpans()
+  ensureSelectedRequest()
 })
+watch(spans, (sorted) => ensureSelectedRequest(sorted), { immediate: true })
 
 function formatTime(iso: string | undefined) {
   if (!iso) return '—'
@@ -220,7 +214,7 @@ watch(detailTabs, tabs => {
             </div>
           </button>
         </div>
-        <IconButton title="刷新" aria-label="刷新" @click="fetchSpans">
+        <IconButton title="刷新" aria-label="刷新" @click="spansQuery.refetch()">
           <Icon name="refresh" :size="13" />
         </IconButton>
       </div>

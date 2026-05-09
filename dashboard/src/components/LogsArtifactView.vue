@@ -1,38 +1,15 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { computed } from 'vue'
 import { StateText } from '@/ui'
-import type { ArtifactPayload, LogEntry } from './artifactTypes'
+import type { LogEntry } from './artifactTypes'
+import { useArtifact } from '@/composables/useArtifact'
 
 const props = defineProps<{ url?: string }>()
 
-const loading = ref(false)
-const error = ref('')
-const payload = ref<ArtifactPayload | null>(null)
-
-async function load() {
-  payload.value = null
-  error.value = ''
-  if (!props.url) return
-  loading.value = true
-  try {
-    const res = await fetch(props.url)
-    if (!res.ok) {
-      if (res.status === 404) {
-        error.value = 'artifact 不可用'
-      } else {
-        error.value = `加载失败 (${res.status})`
-      }
-      return
-    }
-    payload.value = await res.json()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '加载失败'
-  } finally {
-    loading.value = false
-  }
-}
-
-watch(() => props.url, load, { immediate: true })
+const artifactQuery = useArtifact(() => props.url)
+const payload = computed(() => artifactQuery.data.value ?? null)
+const loading = computed(() => artifactQuery.isLoading.value)
+const error = computed(() => artifactQuery.error.value?.message ?? '')
 
 const logs = computed<LogEntry[]>(() => payload.value?.logs ?? [])
 

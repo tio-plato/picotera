@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { ref, computed, watch } from 'vue'
+import { useMutation, useQueries, useQueryClient } from '@tanstack/vue-query'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import PricingEditor from '@/components/PricingEditor.vue'
 import type { ProviderView, ProviderModelEntry, ProviderEndpointView, EndpointView, Pricing } from '@/api'
+import {
+  fetchProviderModels,
+  invalidateProviderEndpoints,
+  listEndpoints,
+  listProviderEndpoints,
+  getProvider,
+  upsertProvider,
+} from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import {
   SidePanel,
   Button,
@@ -31,13 +40,10 @@ type Row = {
 
 const props = defineProps<{ providerId: number; providerName: string; onSave?: () => void }>()
 const emit = defineEmits<{ close: [] }>()
-const api = useApi()
+const queryClient = useQueryClient()
 
 const provider = ref<ProviderView | null>(null)
-const providerEndpoints = ref<ProviderEndpointView[]>([])
-const endpoints = ref<EndpointView[]>([])
 const rows = ref<Row[]>([])
-const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const newModelName = ref('')
@@ -49,6 +55,29 @@ const fetchSummary = ref<{ added: number; missing: MissingRow[]; removedHint: st
 const pendingDeletions = ref<Record<number, boolean>>({})
 
 let nextUid = 0
+
+const queries = useQueries({
+  queries: computed(() => [
+    { queryKey: queryKeys.providers.detail(props.providerId), queryFn: () => getProvider(props.providerId) },
+    {
+      queryKey: queryKeys.providerEndpoints.list({ providerId: props.providerId }),
+      queryFn: () => listProviderEndpoints(props.providerId),
+    },
+    { queryKey: queryKeys.endpoints.all, queryFn: listEndpoints },
+  ]),
+})
+const providerEndpoints = computed<ProviderEndpointView[]>(
+  () => (queries.value[1]?.data ?? []) as ProviderEndpointView[],
+)
+const endpoints = computed<EndpointView[]>(() => (queries.value[2]?.data ?? []) as EndpointView[])
+const loading = computed(() => queries.value.some((q) => q.isLoading))
+const fetchModelsMutation = useMutation({
+  mutationFn: fetchProviderModels,
+})
+const saveProviderMutation = useMutation({
+  mutationFn: upsertProvider,
+  onSuccess: () => invalidateProviderEndpoints(queryClient),
+})
 
 function entryToRow(entry: ProviderModelEntry): Row {
   return {
@@ -134,39 +163,23 @@ const groupedFetchSources = computed(() => {
   return { listModels, general }
 })
 
-async function load() {
-  loading.value = true
+function applyLoadedData() {
   error.value = ''
-  const [{ data: pData, error: pErr }, { data: peData, error: peErr }, { data: epData, error: epErr }] = await Promise.all([
-    api.GET('/api/picotera/providers/{id}', { params: { path: { id: props.providerId } } }),
-    api.GET('/api/picotera/provider-endpoints', { params: { query: { providerId: props.providerId } } }),
-    api.GET('/api/picotera/endpoints'),
-  ])
-  loading.value = false
-  if (pErr) {
-    error.value = pErr.message ?? '加载渠道失败'
-    return
-  }
-  if (peErr) {
-    error.value = peErr.message ?? '加载端点失败'
-    return
-  }
-  if (epErr) {
-    error.value = epErr.message ?? '加载端点列表失败'
-    return
-  }
-  provider.value = pData as ProviderView
-  providerEndpoints.value = (peData as ProviderEndpointView[]) ?? []
-  endpoints.value = (epData as EndpointView[]) ?? []
-  rows.value = rowsFromProvider(provider.value)
+  const pData = queries.value[0]?.data as ProviderView | undefined
+  if (!pData) return
+  provider.value = pData
+  rows.value = rowsFromProvider(pData)
   if (!fetchEndpointPath.value) {
     const { listModels, general } = groupedFetchSources.value
     fetchEndpointPath.value = listModels[0] ?? general[0] ?? ''
   }
 }
 
-onMounted(load)
-watch(() => props.providerId, load)
+watch(
+  () => [props.providerId, queries.value[0]?.data],
+  () => applyLoadedData(),
+  { immediate: true },
+)
 
 function addModel() {
   const name = newModelName.value.trim()
@@ -204,14 +217,18 @@ async function fetchFromUpstream() {
   error.value = ''
   fetchSummary.value = null
   pendingDeletions.value = {}
-  const { data, error: err } = await api.POST('/api/picotera/provider-endpoints/fetch-models', {
-    body: { providerId: props.providerId, endpointPath: fetchEndpointPath.value },
-  })
-  fetching.value = false
-  if (err) {
-    error.value = err.message ?? '拉取模型失败'
+  let data
+  try {
+    data = await fetchModelsMutation.mutateAsync({
+      providerId: props.providerId,
+      endpointPath: fetchEndpointPath.value,
+    })
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '拉取模型失败'
+    fetching.value = false
     return
   }
+  fetching.value = false
 
   const serverList = (data?.providerModels ?? []) as ProviderModelEntry[]
   const removedHint = (data?.removedModels ?? []) as string[]
@@ -295,14 +312,15 @@ async function save() {
     annotations: provider.value.annotations,
     disabled: provider.value.disabled,
   }
-  const { error: err } = await api.PUT('/api/picotera/providers', { body })
-  saving.value = false
-  if (err) {
-    error.value = err.message ?? '保存失败'
-    return
+  try {
+    await saveProviderMutation.mutateAsync(body)
+    props.onSave?.()
+    emit('close')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '保存失败'
+  } finally {
+    saving.value = false
   }
-  props.onSave?.()
-  emit('close')
 }
 </script>
 

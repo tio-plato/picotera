@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { computed } from 'vue'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useConfirm } from '@/composables/useConfirm'
-import { useApi } from '@/composables/useApi'
 import { useSidePanel } from '@/composables/useSidePanel'
 import type { ScriptView } from '@/api'
+import { deleteScript, invalidateScripts, listScripts, updateScript } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import ScriptForm from '@/components/ScriptForm.vue'
 import {
   Button,
@@ -20,45 +22,48 @@ import {
 
 const panel = useSidePanel()
 const confirm = useConfirm()
-const api = useApi()
+const queryClient = useQueryClient()
 
-const scripts = ref<ScriptView[]>([])
-const loading = ref(true)
+const scriptsQuery = useQuery({
+  queryKey: queryKeys.scripts.all,
+  queryFn: listScripts,
+})
+const scripts = computed(() => scriptsQuery.data.value ?? [])
+const loading = computed(() => scriptsQuery.isLoading.value)
 const count = computed(() => scripts.value.length)
-
-async function fetchScripts() {
-  loading.value = true
-  const { data, error } = await api.GET('/api/picotera/scripts')
-  if (!error && data) scripts.value = data as ScriptView[]
-  loading.value = false
-}
-
-onMounted(fetchScripts)
+const deleteScriptMutation = useMutation({
+  mutationFn: deleteScript,
+  onSuccess: () => invalidateScripts(queryClient),
+})
+const updateScriptMutation = useMutation({
+  mutationFn: (script: ScriptView) =>
+    updateScript(script.id, {
+      name: script.name,
+      source: script.source,
+      enabled: !script.enabled,
+    }),
+  onSuccess: () => invalidateScripts(queryClient),
+})
 
 function openCreate() {
-  panel.open(ScriptForm, { onSave: fetchScripts }, { key: 'script:new', width: '600px' })
+  panel.open(ScriptForm, {}, { key: 'script:new', width: '600px' })
 }
 
 function openEdit(s: ScriptView) {
-  panel.open(ScriptForm, { script: s, onSave: fetchScripts }, { key: `script:${s.id}`, width: '600px' })
+  panel.open(ScriptForm, { script: s }, { key: `script:${s.id}`, width: '600px' })
 }
 
 function confirmDelete(_event: Event, id: string) {
   confirm.require({
     message: `确定要删除脚本「${id}」吗？此操作不可撤销。`,
     accept: async () => {
-      await api.POST('/api/picotera/scripts/delete', { body: { id } })
-      fetchScripts()
+      await deleteScriptMutation.mutateAsync(id)
     },
   })
 }
 
 async function toggle(s: ScriptView) {
-  await api.PUT('/api/picotera/scripts/{id}', {
-    params: { path: { id: s.id } },
-    body: { name: s.name, source: s.source, enabled: !s.enabled },
-  })
-  fetchScripts()
+  await updateScriptMutation.mutateAsync(s)
 }
 </script>
 

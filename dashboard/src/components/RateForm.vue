@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { SidePanel, Button, Input, Field } from '@/ui'
 import type { ExchangeRateView } from '@/api'
-import { useExchangeRatesStore } from '@/stores/exchangeRates'
+import { useExchangeRates } from '@/composables/useExchangeRates'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{
@@ -10,7 +10,7 @@ const props = defineProps<{
 }>()
 
 const isEdit = !!props.rate
-const store = useExchangeRatesStore()
+const exchange = useExchangeRates()
 
 const form = ref({
   code: props.rate?.code ?? '',
@@ -25,10 +25,10 @@ async function submit() {
   saving.value = true
   error.value = ''
   try {
-    await store.upsert({
-      code: form.value.code.trim().toUpperCase(),
-      name: form.value.name.trim(),
-      symbol: form.value.symbol.trim(),
+    await exchange.upsert({
+      code: form.value.code,
+      name: form.value.name,
+      symbol: form.value.symbol,
       unitsPerUsd: Number(form.value.unitsPerUsd),
     })
     emit('close')

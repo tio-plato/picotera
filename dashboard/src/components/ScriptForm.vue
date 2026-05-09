@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { SidePanel, Button, Input, Field, CodeEditor } from '@/ui'
 import type { ScriptView } from '@/api'
+import { createScript, invalidateScripts, updateScript } from '@/api/client'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ script?: ScriptView; onSave?: () => void }>()
-const api = useApi()
+const queryClient = useQueryClient()
 
 const isEdit = !!props.script
 const form = ref({
@@ -16,23 +17,25 @@ const form = ref({
 })
 const saving = ref(false)
 const error = ref('')
+const saveMutation = useMutation({
+  mutationFn: (body: { name: string; source: string; enabled: boolean }) =>
+    isEdit ? updateScript(props.script!.id, body) : createScript(body),
+  onSuccess: () => invalidateScripts(queryClient),
+})
 
 async function submit() {
   saving.value = true
   error.value = ''
-  if (isEdit) {
-    const { error: err } = await api.PUT('/api/picotera/scripts/{id}', {
-      params: { path: { id: props.script!.id } },
-      body: { name: form.value.name, source: form.value.source, enabled: form.value.enabled },
+  try {
+    await saveMutation.mutateAsync({
+      name: form.value.name,
+      source: form.value.source,
+      enabled: form.value.enabled,
     })
-    if (err) error.value = err.message ?? '操作失败'
-    else { props.onSave?.(); emit('close') }
-  } else {
-    const { error: err } = await api.POST('/api/picotera/scripts', {
-      body: { name: form.value.name, source: form.value.source, enabled: form.value.enabled },
-    })
-    if (err) error.value = err.message ?? '操作失败'
-    else { props.onSave?.(); emit('close') }
+    props.onSave?.()
+    emit('close')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '操作失败'
   }
   saving.value = false
 }

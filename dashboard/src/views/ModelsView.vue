@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed } from 'vue'
+import { useMutation, useQueries, useQueryClient } from '@tanstack/vue-query'
 import { useConfirm } from '@/composables/useConfirm'
-import { useApi } from '@/composables/useApi'
 import type {
   ModelView,
   ProviderView,
@@ -9,6 +9,16 @@ import type {
   ProviderEndpointView,
   EndpointView,
 } from '@/api'
+import {
+  deleteModel,
+  invalidateModels,
+  listEndpoints,
+  listModels,
+  listProviderEndpoints,
+  listProviders,
+  upsertModel,
+} from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import ModelForm from '@/components/ModelForm.vue'
 import ModelPricingMatchPanel from '@/components/ModelPricingMatchPanel.vue'
 import ModelUpstreamsPanel, { type Upstream } from '@/components/ModelUpstreamsPanel.vue'
@@ -30,31 +40,30 @@ import {
 
 const panel = useSidePanel()
 const confirm = useConfirm()
-const api = useApi()
+const queryClient = useQueryClient()
 
-const models = ref<ModelView[]>([])
-const providers = ref<ProviderView[]>([])
-const providerEndpoints = ref<ProviderEndpointView[]>([])
-const endpoints = ref<EndpointView[]>([])
-const loading = ref(true)
+const queries = useQueries({
+  queries: [
+    { queryKey: queryKeys.models.all, queryFn: listModels },
+    { queryKey: queryKeys.providers.all, queryFn: listProviders },
+    { queryKey: queryKeys.providerEndpoints.list(), queryFn: () => listProviderEndpoints() },
+    { queryKey: queryKeys.endpoints.all, queryFn: listEndpoints },
+  ],
+})
+const models = computed(() => (queries.value[0].data ?? []) as ModelView[])
+const providers = computed(() => (queries.value[1].data ?? []) as ProviderView[])
+const providerEndpoints = computed(() => (queries.value[2].data ?? []) as ProviderEndpointView[])
+const endpoints = computed(() => (queries.value[3].data ?? []) as EndpointView[])
+const loading = computed(() => queries.value.some((q) => q.isLoading))
 const orphanExpanded = ref(false)
-
-async function fetchAll() {
-  loading.value = true
-  const [m, p, pe, e] = await Promise.all([
-    api.GET('/api/picotera/models'),
-    api.GET('/api/picotera/providers'),
-    api.GET('/api/picotera/provider-endpoints'),
-    api.GET('/api/picotera/endpoints'),
-  ])
-  if (!m.error && m.data) models.value = m.data as ModelView[]
-  if (!p.error && p.data) providers.value = p.data as ProviderView[]
-  if (!pe.error && pe.data) providerEndpoints.value = pe.data as ProviderEndpointView[]
-  if (!e.error && e.data) endpoints.value = e.data as EndpointView[]
-  loading.value = false
-}
-
-onMounted(fetchAll)
+const upsertModelMutation = useMutation({
+  mutationFn: upsertModel,
+  onSuccess: () => invalidateModels(queryClient),
+})
+const deleteModelMutation = useMutation({
+  mutationFn: deleteModel,
+  onSuccess: () => invalidateModels(queryClient),
+})
 
 const routablePathSet = computed(
   () =>
@@ -132,11 +141,11 @@ const orphanRows = computed<{ name: string; providerNames: string[] }[]>(() => {
 const count = computed(() => models.value.length)
 
 function openCreate() {
-  panel.open(ModelForm, { onSave: fetchAll }, { key: 'model:new' })
+  panel.open(ModelForm, {}, { key: 'model:new' })
 }
 
 function openEdit(m: ModelView) {
-  panel.open(ModelForm, { model: m, onSave: fetchAll }, { key: `model:${m.name}` })
+  panel.open(ModelForm, { model: m }, { key: `model:${m.name}` })
 }
 
 function openUpstreams(m: ModelView) {
@@ -157,7 +166,7 @@ function openUpstreams(m: ModelView) {
 function openPricingMatch(m: ModelView) {
   panel.open(
     ModelPricingMatchPanel,
-    { model: m, onSave: fetchAll },
+    { model: m },
     { key: `model-pricing-match:${m.name}` },
   )
 }
@@ -169,14 +178,13 @@ async function toggleDisabled(m: ModelView) {
     annotations: m.annotations ?? {},
     ...(m.pricing ? { pricing: m.pricing } : {}),
   }
-  const { error } = await api.PUT('/api/picotera/models', { body })
-  if (!error) fetchAll()
+  await upsertModelMutation.mutateAsync(body)
 }
 
 function openCreateFromOrphan(name: string) {
   panel.open(
     ModelForm,
-    { defaultName: name, lockedName: true, onSave: fetchAll },
+    { defaultName: name, lockedName: true },
     { key: `model:new:${name}` },
   )
 }
@@ -185,8 +193,7 @@ function confirmDelete(_event: Event, m: ModelView) {
   confirm.require({
     message: `确定要删除模型「${m.name}」吗？此操作不可撤销。`,
     accept: async () => {
-      await api.POST('/api/picotera/models/delete', { body: { name: m.name } })
-      fetchAll()
+      await deleteModelMutation.mutateAsync(m.name)
     },
   })
 }

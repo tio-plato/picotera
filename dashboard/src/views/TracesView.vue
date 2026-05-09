@@ -1,21 +1,28 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useApi } from '@/composables/useApi'
+import { useInfiniteQuery } from '@tanstack/vue-query'
 import { useCurrency } from '@/composables/useCurrency'
-import { useExchangeRatesStore } from '@/stores/exchangeRates'
+import { listRequestTraces } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import type { RequestTraceView, TraceCostView } from '@/api'
 import { AutoDataTable, Button, DataCard, Icon, IconButton, type AutoDataTableColumn } from '@/ui'
 
-const api = useApi()
 const router = useRouter()
 const currency = useCurrency()
-const exchange = useExchangeRatesStore()
 
-const traces = ref<RequestTraceView[]>([])
-const loading = ref(false)
-const hasMore = ref(false)
-const nextCursor = ref('')
+const tracesQuery = useInfiniteQuery({
+  queryKey: queryKeys.requestTraces.list({ limit: 30 }),
+  queryFn: ({ pageParam }) => listRequestTraces({ limit: 30, cursor: pageParam || undefined }),
+  initialPageParam: '',
+  getNextPageParam: (lastPage) =>
+    lastPage.pagination.hasMore ? lastPage.pagination.nextCursor ?? '' : undefined,
+})
+const traces = computed<RequestTraceView[]>(() =>
+  tracesQuery.data.value?.pages.flatMap((page) => page.items ?? []) ?? [],
+)
+const loading = computed(() => tracesQuery.isLoading.value || tracesQuery.isFetchingNextPage.value)
+const hasMore = computed(() => tracesQuery.hasNextPage.value)
 
 const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'lastRequestAt', header: '最近请求' },
@@ -28,38 +35,6 @@ const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'modelCosts', header: '模型成本', align: 'right' },
   { key: 'upstreamCosts', header: '上游成本', align: 'right' },
 ])
-
-async function fetchTraces(cursor?: string) {
-  loading.value = true
-  try {
-    const { data, error } = await api.GET('/api/picotera/request-traces', {
-      params: {
-        query: {
-          limit: 30,
-          cursor: cursor || undefined,
-        },
-      },
-    })
-    if (!error && data) {
-      if (cursor) {
-        traces.value.push(...(data.items ?? []))
-      } else {
-        traces.value = data.items ?? []
-      }
-      hasMore.value = data.pagination.hasMore
-      nextCursor.value = data.pagination.nextCursor ?? ''
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(async () => {
-  await exchange.fetch().catch(() => {
-    // Missing rates are reflected by native-currency cost display.
-  })
-  fetchTraces()
-})
 
 function rowKey(row: RequestTraceView) {
   return row.id
@@ -135,7 +110,7 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
         {{ traces.length }} 条追踪<span v-if="hasMore">（还有更多）</span>
       </span>
       <div class="flex items-center gap-2">
-        <IconButton title="刷新" aria-label="刷新" :disabled="loading" @click="fetchTraces()">
+        <IconButton title="刷新" aria-label="刷新" :disabled="loading" @click="tracesQuery.refetch()">
           <Icon name="refresh" :size="13" />
         </IconButton>
       </div>
@@ -249,7 +224,7 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
     </DataCard>
 
     <div v-if="hasMore" class="flex justify-center py-1">
-      <Button variant="ghost" :disabled="loading" @click="fetchTraces(nextCursor)">
+      <Button variant="ghost" :disabled="loading" @click="tracesQuery.fetchNextPage()">
         {{ loading ? '加载中…' : '加载更多' }}
       </Button>
     </div>

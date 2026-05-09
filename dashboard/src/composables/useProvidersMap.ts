@@ -1,32 +1,25 @@
-import { ref, computed } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { computed } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
+import { listProviders } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import type { ProviderView } from '@/api'
 
-const providers = ref<ProviderView[]>([])
-let loaded = false
-
-const providersMap = computed(() => {
-  const m = new Map<number, ProviderView>()
-  for (const p of providers.value) m.set(p.id, p)
-  return m
-})
-
 export function useProvidersMap() {
-  const api = useApi()
-
-  async function fetchProviders() {
-    if (loaded) return
-    loaded = true
-    const { data, error } = await api.GET('/api/picotera/providers')
-    if (!error && data) {
-      providers.value = data as ProviderView[]
-    }
-  }
+  const query = useQuery({
+    queryKey: queryKeys.providers.all,
+    queryFn: listProviders,
+  })
+  const providers = computed(() => query.data.value ?? [])
+  const providersMap = computed(() => {
+    const m = new Map<number, ProviderView>()
+    for (const p of providers.value) m.set(p.id, p)
+    return m
+  })
 
   function providerLabel(id: number): string {
     const p = providersMap.value.get(id)
     return p ? p.name : `#${id}`
   }
 
-  return { providers, providersMap, providerLabel, fetchProviders }
+  return { providers, providersMap, providerLabel, fetchProviders: query.refetch, query }
 }

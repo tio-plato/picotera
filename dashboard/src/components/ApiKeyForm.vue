@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useApi } from '@/composables/useApi'
+import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import { SidePanel, Button, IconButton, Input, Field, Icon } from '@/ui'
 import type { ApiKeyView } from '@/api'
+import { createApiKey, invalidateApiKeys, updateApiKey } from '@/api/client'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ apiKey?: ApiKeyView; onSave?: () => void }>()
-const api = useApi()
+const queryClient = useQueryClient()
 
 const isEdit = !!props.apiKey
 const form = ref({
@@ -18,6 +19,11 @@ const form = ref({
 })
 const saving = ref(false)
 const error = ref('')
+const saveMutation = useMutation({
+  mutationFn: (body: { name: string; key: string; disabled: boolean; annotations: Record<string, string> }) =>
+    isEdit ? updateApiKey(props.apiKey!.id, body) : createApiKey(body),
+  onSuccess: () => invalidateApiKeys(queryClient),
+})
 
 function generateKey(): string {
   const buf = new Uint8Array(16)
@@ -39,23 +45,12 @@ async function submit() {
     disabled: form.value.disabled,
     annotations: form.value.annotations,
   }
-  if (isEdit) {
-    const { error: err } = await api.PUT('/api/picotera/api-keys/{id}', {
-      params: { path: { id: props.apiKey!.id } },
-      body,
-    })
-    if (err) error.value = err.message ?? '操作失败'
-    else {
-      props.onSave?.()
-      emit('close')
-    }
-  } else {
-    const { error: err } = await api.POST('/api/picotera/api-keys', { body })
-    if (err) error.value = err.message ?? '操作失败'
-    else {
-      props.onSave?.()
-      emit('close')
-    }
+  try {
+    await saveMutation.mutateAsync(body)
+    props.onSave?.()
+    emit('close')
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '操作失败'
   }
   saving.value = false
 }

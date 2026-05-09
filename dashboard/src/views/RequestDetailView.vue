@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import RequestDetailsContent from '@/components/RequestDetailsContent.vue'
 import { useProvidersMap } from '@/composables/useProvidersMap'
@@ -7,7 +7,7 @@ import { Button, DataCard, Icon, StateText } from '@/ui'
 
 const route = useRoute()
 const router = useRouter()
-const { providers, fetchProviders } = useProvidersMap()
+const { providers } = useProvidersMap()
 
 const requestId = computed(() => {
   const value = route.params.requestId
@@ -15,10 +15,6 @@ const requestId = computed(() => {
 })
 const selectedRequestId = ref('')
 const displayRequestId = computed(() => selectedRequestId.value || requestId.value)
-
-onMounted(() => {
-  fetchProviders()
-})
 
 function backToRequests() {
   router.replace({ name: 'requests', query: route.query })
