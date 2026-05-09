@@ -58,8 +58,8 @@ async function submit() {
 
 <template>
   <SidePanel
-    :title="isEdit ? form.name || 'API Key' : '新增 API Key'"
-    :kicker="isEdit ? '编辑 API Key' : 'API Key'"
+    :title="isEdit ? form.name || '密钥' : '新增密钥'"
+    :kicker="isEdit ? '编辑密钥' : '密钥'"
     @close="emit('close')"
   >
     <form id="api-key-form" class="flex flex-col gap-4" @submit.prevent="submit">

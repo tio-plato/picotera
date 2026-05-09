@@ -59,7 +59,7 @@ async function submit() {
         <Input v-model="form.name" required placeholder="例如 openai" />
       </Field>
       <Field label="凭证">
-        <Input v-model="form.credentials" required placeholder="API Key 或密钥" />
+        <Input v-model="form.credentials" required placeholder="密钥或密钥" />
       </Field>
       <Field label="优先级">
         <Input v-model.number="form.priority" type="number" required />

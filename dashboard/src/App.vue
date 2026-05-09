@@ -22,7 +22,7 @@ const pageMeta = computed(() => {
     requests: { title: '请求', hint: '今天都怎么蹬的' },
     requestDetail: { title: '请求', hint: '今天都怎么蹬的' },
     traces: { title: '追踪', hint: '今天都蹬了哪些事' },
-    apiKeys: { title: 'API Key', hint: '今天用什么蹬' },
+    apiKeys: { title: '密钥', hint: '今天用什么蹬' },
     scripts: { title: '脚本', hint: '今天蹬点什么科技' },
     rates: { title: '汇率', hint: '今天都蹬什么钱' },
   }

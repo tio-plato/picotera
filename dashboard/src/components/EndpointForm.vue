@@ -84,7 +84,7 @@ async function submit() {
       </Field>
       <Field label="凭证解析">
         <Select v-model="form.credentialsResolver">
-          <option value="generalApiKey">通用 API Key</option>
+          <option value="generalApiKey">通用密钥</option>
           <option value="bearerToken">Bearer Token</option>
           <option value="xApiKey">X-Api-Key</option>
           <option value="searchKey">Search Key (?key=)</option>

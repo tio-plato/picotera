@@ -62,7 +62,7 @@ function openEdit(k: ApiKeyView) {
 
 function confirmDelete(_event: Event, k: ApiKeyView) {
   confirm.require({
-    message: `确定要删除 API Key「${k.name || k.id}」吗？此操作不可撤销。`,
+    message: `确定要删除密钥「${k.name || k.id}」吗？此操作不可撤销。`,
     accept: async () => {
       await deleteApiKeyMutation.mutateAsync(k.id)
     },
@@ -90,11 +90,11 @@ async function copyKey(k: ApiKeyView) {
 <template>
   <div class="flex flex-col gap-3.5">
     <div class="flex items-center justify-between gap-3">
-      <span class="text-xs text-ink-faint tabular-nums">{{ count }} 个 API Key</span>
+      <span class="text-xs text-ink-faint tabular-nums">{{ count }} 个密钥</span>
       <div class="flex items-center gap-2">
         <Button @click="openCreate">
           <Icon name="plus" :size="14" :stroke-width="2.2" />
-          <span>新增 API Key</span>
+          <span>新增密钥</span>
         </Button>
       </div>
     </div>
@@ -162,6 +162,6 @@ async function copyKey(k: ApiKeyView) {
         </tbody>
       </DataTable>
     </DataCard>
-    <StateText v-else>暂无 API Key，点击右上角按钮新增</StateText>
+    <StateText v-else>暂无密钥，点击右上角按钮新增</StateText>
   </div>
 </template>

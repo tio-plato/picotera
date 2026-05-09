@@ -69,14 +69,14 @@ const rangeOptions: { value: OverviewRange; label: string }[] = [
 ]
 const distributionDimensionOptions: { value: OverviewDimension; label: string }[] = [
   { value: 'provider', label: '渠道' },
-  { value: 'apiKey', label: 'API Key' },
+  { value: 'apiKey', label: '密钥' },
   { value: 'model', label: '请求模型' },
   { value: 'upstreamModel', label: '上游模型' },
 ]
 const seriesDimensionOptions: { value: OverviewSeriesDimension; label: string }[] = [
   { value: 'none', label: '全部' },
   { value: 'provider', label: '渠道' },
-  { value: 'apiKey', label: 'API Key' },
+  { value: 'apiKey', label: '密钥' },
   { value: 'model', label: '请求模型' },
   { value: 'upstreamModel', label: '上游模型' },
 ]
@@ -550,7 +550,7 @@ function formatCurrencyCompact(v: number, code: string) {
         </Select>
       </div>
       <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">API Key</span>
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">密钥</span>
         <Select v-model.number="filters.apiKeyId" size="sm">
           <option :value="0">全部</option>
           <option v-for="k in apiKeys" :key="k.id" :value="k.id">{{ k.name }}</option>
