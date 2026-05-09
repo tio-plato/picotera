@@ -469,8 +469,28 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Non-200: record + try again.
 		cancel()
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		decoded, derr := decodedBody(resp)
+		if derr != nil {
+			_ = resp.Body.Close()
+			errMsg := "decode upstream response: " + derr.Error()
+			h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, int32(resp.StatusCode), errMsg)
+			lastErr = fmt.Errorf("%s", errMsg)
+			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
+			currentRetryCount++
+			totalAttemptCount++
+			continue
+		}
+		respBody, rerr := io.ReadAll(decoded.Body)
+		_ = decoded.Body.Close()
+		if rerr != nil {
+			errMsg := "decode upstream response: " + rerr.Error()
+			h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, int32(resp.StatusCode), errMsg)
+			lastErr = fmt.Errorf("%s", errMsg)
+			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
+			currentRetryCount++
+			totalAttemptCount++
+			continue
+		}
 		h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody)
 		errMsg := string(respBody)
 		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
@@ -613,9 +633,34 @@ func (h *gatewayHandler) streamSuccess(
 		}
 	}
 	metaRespHeader := w.Header().Clone()
-	w.WriteHeader(http.StatusOK)
 
-	extractor := NewResponseExtractor(resp.Body, resp.Header.Get("Content-Type"), upstreamStartTime)
+	responseWriter := newLockedResponseWriter(w)
+	internalReader, derr := decodedInternalResponseReader(resp, responseWriter)
+	if derr != nil {
+		cancel()
+		h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, int32(resp.StatusCode), "decode upstream response: "+derr.Error())
+		respBody := writeGatewayError(w, http.StatusBadGateway, "decode upstream response: "+derr.Error(), errorx.UpstreamError.Error())
+		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+			ID:           metaID,
+			StatusCode:   pgtype.Int4{Int32: http.StatusBadGateway, Valid: true},
+			ErrorMessage: pgtype.Text{String: "decode upstream response: " + derr.Error(), Valid: true},
+			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(gatewayStart).Milliseconds()), Valid: true},
+			Status:       db.RequestStatusFailed,
+			CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
+		})
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, metaLogs)
+		_ = resp.Body.Close()
+		return
+	}
+	internalBody := internalReader.Body
+	w.WriteHeader(http.StatusOK)
+	if err := internalReader.StartClientWrite(); err != nil {
+		cancel()
+		closeDecodedInternalResponseReader(internalBody, resp)
+		return
+	}
+
+	extractor := NewResponseExtractor(internalBody, resp.Header.Get("Content-Type"), upstreamStartTime)
 	reader := newIdleTimeoutReader(extractor, h.config.GatewayReadTimeout, cancel)
 	flusher, canFlush := w.(http.Flusher)
 	buf := make([]byte, 32*1024)
@@ -623,10 +668,16 @@ func (h *gatewayHandler) streamSuccess(
 	for {
 		n, readErr := reader.Read(buf)
 		if n > 0 {
-			w.Write(buf[:n])
+			if internalBody == resp.Body {
+				w.Write(buf[:n])
+			}
 			captureBuf.Write(buf[:n])
 			if canFlush {
-				flusher.Flush()
+				if internalBody != resp.Body {
+					responseWriter.Flush()
+				} else {
+					flusher.Flush()
+				}
 			}
 		}
 		if readErr != nil {
@@ -634,7 +685,7 @@ func (h *gatewayHandler) streamSuccess(
 		}
 	}
 	cancel()
-	resp.Body.Close()
+	closeDecodedInternalResponseReader(internalBody, resp)
 
 	respBytes := captureBuf.Bytes()
 	var aggregated *artifacts.AggregatedResponse

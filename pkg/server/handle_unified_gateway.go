@@ -573,8 +573,28 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			// Non-200 — try the next candidate. The error body stays in the
 			// upstream's native format because we never bridge it.
 			cancel()
-			respBody, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			decoded, derr := decodedBody(resp)
+			if derr != nil {
+				_ = resp.Body.Close()
+				errMsg := "decode upstream response: " + derr.Error()
+				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, int32(resp.StatusCode), errMsg)
+				lastErr = fmt.Errorf("%s", errMsg)
+				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
+				currentRetryCount++
+				totalAttemptCount++
+				continue
+			}
+			respBody, rerr := io.ReadAll(decoded.Body)
+			_ = decoded.Body.Close()
+			if rerr != nil {
+				errMsg := "decode upstream response: " + rerr.Error()
+				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, int32(resp.StatusCode), errMsg)
+				lastErr = fmt.Errorf("%s", errMsg)
+				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
+				currentRetryCount++
+				totalAttemptCount++
+				continue
+			}
 			h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody)
 			errMsg := string(respBody)
 			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
@@ -913,7 +933,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		if lower == "content-length" {
 			continue
 		}
-		if bridging && (lower == "content-type" || lower == "transfer-encoding") {
+		if bridging && (lower == "content-type" || lower == "transfer-encoding" || lower == "content-encoding") {
 			continue
 		}
 		for _, value := range values {
@@ -924,18 +944,51 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	upstreamCT := resp.Header.Get("Content-Type")
 	streamMode := strings.Contains(strings.ToLower(upstreamCT), "text/event-stream")
 
-	// Extractor reads upstream bytes and forwards them; metrics come from
-	// upstream wire format regardless of bridging.
-	extractor := NewResponseExtractor(resp.Body, upstreamCT, a.upstreamStartTime)
+	clientCT := upstreamCT
+	if bridging {
+		if streamMode {
+			clientCT = clientStreamContentType(a.srcFormat, upstreamCT)
+		} else {
+			clientCT = "application/json"
+		}
+	}
+
+	if clientCT != "" {
+		w.Header().Set("Content-Type", clientCT)
+	}
+
+	responseWriter := newLockedResponseWriter(w)
+	clientWriter := io.Discard
+	if !bridging {
+		clientWriter = responseWriter
+	}
+	internalReader, derr := decodedInternalResponseReader(resp, clientWriter)
+	if derr != nil {
+		cancel()
+		h.failUnifiedSuccess(a, "decode upstream response: "+derr.Error())
+		_ = resp.Body.Close()
+		return
+	}
+	internalBody := internalReader.Body
+	w.WriteHeader(http.StatusOK)
+	if err := internalReader.StartClientWrite(); err != nil {
+		cancel()
+		closeDecodedInternalResponseReader(internalBody, resp)
+		return
+	}
+	metaRespHeader := w.Header().Clone()
+
+	// Extractor reads decoded upstream bytes and forwards them; metrics come
+	// from the upstream's native response format regardless of bridging.
+	extractor := NewResponseExtractor(internalBody, upstreamCT, a.upstreamStartTime)
 
 	var upstreamCapture bytes.Buffer
-	teedUpstream := llmbridge.NewUpstreamTee(asReadCloser(extractor, resp.Body), &upstreamCapture)
+	teedUpstream := llmbridge.NewUpstreamTee(asReadCloser(extractor, internalBody), &upstreamCapture)
 
 	// clientReader produces the bytes we will actually write to the client
 	// (and into the meta-artifact buffer). When bridging it's the bridge
 	// output; otherwise it's the upstream tee directly.
 	var clientReader io.ReadCloser
-	clientCT := upstreamCT
 	if bridging {
 		if streamMode {
 			br, err := llmbridge.BridgeStream(ctx, a.srcFormat, a.upFormat, teedUpstream, upstreamCT, a.outboundProfile)
@@ -945,7 +998,6 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 				return
 			}
 			clientReader = br
-			clientCT = clientStreamContentType(a.srcFormat, upstreamCT)
 		} else {
 			// Non-stream: drain the whole upstream JSON body, bridge once,
 			// then expose the bridged bytes as a reader.
@@ -956,24 +1008,17 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 				return
 			}
 			_ = teedUpstream.Close()
-			bridged, ct, berr := llmbridge.BridgeNonStream(ctx, a.srcFormat, a.upFormat, upstreamBody, resp.Header, a.outboundProfile)
+			bridged, _, berr := llmbridge.BridgeNonStream(ctx, a.srcFormat, a.upFormat, upstreamBody, resp.Header, a.outboundProfile)
 			if berr != nil {
 				cancel()
 				h.failUnifiedSuccess(a, berr.Error())
 				return
 			}
-			clientCT = ct
 			clientReader = io.NopCloser(bytes.NewReader(bridged))
 		}
 	} else {
 		clientReader = teedUpstream
 	}
-
-	if clientCT != "" {
-		w.Header().Set("Content-Type", clientCT)
-	}
-	w.WriteHeader(http.StatusOK)
-	metaRespHeader := w.Header().Clone()
 
 	idleReader := newIdleTimeoutReader(clientReader, h.config.GatewayReadTimeout, cancel)
 	flusher, canFlush := w.(http.Flusher)
@@ -982,10 +1027,16 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	for {
 		n, readErr := idleReader.Read(buf)
 		if n > 0 {
-			w.Write(buf[:n])
+			if bridging || internalBody == resp.Body {
+				w.Write(buf[:n])
+			}
 			clientCapture.Write(buf[:n])
 			if canFlush {
-				flusher.Flush()
+				if !bridging && internalBody != resp.Body {
+					responseWriter.Flush()
+				} else {
+					flusher.Flush()
+				}
 			}
 		}
 		if readErr != nil {
@@ -994,7 +1045,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	}
 	cancel()
 	_ = clientReader.Close()
-	_ = resp.Body.Close()
+	closeDecodedInternalResponseReader(internalBody, resp)
 
 	upstreamBytes := upstreamCapture.Bytes()
 	clientBytes := clientCapture.Bytes()

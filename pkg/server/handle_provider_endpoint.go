@@ -19,6 +19,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/sirupsen/logrus"
 )
 
 func (s *Server) handleListProviderEndpoints(ctx context.Context, input *contract.ListProviderEndpointsRequest) (*contract.ListProviderEndpointsResponse, error) {
@@ -100,14 +101,19 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 	if err != nil {
 		return nil, huma.Error502BadGateway("upstream request failed: " + err.Error())
 	}
-	defer resp.Body.Close()
 
+	decoded, err := decodedBody(resp)
+	if err != nil {
+		_ = resp.Body.Close()
+		return nil, huma.Error502BadGateway("decode upstream response: " + err.Error())
+	}
+	defer decoded.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		body, _ := io.ReadAll(io.LimitReader(decoded.Body, 512))
 		return nil, huma.Error502BadGateway(fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, string(body)))
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	body, err := io.ReadAll(io.LimitReader(decoded.Body, 1024*1024))
 	if err != nil {
 		return nil, huma.Error502BadGateway("failed to read upstream response: " + err.Error())
 	}
@@ -185,6 +191,7 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 func parseModelsResponse(body []byte) ([]string, error) {
 	var raw any
 	if err := json.Unmarshal(body, &raw); err != nil {
+		logrus.WithField("body", string(body)).Warn("could not parse models from upstream response, invalid json")
 		return nil, fmt.Errorf("invalid JSON response: %w", err)
 	}
 
@@ -200,6 +207,8 @@ func parseModelsResponse(body []byte) ([]string, error) {
 	if models := extractFieldFromTopLevel(raw, "name"); len(models) > 0 {
 		return models, nil
 	}
+
+	logrus.WithField("body", string(body)).Warn("could not parse models from upstream response")
 
 	return nil, fmt.Errorf("could not parse models from upstream response")
 }

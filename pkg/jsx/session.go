@@ -166,7 +166,7 @@ func (s *Session) RunSortHook(in SortInput) ([]Candidate, error) {
 	}
 	expr := fmt.Sprintf(`(async () => {
 		const context = %s;
-		const r = await picotera.hooks.sortProviders.runWaterfall(context, { providers: context.providers });
+		const r = await picotera.hooks.sortProviders.runWaterfall(context, { providers: JSON.parse(JSON.stringify(context.providers)) });
 		if (r === context || typeof r === 'undefined') return null;
 		return JSON.stringify(r);
 	})()`, lit)
