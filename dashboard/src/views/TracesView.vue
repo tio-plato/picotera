@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
-import { useCurrency } from '@/composables/useCurrency'
+import { useCurrencyContext } from '@/composables/useCurrencyContext'
 import { listRequestTraces } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import type { RequestTraceView, TraceCostView } from '@/api'
@@ -10,7 +10,7 @@ import { AutoDataTable, Button, DataCard, Icon, IconButton, type AutoDataTableCo
 
 const router = useRouter()
 const route = useRoute()
-const currency = useCurrency()
+const currency = useCurrencyContext()
 const pageSize = 30
 const initialCursor = typeof route.query.cursor === 'string' ? route.query.cursor : ''
 const cursorIndex = ref(initialCursor ? 1 : 0)

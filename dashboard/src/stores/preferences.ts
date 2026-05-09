@@ -5,6 +5,7 @@ import { ref, watch } from 'vue'
 export type Theme = 'light' | 'solarized-light' | 'solarized-dark' | 'dark'
 export type PanelMode = 'auto' | 'right' | 'modal'
 export type FontSize = 'tall' | 'grande' | 'venti' | 'trenta'
+export type OverviewCurrencyOverride = 'original' | string | null
 
 const STORAGE_KEY = 'picotera.preferences'
 
@@ -13,6 +14,7 @@ const DEFAULTS = {
   panelMode: 'auto' as PanelMode,
   fontSize: 'tall' as FontSize,
   displayCurrency: null as string | null,
+  overviewCurrencyOverride: null as OverviewCurrencyOverride,
 }
 
 const THEME_VALUES: Theme[] = ['light', 'solarized-light', 'solarized-dark', 'dark']
@@ -39,6 +41,9 @@ function load() {
       displayCurrency: typeof parsed.displayCurrency === 'string' && parsed.displayCurrency.length > 0
         ? parsed.displayCurrency
         : DEFAULTS.displayCurrency,
+      overviewCurrencyOverride: typeof parsed.overviewCurrencyOverride === 'string' && parsed.overviewCurrencyOverride.length > 0
+        ? parsed.overviewCurrencyOverride
+        : DEFAULTS.overviewCurrencyOverride,
     }
   } catch {
     return { ...DEFAULTS }
@@ -51,6 +56,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const panelMode = ref<PanelMode>(initial.panelMode)
   const fontSize = ref<FontSize>(initial.fontSize)
   const displayCurrency = ref<string | null>(initial.displayCurrency)
+  const overviewCurrencyOverride = ref<OverviewCurrencyOverride>(initial.overviewCurrencyOverride)
 
   function apply() {
     const root = document.documentElement
@@ -69,6 +75,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
           panelMode: panelMode.value,
           fontSize: fontSize.value,
           displayCurrency: displayCurrency.value,
+          overviewCurrencyOverride: overviewCurrencyOverride.value,
         }),
       )
     } catch {
@@ -76,7 +83,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
-  watch([theme, panelMode, fontSize, displayCurrency], () => {
+  watch([theme, panelMode, fontSize, displayCurrency, overviewCurrencyOverride], () => {
     apply()
     persist()
   })
@@ -85,5 +92,5 @@ export const usePreferencesStore = defineStore('preferences', () => {
     apply()
   }
 
-  return { theme, panelMode, fontSize, displayCurrency, init }
+  return { theme, panelMode, fontSize, displayCurrency, overviewCurrencyOverride, init }
 })

@@ -19,11 +19,13 @@ import type {
   OverviewSeriesPointView,
 } from '@/api'
 import { DataCard, MoneyDisplay, SegmentedControl, Select, StateText } from '@/ui'
-import { useCurrency } from '@/composables/useCurrency'
+import { provideCurrencyContext, useCurrencyContext } from '@/composables/useCurrencyContext'
+import { usePreferencesStore } from '@/stores/preferences'
 import OverviewDonut from '@/components/charts/OverviewDonut.vue'
 import OverviewAreaStack from '@/components/charts/OverviewAreaStack.vue'
 import OverviewSankey, { type SankeyLink, type SankeyNode } from '@/components/charts/OverviewSankey.vue'
 
+const prefs = usePreferencesStore()
 const filters = reactive({
   range: '1d' as OverviewRange,
   apiKeyId: 0,
@@ -45,8 +47,20 @@ const sankeyVariantOptions: { value: SankeyVariant; label: string }[] = [
   { value: 'costOut',          label: '费用请求' },
 ]
 
-const ccy = useCurrency()
+const parentCurrency = useCurrencyContext()
+const overviewCurrencyValue = computed({
+  get: () => prefs.overviewCurrencyOverride ?? '',
+  set: (v: string) => {
+    prefs.overviewCurrencyOverride = v ? v : null
+  },
+})
+const overviewTargetCurrency = computed(() => {
+  if (prefs.overviewCurrencyOverride === 'original') return null
+  return prefs.overviewCurrencyOverride ?? parentCurrency.targetCurrency.value
+})
+const ccy = provideCurrencyContext(overviewTargetCurrency)
 const isOriginalMode = computed(() => ccy.targetCurrency.value == null)
+const overviewCurrencyRates = computed(() => ccy.rates.value)
 
 const rangeOptions: { value: OverviewRange; label: string }[] = [
   { value: '1d', label: '24 小时' },
@@ -509,6 +523,16 @@ function formatCurrencyCompact(v: number, code: string) {
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">时间范围</span>
         <SegmentedControl v-model="filters.range" :options="rangeOptions" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">货币</span>
+        <Select v-model="overviewCurrencyValue" size="sm">
+          <option value="">跟随设置</option>
+          <option value="original">原始货币</option>
+          <option v-for="r in overviewCurrencyRates" :key="r.code" :value="r.code">
+            {{ r.code }} {{ r.symbol }} · {{ r.name }}
+          </option>
+        </Select>
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">API Key</span>

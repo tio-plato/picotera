@@ -5,9 +5,13 @@ import AppSidebar from '@/components/AppSidebar.vue'
 import SidePanelHost from '@/components/SidePanelHost.vue'
 import ConfirmDialog from '@/ui/ConfirmDialog.vue'
 import { useExchangeRates } from '@/composables/useExchangeRates'
+import { provideCurrencyContext } from '@/composables/useCurrencyContext'
+import { usePreferencesStore } from '@/stores/preferences'
 
 const route = useRoute()
+const prefs = usePreferencesStore()
 useExchangeRates()
+provideCurrencyContext(computed(() => prefs.displayCurrency ?? null))
 
 const pageMeta = computed(() => {
   const map: Record<string, { title: string; hint: string }> = {

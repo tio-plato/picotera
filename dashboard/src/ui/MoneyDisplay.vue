@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useCurrency } from '@/composables/useCurrency'
+import { useCurrencyContext } from '@/composables/useCurrencyContext'
 
 const props = withDefaults(
   defineProps<{
@@ -14,7 +14,7 @@ const props = withDefaults(
   { fallback: '—' },
 )
 
-const ccy = useCurrency()
+const ccy = useCurrencyContext()
 
 const display = computed(() => {
   if (props.amount == null || !props.currency) return null
