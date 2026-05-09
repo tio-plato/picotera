@@ -11,16 +11,16 @@ useExchangeRates()
 
 const pageMeta = computed(() => {
   const map: Record<string, { title: string; hint: string }> = {
-    overview: { title: '概览', hint: '过去窗口内的请求、token、费用与追踪一览' },
-    providers: { title: '渠道', hint: '上游模型提供方与凭证' },
-    models: { title: '模型', hint: '对外暴露的模型标识' },
-    endpoints: { title: '端点', hint: 'HTTP 入口与请求形状' },
-    requests: { title: '请求', hint: '推理请求历史与状态' },
-    requestDetail: { title: '请求', hint: '推理请求详情与上下游调用' },
-    traces: { title: '追踪', hint: '按 parent span 聚合请求历史' },
-    apiKeys: { title: 'API Key', hint: '客户端调用网关的访问凭证' },
-    scripts: { title: '脚本', hint: '自定义钩子脚本与执行逻辑' },
-    rates: { title: '汇率', hint: '管理币种与换算' },
+    overview: { title: '概览', hint: '今天蹬了多少刀' },
+    providers: { title: '渠道', hint: '今天上哪去蹬' },
+    models: { title: '模型', hint: '今天都蹬些什么' },
+    endpoints: { title: '端点', hint: '今天都用什么格式蹬' },
+    requests: { title: '请求', hint: '今天都怎么蹬的' },
+    requestDetail: { title: '请求', hint: '今天都怎么蹬的' },
+    traces: { title: '追踪', hint: '今天都蹬了哪些事' },
+    apiKeys: { title: 'API Key', hint: '今天用什么蹬' },
+    scripts: { title: '脚本', hint: '今天蹬点什么科技' },
+    rates: { title: '汇率', hint: '今天都蹬什么钱' },
   }
   return map[route.name as string] ?? { title: '', hint: '' }
 })
