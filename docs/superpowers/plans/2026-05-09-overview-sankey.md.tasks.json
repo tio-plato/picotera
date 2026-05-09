@@ -1,0 +1,54 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-09-overview-sankey.md",
+  "tasks": [
+    {
+      "id": 10,
+      "subject": "Task 1: Backend SQL queries + sqlc regeneration",
+      "status": "pending",
+      "description": "**Goal:** Add three new queries to `db/queries/overview.sql` and regenerate `pkg/db/`.\n\n**Files:**\n- Modify: `db/queries/overview.sql`\n- Regenerate: `pkg/db/overview.sql.go`, `pkg/db/querier.go`, `pkg/db/models.go`\n\n**Acceptance Criteria:**\n- sqlc generate runs cleanly\n- new queriers exposed\n- go build ./... succeeds\n\n**Verify:** `sqlc generate && go build ./...`\n\n```json:metadata\n{\"files\":[\"db/queries/overview.sql\",\"pkg/db/overview.sql.go\",\"pkg/db/querier.go\",\"pkg/db/models.go\"],\"verifyCommand\":\"sqlc generate && go build ./...\",\"acceptanceCriteria\":[\"sqlc generate clean\",\"new queriers exposed\",\"go build succeeds\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 2: Contract types + handler + helper tests",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Add `OverviewTokenBreakdownView`/`OverviewBreakdownRowView` to contract, write `mergeBreakdown` helper with tests, wire summary handler.\n\n**Files:**\n- Modify: `pkg/contract/overview.go`\n- Create: `pkg/server/overview_breakdown.go`\n- Modify: `pkg/server/handle_overview.go`\n- Modify: `pkg/server/handle_overview_test.go`\n\n**Acceptance Criteria:**\n- Contract has new types with spec JSON tags\n- mergeBreakdown joins without double-count\n- Four merge tests pass\n- Handler wires new queries\n\n**Verify:** `go test ./... && go vet ./...`\n\n```json:metadata\n{\"files\":[\"pkg/contract/overview.go\",\"pkg/server/overview_breakdown.go\",\"pkg/server/handle_overview.go\",\"pkg/server/handle_overview_test.go\"],\"verifyCommand\":\"go test ./... && go vet ./...\",\"acceptanceCriteria\":[\"TokenBreakdown+Breakdown on contract\",\"mergeBreakdown joins without double-count\",\"handler wires new queries\",\"four merge tests pass\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 3: Regenerate OpenAPI + dashboard TS types",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "**Goal:** Sync the dashboard's typed client with new contract.\n\n**Files:**\n- Modify: `openapi.yaml`\n- Modify: `dashboard/src/openapi-types.d.ts`\n\n**Verify:** `mise run openapi && pnpm --dir dashboard generate-openapi && pnpm --dir dashboard type-check`\n\n```json:metadata\n{\"files\":[\"openapi.yaml\",\"dashboard/src/openapi-types.d.ts\"],\"verifyCommand\":\"mise run openapi && pnpm --dir dashboard generate-openapi && pnpm --dir dashboard type-check\",\"acceptanceCriteria\":[\"openapi.yaml has new fields\",\"TS types regenerated\",\"type-check passes\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 4: OverviewSankey.vue component",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** Reusable VisSankey wrapper.\n\n**Files:**\n- Create: `dashboard/src/components/charts/OverviewSankey.vue`\n\n**Verify:** `pnpm --dir dashboard type-check && pnpm --dir dashboard lint`\n\n```json:metadata\n{\"files\":[\"dashboard/src/components/charts/OverviewSankey.vue\"],\"verifyCommand\":\"pnpm --dir dashboard type-check && pnpm --dir dashboard lint\",\"acceptanceCriteria\":[\"VisSankey wrapper renders\",\"tooltips render\",\"layer-based coloring\",\"h-72 height\",\"lint+type-check clean\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 5: Token 构成 variant in OverviewView",
+      "status": "pending",
+      "blockedBy": [15],
+      "description": "**Goal:** Insert Sankey block + tokenComposition variant; stub other variants.\n\n**Files:**\n- Modify: `dashboard/src/views/OverviewView.vue`\n\n**Verify:** `pnpm --dir dashboard type-check && pnpm --dir dashboard lint`; manual via `mise run web`\n\n```json:metadata\n{\"files\":[\"dashboard/src/views/OverviewView.vue\"],\"verifyCommand\":\"pnpm --dir dashboard type-check && pnpm --dir dashboard lint\",\"acceptanceCriteria\":[\"section above 分布统计\",\"5-option segmented control\",\"tokenComposition renders\",\"loading/error/empty parity\",\"other variants stubbed\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 6: Token 上游/下游 variants with Top-8",
+      "status": "pending",
+      "blockedBy": [13],
+      "description": "**Goal:** Token-rooted dimension Sankeys with per-layer Top 8.\n\n**Files:**\n- Modify: `dashboard/src/views/OverviewView.vue`\n\n**Verify:** `pnpm --dir dashboard type-check && pnpm --dir dashboard lint`\n\n```json:metadata\n{\"files\":[\"dashboard/src/views/OverviewView.vue\"],\"verifyCommand\":\"pnpm --dir dashboard type-check && pnpm --dir dashboard lint\",\"acceptanceCriteria\":[\"tokensIn 5 layers\",\"tokensOut reverse\",\"Top-8 per layer\",\"未知 for empty\",\"其他 for tail\",\"root sum == totalTokens\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 7: 费用上游/下游 variants with multi-currency",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** Cost-rooted dimension Sankeys with target-mode + per-currency original-mode.\n\n**Files:**\n- Modify: `dashboard/src/views/OverviewView.vue`\n\n**Verify:** `pnpm --dir dashboard type-check && pnpm --dir dashboard lint && pnpm --dir dashboard build`\n\n```json:metadata\n{\"files\":[\"dashboard/src/views/OverviewView.vue\"],\"verifyCommand\":\"pnpm --dir dashboard type-check && pnpm --dir dashboard lint && pnpm --dir dashboard build\",\"acceptanceCriteria\":[\"target mode single chart\",\"original mode per-currency\",\"empty state correct\",\"formatCurrencyCompact used\",\"build succeeds\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-09T00:00:00Z"
+}
