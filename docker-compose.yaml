@@ -5,7 +5,7 @@ services:
       - 34051:6379
 
   postgres:
-    image: docker.io/library/postgres:17.5
+    image: timescale/timescaledb:2.26.4-pg17
     ports:
       - 34052:5432
     environment:
