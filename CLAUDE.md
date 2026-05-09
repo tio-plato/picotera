@@ -94,7 +94,8 @@ Hooks are run as priority-sorted waterfalls (higher priority first); each tap ma
 - **Adding an API operation**: Define operation + request/response types in `pkg/contract/`, add handler method on `*Server` in `pkg/server/`, register in `registerOperations()`. After the change, regenerate `openapi.yaml` so the dashboard's typed client picks it up.
 - **Config**: All settings via env vars with `PICOTERA_` prefix (e.g., `PICOTERA_DATABASE_URL`, `PICOTERA_PORT`). Default port is 9898.
 - **API base path**: All management operations are under `/api/picotera`.
-- **Database**: PostgreSQL 17.5 on port 34052 via docker-compose. Migrations auto-run on startup. A KeyDB (Redis-compatible) service runs on 34051 but is not yet consumed by the backend.
+- **Database**: TimescaleDB (`timescale/timescaledb:2.26.4-pg17` image) on port 34052 via docker-compose. Migrations auto-run on startup. A KeyDB (Redis-compatible) service on 34051 and a MinIO instance on 34050 (bucket `picotera-artifacts`, bootstrapped by `minio-init`) run alongside; KeyDB is not yet consumed by the backend, MinIO backs the artifact sink (`pkg/artifacts/`).
+- **`request` is a TimescaleDB hypertable** (migration 017): partitioned by `created_at` with composite primary key `(id, created_at)`. `created_at` no longer has a default — every insert/update/delete must supply it (see the `id_created_at` / `created_at` args in `db/queries/request.sql`). Cursor pagination tuples are `(created_at, id)`, not just `id`.
 
 ### Unified generation routes
 
@@ -110,11 +111,11 @@ These are NOT rows in the `endpoint` table — operators only configure the unde
 
 ### Database Schema
 
-Eight tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request`, `script`. Uses JSONB for flexible fields (provider models, annotations). Upsert pattern via `ON CONFLICT DO UPDATE`.
+Nine tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request` (hypertable), `script`, `traces`. Uses JSONB for flexible fields (provider models, annotations). Upsert pattern via `ON CONFLICT DO UPDATE`.
 
 ## Dashboard
 
-Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pinia + Vue Router + TypeScript. Located in `dashboard/`. Package manager is pnpm (workspace root at repo root). Icons via `@tabler/icons-vue`; floating/popover positioning via `@floating-ui/vue`.
+Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pinia + Vue Router + TypeScript + `@tanstack/vue-query` for data fetching. Located in `dashboard/`. Package manager is pnpm (workspace root at repo root). Icons via `@tabler/icons-vue`; floating/popover positioning via `@floating-ui/vue`.
 
 **Design system reference**: before building or modifying UI, read `dashboard/DESIGN_SYSTEM.md` for tokens, primitives (`src/ui/`), and conventions.
 
@@ -126,7 +127,7 @@ Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pini
 - `src/views/` — route-level pages: `ProvidersView`, `EndpointsView`, `ModelsView`, `MappingsView`, `ScriptsView`, plus request history. One view per management resource.
 - `src/components/` — feature-level components: forms (`ProviderForm`, `EndpointForm`, `ModelForm`, `MappingForm`, `ScriptForm`), editors (`AnnotationsEditor`, `ModelListEditor`), side panels (`SidePanelHost`, `ProviderEndpointsPanel`), chrome (`AppSidebar`, `PreferencesMenu`).
 - `src/composables/` — `useApi` (typed fetch client), `useConfirm` (global confirm dialog), `useSidePanel` (global slide-over stack).
-- `src/api/` — `openapi-fetch` client (`plugin.ts`) plus re-exported schema types (`index.ts`). Generated types live at `src/openapi-types.d.ts` (output of `pnpm --dir dashboard generate-openapi`).
+- `src/api/` — `openapi-fetch` client (`plugin.ts`), shared `QueryClient` (`queryClient.ts`), typed `queryKeys` registry (`queryKeys.ts`), thin async fetcher wrappers + invalidation helpers (`client.ts`), and re-exported schema types (`index.ts`). Generated types live at `src/openapi-types.d.ts` (output of `pnpm --dir dashboard generate-openapi`).
 - `src/ui/` — **local UI primitive library. No third-party UI kit. No variant-authoring libs (cva/tv).** Style with Tailwind classes directly inside each component.
 
 ### Local UI Primitives (`src/ui/`)
@@ -139,6 +140,20 @@ Re-exported via `src/ui/index.ts`. Prefer these over ad-hoc markup.
 - **Icons**: `Icon` component with `IconName` type, fed from `src/ui/icons/paths.ts`. Use `@tabler/icons-vue` when adding new icons.
 
 When building new screens, compose these primitives — don't reach for a third-party UI library, and don't introduce a variant DSL. Tailwind v4 utility classes are the styling vocabulary.
+
+### Data layer (vue-query)
+
+`@tanstack/vue-query` is the *only* sanctioned way to read API data in views/components. The shared `QueryClient` (`src/api/queryClient.ts`) is registered in `src/main.ts` via `VueQueryPlugin`; it ships sensible defaults (`refetchOnWindowFocus: false`, `retry: 1`, mutation `retry: 0`) and exports two stale-time constants — `MANAGEMENT_STALE_TIME` (30s, the default) for config resources and `OPERATIONAL_STALE_TIME` (5s) for live data. Override per-`useQuery` only when needed.
+
+- **Fetchers in `src/api/client.ts`** — plain async functions wrapping `api.GET`/`PUT`/`POST` (the openapi-fetch client). They throw `ApiRequestError` (with localized fallback messages) on non-2xx so vue-query's `error`/`isError` flows work uniformly. Don't call `api.GET` directly from views — add a fetcher here.
+- **Keys in `src/api/queryKeys.ts`** — single hierarchical `queryKeys` object (`all` / `list(filters)` / `detail(id)` shape per resource). Always derive keys from this object; never inline `['providers', id]` literals. Filtered list keys take a `Readonly<>` filter object so the spread is deterministic. Filter / cursor types (`RequestsFilters`, `CursorFilters`) are exported here for views that pass reactive filters.
+- **Reactive queries** — when filters or cursors are reactive, pass a `computed(() => queryKeys.x.list(...))` as `queryKey` and reference the same reactive values inside `queryFn` so vue-query refires on change. `RequestsView.vue` and `TracesView.vue` are the canonical examples.
+- **Mutations** — call the corresponding `client.ts` writer (`upsertProvider`, `deleteScript`, etc.) inside `useMutation`, then on success invoke the matching `invalidate*` helper from `client.ts` (e.g. `invalidateProviderEndpoints` already fans out to providers + models). Prefer these helpers over ad-hoc `client.invalidateQueries` so cross-resource fanout stays in one place.
+- **Error rendering** — surface `ApiRequestError.message` (already localized) in the UI; `code` / `details` are available on the error for finer handling.
+
+### Views & router page metadata
+
+When you add a new route, register the route name in `src/App.vue`'s `pageMeta` map (`title` + `hint`). The shell reads it to render header chrome — without an entry the page renders untitled. The map key must match the route's `name` exactly (defined in `src/router/index.ts`). See `dashboard/src/views/CLAUDE.md`.
 
 ## Design Context
 
