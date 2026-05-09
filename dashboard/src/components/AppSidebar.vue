@@ -12,7 +12,6 @@ const activeRouteName = computed(() => {
 })
 
 const nav: { name: string; label: string; icon: IconName }[] = [
-  { name: 'overview', label: '概览', icon: 'chart-pie' },
   { name: 'providers', label: '渠道', icon: 'db' },
   { name: 'models', label: '模型', icon: 'cpu' },
   { name: 'endpoints', label: '端点', icon: 'plug' },

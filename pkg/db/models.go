@@ -85,23 +85,6 @@ type Request struct {
 	CacheWrite1hTokens   pgtype.Int4      `json:"cacheWrite1hTokens"`
 }
 
-type RequestOverviewHourly struct {
-	BucketAt             interface{}    `json:"bucketAt"`
-	ApiKeyID             pgtype.Int4    `json:"apiKeyId"`
-	Model                pgtype.Text    `json:"model"`
-	UpstreamModel        pgtype.Text    `json:"upstreamModel"`
-	ProviderID           pgtype.Int4    `json:"providerId"`
-	UpstreamCostCurrency pgtype.Text    `json:"upstreamCostCurrency"`
-	RequestCount         int64          `json:"requestCount"`
-	TotalTokens          int64          `json:"totalTokens"`
-	InputTokens          int64          `json:"inputTokens"`
-	CacheReadTokens      int64          `json:"cacheReadTokens"`
-	OutputTokens         int64          `json:"outputTokens"`
-	CacheWriteTokens     int64          `json:"cacheWriteTokens"`
-	CacheWrite1hTokens   int64          `json:"cacheWrite1hTokens"`
-	UpstreamCost         pgtype.Numeric `json:"upstreamCost"`
-}
-
 type Script struct {
 	ID        string             `json:"id"`
 	Name      string             `json:"name"`
