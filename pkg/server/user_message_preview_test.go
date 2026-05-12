@@ -218,6 +218,22 @@ func TestShortenUserMessagePreview(t *testing.T) {
 	}
 }
 
+func TestExtractUserMessagePreviewFromPiRequestFixture(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "fixtures", "pi-request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := extractUserMessagePreview(body, contract.EndpointType_AnthropicMessages)
+	if !got.Valid {
+		t.Fatal("expected valid preview, got invalid")
+	}
+	want := "给响应增加一个下载按钮，就放在...son ，其他时候不需要后缀名"
+	if got.String != want {
+		t.Fatalf("preview = %q, want %q", got.String, want)
+	}
+}
+
 func TestExtractUserMessagePreviewFallbackOrder(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":"chat wins"}],"input":"responses loses","contents":[{"role":"user","parts":[{"text":"gemini loses"}]}]}`)
 	got := extractUserMessagePreview(body, contract.EndpointType_General)

@@ -124,7 +124,6 @@ func extractGeminiUserMessage(body []byte) (string, bool) {
 		if text, ok := extractGeminiParts(item["parts"]); ok {
 			return text, true
 		}
-		return "", false
 	}
 	return "", false
 }
@@ -142,7 +141,6 @@ func extractRoleMessage(messagesValue any, role string, contentExtractor func(an
 		if text, ok := contentExtractor(msg["content"]); ok {
 			return text, true
 		}
-		return "", false
 	}
 	return "", false
 }
