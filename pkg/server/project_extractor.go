@@ -21,8 +21,9 @@ import (
 // usual case since LLM gateway bodies are JSON) or an actual newline byte
 // (defensive — for the rare non-JSON body).
 var projectExtractRegexps = []*regexp.Regexp{
-	regexp.MustCompile(`Workspace root folder: (.*?)(?:\\n|\n)`),
-	regexp.MustCompile(`Primary working directory: (.*?)(?:\\n|\n)`),
+	regexp.MustCompile(`Workspace root folder: (.*?)(?:\\n|\n|$|")`),
+	regexp.MustCompile(`Primary working directory: (.*?)(?:\\n|\n|$|")`),
+	regexp.MustCompile(`Current working directory: (.*?)(?:\\n|\n|$|")`),
 	regexp.MustCompile(`<cwd>(.*?)</cwd>`),
 }
 

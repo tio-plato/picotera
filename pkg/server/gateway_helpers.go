@@ -102,6 +102,7 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 		}
 	}
 	if !ok {
+		logx.WithContext(ctx).WithField("path", path).Warn("route not found")
 		return db.Endpoint{}, nil, &gatewayError{
 			status:  http.StatusNotFound,
 			message: "route not found",
