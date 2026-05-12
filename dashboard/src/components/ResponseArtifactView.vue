@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { DataTable, Th, Td, Tr, Field, SegmentedControl, StateText } from '@/ui'
+import { DataTable, Th, Td, Tr, Field, SegmentedControl, StateText, IconButton, Icon } from '@/ui'
 import {
   extractContentFromAggregated,
   formatAggregatedLabel,
@@ -13,7 +13,7 @@ import type { ArtifactPayload } from './artifactTypes'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
 import SSEEventsVirtualList from './SSEEventsVirtualList.vue'
 
-const props = defineProps<{ payload: ArtifactPayload; url?: string }>()
+const props = defineProps<{ payload: ArtifactPayload; url?: string; requestId?: string }>()
 
 type SubView = 'raw' | 'json' | 'aggregated' | 'rendered' | 'events'
 const subView = ref<SubView>('raw')
@@ -87,6 +87,22 @@ function bodyDisplay(body: string | undefined, encoding: string | undefined) {
   return rawBodyText(body, encoding)
 }
 
+function downloadRawResponse() {
+  const body = rawBodyText(props.payload.body, props.payload.bodyEncoding)
+  if (!body) return
+  const json = isJsonContentType(props.payload.headers)
+  const filename = props.requestId
+    ? `${props.requestId}${json ? '.json' : ''}`
+    : `response${json ? '.json' : ''}`
+  const blob = new Blob([body], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 watch(
   subViewOptions,
   (opts) => {
@@ -150,7 +166,17 @@ watch(jsonBody, (parsed) => {
     <section class="flex flex-col gap-2">
       <div class="flex items-center justify-between gap-3">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Body</span>
-        <SegmentedControl v-if="!isBinary" v-model="subView" :options="subViewOptions" />
+        <div v-if="!isBinary" class="flex items-center gap-1">
+          <IconButton
+            v-if="!isBinary && payload.body"
+            title="下载原始响应"
+            aria-label="下载原始响应"
+            @click="downloadRawResponse"
+          >
+            <Icon name="cloud-download" :size="13" />
+          </IconButton>
+          <SegmentedControl v-model="subView" :options="subViewOptions" />
+        </div>
       </div>
 
       <div v-if="isBinary" class="flex items-center gap-3 text-xs text-ink-faint">

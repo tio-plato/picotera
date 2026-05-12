@@ -351,6 +351,7 @@ watch(detailTabs, tabs => {
           v-else-if="detailTab === 'response'"
           :url="selected.responseArtifactUrl"
           kind="response"
+          :request-id="selected.id"
         />
         <LogsArtifactView
           v-else-if="detailTab === 'logs'"

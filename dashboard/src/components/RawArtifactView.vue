@@ -6,7 +6,7 @@ import JsonArtifactViewer from './JsonArtifactViewer.vue'
 import ResponseArtifactView from './ResponseArtifactView.vue'
 import { useArtifact } from '@/composables/useArtifact'
 
-const props = defineProps<{ url?: string; kind: 'request' | 'response' }>()
+const props = defineProps<{ url?: string; kind: 'request' | 'response'; requestId?: string }>()
 
 const requestBodyView = ref<'raw' | 'json'>('json')
 const artifactQuery = useArtifact(() => props.url)
@@ -174,6 +174,6 @@ watch(requestJsonBody, (parsed) => {
         </section>
       </div>
     </template>
-    <ResponseArtifactView v-else :payload="payload" :url="url" />
+    <ResponseArtifactView v-else :payload="payload" :url="url" :request-id="requestId" />
   </template>
 </template>
