@@ -594,6 +594,7 @@ export interface components {
             /** Format: int32 */
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
+            proxyUrl?: string;
         };
         DeleteApiKeyRequestBody: {
             /**
@@ -988,6 +989,7 @@ export interface components {
             /** Format: int32 */
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
+            proxyUrl?: string;
         };
         RequestTraceView: {
             /** Format: int64 */
@@ -1127,6 +1129,7 @@ export interface components {
             /** Format: int32 */
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
+            proxyUrl?: string;
         };
     };
     responses: never;

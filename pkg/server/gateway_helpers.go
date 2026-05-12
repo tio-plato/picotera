@@ -467,9 +467,12 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 	return req, reqBody, nil
 }
 
-// forwardRequest sends the request to the upstream provider using the shared HTTP client.
-func (s *Server) forwardRequest(req *http.Request) (*http.Response, error) {
-	return s.httpClient.Do(req)
+// forwardRequest sends the request to the upstream provider using the
+// transport selected by proxyURL. Empty string uses environment proxy;
+// "direct" bypasses all proxies; a URL string uses that proxy.
+func (s *Server) forwardRequest(req *http.Request, proxyURL string) (*http.Response, error) {
+	transport := s.proxyCache.get(proxyURL)
+	return transport.RoundTrip(req)
 }
 
 // insertRequest inserts a request record and returns the inserted created_at.

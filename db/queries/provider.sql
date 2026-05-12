@@ -5,7 +5,7 @@ SELECT * FROM provider WHERE id = $1 LIMIT 1;
 SELECT * FROM provider;
 
 -- name: CreateProvider :one
-INSERT INTO provider (name, credentials, priority, provider_models, annotations, disabled) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;
+INSERT INTO provider (name, credentials, priority, provider_models, annotations, disabled, proxy_url) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *;
 
 -- name: UpdateProvider :one
 UPDATE provider
@@ -15,7 +15,8 @@ UPDATE provider
     priority = CASE WHEN @set_priority::bool THEN @priority::int ELSE priority END,
     provider_models = CASE WHEN @set_provider_models::bool THEN @provider_models::jsonb ELSE provider_models END,
     annotations = CASE WHEN @set_annotations::bool THEN @annotations::jsonb ELSE annotations END,
-    disabled = CASE WHEN @set_disabled::bool THEN @disabled::bool ELSE disabled END
+    disabled = CASE WHEN @set_disabled::bool THEN @disabled::bool ELSE disabled END,
+    proxy_url = CASE WHEN @set_proxy_url::bool THEN @proxy_url::text ELSE proxy_url END
   WHERE id = @id::int
   RETURNING *;
 

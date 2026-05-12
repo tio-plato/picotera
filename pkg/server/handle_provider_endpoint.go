@@ -97,7 +97,11 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 
 	applyCredentials(req, provider.Credentials, effectiveSendResolver(endpoint.CredentialsResolver, pe.CredentialsResolver), nil)
 
-	resp, err := s.httpClient.Do(req)
+	var proxyURL string
+	if provider.ProxyUrl.Valid {
+		proxyURL = provider.ProxyUrl.String
+	}
+	resp, err := s.forwardRequest(req, proxyURL)
 	if err != nil {
 		return nil, huma.Error502BadGateway("upstream request failed: " + err.Error())
 	}

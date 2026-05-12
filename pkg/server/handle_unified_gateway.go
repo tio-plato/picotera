@@ -258,6 +258,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			upstreamURL  string
 			credentials  string
 			sendResolver int32
+			proxyURL     string
 			upFormat     llmbridge.Format
 			endpointPath string
 			annotations  map[string]string
@@ -267,11 +268,16 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		for _, row := range providers {
 			entryAnno, _ := annotations.Decode(row.Annotations)
 			merged, providerAnno := annoBuilder.merge(row.ProviderAnnotations, entryAnno)
+			var proxyURL string
+			if row.ProxyUrl.Valid {
+				proxyURL = row.ProxyUrl.String
+			}
 			key := fmt.Sprintf("%d|%s", row.ProviderID, row.EndpointPath)
 			sidecar[key] = providerSidecar{
 				upstreamURL:  row.UpstreamUrl,
 				credentials:  row.ProviderCredentials,
 				sendResolver: effectiveSendResolver(virtualEndpoint.CredentialsResolver, row.SendCredentialsResolver),
+				proxyURL:     proxyURL,
 				upFormat:     upstreamFormatFor(row.EndpointType),
 				endpointPath: row.EndpointPath,
 				annotations:  merged,
@@ -533,7 +539,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			h.uploadRequestArtifact(bgCtx, upstreamID, upstreamCreatedAt, req.Method, req.URL.String(), req.Header.Clone(), reqBody)
 
 			upstreamStartTime := time.Now()
-			resp, ferr := h.forwardRequest(req)
+			resp, ferr := h.forwardRequest(req, side.proxyURL)
 			if ferr != nil {
 				cancel()
 				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, ferr.Error())

@@ -84,6 +84,8 @@ components:
             $ref: "#/components/schemas/ProviderModelEntry"
           nullable: true
           type: array
+        proxyUrl:
+          type: string
       required:
         - name
         - credentials
@@ -895,6 +897,8 @@ components:
             $ref: "#/components/schemas/ProviderModelEntry"
           nullable: true
           type: array
+        proxyUrl:
+          type: string
       required:
         - id
         - name
@@ -1167,6 +1171,8 @@ components:
             $ref: "#/components/schemas/ProviderModelEntry"
           nullable: true
           type: array
+        proxyUrl:
+          type: string
       required:
         - name
         - credentials

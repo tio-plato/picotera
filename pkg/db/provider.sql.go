@@ -7,19 +7,22 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createProvider = `-- name: CreateProvider :one
-INSERT INTO provider (name, credentials, priority, provider_models, annotations, disabled) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, credentials, priority, provider_models, annotations, disabled
+INSERT INTO provider (name, credentials, priority, provider_models, annotations, disabled, proxy_url) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, credentials, priority, provider_models, annotations, disabled, proxy_url
 `
 
 type CreateProviderParams struct {
-	Name           string `json:"name"`
-	Credentials    string `json:"credentials"`
-	Priority       int32  `json:"priority"`
-	ProviderModels []byte `json:"providerModels"`
-	Annotations    []byte `json:"annotations"`
-	Disabled       bool   `json:"disabled"`
+	Name           string      `json:"name"`
+	Credentials    string      `json:"credentials"`
+	Priority       int32       `json:"priority"`
+	ProviderModels []byte      `json:"providerModels"`
+	Annotations    []byte      `json:"annotations"`
+	Disabled       bool        `json:"disabled"`
+	ProxyUrl       pgtype.Text `json:"proxyUrl"`
 }
 
 func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error) {
@@ -30,6 +33,7 @@ func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) 
 		arg.ProviderModels,
 		arg.Annotations,
 		arg.Disabled,
+		arg.ProxyUrl,
 	)
 	var i Provider
 	err := row.Scan(
@@ -40,6 +44,7 @@ func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) 
 		&i.ProviderModels,
 		&i.Annotations,
 		&i.Disabled,
+		&i.ProxyUrl,
 	)
 	return i, err
 }
@@ -54,7 +59,7 @@ func (q *Queries) DeleteProvider(ctx context.Context, id int32) error {
 }
 
 const getProviderByID = `-- name: GetProviderByID :one
-SELECT id, name, credentials, priority, provider_models, annotations, disabled FROM provider WHERE id = $1 LIMIT 1
+SELECT id, name, credentials, priority, provider_models, annotations, disabled, proxy_url FROM provider WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetProviderByID(ctx context.Context, id int32) (Provider, error) {
@@ -68,12 +73,13 @@ func (q *Queries) GetProviderByID(ctx context.Context, id int32) (Provider, erro
 		&i.ProviderModels,
 		&i.Annotations,
 		&i.Disabled,
+		&i.ProxyUrl,
 	)
 	return i, err
 }
 
 const getProviders = `-- name: GetProviders :many
-SELECT id, name, credentials, priority, provider_models, annotations, disabled FROM provider
+SELECT id, name, credentials, priority, provider_models, annotations, disabled, proxy_url FROM provider
 `
 
 func (q *Queries) GetProviders(ctx context.Context) ([]Provider, error) {
@@ -93,6 +99,7 @@ func (q *Queries) GetProviders(ctx context.Context) ([]Provider, error) {
 			&i.ProviderModels,
 			&i.Annotations,
 			&i.Disabled,
+			&i.ProxyUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -112,9 +119,10 @@ UPDATE provider
     priority = CASE WHEN $5::bool THEN $6::int ELSE priority END,
     provider_models = CASE WHEN $7::bool THEN $8::jsonb ELSE provider_models END,
     annotations = CASE WHEN $9::bool THEN $10::jsonb ELSE annotations END,
-    disabled = CASE WHEN $11::bool THEN $12::bool ELSE disabled END
-  WHERE id = $13::int
-  RETURNING id, name, credentials, priority, provider_models, annotations, disabled
+    disabled = CASE WHEN $11::bool THEN $12::bool ELSE disabled END,
+    proxy_url = CASE WHEN $13::bool THEN $14::text ELSE proxy_url END
+  WHERE id = $15::int
+  RETURNING id, name, credentials, priority, provider_models, annotations, disabled, proxy_url
 `
 
 type UpdateProviderParams struct {
@@ -130,6 +138,8 @@ type UpdateProviderParams struct {
 	Annotations       []byte `json:"annotations"`
 	SetDisabled       bool   `json:"setDisabled"`
 	Disabled          bool   `json:"disabled"`
+	SetProxyUrl       bool   `json:"setProxyUrl"`
+	ProxyUrl          string `json:"proxyUrl"`
 	ID                int32  `json:"id"`
 }
 
@@ -147,6 +157,8 @@ func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) 
 		arg.Annotations,
 		arg.SetDisabled,
 		arg.Disabled,
+		arg.SetProxyUrl,
+		arg.ProxyUrl,
 		arg.ID,
 	)
 	var i Provider
@@ -158,6 +170,7 @@ func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) 
 		&i.ProviderModels,
 		&i.Annotations,
 		&i.Disabled,
+		&i.ProxyUrl,
 	)
 	return i, err
 }

@@ -6,6 +6,7 @@ import (
 	"picotera/pkg/db"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ProviderModelEntry struct {
@@ -30,6 +31,7 @@ type ProviderView struct {
 	ProviderModels []ProviderModelEntry          `json:"providerModels"`
 	Annotations    map[string]string             `json:"annotations"`
 	Disabled       bool                          `json:"disabled"`
+	ProxyUrl       string                        `json:"proxyUrl,omitempty"`
 }
 
 type GetProviderResponse struct {
@@ -44,6 +46,7 @@ type CreateProviderRequest struct {
 		ProviderModels []ProviderModelEntry          `json:"providerModels"`
 		Annotations    map[string]string             `json:"annotations"`
 		Disabled       bool                          `json:"disabled"`
+		ProxyUrl       string                        `json:"proxyUrl,omitempty"`
 	}
 }
 
@@ -60,6 +63,7 @@ type UpsertProviderRequest struct {
 		ProviderModels []ProviderModelEntry          `json:"providerModels"`
 		Annotations    map[string]string             `json:"annotations"`
 		Disabled       bool                          `json:"disabled"`
+		ProxyUrl       string                        `json:"proxyUrl,omitempty"`
 	}
 }
 
@@ -99,10 +103,15 @@ func ToProviderView(provider *db.Provider) (*ProviderView, error) {
 		ProviderModels: providerModels,
 		Annotations:    annotations,
 		Disabled:       provider.Disabled,
+		ProxyUrl:       provider.ProxyUrl.String,
 	}, nil
 }
 
 func FromProviderView(providerView *ProviderView) (*db.Provider, error) {
+	if err := ValidateProxyUrl(providerView.ProxyUrl); err != nil {
+		return nil, err
+	}
+
 	models := providerView.ProviderModels
 	if models == nil {
 		models = []ProviderModelEntry{}
@@ -117,6 +126,11 @@ func FromProviderView(providerView *ProviderView) (*db.Provider, error) {
 		return nil, err
 	}
 
+	pgProxyUrl := pgtype.Text{Valid: false}
+	if providerView.ProxyUrl != "" {
+		pgProxyUrl = pgtype.Text{String: providerView.ProxyUrl, Valid: true}
+	}
+
 	return &db.Provider{
 		ID:             providerView.ID,
 		Name:           providerView.Name,
@@ -125,6 +139,7 @@ func FromProviderView(providerView *ProviderView) (*db.Provider, error) {
 		ProviderModels: providerModels,
 		Annotations:    annotations,
 		Disabled:       providerView.Disabled,
+		ProxyUrl:       pgProxyUrl,
 	}, nil
 }
 

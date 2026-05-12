@@ -41,6 +41,7 @@ SELECT
   p.priority AS provider_priority,
   pe.upstream_url,
   pe.credentials_resolver AS send_credentials_resolver,
+  p.proxy_url,
   p.annotations AS provider_annotations,
   m.annotations AS model_annotations
 FROM provider AS p
@@ -67,19 +68,20 @@ type GetProvidersByEndpointAndModelParams struct {
 }
 
 type GetProvidersByEndpointAndModelRow struct {
-	ModelName               string `json:"modelName"`
-	ProviderID              int32  `json:"providerId"`
-	EndpointPath            string `json:"endpointPath"`
-	UpstreamModelName       string `json:"upstreamModelName"`
-	Priority                int32  `json:"priority"`
-	Annotations             []byte `json:"annotations"`
-	ProviderName            string `json:"providerName"`
-	ProviderCredentials     string `json:"providerCredentials"`
-	ProviderPriority        int32  `json:"providerPriority"`
-	UpstreamUrl             string `json:"upstreamUrl"`
-	SendCredentialsResolver int32  `json:"sendCredentialsResolver"`
-	ProviderAnnotations     []byte `json:"providerAnnotations"`
-	ModelAnnotations        []byte `json:"modelAnnotations"`
+	ModelName               string      `json:"modelName"`
+	ProviderID              int32       `json:"providerId"`
+	EndpointPath            string      `json:"endpointPath"`
+	UpstreamModelName       string      `json:"upstreamModelName"`
+	Priority                int32       `json:"priority"`
+	Annotations             []byte      `json:"annotations"`
+	ProviderName            string      `json:"providerName"`
+	ProviderCredentials     string      `json:"providerCredentials"`
+	ProviderPriority        int32       `json:"providerPriority"`
+	UpstreamUrl             string      `json:"upstreamUrl"`
+	SendCredentialsResolver int32       `json:"sendCredentialsResolver"`
+	ProxyUrl                pgtype.Text `json:"proxyUrl"`
+	ProviderAnnotations     []byte      `json:"providerAnnotations"`
+	ModelAnnotations        []byte      `json:"modelAnnotations"`
 }
 
 func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error) {
@@ -103,6 +105,7 @@ func (q *Queries) GetProvidersByEndpointAndModel(ctx context.Context, arg GetPro
 			&i.ProviderPriority,
 			&i.UpstreamUrl,
 			&i.SendCredentialsResolver,
+			&i.ProxyUrl,
 			&i.ProviderAnnotations,
 			&i.ModelAnnotations,
 		); err != nil {
@@ -130,6 +133,7 @@ SELECT
   p.priority AS provider_priority,
   pe.upstream_url,
   pe.credentials_resolver AS send_credentials_resolver,
+  p.proxy_url,
   p.annotations AS provider_annotations,
   m.annotations AS model_annotations
 FROM provider AS p
@@ -157,20 +161,21 @@ type GetProvidersByEndpointTypesAndModelParams struct {
 }
 
 type GetProvidersByEndpointTypesAndModelRow struct {
-	ModelName               string `json:"modelName"`
-	ProviderID              int32  `json:"providerId"`
-	EndpointPath            string `json:"endpointPath"`
-	EndpointType            int32  `json:"endpointType"`
-	UpstreamModelName       string `json:"upstreamModelName"`
-	Priority                int32  `json:"priority"`
-	Annotations             []byte `json:"annotations"`
-	ProviderName            string `json:"providerName"`
-	ProviderCredentials     string `json:"providerCredentials"`
-	ProviderPriority        int32  `json:"providerPriority"`
-	UpstreamUrl             string `json:"upstreamUrl"`
-	SendCredentialsResolver int32  `json:"sendCredentialsResolver"`
-	ProviderAnnotations     []byte `json:"providerAnnotations"`
-	ModelAnnotations        []byte `json:"modelAnnotations"`
+	ModelName               string      `json:"modelName"`
+	ProviderID              int32       `json:"providerId"`
+	EndpointPath            string      `json:"endpointPath"`
+	EndpointType            int32       `json:"endpointType"`
+	UpstreamModelName       string      `json:"upstreamModelName"`
+	Priority                int32       `json:"priority"`
+	Annotations             []byte      `json:"annotations"`
+	ProviderName            string      `json:"providerName"`
+	ProviderCredentials     string      `json:"providerCredentials"`
+	ProviderPriority        int32       `json:"providerPriority"`
+	UpstreamUrl             string      `json:"upstreamUrl"`
+	SendCredentialsResolver int32       `json:"sendCredentialsResolver"`
+	ProxyUrl                pgtype.Text `json:"proxyUrl"`
+	ProviderAnnotations     []byte      `json:"providerAnnotations"`
+	ModelAnnotations        []byte      `json:"modelAnnotations"`
 }
 
 // Sister query to GetProvidersByEndpointAndModel that selects across a SET of
@@ -201,6 +206,7 @@ func (q *Queries) GetProvidersByEndpointTypesAndModel(ctx context.Context, arg G
 			&i.ProviderPriority,
 			&i.UpstreamUrl,
 			&i.SendCredentialsResolver,
+			&i.ProxyUrl,
 			&i.ProviderAnnotations,
 			&i.ModelAnnotations,
 		); err != nil {

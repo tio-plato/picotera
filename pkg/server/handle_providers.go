@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (s *Server) handleListProviders(ctx context.Context, input *struct{}) (*contract.ListProvidersResponse, error) {
@@ -51,6 +52,9 @@ func (s *Server) handleGetProvider(ctx context.Context, input *contract.GetProvi
 }
 
 func (s *Server) handleCreateProvider(ctx context.Context, input *contract.CreateProviderRequest) (*contract.CreateProviderResponse, error) {
+	if err := contract.ValidateProxyUrl(input.Body.ProxyUrl); err != nil {
+		return nil, err
+	}
 	if input.Body.ProviderModels == nil {
 		input.Body.ProviderModels = []contract.ProviderModelEntry{}
 	}
@@ -70,12 +74,17 @@ func (s *Server) handleCreateProvider(ctx context.Context, input *contract.Creat
 		return nil, huma.Error500InternalServerError("failed to marshal annotations", err)
 	}
 
+	var proxyUrl pgtype.Text
+	if input.Body.ProxyUrl != "" {
+		proxyUrl = pgtype.Text{String: input.Body.ProxyUrl, Valid: true}
+	}
 	newProvider, err := s.queries.CreateProvider(ctx, db.CreateProviderParams{
 		Name:           input.Body.Name,
 		Credentials:    input.Body.Credentials,
 		Priority:       input.Body.Priority,
 		ProviderModels: providerModelsBytes,
 		Annotations:    annotationsBytes,
+		ProxyUrl:       proxyUrl,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to create provider", err)
@@ -92,6 +101,9 @@ func (s *Server) handleCreateProvider(ctx context.Context, input *contract.Creat
 }
 
 func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.UpsertProviderRequest) (*contract.UpsertProviderResponse, error) {
+	if err := contract.ValidateProxyUrl(input.Body.ProxyUrl); err != nil {
+		return nil, err
+	}
 	if input.Body.ProviderModels == nil {
 		input.Body.ProviderModels = []contract.ProviderModelEntry{}
 	}
@@ -110,6 +122,10 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 		return nil, huma.Error500InternalServerError("failed to marshal annotations", err)
 	}
 
+	var proxyUrl pgtype.Text
+	if input.Body.ProxyUrl != "" {
+		proxyUrl = pgtype.Text{String: input.Body.ProxyUrl, Valid: true}
+	}
 	if input.Body.ID == 0 {
 		newProvider, err := s.queries.CreateProvider(ctx, db.CreateProviderParams{
 			Name:           input.Body.Name,
@@ -118,6 +134,7 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 			ProviderModels: providerModelsBytes,
 			Annotations:    annotationsBytes,
 			Disabled:       input.Body.Disabled,
+			ProxyUrl:       proxyUrl,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create provider", err)
@@ -143,6 +160,8 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 		Annotations:       annotationsBytes,
 		SetDisabled:       true,
 		Disabled:          input.Body.Disabled,
+		SetProxyUrl:       true,
+		ProxyUrl:          proxyUrl.String,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

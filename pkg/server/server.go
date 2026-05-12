@@ -29,6 +29,7 @@ type Server struct {
 	api              huma.API
 	config           *configx.Config
 	httpClient       *http.Client
+	proxyCache       *proxyTransportCache
 	artifacts        artifacts.Sink
 	jsxEngine        *jsx.Engine
 	staticHandler    http.Handler
@@ -72,11 +73,11 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	logx.WithContext(ctx).Info("connected to database")
 
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			ResponseHeaderTimeout: config.GatewayReadTimeout,
-		},
+	baseTransport := &http.Transport{
+		ResponseHeaderTimeout: config.GatewayReadTimeout,
 	}
+	httpClient := &http.Client{Transport: baseTransport}
+	proxyCache := newProxyTransportCache(baseTransport)
 
 	sink, err := artifacts.NewSink(config.S3, logx.WithContext(ctx))
 	if err != nil {
@@ -101,6 +102,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		router:           router,
 		api:              api,
 		httpClient:       httpClient,
+		proxyCache:       proxyCache,
 		artifacts:        sink,
 		jsxEngine:        jsxEngine,
 		staticHandler:    static.Handler(),

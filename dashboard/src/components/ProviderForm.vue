@@ -17,6 +17,7 @@ const form = ref({
   priority: props.provider?.priority ?? 0,
   annotations: { ...props.provider?.annotations } as Record<string, string>,
   disabled: props.provider?.disabled ?? false,
+  proxyUrl: props.provider?.proxyUrl ?? '',
 })
 const saving = ref(false)
 const error = ref('')
@@ -36,6 +37,7 @@ async function submit() {
     providerModels: props.provider?.providerModels ?? [],
     annotations: form.value.annotations,
     disabled: form.value.disabled,
+    ...(form.value.proxyUrl ? { proxyUrl: form.value.proxyUrl } : {}),
   }
   try {
     await saveMutation.mutateAsync(body)
@@ -72,6 +74,9 @@ async function submit() {
       </Field>
       <Field label="标注" as="div">
         <AnnotationsEditor v-model="form.annotations" />
+      </Field>
+      <Field label="代理 URL">
+        <Input v-model="form.proxyUrl" placeholder="留空使用环境代理，填 direct 禁用代理" />
       </Field>
       <p v-if="!isEdit" class="text-xs text-ink-faint">
         保存后请在「模型」面板配置该渠道的模型列表。

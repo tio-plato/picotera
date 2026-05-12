@@ -260,6 +260,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		upstreamURL  string
 		credentials  string
 		sendResolver int32
+		proxyURL     string
 		annotations  map[string]string
 	}
 	sidecar := make(map[int32]providerSidecar, len(providers))
@@ -267,10 +268,15 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, row := range providers {
 		entryAnno, _ := annotations.Decode(row.Annotations)
 		merged, providerAnno := annoBuilder.merge(row.ProviderAnnotations, entryAnno)
+		var proxyURL string
+		if row.ProxyUrl.Valid {
+			proxyURL = row.ProxyUrl.String
+		}
 		sidecar[row.ProviderID] = providerSidecar{
 			upstreamURL:  row.UpstreamUrl,
 			credentials:  row.ProviderCredentials,
 			sendResolver: effectiveSendResolver(endpoint.CredentialsResolver, row.SendCredentialsResolver),
+			proxyURL:     proxyURL,
 			annotations:  merged,
 		}
 		candidates = append(candidates, jsx.Candidate{
@@ -450,7 +456,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.uploadRequestArtifact(bgCtx, upstreamID, upstreamCreatedAt, req.Method, req.URL.String(), req.Header.Clone(), reqBody)
 
 		upstreamStartTime := time.Now()
-		resp, err := h.forwardRequest(req)
+		resp, err := h.forwardRequest(req, side.proxyURL)
 		if err != nil {
 			cancel()
 			h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, err.Error())

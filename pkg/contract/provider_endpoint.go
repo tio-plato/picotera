@@ -1,7 +1,9 @@
 package contract
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
 	"picotera/pkg/db"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -30,6 +32,20 @@ func FromProviderEndpointView(view *ProviderEndpointView) *db.UpsertProviderEndp
 		UpstreamUrl:         view.UpstreamUrl,
 		CredentialsResolver: ToCredentialsResolver(view.CredentialsResolver),
 	}
+}
+
+// ValidateProxyUrl validates the proxy_url field. Empty string means
+// "use environment proxy" (valid). "direct" means bypass all proxies
+// (valid). Anything else must be a valid HTTP(S) URL.
+func ValidateProxyUrl(raw string) error {
+	if raw == "" || raw == "direct" {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return huma.Error400BadRequest(fmt.Sprintf("invalid proxyUrl %q: must be empty, \"direct\", or an http(s) URL", raw))
+	}
+	return nil
 }
 
 type ListProviderEndpointsRequest struct {

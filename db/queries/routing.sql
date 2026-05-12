@@ -14,6 +14,7 @@ SELECT
   p.priority AS provider_priority,
   pe.upstream_url,
   pe.credentials_resolver AS send_credentials_resolver,
+  p.proxy_url,
   p.annotations AS provider_annotations,
   m.annotations AS model_annotations
 FROM provider AS p
@@ -53,6 +54,7 @@ SELECT
   p.priority AS provider_priority,
   pe.upstream_url,
   pe.credentials_resolver AS send_credentials_resolver,
+  p.proxy_url,
   p.annotations AS provider_annotations,
   m.annotations AS model_annotations
 FROM provider AS p

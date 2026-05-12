@@ -51,13 +51,14 @@ type Project struct {
 }
 
 type Provider struct {
-	ID             int32  `json:"id"`
-	Name           string `json:"name"`
-	Credentials    string `json:"credentials"`
-	Priority       int32  `json:"priority"`
-	ProviderModels []byte `json:"providerModels"`
-	Annotations    []byte `json:"annotations"`
-	Disabled       bool   `json:"disabled"`
+	ID             int32       `json:"id"`
+	Name           string      `json:"name"`
+	Credentials    string      `json:"credentials"`
+	Priority       int32       `json:"priority"`
+	ProviderModels []byte      `json:"providerModels"`
+	Annotations    []byte      `json:"annotations"`
+	Disabled       bool        `json:"disabled"`
+	ProxyUrl       pgtype.Text `json:"proxyUrl"`
 }
 
 type ProviderEndpoint struct {
