@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"picotera/pkg/db"
+	"picotera/pkg/kv"
 
 	"github.com/fastschema/qjs"
 )
@@ -22,7 +23,7 @@ func TestEngine_LoadsScripts(t *testing.T) {
 		{ID: "a", Source: `picotera.hooks.sortProviders.tap("a", function (ctx) { return ctx; });`},
 		{ID: "b", Source: `picotera.hooks.sortProviders.tap("b", function (ctx) { return ctx; });`},
 	}}
-	eng := NewEngine(Config{HookTimeout: time.Second, MemoryLimit: 64 * 1024 * 1024}, store)
+	eng := NewEngine(Config{HookTimeout: time.Second, MemoryLimit: 64 * 1024 * 1024}, store, kv.NewMemoryStore())
 	s, err := eng.NewSession(context.Background(), "")
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
@@ -41,7 +42,7 @@ func TestEngine_LoadsScripts(t *testing.T) {
 
 func TestSession_CloseIdempotent(t *testing.T) {
 	store := &fakeStore{}
-	eng := NewEngine(Config{HookTimeout: time.Second, MemoryLimit: 64 * 1024 * 1024}, store)
+	eng := NewEngine(Config{HookTimeout: time.Second, MemoryLimit: 64 * 1024 * 1024}, store, kv.NewMemoryStore())
 	s, err := eng.NewSession(context.Background(), "")
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
@@ -53,7 +54,7 @@ func TestSession_CloseIdempotent(t *testing.T) {
 
 func newTestSession(t *testing.T, scripts ...db.Script) *Session {
 	t.Helper()
-	eng := NewEngine(Config{HookTimeout: 500 * time.Millisecond, MemoryLimit: 64 * 1024 * 1024}, &fakeStore{scripts: scripts})
+	eng := NewEngine(Config{HookTimeout: 500 * time.Millisecond, MemoryLimit: 64 * 1024 * 1024}, &fakeStore{scripts: scripts}, kv.NewMemoryStore())
 	s, err := eng.NewSession(context.Background(), "")
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)

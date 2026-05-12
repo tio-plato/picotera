@@ -10,6 +10,7 @@ import (
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/jsx"
+	"picotera/pkg/kv"
 	"picotera/pkg/llmbridge"
 	"picotera/pkg/logx"
 	"picotera/pkg/server/static"
@@ -88,12 +89,17 @@ func NewServer(ctx context.Context) (*Server, error) {
 	router := chi.NewMux()
 	api := humachi.New(router, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
 
+	kvStore, err := kv.New(config.KV.Driver, kv.WithRedisURL(config.KV.RedisURL))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kv store: %w", err)
+	}
+
 	jsxEngine := jsx.NewEngine(jsx.Config{
 		HookTimeout:      config.JSHookTimeout,
 		MemoryLimit:      config.JSMemoryLimit,
 		MaxTotalAttempts: config.JSMaxTotalAttempts,
 		MaxDelay:         config.JSMaxDelay,
-	}, queries)
+	}, queries, kvStore)
 
 	projectRouter := newProjectRouter(queries)
 	server := &Server{

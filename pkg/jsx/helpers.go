@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"picotera/pkg/kv"
 	"picotera/pkg/logx"
 
 	"github.com/fastschema/qjs"
@@ -16,12 +17,13 @@ import (
 // timeout matches the original spec.
 var fetchClient = &http.Client{Timeout: 5 * time.Second}
 
-// registerHelpers wires fetch / setTimeout / console into the runtime.
+// registerHelpers wires fetch / setTimeout / console / kv into the runtime.
 func registerHelpers(s *Session) {
 	c := s.rt.Context()
 	registerFetch(c)
 	registerSetTimeout(c)
 	registerConsole(s)
+	registerKV(s)
 }
 
 // registerFetch exposes picotera.fetch via __picotera_fetch (async).
@@ -100,6 +102,112 @@ func registerSetTimeout(c *qjs.Context) {
 		go func() {
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 			this.Promise().Resolve(this.Context().NewUndefined())
+		}()
+	})
+}
+
+// registerKV exposes picotera.kv via __picotera_kv_* (async).
+func registerKV(s *Session) {
+	c := s.rt.Context()
+	store := s.engine.kvStore
+
+	c.SetAsyncFunc("__picotera_kv_get", func(this *qjs.This) {
+		args := this.Args()
+		var key string
+		if len(args) > 0 {
+			key = args[0].String()
+		}
+		go func() {
+			val, err := store.Get(this.Context(), key)
+			ctx := this.Context()
+			if err == kv.ErrKeyNotFound {
+				this.Promise().Resolve(ctx.NewNull())
+				return
+			}
+			if err != nil {
+				this.Promise().Reject(ctx.NewString(err.Error()))
+				return
+			}
+			this.Promise().Resolve(ctx.NewString(val))
+		}()
+	})
+
+	c.SetAsyncFunc("__picotera_kv_set", func(this *qjs.This) {
+		args := this.Args()
+		var key, value string
+		if len(args) > 0 {
+			key = args[0].String()
+		}
+		if len(args) > 1 {
+			value = args[1].String()
+		}
+		go func() {
+			err := store.Set(this.Context(), key, value)
+			ctx := this.Context()
+			if err != nil {
+				this.Promise().Reject(ctx.NewString(err.Error()))
+				return
+			}
+			this.Promise().Resolve(ctx.NewUndefined())
+		}()
+	})
+
+	c.SetAsyncFunc("__picotera_kv_setex", func(this *qjs.This) {
+		args := this.Args()
+		var key string
+		var seconds int32
+		var value string
+		if len(args) > 0 {
+			key = args[0].String()
+		}
+		if len(args) > 1 {
+			seconds = args[1].Int32()
+		}
+		if len(args) > 2 {
+			value = args[2].String()
+		}
+		go func() {
+			err := store.SetEx(this.Context(), key, value, time.Duration(seconds)*time.Second)
+			ctx := this.Context()
+			if err != nil {
+				this.Promise().Reject(ctx.NewString(err.Error()))
+				return
+			}
+			this.Promise().Resolve(ctx.NewUndefined())
+		}()
+	})
+
+	c.SetAsyncFunc("__picotera_kv_ttl", func(this *qjs.This) {
+		args := this.Args()
+		var key string
+		if len(args) > 0 {
+			key = args[0].String()
+		}
+		go func() {
+			ttl, err := store.TTL(this.Context(), key)
+			ctx := this.Context()
+			if err != nil {
+				this.Promise().Reject(ctx.NewString(err.Error()))
+				return
+			}
+			this.Promise().Resolve(ctx.NewInt32(int32(ttl)))
+		}()
+	})
+
+	c.SetAsyncFunc("__picotera_kv_del", func(this *qjs.This) {
+		args := this.Args()
+		var key string
+		if len(args) > 0 {
+			key = args[0].String()
+		}
+		go func() {
+			err := store.Del(this.Context(), key)
+			ctx := this.Context()
+			if err != nil {
+				this.Promise().Reject(ctx.NewString(err.Error()))
+				return
+			}
+			this.Promise().Resolve(ctx.NewUndefined())
 		}()
 	})
 }

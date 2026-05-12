@@ -15,10 +15,16 @@ type Config struct {
 	Port               int           `mapstructure:"port"`
 	GatewayReadTimeout time.Duration `mapstructure:"gateway_read_timeout"`
 	S3                 S3Config      `mapstructure:"s3"`
+	KV                 KVConfig      `mapstructure:"kv"`
 	JSHookTimeout      time.Duration `mapstructure:"js_hook_timeout"`
 	JSMemoryLimit      int64         `mapstructure:"js_memory_limit"`
 	JSMaxTotalAttempts int           `mapstructure:"js_max_total_attempts"`
 	JSMaxDelay         time.Duration `mapstructure:"js_max_delay"`
+}
+
+type KVConfig struct {
+	Driver   string `mapstructure:"driver"`
+	RedisURL string `mapstructure:"redis_url"`
 }
 
 type S3Config struct {
@@ -56,6 +62,8 @@ func Parse() (*Config, error) {
 	viper.SetDefault("js_memory_limit", int64(64*1024*1024))
 	viper.SetDefault("js_max_total_attempts", 50)
 	viper.SetDefault("js_max_delay", 60*time.Second)
+	viper.SetDefault("kv.driver", "memory")
+	viper.SetDefault("kv.redis_url", "localhost:6379")
 
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
