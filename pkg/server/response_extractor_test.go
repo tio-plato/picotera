@@ -2,6 +2,7 @@ package server
 
 import (
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -396,6 +397,29 @@ func TestResponseExtractor_JSON_OpenAIResponses(t *testing.T) {
 	}
 	if m.CacheReadTokens == nil || *m.CacheReadTokens != 5 {
 		t.Errorf("CacheReadTokens: got %v, want 5", m.CacheReadTokens)
+	}
+}
+
+func TestResponseExtractor_SSE_Anthropic_CacheReadInMessageDelta(t *testing.T) {
+	// mimo.sse: message_start has empty usage (no cache_read_input_tokens),
+	// while message_delta carries cache_read_input_tokens in its own usage.
+	data, err := os.ReadFile("../../fixtures/mimo.sse")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	extractor := NewResponseExtractor(strings.NewReader(string(data)), "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 2000 {
+		t.Errorf("InputTokens: got %v, want 2000", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 1822 {
+		t.Errorf("OutputTokens: got %v, want 1822", m.OutputTokens)
+	}
+	if m.CacheReadTokens == nil || *m.CacheReadTokens != 59008 {
+		t.Errorf("CacheReadTokens: got %v, want 59008", m.CacheReadTokens)
 	}
 }
 

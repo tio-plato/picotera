@@ -224,12 +224,17 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 		e.extractAnthropicCacheCreation(msgUsage)
 	}
 
-	// Usage from message_delta (output tokens)
+	// Usage from message_delta (output tokens, cache tokens)
 	if eventType == "message_delta" {
 		if v := result.Get("usage.output_tokens"); v.Exists() {
 			val := v.Int()
 			e.metrics.OutputTokens = &val
 		}
+		if v := result.Get("usage.cache_read_input_tokens"); v.Exists() {
+			val := v.Int()
+			e.metrics.CacheReadTokens = &val
+		}
+		e.extractAnthropicCacheCreation(result.Get("usage"))
 	}
 }
 
