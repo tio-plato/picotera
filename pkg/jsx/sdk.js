@@ -32,13 +32,13 @@
     },
     kv: {
       get: function (key) {
-        return globalThis.__picotera_kv_get(String(key)).then(function (s) { return s === '' ? null : s; });
+        return globalThis.__picotera_kv_get(String(key)).then(function (s) { return s === '' ? null : JSON.parse(s); });
       },
       set: function (key, value) {
-        return globalThis.__picotera_kv_set(String(key), String(value));
+        return globalThis.__picotera_kv_set(String(key), JSON.stringify(value));
       },
       setex: function (key, seconds, value) {
-        return globalThis.__picotera_kv_setex(String(key), Number(seconds), String(value));
+        return globalThis.__picotera_kv_setex(String(key), Number(seconds), JSON.stringify(value));
       },
       ttl: function (key) {
         return globalThis.__picotera_kv_ttl(String(key));
