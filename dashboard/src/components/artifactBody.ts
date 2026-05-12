@@ -1,3 +1,5 @@
+import type { ArtifactPayload } from './artifactTypes'
+
 export type ArtifactHeaders = Record<string, string[]>
 
 export interface ParsedJsonBody {
@@ -42,4 +44,44 @@ export function parseJsonBody(body: string | undefined, bodyEncoding: string | u
 export function rawBodyText(body: string | undefined, bodyEncoding: string | undefined): string {
   if (bodyEncoding === 'base64') return ''
   return body ?? ''
+}
+
+/**
+ * Escape a string for safe use inside a single-quoted bash literal.
+ * Single quotes cannot be escaped inside `'...'`, so we close the quote,
+ * add an escaped single quote, and reopen: `'` -> `'\''`.
+ */
+function bashEscape(value: string): string {
+  return value.replace(/'/g, "'\\''")
+}
+
+/**
+ * Build a bash-formatted cURL command from an artifact payload.
+ * Returns an empty string if the payload has no URL.
+ */
+export function buildCurlCommand(payload: ArtifactPayload): string {
+  if (!payload.url) return ''
+
+  const method = (payload.method || 'GET').toUpperCase()
+  const parts: string[] = ['curl']
+
+  if (method !== 'GET') {
+    parts.push(`-X ${method}`)
+  }
+
+  parts.push(`'${bashEscape(payload.url)}'`)
+
+  if (payload.headers) {
+    for (const [name, values] of Object.entries(payload.headers)) {
+      parts.push(`-H '${bashEscape(name)}: ${bashEscape(values.join(', '))}'`)
+    }
+  }
+
+  const body = rawBodyText(payload.body, payload.bodyEncoding)
+  if (body) {
+    parts.push(`-d '${bashEscape(body)}'`)
+  }
+
+  // Join with line continuations (4-space indent) for readability
+  return parts.join(' \\\n    ')
 }

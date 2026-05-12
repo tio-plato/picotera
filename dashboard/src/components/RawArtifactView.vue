@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { StateText, DataTable, Th, Td, Tr, Field, SegmentedControl } from '@/ui'
-import { isJsonContentType, parseJsonBody, rawBodyText } from './artifactBody'
+import { StateText, DataTable, Th, Td, Tr, Field, SegmentedControl, Button, Icon } from '@/ui'
+import { isJsonContentType, parseJsonBody, rawBodyText, buildCurlCommand } from './artifactBody'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
 import ResponseArtifactView from './ResponseArtifactView.vue'
 import { useArtifact } from '@/composables/useArtifact'
@@ -48,6 +48,24 @@ watch(requestBodyOptions, (opts) => {
   }
 })
 
+const curlCopied = ref(false)
+let curlCopyTimer: ReturnType<typeof setTimeout> | null = null
+async function copyAsCurl() {
+  if (!payload.value || !payload.value.url) return
+  const cmd = buildCurlCommand(payload.value)
+  if (!cmd) return
+  try {
+    await navigator.clipboard.writeText(cmd)
+    curlCopied.value = true
+    if (curlCopyTimer) clearTimeout(curlCopyTimer)
+    curlCopyTimer = setTimeout(() => {
+      curlCopied.value = false
+    }, 1500)
+  } catch {
+    // clipboard unavailable — silently ignore
+  }
+}
+
 watch(requestJsonBody, (parsed) => {
   requestBodyView.value = parsed.ok ? 'json' : 'raw'
 })
@@ -59,7 +77,16 @@ watch(requestJsonBody, (parsed) => {
   <StateText v-else-if="error" :dashed="false" compact>{{ error }}</StateText>
   <template v-else-if="payload">
     <template v-if="kind === 'request'">
-      <div class="flex flex-col gap-3">
+      <div class="relative flex flex-col gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="absolute top-0 right-0 z-10"
+          @click="copyAsCurl"
+        >
+          <Icon :name="curlCopied ? 'check' : 'copy'" :size="13" />
+          <span>{{ curlCopied ? '已复制' : '复制为 cURL' }}</span>
+        </Button>
         <div class="grid grid-cols-2 gap-2.5">
           <Field v-if="payload.method" label="Method" as="div">
             <span class="font-mono text-sm">{{ payload.method }}</span>

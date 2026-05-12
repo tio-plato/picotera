@@ -130,6 +130,7 @@ function selectRequest(requestId: string) {
   emit('selectedRequest', requestId)
 }
 
+
 type DetailTab = 'overview' | 'request' | 'response' | 'logs'
 const detailTab = ref<DetailTab>('overview')
 const isMeta = computed(
