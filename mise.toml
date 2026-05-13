@@ -7,9 +7,11 @@ sqlc = "latest"
 
 [env]
 _.file = [".env.default", { path = ".env", optional = true }]
+PICOTERA_LLMBRIDGE_WASM_PATH = "{{ config_root }}/dist/llmbridge.wasm"
 
 [tasks.server]
 run = "go run ./cmd/picotera/main.go"
+depends = "wasm"
 
 [tasks.web]
 run = "pnpm dev"
@@ -17,3 +19,7 @@ dir = "dashboard"
 
 [tasks.openapi]
 run = "go run ./cmd/picotera/main.go openapi > openapi.yaml"
+
+[tasks.wasm]
+run = "mkdir -p dist && GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags=-buildid= -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm"
+sources = [ "pkg/llmbridgeimpl" ]

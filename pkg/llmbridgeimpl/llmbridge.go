@@ -1,19 +1,12 @@
-// Package llmbridge converts LLM request and response payloads between four
-// generation formats (Anthropic Messages, OpenAI Chat Completions, OpenAI
-// Responses, Gemini GenerateContent), so that the unified gateway routes
-// in pkg/server/handle_unified_gateway.go can dispatch any source-format
-// request to any candidate upstream regardless of its protocol.
-//
-// All conversion is delegated to github.com/looplj/axonhub/llm. This package
-// is the only place picotera imports axonhub types, so the rest of the
-// codebase sees a small, picotera-shaped surface.
-package llmbridge
+package llmbridgeimpl
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+
+	"picotera/pkg/llmbridge"
 
 	"github.com/looplj/axonhub/llm/auth"
 	"github.com/looplj/axonhub/llm/transformer"
@@ -31,89 +24,18 @@ const (
 	placeholderKey = "placeholder"
 )
 
-// Format identifies one of the four supported generation formats. The two
-// Gemini values distinguish stream vs. non-stream because Gemini routes the
-// stream flag through the URL path rather than the request body, and our
-// inbound handler needs to know which variant the client called.
-type Format int
-
-const (
-	FormatUnknown Format = iota
-	FormatAnthropicMessages
-	FormatOpenAIChatCompletions
-	FormatOpenAIResponses
-	FormatGeminiGenerateContent       // non-stream
-	FormatGeminiStreamGenerateContent // stream
-)
-
-// OutboundProfile selects the outbound transformer and JSON-object config for
-// unified bridge attempts.
-type OutboundProfile struct {
-	Type   string
-	Config map[string]any
-}
-
-// String renders the format for log lines and error messages.
-func (f Format) String() string {
-	switch f {
-	case FormatAnthropicMessages:
-		return "anthropicMessages"
-	case FormatOpenAIChatCompletions:
-		return "openaiChatCompletions"
-	case FormatOpenAIResponses:
-		return "openaiResponses"
-	case FormatGeminiGenerateContent:
-		return "geminiGenerateContent"
-	case FormatGeminiStreamGenerateContent:
-		return "geminiStreamGenerateContent"
-	default:
-		return "unknown"
-	}
-}
-
-// IsStreaming reports whether the format inherently signals a streaming
-// response. Anthropic and OpenAI formats carry a "stream" body field, so
-// IsStreaming returns false; the caller reads the flag from the parsed
-// llm.Request. Gemini distinguishes stream vs. non-stream at the format
-// level itself.
-func (f Format) IsStreaming() bool {
-	return f == FormatGeminiStreamGenerateContent
-}
-
-// IsGemini reports whether the format is one of the two Gemini variants.
-// Used at the boundary where Gemini Inbound needs a synthetic httpReq.Path
-// containing the model and stream marker.
-func (f Format) IsGemini() bool {
-	return f == FormatGeminiGenerateContent || f == FormatGeminiStreamGenerateContent
-}
-
-func DefaultOutboundProfileForFormat(f Format) (OutboundProfile, error) {
-	switch f {
-	case FormatAnthropicMessages:
-		return OutboundProfile{Type: "anthropic", Config: map[string]any{}}, nil
-	case FormatOpenAIChatCompletions:
-		return OutboundProfile{Type: "openai", Config: map[string]any{}}, nil
-	case FormatOpenAIResponses:
-		return OutboundProfile{Type: "openaiResponses", Config: map[string]any{}}, nil
-	case FormatGeminiGenerateContent, FormatGeminiStreamGenerateContent:
-		return OutboundProfile{Type: "gemini", Config: map[string]any{}}, nil
-	default:
-		return OutboundProfile{}, fmt.Errorf("llmbridge: unsupported upstream format %q", f)
-	}
-}
-
 // inboundFor returns the axonhub Inbound transformer for parsing a body
 // written in this format. We treat the four canonical Inbound choices as
 // stateless singletons; the constructors only allocate an empty struct.
-func inboundFor(f Format) (transformer.Inbound, error) {
+func inboundFor(f llmbridge.Format) (transformer.Inbound, error) {
 	switch f {
-	case FormatAnthropicMessages:
+	case llmbridge.FormatAnthropicMessages:
 		return anthropictrans.NewInboundTransformer(), nil
-	case FormatOpenAIChatCompletions:
+	case llmbridge.FormatOpenAIChatCompletions:
 		return openaitrans.NewInboundTransformer(), nil
-	case FormatOpenAIResponses:
+	case llmbridge.FormatOpenAIResponses:
 		return openairesponses.NewInboundTransformer(), nil
-	case FormatGeminiGenerateContent, FormatGeminiStreamGenerateContent:
+	case llmbridge.FormatGeminiGenerateContent, llmbridge.FormatGeminiStreamGenerateContent:
 		return geminitrans.NewInboundTransformer(), nil
 	default:
 		return nil, fmt.Errorf("llmbridge: unsupported source format %q", f)
@@ -124,41 +46,41 @@ func inboundFor(f Format) (transformer.Inbound, error) {
 // in this format. The transformers expect a baseURL and APIKeyProvider for
 // URL construction and auth — picotera handles both itself, so we hand them
 // throwaway placeholders. Only the body bytes are read out of the result.
-func outboundFor(f Format, profile OutboundProfile) (transformer.Outbound, error) {
+func outboundFor(f llmbridge.Format, profile llmbridge.OutboundProfile) (transformer.Outbound, error) {
 	switch profile.Type {
 	case "anthropic":
-		if f != FormatAnthropicMessages {
-			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatAnthropicMessages, f)
+		if f != llmbridge.FormatAnthropicMessages {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, llmbridge.FormatAnthropicMessages, f)
 		}
 		return anthropicOutbound(profile)
 	case "openai":
-		if f != FormatOpenAIChatCompletions {
-			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
+		if f != llmbridge.FormatOpenAIChatCompletions {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, llmbridge.FormatOpenAIChatCompletions, f)
 		}
 		return openAIOutbound(profile)
 	case "openaiResponses":
-		if f != FormatOpenAIResponses {
-			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIResponses, f)
+		if f != llmbridge.FormatOpenAIResponses {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, llmbridge.FormatOpenAIResponses, f)
 		}
 		return openAIResponsesOutbound(profile)
 	case "gemini":
-		if f != FormatGeminiGenerateContent && f != FormatGeminiStreamGenerateContent {
-			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s or %s, got %s", profile.Type, FormatGeminiGenerateContent, FormatGeminiStreamGenerateContent, f)
+		if f != llmbridge.FormatGeminiGenerateContent && f != llmbridge.FormatGeminiStreamGenerateContent {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s or %s, got %s", profile.Type, llmbridge.FormatGeminiGenerateContent, llmbridge.FormatGeminiStreamGenerateContent, f)
 		}
 		return geminiOutbound(profile)
 	case "openrouter":
-		if f != FormatOpenAIChatCompletions {
-			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
+		if f != llmbridge.FormatOpenAIChatCompletions {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, llmbridge.FormatOpenAIChatCompletions, f)
 		}
 		return openRouterOutbound(profile)
 	case "deepseek":
-		if f != FormatOpenAIChatCompletions {
-			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
+		if f != llmbridge.FormatOpenAIChatCompletions {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, llmbridge.FormatOpenAIChatCompletions, f)
 		}
 		return deepSeekOutbound(profile)
 	case "fireworks":
-		if f != FormatOpenAIChatCompletions {
-			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, FormatOpenAIChatCompletions, f)
+		if f != llmbridge.FormatOpenAIChatCompletions {
+			return nil, fmt.Errorf("llmbridge: outbound type %q is only compatible with %s, got %s", profile.Type, llmbridge.FormatOpenAIChatCompletions, f)
 		}
 		return fireworksOutbound(profile)
 	default:
@@ -166,7 +88,7 @@ func outboundFor(f Format, profile OutboundProfile) (transformer.Outbound, error
 	}
 }
 
-func anthropicOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+func anthropicOutbound(profile llmbridge.OutboundProfile) (transformer.Outbound, error) {
 	cfg := &anthropictrans.Config{Type: anthropictrans.PlatformDirect}
 	forceAnthropicConfig(cfg)
 	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
@@ -179,7 +101,7 @@ func anthropicOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 	return anthropictrans.NewOutboundTransformerWithConfig(cfg)
 }
 
-func openAIOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+func openAIOutbound(profile llmbridge.OutboundProfile) (transformer.Outbound, error) {
 	cfg := &openaitrans.Config{PlatformType: openaitrans.PlatformOpenAI}
 	forceOpenAIConfig(cfg)
 	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
@@ -192,7 +114,7 @@ func openAIOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 	return openaitrans.NewOutboundTransformerWithConfig(cfg)
 }
 
-func openAIResponsesOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+func openAIResponsesOutbound(profile llmbridge.OutboundProfile) (transformer.Outbound, error) {
 	cfg := &openairesponses.Config{}
 	forceOpenAIResponsesConfig(cfg)
 	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
@@ -202,7 +124,7 @@ func openAIResponsesOutbound(profile OutboundProfile) (transformer.Outbound, err
 	return openairesponses.NewOutboundTransformerWithConfig(cfg)
 }
 
-func geminiOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+func geminiOutbound(profile llmbridge.OutboundProfile) (transformer.Outbound, error) {
 	cfg := geminitrans.Config{}
 	forceGeminiConfig(&cfg)
 	if err := decodeOutboundConfig(profile.Config, &cfg); err != nil {
@@ -212,7 +134,7 @@ func geminiOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 	return geminitrans.NewOutboundTransformerWithConfig(cfg)
 }
 
-func openRouterOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+func openRouterOutbound(profile llmbridge.OutboundProfile) (transformer.Outbound, error) {
 	cfg := &openroutertrans.Config{}
 	forceOpenRouterConfig(cfg)
 	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
@@ -222,7 +144,7 @@ func openRouterOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 	return openroutertrans.NewOutboundTransformerWithConfig(cfg)
 }
 
-func deepSeekOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+func deepSeekOutbound(profile llmbridge.OutboundProfile) (transformer.Outbound, error) {
 	cfg := &deepseektrans.Config{}
 	forceDeepSeekConfig(cfg)
 	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {
@@ -232,7 +154,7 @@ func deepSeekOutbound(profile OutboundProfile) (transformer.Outbound, error) {
 	return deepseektrans.NewOutboundTransformerWithConfig(cfg)
 }
 
-func fireworksOutbound(profile OutboundProfile) (transformer.Outbound, error) {
+func fireworksOutbound(profile llmbridge.OutboundProfile) (transformer.Outbound, error) {
 	cfg := &fireworkstrans.Config{}
 	forceFireworksConfig(cfg)
 	if err := decodeOutboundConfig(profile.Config, cfg); err != nil {

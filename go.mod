@@ -3,20 +3,24 @@ module picotera
 go 1.26.1
 
 require (
+	github.com/agnivade/levenshtein v1.2.1
 	github.com/andybalholm/brotli v1.2.1
 	github.com/danielgtaylor/huma/v2 v2.37.3
 	github.com/fastschema/qjs v0.0.6
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/klauspost/compress v1.18.5
 	github.com/looplj/axonhub/llm v0.0.0-20260504030509-3a5f34936974
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/oapi-codegen/nullable v1.1.0
 	github.com/pressly/goose/v3 v3.27.0
+	github.com/redis/go-redis/v9 v9.19.0
 	github.com/rs/xid v1.6.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	github.com/tetratelabs/wazero v1.9.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
 )
@@ -25,7 +29,6 @@ require (
 	cloud.google.com/go/auth v0.17.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/smithy-go v1.24.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -47,7 +50,6 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/jellydator/ttlcache/v3 v3.4.0 // indirect
 	github.com/kaptinlin/jsonrepair v0.2.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
@@ -57,7 +59,6 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/redis/go-redis/v9 v9.19.0 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/samber/lo v1.52.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
@@ -67,7 +68,6 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tinylib/msgp v1.6.1 // indirect

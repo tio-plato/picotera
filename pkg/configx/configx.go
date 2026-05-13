@@ -3,6 +3,7 @@ package configx
 import (
 	"errors"
 	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
@@ -10,16 +11,18 @@ import (
 )
 
 type Config struct {
-	DatabaseURL        string        `mapstructure:"database_url"`
-	Host               string        `mapstructure:"host"`
-	Port               int           `mapstructure:"port"`
-	GatewayReadTimeout time.Duration `mapstructure:"gateway_read_timeout"`
-	S3                 S3Config      `mapstructure:"s3"`
-	KV                 KVConfig      `mapstructure:"kv"`
-	JSHookTimeout      time.Duration `mapstructure:"js_hook_timeout"`
-	JSMemoryLimit      int64         `mapstructure:"js_memory_limit"`
-	JSMaxTotalAttempts int           `mapstructure:"js_max_total_attempts"`
-	JSMaxDelay         time.Duration `mapstructure:"js_max_delay"`
+	DatabaseURL           string        `mapstructure:"database_url"`
+	Host                  string        `mapstructure:"host"`
+	Port                  int           `mapstructure:"port"`
+	GatewayReadTimeout    time.Duration `mapstructure:"gateway_read_timeout"`
+	S3                    S3Config      `mapstructure:"s3"`
+	KV                    KVConfig      `mapstructure:"kv"`
+	JSHookTimeout         time.Duration `mapstructure:"js_hook_timeout"`
+	JSMemoryLimit         int64         `mapstructure:"js_memory_limit"`
+	JSMaxTotalAttempts    int           `mapstructure:"js_max_total_attempts"`
+	JSMaxDelay            time.Duration `mapstructure:"js_max_delay"`
+	LLMBridgeWASMPoolSize int           `mapstructure:"llmbridge_wasm_pool_size"`
+	LLMBridgeWASMPath     string        `mapstructure:"llmbridge_wasm_path"`
 }
 
 type KVConfig struct {
@@ -64,6 +67,7 @@ func Parse() (*Config, error) {
 	viper.SetDefault("js_max_delay", 60*time.Second)
 	viper.SetDefault("kv.driver", "memory")
 	viper.SetDefault("kv.redis_url", "localhost:6379")
+	viper.SetDefault("llmbridge_wasm_pool_size", runtime.GOMAXPROCS(0))
 
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 

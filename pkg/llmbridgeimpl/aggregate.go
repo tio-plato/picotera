@@ -1,4 +1,4 @@
-package llmbridge
+package llmbridgeimpl
 
 import (
 	"bufio"
@@ -10,57 +10,24 @@ import (
 	"io"
 	"net/http"
 
+	"picotera/pkg/llmbridge"
+
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/httpclient"
 )
 
-type AggregationKind int
-
-const (
-	StreamAggregationNone AggregationKind = iota
-	StreamAggregationSSE
-	StreamAggregationJSONL
-	StreamAggregationUnsupported
-)
-
-func StreamAggregationKind(format Format, contentType string) AggregationKind {
-	ct := normalizedContentType(contentType)
-	switch format {
-	case FormatAnthropicMessages, FormatOpenAIChatCompletions, FormatOpenAIResponses:
-		switch ct {
-		case "text/event-stream":
-			return StreamAggregationSSE
-		case "", "application/json":
-			return StreamAggregationNone
-		default:
-			return StreamAggregationUnsupported
-		}
-	case FormatGeminiStreamGenerateContent:
-		switch ct {
-		case "text/event-stream":
-			return StreamAggregationSSE
-		case "application/jsonl", "application/x-ndjson", "application/jsonlines", "application/ndjson", "application/json":
-			return StreamAggregationJSONL
-		default:
-			return StreamAggregationUnsupported
-		}
-	default:
-		return StreamAggregationNone
-	}
-}
-
-func AggregateStream(ctx context.Context, format Format, contentType string, body []byte, profile OutboundProfile) ([]byte, error) {
-	kind := StreamAggregationKind(format, contentType)
+func AggregateStream(ctx context.Context, format llmbridge.Format, contentType string, body []byte, profile llmbridge.OutboundProfile) ([]byte, error) {
+	kind := llmbridge.StreamAggregationKind(format, contentType)
 	var chunks []*httpclient.StreamEvent
 	var err error
 	switch kind {
-	case StreamAggregationSSE:
+	case llmbridge.StreamAggregationSSE:
 		chunks, err = decodeSSEStream(ctx, body)
-	case StreamAggregationJSONL:
+	case llmbridge.StreamAggregationJSONL:
 		chunks, err = decodeJSONLStream(body)
-	case StreamAggregationNone:
+	case llmbridge.StreamAggregationNone:
 		return nil, fmt.Errorf("llmbridge: aggregate stream: %s with content type %q is not a stream response", format, normalizedContentType(contentType))
-	case StreamAggregationUnsupported:
+	case llmbridge.StreamAggregationUnsupported:
 		return nil, fmt.Errorf("llmbridge: aggregate stream: unsupported stream content type %q for %s", normalizedContentType(contentType), format)
 	default:
 		return nil, fmt.Errorf("llmbridge: aggregate stream: unknown aggregation kind %d", kind)

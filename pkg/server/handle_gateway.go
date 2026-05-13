@@ -697,7 +697,7 @@ func (h *gatewayHandler) streamSuccess(
 	var aggregated *artifacts.AggregatedResponse
 	if format, ok := responseAggregationFormat(endpointType); ok {
 		if profile, ok := defaultAggregationProfile(format); ok {
-			aggregated = buildAggregatedArtifact(bgCtx, format, resp.Header.Get("Content-Type"), respBytes, profile)
+			aggregated = buildAggregatedArtifact(bgCtx, h.llmBridge, format, resp.Header.Get("Content-Type"), respBytes, profile)
 		}
 	}
 	h.uploadResponseArtifactWithAggregation(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes, aggregated)

@@ -1,4 +1,4 @@
-package llmbridge
+package llmbridgeimpl
 
 import (
 	"bytes"
@@ -8,7 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
+
+	"picotera/pkg/llmbridge"
 
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/httpclient"
@@ -27,13 +28,23 @@ import (
 //
 // The returned reader is a ReadCloser; closing it stops the conversion
 // goroutine and closes the underlying upstream reader.
-func BridgeStream(ctx context.Context, src, upstream Format, upstreamBody io.ReadCloser, upstreamCT string, profile OutboundProfile) (io.ReadCloser, error) {
-	if src == FormatUnknown || upstream == FormatUnknown {
+type StreamBridge interface {
+	Pump(ctx context.Context, w io.Writer) error
+	Close() error
+}
+
+type streamBridge struct {
+	stream streams.Stream[*httpclient.StreamEvent]
+}
+
+func OpenStream(ctx context.Context, src, upstream llmbridge.Format, upstreamBody io.ReadCloser, upstreamCT string, profile llmbridge.OutboundProfile) (StreamBridge, error) {
+	if src == llmbridge.FormatUnknown || upstream == llmbridge.FormatUnknown {
 		_ = upstreamBody.Close()
 		return nil, fmt.Errorf("llmbridge: bridge stream with unknown format (src=%s upstream=%s)", src, upstream)
 	}
 	if src == upstream {
-		return upstreamBody, nil
+		_ = upstreamBody.Close()
+		return nil, fmt.Errorf("llmbridge: open stream called for identity formats")
 	}
 
 	in, err := inboundFor(src)
@@ -72,27 +83,33 @@ func BridgeStream(ctx context.Context, src, upstream Format, upstreamBody io.Rea
 		_ = upstreamBody.Close()
 		return nil, fmt.Errorf("llmbridge: open %s stream: %w", src, err)
 	}
+	return &streamBridge{stream: clientEvents}, nil
+}
 
+func BridgeStream(ctx context.Context, src, upstream llmbridge.Format, upstreamBody io.ReadCloser, upstreamCT string, profile llmbridge.OutboundProfile) (io.ReadCloser, error) {
+	if src == llmbridge.FormatUnknown || upstream == llmbridge.FormatUnknown {
+		_ = upstreamBody.Close()
+		return nil, fmt.Errorf("llmbridge: bridge stream with unknown format (src=%s upstream=%s)", src, upstream)
+	}
+	if src == upstream {
+		return upstreamBody, nil
+	}
+	stream, err := OpenStream(ctx, src, upstream, upstreamBody, upstreamCT, profile)
+	if err != nil {
+		return nil, err
+	}
 	pr, pw := io.Pipe()
 	go func() {
-		err := pumpEvents(clientEvents, pw)
-		_ = clientEvents.Close()
-		// closing the underlying upstream reader is the decoder's job;
-		// guard against double-close by relying on its idempotent Close.
-		_ = upstreamBody.Close()
+		err := stream.Pump(ctx, pw)
+		_ = stream.Close()
 		_ = pw.CloseWithError(err)
 	}()
 	return pr, nil
 }
 
-// pumpEvents drains a stream of *httpclient.StreamEvent into the writer in
-// SSE wire format. Standard SSE: optional `event: <type>` line, then `data:
-// <data>` lines, then a blank line terminator. We follow each event's Type
-// (Anthropic populates it, OpenAI/Gemini leave it empty) and split multi-line
-// payloads onto multiple `data:` lines per RFC 8895 conventions.
-func pumpEvents(stream streams.Stream[*httpclient.StreamEvent], w io.Writer) error {
-	for stream.Next() {
-		ev := stream.Current()
+func (s *streamBridge) Pump(ctx context.Context, w io.Writer) error {
+	for s.stream.Next() {
+		ev := s.stream.Current()
 		if ev == nil {
 			continue
 		}
@@ -101,10 +118,14 @@ func pumpEvents(stream streams.Stream[*httpclient.StreamEvent], w io.Writer) err
 			return err
 		}
 	}
-	if err := stream.Err(); err != nil && !errors.Is(err, io.EOF) {
+	if err := s.stream.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}
 	return nil
+}
+
+func (s *streamBridge) Close() error {
+	return s.stream.Close()
 }
 
 // encodeSSEEvent serializes a StreamEvent to SSE wire bytes. Multi-line Data
@@ -136,43 +157,4 @@ func normalizedContentType(ct string) string {
 		ct = ct[:i]
 	}
 	return strings.ToLower(strings.TrimSpace(ct))
-}
-
-// teeReadCloser tees every byte read from the underlying ReadCloser into the
-// supplied bytes.Buffer. It is used by the unified gateway handler to keep
-// the upstream wire bytes for the upstream-view artifact while the bridged
-// (source-format) bytes drain to the client and the meta-view artifact.
-type teeReadCloser struct {
-	src  io.ReadCloser
-	tee  *bytes.Buffer
-	mu   sync.Mutex
-	done bool
-}
-
-// NewUpstreamTee returns a ReadCloser that mirrors src into tee on every
-// successful Read. Closing the returned reader closes src (so the bridge's
-// downstream consumer drains naturally).
-func NewUpstreamTee(src io.ReadCloser, tee *bytes.Buffer) io.ReadCloser {
-	return &teeReadCloser{src: src, tee: tee}
-}
-
-func (t *teeReadCloser) Read(p []byte) (int, error) {
-	n, err := t.src.Read(p)
-	if n > 0 && t.tee != nil {
-		t.mu.Lock()
-		t.tee.Write(p[:n])
-		t.mu.Unlock()
-	}
-	return n, err
-}
-
-func (t *teeReadCloser) Close() error {
-	t.mu.Lock()
-	if t.done {
-		t.mu.Unlock()
-		return nil
-	}
-	t.done = true
-	t.mu.Unlock()
-	return t.src.Close()
 }

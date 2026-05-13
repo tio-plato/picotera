@@ -1,10 +1,11 @@
-package llmbridge
+package llmbridgeimpl
 
 import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
+
+	"picotera/pkg/llmbridge"
 
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/httpclient"
@@ -20,8 +21,8 @@ import (
 //
 // Returns the upstream-format body bytes and the Content-Type that should be
 // set on the outgoing request.
-func BridgeRequest(ctx context.Context, src, dst Format, body []byte, headers http.Header, pendingURL string, profile OutboundProfile) ([]byte, string, error) {
-	if src == FormatUnknown || dst == FormatUnknown {
+func BridgeRequest(ctx context.Context, src, dst llmbridge.Format, body []byte, headers http.Header, pendingURL string, profile llmbridge.OutboundProfile) ([]byte, string, error) {
+	if src == llmbridge.FormatUnknown || dst == llmbridge.FormatUnknown {
 		return nil, "", fmt.Errorf("llmbridge: bridge with unknown format (src=%s dst=%s)", src, dst)
 	}
 	if src == dst {
@@ -50,8 +51,8 @@ func BridgeRequest(ctx context.Context, src, dst Format, body []byte, headers ht
 
 // BridgeNonStream converts a non-streaming upstream JSON response body into
 // source-format JSON. Identity when src == upstream.
-func BridgeNonStream(ctx context.Context, src, upstream Format, upstreamBody []byte, upstreamHeaders http.Header, profile OutboundProfile) ([]byte, string, error) {
-	if src == FormatUnknown || upstream == FormatUnknown {
+func BridgeNonStream(ctx context.Context, src, upstream llmbridge.Format, upstreamBody []byte, upstreamHeaders http.Header, profile llmbridge.OutboundProfile) ([]byte, string, error) {
+	if src == llmbridge.FormatUnknown || upstream == llmbridge.FormatUnknown {
 		return nil, "", fmt.Errorf("llmbridge: bridge non-stream with unknown format (src=%s upstream=%s)", src, upstream)
 	}
 	if src == upstream {
@@ -90,7 +91,7 @@ func BridgeNonStream(ctx context.Context, src, upstream Format, upstreamBody []b
 // supply the synthesized URL/path to Gemini Inbound (which derives model and
 // stream from the path) and a Content-Type so the strict transformers don't
 // reject the body.
-func parseSourceRequest(ctx context.Context, src Format, body []byte, headers http.Header, pendingURL string) (*llm.Request, error) {
+func parseSourceRequest(ctx context.Context, src llmbridge.Format, body []byte, headers http.Header, pendingURL string) (*llm.Request, error) {
 	in, err := inboundFor(src)
 	if err != nil {
 		return nil, err
@@ -123,23 +124,4 @@ func contentTypeOrDefault(h http.Header) string {
 		return ct
 	}
 	return "application/json"
-}
-
-// SyntheticGeminiPath returns a Path string in the form Gemini Inbound
-// expects: ".../models/{model}:generateContent" (or stream variant). The
-// unified handler hands the parsed model into this helper to feed
-// parseSourceRequest.
-func SyntheticGeminiPath(format Format, model string) string {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		model = "unknown"
-	}
-	switch format {
-	case FormatGeminiStreamGenerateContent:
-		return "/v1beta/models/" + model + ":streamGenerateContent"
-	case FormatGeminiGenerateContent:
-		fallthrough
-	default:
-		return "/v1beta/models/" + model + ":generateContent"
-	}
 }

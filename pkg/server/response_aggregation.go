@@ -25,16 +25,19 @@ func responseAggregationFormat(endpointType int32) (llmbridge.Format, bool) {
 	}
 }
 
-func buildAggregatedArtifact(ctx context.Context, format llmbridge.Format, contentType string, body []byte, profile llmbridge.OutboundProfile) *artifacts.AggregatedResponse {
+func buildAggregatedArtifact(ctx context.Context, bridge llmbridge.Bridge, format llmbridge.Format, contentType string, body []byte, profile llmbridge.OutboundProfile) *artifacts.AggregatedResponse {
 	kind := llmbridge.StreamAggregationKind(format, contentType)
 	if kind == llmbridge.StreamAggregationNone {
+		return nil
+	}
+	if bridge == nil || !bridge.Enabled() {
 		return nil
 	}
 	aggregated := &artifacts.AggregatedResponse{
 		Format:       format.String(),
 		BodyEncoding: "json",
 	}
-	resp, err := llmbridge.AggregateStream(ctx, format, contentType, body, profile)
+	resp, err := bridge.AggregateStream(ctx, format, contentType, body, profile)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).WithField("format", format.String()).Warn("artifact: aggregate response stream failed")
 		aggregated.Error = err.Error()

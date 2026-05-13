@@ -503,6 +503,16 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 
 			// Bridge step. When formats match, BridgeRequest is identity.
 			if side.upFormat != srcFormat {
+				if !s.llmBridge.Enabled() {
+					brerr := fmt.Errorf("llmbridge: wasm module is not configured")
+					cancel()
+					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, brerr.Error())
+					lastErr = brerr
+					lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: brerr.Error()}
+					currentRetryCount++
+					totalAttemptCount++
+					continue
+				}
 				bridgeURL := req.URL.String()
 				if srcFormat == llmbridge.FormatGeminiGenerateContent || srcFormat == llmbridge.FormatGeminiStreamGenerateContent {
 					// The Gemini Inbound parser reads model and stream from
@@ -511,7 +521,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 					// asked for, so the parsed *llm.Request carries them.
 					bridgeURL = llmbridge.SyntheticGeminiPath(srcFormat, originalModelName)
 				}
-				upBody, upCT, brerr := llmbridge.BridgeRequest(ctx, srcFormat, side.upFormat, reqBody, req.Header, bridgeURL, outboundProfile)
+				upBody, upCT, brerr := s.llmBridge.BridgeRequest(ctx, srcFormat, side.upFormat, reqBody, req.Header, bridgeURL, outboundProfile)
 				if brerr != nil {
 					cancel()
 					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, brerr.Error())
@@ -997,7 +1007,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	var clientReader io.ReadCloser
 	if bridging {
 		if streamMode {
-			br, err := llmbridge.BridgeStream(ctx, a.srcFormat, a.upFormat, teedUpstream, upstreamCT, a.outboundProfile)
+			br, err := h.llmBridge.BridgeStream(ctx, a.srcFormat, a.upFormat, teedUpstream, upstreamCT, a.outboundProfile)
 			if err != nil {
 				cancel()
 				h.failUnifiedSuccess(a, err.Error())
@@ -1014,7 +1024,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 				return
 			}
 			_ = teedUpstream.Close()
-			bridged, _, berr := llmbridge.BridgeNonStream(ctx, a.srcFormat, a.upFormat, upstreamBody, resp.Header, a.outboundProfile)
+			bridged, _, berr := h.llmBridge.BridgeNonStream(ctx, a.srcFormat, a.upFormat, upstreamBody, resp.Header, a.outboundProfile)
 			if berr != nil {
 				cancel()
 				h.failUnifiedSuccess(a, berr.Error())
@@ -1063,10 +1073,10 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		clientBytes = upstreamBytes
 	}
 
-	upstreamAggregated := buildAggregatedArtifact(a.bgCtx, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
+	upstreamAggregated := buildAggregatedArtifact(a.bgCtx, h.llmBridge, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
 	var metaAggregated *artifacts.AggregatedResponse
 	if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
-		metaAggregated = buildAggregatedArtifact(a.bgCtx, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
+		metaAggregated = buildAggregatedArtifact(a.bgCtx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
 	}
 	h.uploadResponseArtifactWithAggregation(a.bgCtx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated)
 	h.uploadMetaResponseArtifactWithAggregation(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated)

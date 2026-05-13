@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/llmbridge"
+	"picotera/pkg/llmbridgeimpl"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -80,7 +83,7 @@ func TestBuildAggregatedArtifactGeminiStreamAndNonStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	aggregated := buildAggregatedArtifact(context.Background(), llmbridge.FormatGeminiStreamGenerateContent, "application/json", []byte(streamLine+"\n"), profile)
+	aggregated := buildAggregatedArtifact(context.Background(), fakeLLMBridge{}, llmbridge.FormatGeminiStreamGenerateContent, "application/json", []byte(streamLine+"\n"), profile)
 	if aggregated == nil {
 		t.Fatal("expected aggregated artifact")
 	}
@@ -95,10 +98,36 @@ func TestBuildAggregatedArtifactGeminiStreamAndNonStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	aggregated = buildAggregatedArtifact(context.Background(), llmbridge.FormatGeminiGenerateContent, "application/json", []byte(`{"candidates":[]}`), nonStreamProfile)
+	aggregated = buildAggregatedArtifact(context.Background(), fakeLLMBridge{}, llmbridge.FormatGeminiGenerateContent, "application/json", []byte(`{"candidates":[]}`), nonStreamProfile)
 	if aggregated != nil {
 		t.Fatalf("Gemini non-stream should not aggregate, got %+v", aggregated)
 	}
+}
+
+type fakeLLMBridge struct{}
+
+func (fakeLLMBridge) Enabled() bool {
+	return true
+}
+
+func (fakeLLMBridge) Close(ctx context.Context) error {
+	return nil
+}
+
+func (fakeLLMBridge) BridgeRequest(ctx context.Context, src, dst llmbridge.Format, body []byte, headers http.Header, pendingURL string, profile llmbridge.OutboundProfile) ([]byte, string, error) {
+	return body, "application/json", nil
+}
+
+func (fakeLLMBridge) BridgeNonStream(ctx context.Context, src, upstream llmbridge.Format, upstreamBody []byte, upstreamHeaders http.Header, profile llmbridge.OutboundProfile) ([]byte, string, error) {
+	return upstreamBody, "application/json", nil
+}
+
+func (fakeLLMBridge) BridgeStream(ctx context.Context, src, upstream llmbridge.Format, upstreamBody io.ReadCloser, upstreamCT string, profile llmbridge.OutboundProfile) (io.ReadCloser, error) {
+	return upstreamBody, nil
+}
+
+func (fakeLLMBridge) AggregateStream(ctx context.Context, format llmbridge.Format, contentType string, body []byte, profile llmbridge.OutboundProfile) ([]byte, error) {
+	return llmbridgeimpl.AggregateStream(ctx, format, contentType, body, profile)
 }
 
 func TestCandidateEndpointTypes(t *testing.T) {

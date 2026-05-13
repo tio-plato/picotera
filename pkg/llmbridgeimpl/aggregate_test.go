@@ -1,9 +1,11 @@
-package llmbridge
+package llmbridgeimpl
 
 import (
 	"context"
 	"strings"
 	"testing"
+
+	"picotera/pkg/llmbridge"
 
 	"github.com/tidwall/gjson"
 )
@@ -11,25 +13,25 @@ import (
 func TestStreamAggregationKind(t *testing.T) {
 	cases := []struct {
 		name        string
-		format      Format
+		format      llmbridge.Format
 		contentType string
-		want        AggregationKind
+		want        llmbridge.AggregationKind
 	}{
-		{"openai chat sse", FormatOpenAIChatCompletions, "text/event-stream; charset=utf-8", StreamAggregationSSE},
-		{"openai chat json", FormatOpenAIChatCompletions, "application/json", StreamAggregationNone},
-		{"openai responses unsupported", FormatOpenAIResponses, "application/x-ndjson", StreamAggregationUnsupported},
-		{"anthropic sse", FormatAnthropicMessages, "text/event-stream", StreamAggregationSSE},
-		{"gemini sse", FormatGeminiStreamGenerateContent, "text/event-stream", StreamAggregationSSE},
-		{"gemini jsonl", FormatGeminiStreamGenerateContent, "application/jsonl", StreamAggregationJSONL},
-		{"gemini ndjson", FormatGeminiStreamGenerateContent, "application/x-ndjson", StreamAggregationJSONL},
-		{"gemini stream json", FormatGeminiStreamGenerateContent, "application/json", StreamAggregationJSONL},
-		{"gemini nonstream", FormatGeminiGenerateContent, "application/json", StreamAggregationNone},
-		{"unknown", FormatUnknown, "text/event-stream", StreamAggregationNone},
+		{"openai chat sse", llmbridge.FormatOpenAIChatCompletions, "text/event-stream; charset=utf-8", llmbridge.StreamAggregationSSE},
+		{"openai chat json", llmbridge.FormatOpenAIChatCompletions, "application/json", llmbridge.StreamAggregationNone},
+		{"openai responses unsupported", llmbridge.FormatOpenAIResponses, "application/x-ndjson", llmbridge.StreamAggregationUnsupported},
+		{"anthropic sse", llmbridge.FormatAnthropicMessages, "text/event-stream", llmbridge.StreamAggregationSSE},
+		{"gemini sse", llmbridge.FormatGeminiStreamGenerateContent, "text/event-stream", llmbridge.StreamAggregationSSE},
+		{"gemini jsonl", llmbridge.FormatGeminiStreamGenerateContent, "application/jsonl", llmbridge.StreamAggregationJSONL},
+		{"gemini ndjson", llmbridge.FormatGeminiStreamGenerateContent, "application/x-ndjson", llmbridge.StreamAggregationJSONL},
+		{"gemini stream json", llmbridge.FormatGeminiStreamGenerateContent, "application/json", llmbridge.StreamAggregationJSONL},
+		{"gemini nonstream", llmbridge.FormatGeminiGenerateContent, "application/json", llmbridge.StreamAggregationNone},
+		{"unknown", llmbridge.FormatUnknown, "text/event-stream", llmbridge.StreamAggregationNone},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := StreamAggregationKind(tt.format, tt.contentType); got != tt.want {
-				t.Fatalf("StreamAggregationKind(%s, %q) = %v, want %v", tt.format, tt.contentType, got, tt.want)
+			if got := llmbridge.StreamAggregationKind(tt.format, tt.contentType); got != tt.want {
+				t.Fatalf("llmbridge.StreamAggregationKind(%s, %q) = %v, want %v", tt.format, tt.contentType, got, tt.want)
 			}
 		})
 	}
@@ -42,7 +44,7 @@ func TestAggregateStreamOpenAIChatSSE(t *testing.T) {
 		`[DONE]`,
 	)
 
-	got, err := AggregateStream(context.Background(), FormatOpenAIChatCompletions, "text/event-stream", []byte(body), mustProfile(t, FormatOpenAIChatCompletions))
+	got, err := AggregateStream(context.Background(), llmbridge.FormatOpenAIChatCompletions, "text/event-stream", []byte(body), mustProfile(t, llmbridge.FormatOpenAIChatCompletions))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +78,7 @@ func TestAggregateStreamOpenAIResponsesSSE(t *testing.T) {
 		`{"type":"response.completed","sequence_number":8,"response":{"id":"resp_123","object":"response","created_at":1700000000,"model":"gpt-4o","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}`,
 	)
 
-	got, err := AggregateStream(context.Background(), FormatOpenAIResponses, "text/event-stream", []byte(body), mustProfile(t, FormatOpenAIResponses))
+	got, err := AggregateStream(context.Background(), llmbridge.FormatOpenAIResponses, "text/event-stream", []byte(body), mustProfile(t, llmbridge.FormatOpenAIResponses))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +107,7 @@ func TestAggregateStreamAnthropicSSE(t *testing.T) {
 		`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}`,
 	)
 
-	got, err := AggregateStream(context.Background(), FormatAnthropicMessages, "text/event-stream", []byte(body), mustProfile(t, FormatAnthropicMessages))
+	got, err := AggregateStream(context.Background(), llmbridge.FormatAnthropicMessages, "text/event-stream", []byte(body), mustProfile(t, llmbridge.FormatAnthropicMessages))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +139,7 @@ func TestAggregateStreamGeminiSSEAndJSONL(t *testing.T) {
 		{name: "json content type jsonl body", contentType: "application/json", body: line1 + "\n" + line2 + "\n"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := AggregateStream(context.Background(), FormatGeminiStreamGenerateContent, tt.contentType, []byte(tt.body), mustProfile(t, FormatGeminiStreamGenerateContent))
+			got, err := AggregateStream(context.Background(), llmbridge.FormatGeminiStreamGenerateContent, tt.contentType, []byte(tt.body), mustProfile(t, llmbridge.FormatGeminiStreamGenerateContent))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,19 +169,19 @@ func TestAggregateStreamGeminiSSEAndJSONL(t *testing.T) {
 }
 
 func TestAggregateStreamErrors(t *testing.T) {
-	if _, err := AggregateStream(context.Background(), FormatOpenAIChatCompletions, "application/json", []byte(`{}`), mustProfile(t, FormatOpenAIChatCompletions)); err == nil || !strings.Contains(err.Error(), "not a stream response") {
+	if _, err := AggregateStream(context.Background(), llmbridge.FormatOpenAIChatCompletions, "application/json", []byte(`{}`), mustProfile(t, llmbridge.FormatOpenAIChatCompletions)); err == nil || !strings.Contains(err.Error(), "not a stream response") {
 		t.Fatalf("non-stream error = %v, want not a stream response", err)
 	}
-	if _, err := AggregateStream(context.Background(), FormatOpenAIResponses, "application/x-ndjson", []byte(`{}`), mustProfile(t, FormatOpenAIResponses)); err == nil || !strings.Contains(err.Error(), "unsupported stream content type") {
+	if _, err := AggregateStream(context.Background(), llmbridge.FormatOpenAIResponses, "application/x-ndjson", []byte(`{}`), mustProfile(t, llmbridge.FormatOpenAIResponses)); err == nil || !strings.Contains(err.Error(), "unsupported stream content type") {
 		t.Fatalf("unsupported error = %v, want unsupported stream content type", err)
 	}
-	if _, err := AggregateStream(context.Background(), FormatGeminiStreamGenerateContent, "application/jsonl", []byte(`{"ok":true}`+"\n"+`[]`+"\n"), mustProfile(t, FormatGeminiStreamGenerateContent)); err == nil || !strings.Contains(err.Error(), "expected JSON object") {
+	if _, err := AggregateStream(context.Background(), llmbridge.FormatGeminiStreamGenerateContent, "application/jsonl", []byte(`{"ok":true}`+"\n"+`[]`+"\n"), mustProfile(t, llmbridge.FormatGeminiStreamGenerateContent)); err == nil || !strings.Contains(err.Error(), "expected JSON object") {
 		t.Fatalf("malformed jsonl error = %v, want expected JSON object", err)
 	}
-	if _, err := AggregateStream(context.Background(), FormatGeminiStreamGenerateContent, "application/jsonl", []byte(`null`+"\n"), mustProfile(t, FormatGeminiStreamGenerateContent)); err == nil || !strings.Contains(err.Error(), "expected JSON object") {
+	if _, err := AggregateStream(context.Background(), llmbridge.FormatGeminiStreamGenerateContent, "application/jsonl", []byte(`null`+"\n"), mustProfile(t, llmbridge.FormatGeminiStreamGenerateContent)); err == nil || !strings.Contains(err.Error(), "expected JSON object") {
 		t.Fatalf("null jsonl error = %v, want expected JSON object", err)
 	}
-	if _, err := AggregateStream(context.Background(), FormatAnthropicMessages, "text/event-stream", []byte(":"), mustProfile(t, FormatAnthropicMessages)); err == nil || !strings.Contains(err.Error(), "empty stream chunks") {
+	if _, err := AggregateStream(context.Background(), llmbridge.FormatAnthropicMessages, "text/event-stream", []byte(":"), mustProfile(t, llmbridge.FormatAnthropicMessages)); err == nil || !strings.Contains(err.Error(), "empty stream chunks") {
 		t.Fatalf("empty sse error = %v, want empty stream chunks", err)
 	}
 }

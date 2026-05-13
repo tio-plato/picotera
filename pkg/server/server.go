@@ -38,6 +38,7 @@ type Server struct {
 	endpointRouter   *endpointRouter
 	projectRouter    *projectRouter
 	projectExtractor *projectExtractor
+	llmBridge        llmbridge.Bridge
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -103,6 +104,13 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}, queries, kvStore)
 
 	projectRouter := newProjectRouter(queries)
+	llmBridge, err := llmbridge.New(ctx, llmbridge.Config{
+		PoolSize: config.LLMBridgeWASMPoolSize,
+		WASMPath: config.LLMBridgeWASMPath,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize llmbridge: %w", err)
+	}
 	server := &Server{
 		config:           config,
 		queries:          queries,
@@ -117,6 +125,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		endpointRouter:   newEndpointRouter(queries),
 		projectRouter:    projectRouter,
 		projectExtractor: newProjectExtractor(projectRouter),
+		llmBridge:        llmBridge,
 	}
 	server.registerOperations()
 	server.registerEndpoints()
