@@ -21,6 +21,8 @@ export type RequestsFilters = Readonly<{
   projectId?: number
 }>
 
+export type KvListFilters = Readonly<{ pattern?: string; cursor?: number }>
+
 export type CursorFilters = Readonly<{ limit: number; cursor?: string }>
 export type RequestListFilters = RequestsFilters & Partial<CursorFilters>
 
@@ -78,6 +80,11 @@ export const queryKeys = {
     all: ['fetchModels'] as const,
     source: (providerId: number, endpointPath: string) =>
       ['fetchModels', { providerId, endpointPath }] as const,
+  },
+  kv: {
+    all: ['kv'] as const,
+    list: (filters: KvListFilters = {}) => ['kv', { ...filters }] as const,
+    detail: (key: string) => ['kv', key] as const,
   },
   artifacts: {
     all: ['artifacts'] as const,

@@ -33,6 +33,7 @@ type Server struct {
 	proxyCache       *proxyTransportCache
 	artifacts        artifacts.Sink
 	jsxEngine        *jsx.Engine
+	kvStore          kv.Store
 	staticHandler    http.Handler
 	endpointRouter   *endpointRouter
 	projectRouter    *projectRouter
@@ -111,6 +112,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		proxyCache:       proxyCache,
 		artifacts:        sink,
 		jsxEngine:        jsxEngine,
+		kvStore:          kvStore,
 		staticHandler:    static.Handler(),
 		endpointRouter:   newEndpointRouter(queries),
 		projectRouter:    projectRouter,
@@ -174,6 +176,10 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationCreateScript, s.handleCreateScript)
 	huma.Register(mgmt, contract.OperationUpdateScript, s.handleUpdateScript)
 	huma.Register(mgmt, contract.OperationDeleteScript, s.handleDeleteScript)
+	huma.Register(mgmt, contract.OperationListKvEntries, s.handleListKvEntries)
+	huma.Register(mgmt, contract.OperationGetKvEntry, s.handleGetKvEntry)
+	huma.Register(mgmt, contract.OperationUpsertKvEntry, s.handleUpsertKvEntry)
+	huma.Register(mgmt, contract.OperationDeleteKvEntry, s.handleDeleteKvEntry)
 }
 
 func (s *Server) registerEndpoints() {

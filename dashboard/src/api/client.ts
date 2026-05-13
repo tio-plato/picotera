@@ -7,6 +7,8 @@ import type {
   ExchangeRateView,
   FetchModelsRequestBody,
   FetchModelsResponseBody,
+  KvEntryView,
+  KvMutateBody,
   ModelView,
   OverviewDimension,
   OverviewDistributionView,
@@ -22,7 +24,7 @@ import type {
   UpsertProjectRequestBody,
 } from '@/api'
 import type { components } from '@/openapi-types'
-import { queryKeys, type OverviewFilters, type RequestsFilters } from '@/api/queryKeys'
+import { queryKeys, type KvListFilters, type OverviewFilters, type RequestsFilters } from '@/api/queryKeys'
 
 type ApiErrorShape = Partial<components['schemas']['PicoTeraError']>
 
@@ -227,6 +229,44 @@ export async function upsertExchangeRate(body: ExchangeRateView): Promise<Exchan
 export async function deleteExchangeRate(code: string): Promise<void> {
   const { error } = await api.POST('/api/picotera/exchange-rates/delete', { body: { code } })
   if (error) fail(error, '删除汇率失败')
+}
+
+export async function listKvEntries(filters: KvListFilters = {}): Promise<{ items: KvEntryView[]; nextCursor?: string; hasMore: boolean }> {
+  const { data, error } = await api.GET('/api/picotera/kv', {
+    params: { query: { pattern: filters.pattern, cursor: filters.cursor } },
+  })
+  if (error) fail(error, '加载 KV 条目失败')
+  return {
+    items: data?.items ?? [],
+    nextCursor: data?.pagination?.nextCursor,
+    hasMore: data?.pagination?.hasMore ?? false,
+  }
+}
+
+export async function getKvEntry(key: string): Promise<KvEntryView> {
+  const { data, error } = await api.GET('/api/picotera/kv/{key}', {
+    params: { path: { key } },
+  })
+  if (error) fail(error, '加载 KV 条目失败')
+  return data
+}
+
+export async function upsertKvEntry(key: string, body: KvMutateBody): Promise<KvEntryView> {
+  const { data, error } = await api.PUT('/api/picotera/kv/{key}', {
+    params: { path: { key } },
+    body,
+  })
+  if (error) fail(error, '保存 KV 条目失败')
+  return data
+}
+
+export async function deleteKvEntry(key: string): Promise<void> {
+  const { error } = await api.POST('/api/picotera/kv/delete', { body: { key } })
+  if (error) fail(error, '删除 KV 条目失败')
+}
+
+export function invalidateKv(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.kv.all })
 }
 
 export async function listRequests(filters: RequestsFilters & { limit: number; cursor?: string }) {

@@ -137,6 +137,20 @@ components:
       required:
         - code
       type: object
+    DeleteKvEntryRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/DeleteKvEntryRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        key:
+          type: string
+      required:
+        - key
+      type: object
     DeleteModelRequestBody:
       additionalProperties: false
       properties:
@@ -324,6 +338,44 @@ components:
         - providerId
         - providerModels
         - removedModels
+      type: object
+    KvEntryView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/KvEntryView.json
+          format: uri
+          readOnly: true
+          type: string
+        key:
+          type: string
+        ttl:
+          format: int64
+          type: integer
+        value:
+          type: string
+      required:
+        - key
+        - value
+        - ttl
+      type: object
+    KvMutateBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/KvMutateBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ttlSeconds:
+          format: int64
+          type: integer
+        value:
+          type: string
+      required:
+        - value
       type: object
     MatchPricingRequestBody:
       additionalProperties: false
@@ -627,6 +679,26 @@ components:
         - startAt
         - endAt
         - bucket
+      type: object
+    PaginatedBodyKvEntryView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/PaginatedBodyKvEntryView.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/KvEntryView"
+          nullable: true
+          type: array
+        pagination:
+          $ref: "#/components/schemas/PaginationInfo"
+      required:
+        - items
+        - pagination
       type: object
     PaginatedBodyRequestTraceView:
       additionalProperties: false
@@ -1446,6 +1518,107 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Get an exchange rate by code
+  /api/picotera/kv:
+    get:
+      operationId: listKvEntries
+      parameters:
+        - explode: false
+          in: query
+          name: pattern
+          schema:
+            default: "*"
+            type: string
+        - explode: false
+          in: query
+          name: cursor
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedBodyKvEntryView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List KV entries
+  /api/picotera/kv/delete:
+    post:
+      operationId: deleteKvEntry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteKvEntryRequestBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Delete a KV entry
+  /api/picotera/kv/{key}:
+    get:
+      operationId: getKvEntry
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KvEntryView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get a KV entry
+    put:
+      operationId: upsertKvEntry
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KvMutateBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KvEntryView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Create or update a KV entry
   /api/picotera/models:
     get:
       operationId: listModels

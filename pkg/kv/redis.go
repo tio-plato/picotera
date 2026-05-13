@@ -8,6 +8,65 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// ScanEntries implements Store.ScanEntries using a single Redis pipeline:
+// SCAN to discover keys, then MGET + batched TTL for values and TTLs.
+func (r *RedisStore) ScanEntries(ctx context.Context, pattern string, cursor uint64, count int64) (ScanEntriesResult, error) {
+	if count <= 0 {
+		count = 100
+	}
+
+	keys, nextCursor, err := r.client.Scan(ctx, cursor, pattern, count).Result()
+	if err != nil {
+		return ScanEntriesResult{}, err
+	}
+
+	if len(keys) == 0 {
+		return ScanEntriesResult{NextCursor: nextCursor}, nil
+	}
+
+	pipe := r.client.Pipeline()
+	valCmds := make([]*redis.StringCmd, len(keys))
+	ttlCmds := make([]*redis.DurationCmd, len(keys))
+	for i, k := range keys {
+		valCmds[i] = pipe.Get(ctx, k)
+		ttlCmds[i] = pipe.TTL(ctx, k)
+	}
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return ScanEntriesResult{}, err
+	}
+
+	entries := make([]KvEntry, 0, len(keys))
+	for i, k := range keys {
+		val, err := valCmds[i].Result()
+		if err == redis.Nil {
+			continue // expired between SCAN and GET
+		}
+		if err != nil {
+			return ScanEntriesResult{}, err
+		}
+
+		d := ttlCmds[i].Val()
+		var ttl int64
+		switch {
+		case d == -2*time.Second:
+			continue // expired
+		case d == -1*time.Second:
+			ttl = -1
+		default:
+			secs := d.Seconds()
+			if secs <= 0 {
+				ttl = 0
+			} else {
+				ttl = int64(math.Ceil(secs))
+			}
+		}
+
+		entries = append(entries, KvEntry{Key: k, Value: val, TTL: ttl})
+	}
+
+	return ScanEntriesResult{Entries: entries, NextCursor: nextCursor}, nil
+}
+
 // RedisStore implements Store backed by a Redis server.
 type RedisStore struct {
 	client *redis.Client
@@ -70,3 +129,4 @@ func (r *RedisStore) Del(ctx context.Context, key string) error {
 func (r *RedisStore) Close() error {
 	return r.client.Close()
 }
+

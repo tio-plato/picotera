@@ -29,6 +29,8 @@ export type OverviewSeriesPointView = components['schemas']['OverviewSeriesPoint
 export type OverviewWindowView = components['schemas']['OverviewWindowView']
 export type OverviewCostView = components['schemas']['OverviewCostView']
 export type OverviewBreakdownRowView = components['schemas']['OverviewBreakdownRowView']
+export type KvEntryView = components['schemas']['KvEntryView']
+export type KvMutateBody = components['schemas']['KvMutateBody']
 
 export type OverviewRange = '1d' | '7d' | '1m'
 export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider' | 'project'
