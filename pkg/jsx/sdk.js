@@ -32,7 +32,8 @@
     },
     kv: {
       get: function (key) {
-        return globalThis.__picotera_kv_get(String(key)).then(function (s) { return s === '' ? null : JSON.parse(s); });
+        var s = globalThis.__picotera_kv_get(String(key));
+        return s === '' ? null : JSON.parse(s);
       },
       set: function (key, value) {
         return globalThis.__picotera_kv_set(String(key), JSON.stringify(value));
