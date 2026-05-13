@@ -20,10 +20,12 @@ RUN mkdir -p dist && \
     GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags=-buildid= -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm
 
 FROM gcr.io/distroless/base-debian13 AS runtime
+COPY LICENSE /app/LICENSE
 COPY --from=backend-builder /app/picotera /app/picotera
 WORKDIR /app
 ENTRYPOINT ["/app/picotera"]
 
 FROM runtime AS runtime-lgpl
 COPY --from=llmbridge-wasm-builder /app/dist/llmbridge.wasm /app/llmbridge.wasm
+COPY THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
 ENV PICOTERA_LLMBRIDGE_WASM_PATH=/app/llmbridge.wasm
