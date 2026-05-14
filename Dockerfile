@@ -17,7 +17,7 @@ FROM golang:1.26.1-trixie AS llmbridge-wasm-builder
 COPY . /app
 WORKDIR /app
 RUN mkdir -p dist && \
-    GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags=-buildid= -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm
+    GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags='-s -w -buildid=' -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm
 
 FROM gcr.io/distroless/base-debian13 AS runtime
 COPY LICENSE /app/LICENSE

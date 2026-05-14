@@ -10,8 +10,9 @@ import (
 )
 
 type Config struct {
-	PoolSize int
-	WASMPath string
+	PoolSize    int
+	WASMPath    string
+	RuntimeMode string
 }
 
 type Bridge interface {

@@ -22,6 +22,7 @@ type Config struct {
 	JSMaxDelay            time.Duration `mapstructure:"js_max_delay"`
 	LLMBridgeWASMPoolSize int           `mapstructure:"llmbridge_wasm_pool_size"`
 	LLMBridgeWASMPath     string        `mapstructure:"llmbridge_wasm_path"`
+	LLMBridgeWASMRuntime  string        `mapstructure:"llmbridge_wasm_runtime"`
 }
 
 type KVConfig struct {
@@ -67,6 +68,7 @@ func Parse() (*Config, error) {
 	viper.SetDefault("kv.driver", "memory")
 	viper.SetDefault("kv.redis_url", "localhost:6379")
 	viper.SetDefault("llmbridge_wasm_pool_size", 1)
+	viper.SetDefault("llmbridge_wasm_runtime", "compiler")
 
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 

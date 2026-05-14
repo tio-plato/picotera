@@ -104,9 +104,17 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}, queries, kvStore)
 
 	projectRouter := newProjectRouter(queries)
+	if config.LLMBridgeWASMPath != "" {
+		logx.WithContext(ctx).WithFields(logrus.Fields{
+			"path":    config.LLMBridgeWASMPath,
+			"runtime": config.LLMBridgeWASMRuntime,
+			"pool":    config.LLMBridgeWASMPoolSize,
+		}).Info("prewarming llmbridge wasm")
+	}
 	llmBridge, err := llmbridge.New(ctx, llmbridge.Config{
-		PoolSize: config.LLMBridgeWASMPoolSize,
-		WASMPath: config.LLMBridgeWASMPath,
+		PoolSize:    config.LLMBridgeWASMPoolSize,
+		WASMPath:    config.LLMBridgeWASMPath,
+		RuntimeMode: config.LLMBridgeWASMRuntime,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize llmbridge: %w", err)

@@ -11,7 +11,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"runtime"
 	"sync"
 
 	"github.com/tetratelabs/wazero"
@@ -22,6 +21,11 @@ import (
 const wasmABIVersion = 1
 
 const (
+	wasmRuntimeInterpreter = "interpreter"
+	wasmRuntimeCompiler    = "compiler"
+)
+
+const (
 	streamStatusOK uint32 = iota
 	streamStatusEOF
 	streamStatusError
@@ -29,6 +33,8 @@ const (
 
 type wasmBridge struct {
 	wasmBytes []byte
+	runtime   wazero.RuntimeConfig
+	cache     wazero.CompilationCache
 	slots     chan *moduleSlot
 }
 
@@ -46,18 +52,24 @@ func newWASMBridge(ctx context.Context, cfg Config) (Bridge, error) {
 	if cfg.WASMPath == "" {
 		return disabledBridge{}, nil
 	}
-	if cfg.PoolSize == 0 {
-		cfg.PoolSize = runtime.GOMAXPROCS(0)
-	}
-	if cfg.PoolSize < 0 {
+	if cfg.PoolSize <= 0 {
 		return nil, fmt.Errorf("llmbridge: wasm pool size must be positive")
+	}
+	runtimeConfig, cache, err := wasmRuntimeConfig(cfg.RuntimeMode)
+	if err != nil {
+		return nil, err
 	}
 	wasmBytes, err := os.ReadFile(cfg.WASMPath)
 	if err != nil {
+		if cache != nil {
+			_ = cache.Close(ctx)
+		}
 		return nil, fmt.Errorf("llmbridge: read wasm module: %w", err)
 	}
 	b := &wasmBridge{
 		wasmBytes: wasmBytes,
+		runtime:   runtimeConfig,
+		cache:     cache,
 		slots:     make(chan *moduleSlot, cfg.PoolSize),
 	}
 	for i := 0; i < cfg.PoolSize; i++ {
@@ -72,7 +84,7 @@ func newWASMBridge(ctx context.Context, cfg Config) (Bridge, error) {
 }
 
 func (b *wasmBridge) instantiateSlot(ctx context.Context) (*moduleSlot, error) {
-	rt := wazero.NewRuntime(ctx)
+	rt := wazero.NewRuntimeWithConfig(ctx, b.runtime)
 	slot := &moduleSlot{runtime: rt}
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
 		_ = rt.Close(ctx)
@@ -136,6 +148,18 @@ func (b *wasmBridge) instantiateSlot(ctx context.Context) (*moduleSlot, error) {
 	return slot, nil
 }
 
+func wasmRuntimeConfig(mode string) (wazero.RuntimeConfig, wazero.CompilationCache, error) {
+	switch mode {
+	case wasmRuntimeInterpreter:
+		return wazero.NewRuntimeConfigInterpreter(), nil, nil
+	case "", wasmRuntimeCompiler:
+		cache := wazero.NewCompilationCache()
+		return wazero.NewRuntimeConfigCompiler().WithCompilationCache(cache), cache, nil
+	default:
+		return nil, nil, fmt.Errorf("llmbridge: unsupported wasm runtime %q", mode)
+	}
+}
+
 func (b *wasmBridge) Enabled() bool {
 	return true
 }
@@ -149,6 +173,11 @@ func (b *wasmBridge) Close(ctx context.Context) error {
 				firstErr = err
 			}
 		default:
+			if b.cache != nil {
+				if err := b.cache.Close(ctx); err != nil && firstErr == nil {
+					firstErr = err
+				}
+			}
 			return firstErr
 		}
 	}
