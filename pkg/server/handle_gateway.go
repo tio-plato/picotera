@@ -474,7 +474,6 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Non-200: record + try again.
-		cancel()
 		decoded, derr := decodedBody(resp)
 		if derr != nil {
 			_ = resp.Body.Close()
@@ -511,6 +510,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
 		currentRetryCount++
 		totalAttemptCount++
+		cancel()
 	}
 
 	// 9. All providers failed (or attempts cap reached) — fail meta with 502.
