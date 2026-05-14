@@ -2,7 +2,7 @@
 
 一款偏好明确的个人 LLM 网关。vibe coding 产物，包含 99% 以上的 AI 生成代码。
 
-项目尚在开发过程中，但主要功能已可用。现阶段我们没有 Docker image 或是预编译二进制提供。
+项目尚在开发过程中，但主要功能已可用。
 
 ## 功能特点
 
@@ -43,6 +43,19 @@
 ![](./docs/screenshots/requests.webp)
 
 ## 安装
+
+### Docker
+
+请使用如下镜像运行 picotera：
+
+```
+ghcr.io/oott123/picotera:master
+```
+
+该镜像包含 LGPL 的 wasm 组件，位于 `/app/llmbridge.wasm` 。
+
+根据 LGPL 许可证的授权，你可以自由地通过挂载文件以替换该组件。
+
 
 ### 外部依赖
 
