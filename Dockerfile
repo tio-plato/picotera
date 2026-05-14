@@ -1,7 +1,7 @@
 FROM node:25.8.1-trixie AS frontend-builder
 COPY . /app
 WORKDIR /app
-RUN npm install -g pnpm && \
+RUN npm install -g pnpm@10 && \
     pnpm install --frozen-lockfile && \
     pnpm --dir dashboard build
 
