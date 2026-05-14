@@ -12,6 +12,36 @@
 * 多币种费用统计
 * 完整的请求/响应日志
 
+## 界面展示
+
+### 概览页
+
+流量结构桑基图
+
+![](./docs/screenshots/overview1.webp)
+
+各类堆叠图、饼图
+
+![](./docs/screenshots/overview2.webp)
+
+### 端点页
+
+自由设置访问端点
+
+![](./docs/screenshots/endpoints.webp)
+
+### 脚本页
+
+自定义行为
+
+![](./docs/screenshots/scripts.webp)
+
+### 请求详情页
+
+可看当前元请求（客户端请求）和上游请求（服务端请求）的完整详细信息
+
+![](./docs/screenshots/requests.webp)
+
 ## 安装
 
 ### 外部依赖
