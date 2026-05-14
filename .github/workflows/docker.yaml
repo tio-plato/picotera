@@ -21,20 +21,34 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
-      - name: Docker meta
-        id: meta
+      - name: Docker meta (LGPL)
+        id: meta-lgpl
         uses: docker/metadata-action@v5
         with:
           images: |
             ghcr.io/${{ github.repository }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value={{commit_date 'YYYYMMDD-HHmmss'}}
-            type=sha
+            type=ref,event=branch,prefix=lgpl-
+            type=ref,event=pr,prefix=lgpl-
+            type=semver,pattern=lgpl-{{version}}
+            type=semver,pattern=lgpl-{{major}}.{{minor}}
+            type=semver,pattern=lgpl-{{major}}
+            type=raw,value=lgpl-{{commit_date 'YYYYMMDD-HHmmss'}}
+            type=sha,prefix=lgpl-
+      - name: Docker meta (BSD3)
+        id: meta-bsd3
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch,prefix=bsd3-
+            type=ref,event=pr,prefix=bsd3-
+            type=semver,pattern=bsd3-{{version}}
+            type=semver,pattern=bsd3-{{major}}.{{minor}}
+            type=semver,pattern=bsd3-{{major}}
+            type=raw,value=bsd3-{{commit_date 'YYYYMMDD-HHmmss'}}
+            type=sha,prefix=bsd3-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Login to ghcr.io
@@ -44,7 +58,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push
+      - name: Build and push (LGPL)
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -54,3 +68,14 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build and push (BSD3)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          target: runtime
