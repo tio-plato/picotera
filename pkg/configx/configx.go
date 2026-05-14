@@ -3,7 +3,6 @@ package configx
 import (
 	"errors"
 	"reflect"
-	"runtime"
 	"strings"
 	"time"
 
@@ -67,7 +66,7 @@ func Parse() (*Config, error) {
 	viper.SetDefault("js_max_delay", 60*time.Second)
 	viper.SetDefault("kv.driver", "memory")
 	viper.SetDefault("kv.redis_url", "localhost:6379")
-	viper.SetDefault("llmbridge_wasm_pool_size", runtime.GOMAXPROCS(0))
+	viper.SetDefault("llmbridge_wasm_pool_size", 1)
 
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
