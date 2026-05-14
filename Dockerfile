@@ -14,6 +14,7 @@ RUN find pkg/server/static/dist -mindepth 1 ! -name index.html ! -name .gitignor
     go build -o picotera ./cmd/picotera
 
 FROM tinygo/tinygo:0.41.1 AS llmbridge-wasm-builder
+USER root:root
 COPY . /app
 WORKDIR /app
 RUN mkdir -p dist && \
