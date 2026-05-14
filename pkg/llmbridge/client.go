@@ -12,6 +12,7 @@ import (
 type Config struct {
 	PoolSize    int
 	WASMPath    string
+	CacheDir    string
 	RuntimeMode string
 }
 

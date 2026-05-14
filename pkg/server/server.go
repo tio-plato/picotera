@@ -105,15 +105,21 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	projectRouter := newProjectRouter(queries)
 	if config.LLMBridgeWASMPath != "" {
+		cacheDir := config.LLMBridgeWASMCacheDir
+		if cacheDir == "" {
+			cacheDir = llmbridge.DefaultCacheDir(config.LLMBridgeWASMPath)
+		}
 		logx.WithContext(ctx).WithFields(logrus.Fields{
-			"path":    config.LLMBridgeWASMPath,
-			"runtime": config.LLMBridgeWASMRuntime,
-			"pool":    config.LLMBridgeWASMPoolSize,
+			"path":      config.LLMBridgeWASMPath,
+			"cache_dir": cacheDir,
+			"runtime":   config.LLMBridgeWASMRuntime,
+			"pool":      config.LLMBridgeWASMPoolSize,
 		}).Info("prewarming llmbridge wasm")
 	}
 	llmBridge, err := llmbridge.New(ctx, llmbridge.Config{
 		PoolSize:    config.LLMBridgeWASMPoolSize,
 		WASMPath:    config.LLMBridgeWASMPath,
+		CacheDir:    config.LLMBridgeWASMCacheDir,
 		RuntimeMode: config.LLMBridgeWASMRuntime,
 	})
 	if err != nil {

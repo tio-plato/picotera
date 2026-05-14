@@ -22,6 +22,7 @@ type Config struct {
 	JSMaxDelay            time.Duration `mapstructure:"js_max_delay"`
 	LLMBridgeWASMPoolSize int           `mapstructure:"llmbridge_wasm_pool_size"`
 	LLMBridgeWASMPath     string        `mapstructure:"llmbridge_wasm_path"`
+	LLMBridgeWASMCacheDir string        `mapstructure:"llmbridge_wasm_cache_dir"`
 	LLMBridgeWASMRuntime  string        `mapstructure:"llmbridge_wasm_runtime"`
 }
 

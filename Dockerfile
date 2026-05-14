@@ -17,7 +17,9 @@ FROM golang:1.26.1-trixie AS llmbridge-wasm-builder
 COPY . /app
 WORKDIR /app
 RUN mkdir -p dist && \
-    GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags='-s -w -buildid=' -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm
+    GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags='-s -w -buildid=' -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm && \
+    go build -o dist/picotera ./cmd/picotera && \
+    PICOTERA_LLMBRIDGE_WASM_PATH=/app/dist/llmbridge.wasm /app/dist/picotera precompile-llmbridge-wasm
 
 FROM gcr.io/distroless/base-debian13 AS runtime
 COPY LICENSE /app/LICENSE
@@ -27,5 +29,6 @@ ENTRYPOINT ["/app/picotera"]
 
 FROM runtime AS runtime-lgpl
 COPY --from=llmbridge-wasm-builder /app/dist/llmbridge.wasm /app/llmbridge.wasm
+COPY --from=llmbridge-wasm-builder /app/dist/llmbridge.wasm.cache /app/llmbridge.wasm.cache
 COPY THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
 ENV PICOTERA_LLMBRIDGE_WASM_PATH=/app/llmbridge.wasm

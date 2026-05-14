@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/tetratelabs/wazero"
@@ -55,9 +56,16 @@ func newWASMBridge(ctx context.Context, cfg Config) (Bridge, error) {
 	if cfg.PoolSize <= 0 {
 		return nil, fmt.Errorf("llmbridge: wasm pool size must be positive")
 	}
-	runtimeConfig, cache, err := wasmRuntimeConfig(cfg.RuntimeMode)
+	cacheDir := cfg.CacheDir
+	if cacheDir == "" {
+		cacheDir = DefaultCacheDir(cfg.WASMPath)
+	}
+	runtimeConfig, cache, err := wasmRuntimeConfig(cfg.RuntimeMode, cacheDir)
 	if err != nil {
 		return nil, err
+	}
+	if cache == nil && cfg.CacheDir != "" {
+		return nil, fmt.Errorf("llmbridge: wasm cache dir requires compiler runtime")
 	}
 	wasmBytes, err := os.ReadFile(cfg.WASMPath)
 	if err != nil {
@@ -148,16 +156,66 @@ func (b *wasmBridge) instantiateSlot(ctx context.Context) (*moduleSlot, error) {
 	return slot, nil
 }
 
-func wasmRuntimeConfig(mode string) (wazero.RuntimeConfig, wazero.CompilationCache, error) {
+func wasmRuntimeConfig(mode string, cacheDir ...string) (wazero.RuntimeConfig, wazero.CompilationCache, error) {
 	switch mode {
 	case wasmRuntimeInterpreter:
 		return wazero.NewRuntimeConfigInterpreter(), nil, nil
 	case "", wasmRuntimeCompiler:
-		cache := wazero.NewCompilationCache()
+		cache, err := newWASMCompilationCache(cacheDir...)
+		if err != nil {
+			return nil, nil, err
+		}
 		return wazero.NewRuntimeConfigCompiler().WithCompilationCache(cache), cache, nil
 	default:
 		return nil, nil, fmt.Errorf("llmbridge: unsupported wasm runtime %q", mode)
 	}
+}
+
+func newWASMCompilationCache(cacheDir ...string) (wazero.CompilationCache, error) {
+	if len(cacheDir) == 0 || cacheDir[0] == "" {
+		return wazero.NewCompilationCache(), nil
+	}
+	cache, err := wazero.NewCompilationCacheWithDir(cacheDir[0])
+	if err != nil {
+		return nil, fmt.Errorf("llmbridge: create wasm compilation cache: %w", err)
+	}
+	return cache, nil
+}
+
+func DefaultCacheDir(wasmPath string) string {
+	if wasmPath == "" {
+		return ""
+	}
+	return filepath.Clean(wasmPath) + ".cache"
+}
+
+func Precompile(ctx context.Context, cfg Config) error {
+	if cfg.WASMPath == "" {
+		return fmt.Errorf("llmbridge: wasm path is required")
+	}
+	if cfg.RuntimeMode == wasmRuntimeInterpreter {
+		return fmt.Errorf("llmbridge: precompile requires compiler runtime")
+	}
+	cacheDir := cfg.CacheDir
+	if cacheDir == "" {
+		cacheDir = DefaultCacheDir(cfg.WASMPath)
+	}
+	runtimeConfig, cache, err := wasmRuntimeConfig(cfg.RuntimeMode, cacheDir)
+	if err != nil {
+		return err
+	}
+	defer cache.Close(ctx)
+	wasmBytes, err := os.ReadFile(cfg.WASMPath)
+	if err != nil {
+		return fmt.Errorf("llmbridge: read wasm module: %w", err)
+	}
+	rt := wazero.NewRuntimeWithConfig(ctx, runtimeConfig)
+	defer rt.Close(ctx)
+	compiled, err := rt.CompileModule(ctx, wasmBytes)
+	if err != nil {
+		return fmt.Errorf("llmbridge: compile wasm module: %w", err)
+	}
+	return compiled.Close(ctx)
 }
 
 func (b *wasmBridge) Enabled() bool {
