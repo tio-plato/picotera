@@ -208,7 +208,7 @@ func encodeOutput(v operationResponse) uint64 {
 	if err != nil {
 		raw, _ = json.Marshal(operationResponse{OK: false, Error: fmt.Sprintf("llmbridge: encode wasm output: %v", err)})
 	}
-	if len(raw) > math.MaxUint32 {
+	if uint64(len(raw)) > math.MaxUint32 {
 		raw, _ = json.Marshal(operationResponse{OK: false, Error: "llmbridge: wasm output exceeds uint32 length"})
 	}
 	ptr := llmbridgeAlloc(uint32(len(raw)))

@@ -3,6 +3,9 @@
 package llmbridge
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,5 +72,44 @@ func TestDefaultCacheDir(t *testing.T) {
 	}
 	if got := DefaultCacheDir(""); got != "" {
 		t.Fatalf("DefaultCacheDir empty = %q", got)
+	}
+}
+
+func TestWASMBridgeRequest(t *testing.T) {
+	wasmPath := os.Getenv("PICOTERA_LLMBRIDGE_TEST_WASM")
+	if wasmPath == "" {
+		t.Skip("PICOTERA_LLMBRIDGE_TEST_WASM is not set")
+	}
+
+	bridge, err := New(t.Context(), Config{
+		PoolSize:    1,
+		WASMPath:    wasmPath,
+		RuntimeMode: wasmRuntimeInterpreter,
+	})
+	if err != nil {
+		t.Fatalf("New wasm bridge: %v", err)
+	}
+	t.Cleanup(func() { _ = bridge.Close(context.Background()) })
+
+	body := []byte(`{"model":"claude","messages":[{"role":"user","content":"ping"}],"max_tokens":16}`)
+	got, ct, err := bridge.BridgeRequest(t.Context(), FormatAnthropicMessages, FormatOpenAIChatCompletions, body, http.Header{"Content-Type": []string{"application/json"}}, "/v1/messages", OutboundProfile{Type: "openai"})
+	if err != nil {
+		t.Fatalf("BridgeRequest: %v", err)
+	}
+	if ct != "application/json" {
+		t.Fatalf("content type = %q, want application/json", ct)
+	}
+	var out struct {
+		Model    string `json:"model"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content any    `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(got, &out); err != nil {
+		t.Fatalf("decode output: %v\n%s", err, got)
+	}
+	if out.Model != "claude" || len(out.Messages) != 1 || out.Messages[0].Role != "user" {
+		t.Fatalf("unexpected bridge output: %s", got)
 	}
 }

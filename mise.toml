@@ -4,6 +4,7 @@ node = "latest"
 oapi-codegen = "latest"
 pnpm = "latest"
 sqlc = "latest"
+tinygo = "0.41.1"
 
 [env]
 _.file = [".env.default", { path = ".env", optional = true }]
@@ -21,8 +22,9 @@ dir = "dashboard"
 run = "go run ./cmd/picotera/main.go openapi > openapi.yaml"
 
 [tasks.wasm]
-run = "mkdir -p dist && GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags='-s -w -buildid=' -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm"
-sources = [ "pkg/llmbridgeimpl" ]
+run = "mkdir -p dist && tinygo build -tags tinygo -target=wasi -scheduler=none -panic=trap -no-debug -opt=z -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm"
+sources = [ "cmd/llmbridge-wasm", "pkg/llmbridge", "pkg/llmbridgeimpl", "third_party/axonhub/llm" ]
+outputs = [ "dist/llmbridge.wasm" ]
 
 [tasks.precompile-wasm]
 run = "go run ./cmd/picotera/main.go precompile-llmbridge-wasm"

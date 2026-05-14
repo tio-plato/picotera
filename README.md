@@ -37,6 +37,13 @@ PICOTERA_S3_PUBLIC_URL=http://localhost:34050
 ### 请求转换组件
 
 请求转换组件使用 AxonHub 的 LGPL 代码，因而需要单独编译，通过 wasm 模块链接使用。
+默认构建使用 TinyGo 生成较小的 WASI reactor：
+
+```bash
+mise run wasm
+```
+
+生成的 `dist/llmbridge.wasm` 需要通过 `PICOTERA_LLMBRIDGE_WASM_PATH` 提供给主程序。
 
 ### 优化 Timescaledb 参数
 
@@ -49,4 +56,3 @@ docker compose exec -it postgres timescaledb-tune --yes -cpus 1 -memory 512MB
 * `cmd/llmbridge-wasm`: LGPLv3
 * `pkg/llmbridgeimpl`: LGPLv3
 * 其它： BSD 3-Clause
-

@@ -100,3 +100,5 @@ require (
 // Mirror axonhub's replace: upstream tmaxmax/go-sse lacks NewStreamWithConfig,
 // which axonhub's SSE decoder relies on. The looplj fork adds it.
 replace github.com/tmaxmax/go-sse => github.com/looplj/go-sse v0.0.0-20250909130008-e74a1155bc3b
+
+replace github.com/looplj/axonhub/llm => ./third_party/axonhub/llm

@@ -13,11 +13,11 @@ RUN find pkg/server/static/dist -mindepth 1 ! -name index.html ! -name .gitignor
     cp -r dashboard/dist/. pkg/server/static/dist/ && \
     go build -o picotera ./cmd/picotera
 
-FROM golang:1.26.1-trixie AS llmbridge-wasm-builder
+FROM tinygo/tinygo:0.41.1 AS llmbridge-wasm-builder
 COPY . /app
 WORKDIR /app
 RUN mkdir -p dist && \
-    GOOS=wasip1 GOARCH=wasm go build -trimpath -ldflags='-s -w -buildid=' -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm && \
+    tinygo build -tags tinygo -target=wasi -scheduler=none -panic=trap -no-debug -opt=z -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm && \
     go build -o dist/picotera ./cmd/picotera && \
     PICOTERA_LLMBRIDGE_WASM_PATH=/app/dist/llmbridge.wasm /app/dist/picotera precompile-llmbridge-wasm
 
