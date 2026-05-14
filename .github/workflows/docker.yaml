@@ -64,8 +64,8 @@ jobs:
           context: .
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-lgpl.outputs.tags }}
+          labels: ${{ steps.meta-lgpl.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build and push (BSD3)
@@ -74,8 +74,8 @@ jobs:
           context: .
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-bsd3.outputs.tags }}
+          labels: ${{ steps.meta-bsd3.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           target: runtime
