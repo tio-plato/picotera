@@ -83,6 +83,5 @@ docker compose exec -it postgres timescaledb-tune --yes -cpus 1 -memory 512MB
 
 ## 协议
 
-* `cmd/llmbridge-wasm`: LGPLv3
-* `pkg/llmbridgeimpl`: LGPLv3
+* `cmd/llmbridge-wasm`, `pkg/llmbridgeimpl`, `third_party/axonhub`: LGPLv3
 * 其它： BSD 3-Clause
