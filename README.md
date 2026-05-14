@@ -44,9 +44,12 @@
 
 ## 安装
 
+> [!CAUTION]
+> 本项目的管理 API 目前没有鉴权，因此请勿将其暴露到公网使用！
+
 ### Docker
 
-请使用如下镜像运行 picotera：
+请使用如下镜像运行 picotera ，并发布 9898 端口：
 
 ```
 ghcr.io/oott123/picotera:master
@@ -56,6 +59,11 @@ ghcr.io/oott123/picotera:master
 
 根据 LGPL 许可证的授权，你可以自由地通过挂载文件以替换该组件。
 
+### Docker Compose
+
+请参考 [docker-compose.yaml](./docs/deploy/docker-compose.yaml)。
+
+特别注意，请修改 minio 的默认密码，防止 minio 被未授权访问。
 
 ### 外部依赖
 

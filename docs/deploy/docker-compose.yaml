@@ -1,0 +1,52 @@
+services:
+  picotera:
+    image: ghcr.io/oott123/picotera:master
+    ports:
+      - 127.0.0.1:9898:9898
+    environment:
+      PICOTERA_DATABASE_URL: postgres://picotera:picotera@postgres/picotera
+      PICOTERA_S3_ENDPOINT: localhost:34050
+      PICOTERA_S3_REGION: us-east-1
+      PICOTERA_S3_ACCESS_KEY: picotera
+      PICOTERA_S3_SECRET_KEY: picotera
+      PICOTERA_S3_USE_SSL: false
+      PICOTERA_S3_BUCKET: picotera-artifacts
+      PICOTERA_S3_FORCE_PATH_STYLE: true
+      PICOTERA_S3_PUBLIC_URL: http://localhost:34050
+
+  postgres:
+    image: timescale/timescaledb:2.26.4-pg17
+    environment:
+      POSTGRES_USER: picotera
+      POSTGRES_PASSWORD: picotera
+      POSTGRES_DB: picotera
+      POSTGRES_INITDB_ARGS: '--data-checksums --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8'
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 1G
+
+  minio:
+    image: ghcr.io/featuredcontainers/minio:sha-ff4c330
+    command: /minio server /data --address ":9000"
+    ports:
+      - 127.0.0.1:34050:9000
+    environment:
+      MINIO_ROOT_USER: picotera
+      MINIO_ROOT_PASSWORD: picotera
+    volumes:
+      - ./.data/minio:/data
+
+  minio-init:
+    image: docker.io/minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set local http://minio:9000 picotera picotera-dev) do echo 'waiting for minio...' && sleep 1; done;
+      /usr/bin/mc mb -p local/picotera-artifacts || true;
+      exit 0;
+      "
