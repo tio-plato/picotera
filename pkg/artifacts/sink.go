@@ -36,12 +36,25 @@ func NewSink(cfg configx.S3Config, logger *logrus.Entry) (Sink, error) {
 	if err != nil {
 		return nil, fmt.Errorf("artifact: create minio client: %w", err)
 	}
+	u, err := url.Parse(cfg.PublicURL)
+	if err != nil {
+		return nil, fmt.Errorf("artifact: parse public url: %w", err)
+	}
+	urlSignerClient, err := minio.New(u.Host, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Secure: u.Scheme == "https",
+		Region: cfg.Region,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("artifact: create minio url signer client: %w", err)
+	}
 	s := &minioSink{
-		client:    client,
-		bucket:    cfg.Bucket,
-		publicURL: cfg.PublicURL,
-		logger:    logger,
-		jobs:      make(chan job, 256),
+		client:          client,
+		urlSignerClient: urlSignerClient,
+		bucket:          cfg.Bucket,
+		publicURL:       cfg.PublicURL,
+		logger:          logger,
+		jobs:            make(chan job, 256),
 	}
 	for i := 0; i < 4; i++ {
 		go s.worker()
@@ -64,11 +77,12 @@ type job struct {
 }
 
 type minioSink struct {
-	client    *minio.Client
-	bucket    string
-	publicURL string
-	logger    *logrus.Entry
-	jobs      chan job
+	client          *minio.Client
+	urlSignerClient *minio.Client
+	bucket          string
+	publicURL       string
+	logger          *logrus.Entry
+	jobs            chan job
 }
 
 func (s *minioSink) Enabled() bool { return true }
@@ -100,7 +114,7 @@ func (s *minioSink) upload(j job) {
 }
 
 func (s *minioSink) PresignedGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, ttl, nil)
+	u, err := s.urlSignerClient.PresignedGetObject(ctx, s.bucket, key, ttl, nil)
 	if err != nil {
 		return "", err
 	}
