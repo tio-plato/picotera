@@ -594,6 +594,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/simulate/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Simulate dispatch and return ranked candidates */
+        post: operations["simulateDispatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1187,6 +1204,96 @@ export interface components {
             name: string;
             source: string;
             updatedAt: string;
+        };
+        SimulateCandidate: {
+            bridged: boolean;
+            mergedAnnotations: {
+                [key: string]: string;
+            };
+            mpe: components["schemas"]["SimulateMPE"];
+            outboundProfile?: components["schemas"]["SimulateOutboundProfile"];
+            provider: components["schemas"]["SimulateProviderSummary"];
+            upstreamFormat: string;
+        };
+        SimulateDispatchRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SimulateDispatchRequestBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            apiKeyId: number;
+            /** @description Raw JSON request body string. Empty allowed (body omitted from hook context). */
+            body: string;
+            endpoint: components["schemas"]["SimulateEndpointSelector"];
+            model: string;
+            /** @description Optional path variable map (used when the endpoint path contains {name} tokens). */
+            pathVars?: {
+                [key: string]: string;
+            };
+        };
+        SimulateDispatchResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SimulateDispatchResponseBody.json
+             */
+            readonly $schema?: string;
+            candidates: components["schemas"]["SimulateCandidate"][] | null;
+            logs: components["schemas"]["SimulateLogEntry"][] | null;
+            originalModel: string;
+            resolvedModel: string;
+            sourceFormat: string;
+            stream: boolean;
+        };
+        SimulateEndpointSelector: {
+            /**
+             * @description Unified source format; required when kind==unified.
+             * @enum {string}
+             */
+            format?: "anthropicMessages" | "openaiChatCompletions" | "openaiResponses" | "geminiGenerateContent" | "geminiStreamGenerateContent";
+            /**
+             * @description "path" picks a configured endpoint row; "unified" picks one of the five unified routes.
+             * @enum {string}
+             */
+            kind: "path" | "unified";
+            /** @description Endpoint path; required when kind==path. */
+            path?: string;
+        };
+        SimulateLogEntry: {
+            level: string;
+            message: string;
+            ts: string;
+        };
+        SimulateMPE: {
+            annotations: {
+                [key: string]: string;
+            };
+            endpointPath: string;
+            modelName: string;
+            /** Format: int32 */
+            priority: number;
+            /** Format: int32 */
+            providerId: number;
+            upstreamModelName: string;
+        };
+        SimulateOutboundProfile: {
+            config: {
+                [key: string]: unknown;
+            };
+            type: string;
+        };
+        SimulateProviderSummary: {
+            annotations: {
+                [key: string]: string;
+            };
+            disabled: boolean;
+            /** Format: int32 */
+            id: number;
+            name: string;
+            /** Format: int32 */
+            priority: number;
         };
         TraceCostView: {
             /** Format: double */
@@ -2694,6 +2801,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScriptView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    simulateDispatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulateDispatchRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateDispatchResponseBody"];
                 };
             };
             /** @description Error */

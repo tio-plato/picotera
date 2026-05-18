@@ -199,6 +199,7 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationCreateScript, s.handleCreateScript)
 	huma.Register(mgmt, contract.OperationUpdateScript, s.handleUpdateScript)
 	huma.Register(mgmt, contract.OperationDeleteScript, s.handleDeleteScript)
+	huma.Register(mgmt, contract.OperationSimulateDispatch, s.handleSimulateDispatch)
 	huma.Register(mgmt, contract.OperationListKvEntries, s.handleListKvEntries)
 	huma.Register(mgmt, contract.OperationGetKvEntry, s.handleGetKvEntry)
 	huma.Register(mgmt, contract.OperationUpsertKvEntry, s.handleUpsertKvEntry)

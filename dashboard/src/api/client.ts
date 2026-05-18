@@ -21,6 +21,8 @@ import type {
   ProviderView,
   RequestView,
   ScriptView,
+  SimulateDispatchRequestBody,
+  SimulateDispatchResponseBody,
   UpsertProjectRequestBody,
 } from '@/api'
 import type { components } from '@/openapi-types'
@@ -381,4 +383,10 @@ export async function getOverviewSeries(
 
 export function invalidateOverview(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.overview.all })
+}
+
+export async function simulateDispatch(body: SimulateDispatchRequestBody): Promise<SimulateDispatchResponseBody> {
+  const { data, error } = await api.POST('/api/picotera/simulate/dispatch', { body })
+  if (error) fail(error, '模拟调度失败')
+  return data
 }

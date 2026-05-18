@@ -25,6 +25,7 @@ const pageMeta = computed(() => {
     apiKeys: { title: '密钥', hint: '今天用什么蹬' },
     projects: { title: '项目', hint: '今天蹬到哪里去了' },
     scripts: { title: '脚本', hint: '今天蹬点什么科技' },
+    simulate: { title: '模拟', hint: '不蹬也知道蹬到哪' },
     kv: { title: 'KV 存储', hint: '今天存了些什么' },
     rates: { title: '汇率', hint: '今天都蹬什么钱' },
   }

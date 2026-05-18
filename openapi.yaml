@@ -1178,6 +1178,198 @@ components:
         - createdAt
         - updatedAt
       type: object
+    SimulateCandidate:
+      additionalProperties: false
+      properties:
+        bridged:
+          type: boolean
+        mergedAnnotations:
+          additionalProperties:
+            type: string
+          type: object
+        mpe:
+          $ref: "#/components/schemas/SimulateMPE"
+        outboundProfile:
+          $ref: "#/components/schemas/SimulateOutboundProfile"
+        provider:
+          $ref: "#/components/schemas/SimulateProviderSummary"
+        upstreamFormat:
+          type: string
+      required:
+        - provider
+        - mpe
+        - mergedAnnotations
+        - upstreamFormat
+        - bridged
+      type: object
+    SimulateDispatchRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/SimulateDispatchRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        apiKeyId:
+          format: int32
+          minimum: 1
+          type: integer
+        body:
+          description: Raw JSON request body string. Empty allowed (body omitted from hook context).
+          type: string
+        endpoint:
+          $ref: "#/components/schemas/SimulateEndpointSelector"
+        model:
+          minLength: 1
+          type: string
+        pathVars:
+          additionalProperties:
+            type: string
+          description: Optional path variable map (used when the endpoint path contains {name} tokens).
+          type: object
+      required:
+        - endpoint
+        - apiKeyId
+        - model
+        - body
+      type: object
+    SimulateDispatchResponseBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/SimulateDispatchResponseBody.json
+          format: uri
+          readOnly: true
+          type: string
+        candidates:
+          items:
+            $ref: "#/components/schemas/SimulateCandidate"
+          nullable: true
+          type: array
+        logs:
+          items:
+            $ref: "#/components/schemas/SimulateLogEntry"
+          nullable: true
+          type: array
+        originalModel:
+          type: string
+        resolvedModel:
+          type: string
+        sourceFormat:
+          type: string
+        stream:
+          type: boolean
+      required:
+        - originalModel
+        - resolvedModel
+        - sourceFormat
+        - stream
+        - candidates
+        - logs
+      type: object
+    SimulateEndpointSelector:
+      additionalProperties: false
+      properties:
+        format:
+          description: Unified source format; required when kind==unified.
+          enum:
+            - anthropicMessages
+            - openaiChatCompletions
+            - openaiResponses
+            - geminiGenerateContent
+            - geminiStreamGenerateContent
+          type: string
+        kind:
+          description: "\"path\" picks a configured endpoint row; \"unified\" picks one of the five unified routes."
+          enum:
+            - path
+            - unified
+          type: string
+        path:
+          description: Endpoint path; required when kind==path.
+          type: string
+      required:
+        - kind
+      type: object
+    SimulateLogEntry:
+      additionalProperties: false
+      properties:
+        level:
+          type: string
+        message:
+          type: string
+        ts:
+          type: string
+      required:
+        - level
+        - message
+        - ts
+      type: object
+    SimulateMPE:
+      additionalProperties: false
+      properties:
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
+        endpointPath:
+          type: string
+        modelName:
+          type: string
+        priority:
+          format: int32
+          type: integer
+        providerId:
+          format: int32
+          type: integer
+        upstreamModelName:
+          type: string
+      required:
+        - modelName
+        - providerId
+        - endpointPath
+        - upstreamModelName
+        - priority
+        - annotations
+      type: object
+    SimulateOutboundProfile:
+      additionalProperties: false
+      properties:
+        config:
+          additionalProperties: {}
+          type: object
+        type:
+          type: string
+      required:
+        - type
+        - config
+      type: object
+    SimulateProviderSummary:
+      additionalProperties: false
+      properties:
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
+        disabled:
+          type: boolean
+        id:
+          format: int32
+          type: integer
+        name:
+          type: string
+        priority:
+          format: int32
+          type: integer
+      required:
+        - id
+        - name
+        - priority
+        - annotations
+        - disabled
+      type: object
     TraceCostView:
       additionalProperties: false
       properties:
@@ -2487,4 +2679,27 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Update a script
+  /api/picotera/simulate/dispatch:
+    post:
+      operationId: simulateDispatch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulateDispatchRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulateDispatchResponseBody"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Simulate dispatch and return ranked candidates
 

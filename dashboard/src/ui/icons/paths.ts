@@ -3,6 +3,7 @@ import {
   IconActivity,
   IconAlignJustified,
   IconArrowLeft,
+  IconBolt,
   IconBraces,
   IconChartPie,
   IconCheck,
@@ -70,6 +71,7 @@ export type IconName =
   | 'key'
   | 'copy'
   | 'folder'
+  | 'bolt'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -106,4 +108,5 @@ export const iconComponents: Record<IconName, Component> = {
   key: IconKey,
   copy: IconCopy,
   folder: IconFolder,
+  bolt: IconBolt,
 }

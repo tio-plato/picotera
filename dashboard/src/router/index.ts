@@ -14,6 +14,7 @@ const router = createRouter({
     { path: '/api-keys', name: 'apiKeys', component: () => import('@/views/ApiKeysView.vue') },
     { path: '/projects', name: 'projects', component: () => import('@/views/ProjectsView.vue') },
     { path: '/scripts', name: 'scripts', component: () => import('@/views/ScriptsView.vue') },
+    { path: '/simulate', name: 'simulate', component: () => import('@/views/SimulateView.vue') },
     { path: '/kv', name: 'kv', component: () => import('@/views/KvView.vue') },
     { path: '/rates', name: 'rates', component: () => import('@/views/RatesView.vue') },
   ],
