@@ -140,7 +140,7 @@ async function submit() {
 </script>
 
 <template>
-  <form class="flex flex-col gap-4 max-w-2xl" @submit.prevent="submit">
+  <form class="flex flex-col gap-4" @submit.prevent="submit">
     <Field label="端点种类" as="div">
       <SegmentedControl v-model="kind" :options="kindOptions" />
     </Field>
@@ -189,10 +189,10 @@ async function submit() {
       </datalist>
     </Field>
 
-    <Field label="请求体（JSON，可空）" :error="bodyError">
+    <Field label="请求体" :error="bodyError">
       <div class="flex flex-col gap-1.5">
         <Textarea v-model="bodyText" mono rows="12" placeholder='{"messages":[...]}' />
-        <div class="flex justify-end">
+        <div class="flex">
           <Button type="button" variant="ghost" size="sm" @click="formatBody">格式化</Button>
         </div>
       </div>

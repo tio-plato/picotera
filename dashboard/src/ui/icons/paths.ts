@@ -34,6 +34,8 @@ import {
   IconSettings,
   IconTrash,
   IconX,
+  IconCloudFog,
+  IconGeometry,
 } from '@tabler/icons-vue'
 
 export type IconName =
@@ -72,6 +74,8 @@ export type IconName =
   | 'copy'
   | 'folder'
   | 'bolt'
+  | 'geometry'
+  | 'cloud-fog'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -109,4 +113,6 @@ export const iconComponents: Record<IconName, Component> = {
   copy: IconCopy,
   folder: IconFolder,
   bolt: IconBolt,
+  'cloud-fog': IconCloudFog,
+  'geometry': IconGeometry
 }

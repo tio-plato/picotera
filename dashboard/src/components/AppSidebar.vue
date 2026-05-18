@@ -13,7 +13,7 @@ const activeRouteName = computed(() => {
 
 const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'overview', label: '概览', icon: 'chart-pie' },
-  { name: 'providers', label: '渠道', icon: 'db' },
+  { name: 'providers', label: '渠道', icon: 'cloud-fog' },
   { name: 'models', label: '模型', icon: 'cpu' },
   { name: 'endpoints', label: '端点', icon: 'plug' },
   { name: 'requests', label: '请求', icon: 'activity' },
@@ -21,8 +21,8 @@ const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'apiKeys', label: '密钥', icon: 'key' },
   { name: 'projects', label: '项目', icon: 'folder' },
   { name: 'scripts', label: '脚本', icon: 'braces' },
-  { name: 'simulate', label: '模拟', icon: 'bolt' },
-  { name: 'kv', label: 'KV', icon: 'db' },
+  { name: 'simulate', label: '模拟', icon: 'geometry' },
+  { name: 'kv', label: '缓存', icon: 'db' },
   { name: 'rates', label: '汇率', icon: 'currency-dollar' },
 ]
 </script>
