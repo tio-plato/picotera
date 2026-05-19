@@ -161,6 +161,7 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationGetProvider, s.handleGetProvider)
 	huma.Register(mgmt, contract.OperationCreateProvider, s.handleCreateProvider)
 	huma.Register(mgmt, contract.OperationUpsertProvider, s.handleUpsertProvider)
+	huma.Register(mgmt, contract.OperationUpdateProviderModels, s.handleUpdateProviderModels)
 	huma.Register(mgmt, contract.OperationDeleteProvider, s.handleDeleteProvider)
 	huma.Register(mgmt, contract.OperationListModels, s.handleListModels)
 	huma.Register(mgmt, contract.OperationGetModel, s.handleGetModel)

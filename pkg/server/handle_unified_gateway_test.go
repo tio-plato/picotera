@@ -46,7 +46,7 @@ func TestUpstreamFormatFor(t *testing.T) {
 		contract.EndpointType_GeminiGenerateContent:       llmbridge.FormatGeminiGenerateContent,
 		contract.EndpointType_GeminiStreamGenerateContent: llmbridge.FormatGeminiStreamGenerateContent,
 		contract.EndpointType_AnthropicCountTokens:        llmbridge.FormatUnknown,
-		contract.EndpointType_GeneralListModels:           llmbridge.FormatUnknown,
+		contract.EndpointType_Unknown:                     llmbridge.FormatUnknown,
 	}
 	for t1, want := range cases {
 		if got := upstreamFormatFor(t1); got != want {
@@ -67,7 +67,7 @@ func TestResponseAggregationFormat(t *testing.T) {
 		{contract.EndpointType_GeminiStreamGenerateContent, llmbridge.FormatGeminiStreamGenerateContent, true},
 		{contract.EndpointType_GeminiGenerateContent, llmbridge.FormatUnknown, false},
 		{contract.EndpointType_General, llmbridge.FormatUnknown, false},
-		{contract.EndpointType_GeneralListModels, llmbridge.FormatUnknown, false},
+		{contract.EndpointType_Unknown, llmbridge.FormatUnknown, false},
 	}
 	for _, tt := range cases {
 		gotFormat, gotOK := responseAggregationFormat(tt.endpointType)

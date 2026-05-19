@@ -67,6 +67,18 @@ export async function upsertProvider(body: components['schemas']['UpsertProvider
   return data
 }
 
+export async function updateProviderModels(
+  id: number,
+  providerModels: ProviderView['providerModels'],
+): Promise<ProviderView> {
+  const { data, error } = await api.PUT('/api/picotera/providers/{id}/models', {
+    params: { path: { id } },
+    body: { providerModels },
+  })
+  if (error) fail(error, '保存模型失败')
+  return data
+}
+
 export async function deleteProvider(id: number): Promise<void> {
   const { error } = await api.POST('/api/picotera/providers/delete', { body: { id } })
   if (error) fail(error, '删除渠道失败')
@@ -126,7 +138,7 @@ export async function deleteProviderEndpoint(body: components['schemas']['Delete
 }
 
 export async function fetchProviderModels(body: FetchModelsRequestBody): Promise<FetchModelsResponseBody> {
-  const { data, error } = await api.POST('/api/picotera/provider-endpoints/fetch-models', { body })
+  const { data, error } = await api.POST('/api/picotera/providers/fetch-models', { body })
   if (error) fail(error, '拉取模型失败')
   return data
 }

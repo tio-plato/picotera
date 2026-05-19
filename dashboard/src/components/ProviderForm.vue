@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
-import { SidePanel, Button, Input, Field } from '@/ui'
+import { SidePanel, Button, Input, Field, Select } from '@/ui'
 import type { ProviderView } from '@/api'
 import { invalidateProviders, upsertProvider } from '@/api/client'
 
@@ -18,6 +18,8 @@ const form = ref({
   annotations: { ...props.provider?.annotations } as Record<string, string>,
   disabled: props.provider?.disabled ?? false,
   proxyUrl: props.provider?.proxyUrl ?? '',
+  modelsEndpointUrl: props.provider?.modelsEndpointUrl ?? '',
+  modelsEndpointResolver: props.provider?.modelsEndpointResolver ?? 'generalApiKey',
 })
 const saving = ref(false)
 const error = ref('')
@@ -38,6 +40,8 @@ async function submit() {
     annotations: form.value.annotations,
     disabled: form.value.disabled,
     ...(form.value.proxyUrl ? { proxyUrl: form.value.proxyUrl } : {}),
+    modelsEndpointUrl: form.value.modelsEndpointUrl,
+    modelsEndpointResolver: form.value.modelsEndpointResolver,
   }
   try {
     await saveMutation.mutateAsync(body)
@@ -77,6 +81,18 @@ async function submit() {
       </Field>
       <Field label="代理 URL">
         <Input v-model="form.proxyUrl" placeholder="留空使用环境代理，填 direct 禁用代理" />
+      </Field>
+      <Field label="模型列表 URL">
+        <Input v-model="form.modelsEndpointUrl" placeholder="https://api.openai.com/v1/models" />
+      </Field>
+      <Field label="模型列表凭证解析">
+        <Select v-model="form.modelsEndpointResolver">
+          <option value="generalApiKey">通用 API Key</option>
+          <option value="bearerToken">Bearer Token</option>
+          <option value="xApiKey">x-api-key</option>
+          <option value="searchKey">Search Key</option>
+          <option value="googApiKey">Google API Key</option>
+        </Select>
       </Field>
       <p v-if="!isEdit" class="text-xs text-ink-faint">
         保存后请在「模型」面板配置该渠道的模型列表。

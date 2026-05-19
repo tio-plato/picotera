@@ -244,7 +244,7 @@ func TestExtractUserMessagePreviewFallbackOrder(t *testing.T) {
 	if !got.Valid || got.String != "anthropic wins" {
 		t.Fatalf("unknown fallback = %#v, want anthropic wins", got)
 	}
-	got = extractUserMessagePreview([]byte(`{"input":"responses wins","contents":[{"role":"user","parts":[{"text":"gemini loses"}]}]}`), contract.EndpointType_GeneralListModels)
+	got = extractUserMessagePreview([]byte(`{"input":"responses wins","contents":[{"role":"user","parts":[{"text":"gemini loses"}]}]}`), contract.EndpointType_Unknown)
 	if !got.Valid || got.String != "responses wins" {
 		t.Fatalf("non-generation fallback = %#v, want responses wins", got)
 	}

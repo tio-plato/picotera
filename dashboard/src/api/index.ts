@@ -50,14 +50,12 @@ export const ENDPOINT_TYPES_MODEL_ROUTED: EndpointType[] = [
   'geminiGenerateContent',
   'geminiStreamGenerateContent',
 ]
-export const ENDPOINT_TYPES_DIRECT: EndpointType[] = ['general', 'generalListModels']
 export const ENDPOINT_TYPE_LABELS: Record<EndpointType, string> = {
   general: '通用',
   openaiChatCompletions: 'OpenAI 聊天补全',
   openaiResponses: 'OpenAI 响应',
   anthropicMessages: 'Anthropic 消息',
   anthropicCountTokens: 'Anthropic Tokens 计数',
-  generalListModels: '模型列表',
   geminiGenerateContent: 'Gemini 生成内容',
   geminiStreamGenerateContent: 'Gemini 流式生成内容',
   unknown: '未知',

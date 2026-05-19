@@ -79,12 +79,14 @@ func (s *Server) handleCreateProvider(ctx context.Context, input *contract.Creat
 		proxyUrl = pgtype.Text{String: input.Body.ProxyUrl, Valid: true}
 	}
 	newProvider, err := s.queries.CreateProvider(ctx, db.CreateProviderParams{
-		Name:           input.Body.Name,
-		Credentials:    input.Body.Credentials,
-		Priority:       input.Body.Priority,
-		ProviderModels: providerModelsBytes,
-		Annotations:    annotationsBytes,
-		ProxyUrl:       proxyUrl,
+		Name:                   input.Body.Name,
+		Credentials:            input.Body.Credentials,
+		Priority:               input.Body.Priority,
+		ProviderModels:         providerModelsBytes,
+		Annotations:            annotationsBytes,
+		ProxyUrl:               proxyUrl,
+		ModelsEndpointUrl:      input.Body.ModelsEndpointUrl,
+		ModelsEndpointResolver: contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to create provider", err)
@@ -128,13 +130,15 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 	}
 	if input.Body.ID == 0 {
 		newProvider, err := s.queries.CreateProvider(ctx, db.CreateProviderParams{
-			Name:           input.Body.Name,
-			Credentials:    input.Body.Credentials,
-			Priority:       input.Body.Priority,
-			ProviderModels: providerModelsBytes,
-			Annotations:    annotationsBytes,
-			Disabled:       input.Body.Disabled,
-			ProxyUrl:       proxyUrl,
+			Name:                   input.Body.Name,
+			Credentials:            input.Body.Credentials,
+			Priority:               input.Body.Priority,
+			ProviderModels:         providerModelsBytes,
+			Annotations:            annotationsBytes,
+			Disabled:               input.Body.Disabled,
+			ProxyUrl:               proxyUrl,
+			ModelsEndpointUrl:      input.Body.ModelsEndpointUrl,
+			ModelsEndpointResolver: contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create provider", err)
@@ -147,21 +151,25 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 	}
 
 	updated, err := s.queries.UpdateProvider(ctx, db.UpdateProviderParams{
-		ID:                input.Body.ID,
-		SetName:           true,
-		Name:              input.Body.Name,
-		SetCredentials:    true,
-		Credentials:       input.Body.Credentials,
-		SetPriority:       true,
-		Priority:          input.Body.Priority,
-		SetProviderModels: true,
-		ProviderModels:    providerModelsBytes,
-		SetAnnotations:    true,
-		Annotations:       annotationsBytes,
-		SetDisabled:       true,
-		Disabled:          input.Body.Disabled,
-		SetProxyUrl:       true,
-		ProxyUrl:          proxyUrl.String,
+		ID:                        input.Body.ID,
+		SetName:                   true,
+		Name:                      input.Body.Name,
+		SetCredentials:            true,
+		Credentials:               input.Body.Credentials,
+		SetPriority:               true,
+		Priority:                  input.Body.Priority,
+		SetProviderModels:         true,
+		ProviderModels:            providerModelsBytes,
+		SetAnnotations:            true,
+		Annotations:               annotationsBytes,
+		SetDisabled:               true,
+		Disabled:                  input.Body.Disabled,
+		SetProxyUrl:               true,
+		ProxyUrl:                  proxyUrl.String,
+		SetModelsEndpointUrl:      true,
+		ModelsEndpointUrl:         input.Body.ModelsEndpointUrl,
+		SetModelsEndpointResolver: true,
+		ModelsEndpointResolver:    contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -175,6 +183,39 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 		return nil, huma.Error500InternalServerError("failed to convert provider to view", err)
 	}
 	return &contract.UpsertProviderResponse{Body: *providerView}, nil
+}
+
+func (s *Server) handleUpdateProviderModels(ctx context.Context, input *contract.UpdateProviderModelsRequest) (*contract.UpdateProviderModelsResponse, error) {
+	if input.Body.ProviderModels == nil {
+		input.Body.ProviderModels = []contract.ProviderModelEntry{}
+	}
+	for i := range input.Body.ProviderModels {
+		if err := input.Body.ProviderModels[i].Pricing.Validate(); err != nil {
+			return nil, huma.Error400BadRequest("providerModels[" + input.Body.ProviderModels[i].Model + "]: " + err.Error())
+		}
+	}
+	providerModelsBytes, err := json.Marshal(input.Body.ProviderModels)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to marshal provider models", err)
+	}
+
+	updated, err := s.queries.UpdateProvider(ctx, db.UpdateProviderParams{
+		ID:                input.ID,
+		SetProviderModels: true,
+		ProviderModels:    providerModelsBytes,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, huma.Error404NotFound("provider not found", errorx.ProviderNotFound)
+		}
+		return nil, huma.Error500InternalServerError("failed to update provider models", err)
+	}
+
+	providerView, err := contract.ToProviderView(&updated)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to convert provider to view", err)
+	}
+	return &contract.UpdateProviderModelsResponse{Body: *providerView}, nil
 }
 
 func (s *Server) handleDeleteProvider(ctx context.Context, input *contract.DeleteProviderRequest) (*struct{}, error) {

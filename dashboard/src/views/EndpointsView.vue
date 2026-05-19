@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useConfirm } from '@/composables/useConfirm'
 import type { EndpointView } from '@/api'
-import { ENDPOINT_TYPE_LABELS, ENDPOINT_TYPES_MODEL_ROUTED, ENDPOINT_TYPES_DIRECT } from '@/api'
+import { ENDPOINT_TYPE_LABELS, ENDPOINT_TYPES_MODEL_ROUTED } from '@/api'
 import type { EndpointType } from '@/api'
 import { deleteEndpoint, invalidateEndpoints, listEndpoints } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
@@ -48,7 +48,7 @@ function openEdit(ep: EndpointView) {
 
 function endpointTypeVariant(t: EndpointType): 'accent' | 'muted' | 'more' {
   if (ENDPOINT_TYPES_MODEL_ROUTED.includes(t)) return 'accent'
-  if (ENDPOINT_TYPES_DIRECT.includes(t)) return 'muted'
+  if (t === 'general') return 'muted'
   return 'more'
 }
 

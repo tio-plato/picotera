@@ -12,17 +12,19 @@ import (
 )
 
 const createProvider = `-- name: CreateProvider :one
-INSERT INTO provider (name, credentials, priority, provider_models, annotations, disabled, proxy_url) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, credentials, priority, provider_models, annotations, disabled, proxy_url
+INSERT INTO provider (name, credentials, priority, provider_models, annotations, disabled, proxy_url, models_endpoint_url, models_endpoint_resolver) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, name, credentials, priority, provider_models, annotations, disabled, proxy_url, models_endpoint_url, models_endpoint_resolver
 `
 
 type CreateProviderParams struct {
-	Name           string      `json:"name"`
-	Credentials    string      `json:"credentials"`
-	Priority       int32       `json:"priority"`
-	ProviderModels []byte      `json:"providerModels"`
-	Annotations    []byte      `json:"annotations"`
-	Disabled       bool        `json:"disabled"`
-	ProxyUrl       pgtype.Text `json:"proxyUrl"`
+	Name                   string      `json:"name"`
+	Credentials            string      `json:"credentials"`
+	Priority               int32       `json:"priority"`
+	ProviderModels         []byte      `json:"providerModels"`
+	Annotations            []byte      `json:"annotations"`
+	Disabled               bool        `json:"disabled"`
+	ProxyUrl               pgtype.Text `json:"proxyUrl"`
+	ModelsEndpointUrl      string      `json:"modelsEndpointUrl"`
+	ModelsEndpointResolver int32       `json:"modelsEndpointResolver"`
 }
 
 func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error) {
@@ -34,6 +36,8 @@ func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) 
 		arg.Annotations,
 		arg.Disabled,
 		arg.ProxyUrl,
+		arg.ModelsEndpointUrl,
+		arg.ModelsEndpointResolver,
 	)
 	var i Provider
 	err := row.Scan(
@@ -45,6 +49,8 @@ func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) 
 		&i.Annotations,
 		&i.Disabled,
 		&i.ProxyUrl,
+		&i.ModelsEndpointUrl,
+		&i.ModelsEndpointResolver,
 	)
 	return i, err
 }
@@ -59,7 +65,7 @@ func (q *Queries) DeleteProvider(ctx context.Context, id int32) error {
 }
 
 const getProviderByID = `-- name: GetProviderByID :one
-SELECT id, name, credentials, priority, provider_models, annotations, disabled, proxy_url FROM provider WHERE id = $1 LIMIT 1
+SELECT id, name, credentials, priority, provider_models, annotations, disabled, proxy_url, models_endpoint_url, models_endpoint_resolver FROM provider WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetProviderByID(ctx context.Context, id int32) (Provider, error) {
@@ -74,12 +80,14 @@ func (q *Queries) GetProviderByID(ctx context.Context, id int32) (Provider, erro
 		&i.Annotations,
 		&i.Disabled,
 		&i.ProxyUrl,
+		&i.ModelsEndpointUrl,
+		&i.ModelsEndpointResolver,
 	)
 	return i, err
 }
 
 const getProviders = `-- name: GetProviders :many
-SELECT id, name, credentials, priority, provider_models, annotations, disabled, proxy_url FROM provider
+SELECT id, name, credentials, priority, provider_models, annotations, disabled, proxy_url, models_endpoint_url, models_endpoint_resolver FROM provider
 `
 
 func (q *Queries) GetProviders(ctx context.Context) ([]Provider, error) {
@@ -100,6 +108,8 @@ func (q *Queries) GetProviders(ctx context.Context) ([]Provider, error) {
 			&i.Annotations,
 			&i.Disabled,
 			&i.ProxyUrl,
+			&i.ModelsEndpointUrl,
+			&i.ModelsEndpointResolver,
 		); err != nil {
 			return nil, err
 		}
@@ -120,27 +130,33 @@ UPDATE provider
     provider_models = CASE WHEN $7::bool THEN $8::jsonb ELSE provider_models END,
     annotations = CASE WHEN $9::bool THEN $10::jsonb ELSE annotations END,
     disabled = CASE WHEN $11::bool THEN $12::bool ELSE disabled END,
-    proxy_url = CASE WHEN $13::bool THEN $14::text ELSE proxy_url END
-  WHERE id = $15::int
-  RETURNING id, name, credentials, priority, provider_models, annotations, disabled, proxy_url
+    proxy_url = CASE WHEN $13::bool THEN $14::text ELSE proxy_url END,
+    models_endpoint_url = CASE WHEN $15::bool THEN $16::text ELSE models_endpoint_url END,
+    models_endpoint_resolver = CASE WHEN $17::bool THEN $18::int ELSE models_endpoint_resolver END
+  WHERE id = $19::int
+  RETURNING id, name, credentials, priority, provider_models, annotations, disabled, proxy_url, models_endpoint_url, models_endpoint_resolver
 `
 
 type UpdateProviderParams struct {
-	SetName           bool   `json:"setName"`
-	Name              string `json:"name"`
-	SetCredentials    bool   `json:"setCredentials"`
-	Credentials       string `json:"credentials"`
-	SetPriority       bool   `json:"setPriority"`
-	Priority          int32  `json:"priority"`
-	SetProviderModels bool   `json:"setProviderModels"`
-	ProviderModels    []byte `json:"providerModels"`
-	SetAnnotations    bool   `json:"setAnnotations"`
-	Annotations       []byte `json:"annotations"`
-	SetDisabled       bool   `json:"setDisabled"`
-	Disabled          bool   `json:"disabled"`
-	SetProxyUrl       bool   `json:"setProxyUrl"`
-	ProxyUrl          string `json:"proxyUrl"`
-	ID                int32  `json:"id"`
+	SetName                   bool   `json:"setName"`
+	Name                      string `json:"name"`
+	SetCredentials            bool   `json:"setCredentials"`
+	Credentials               string `json:"credentials"`
+	SetPriority               bool   `json:"setPriority"`
+	Priority                  int32  `json:"priority"`
+	SetProviderModels         bool   `json:"setProviderModels"`
+	ProviderModels            []byte `json:"providerModels"`
+	SetAnnotations            bool   `json:"setAnnotations"`
+	Annotations               []byte `json:"annotations"`
+	SetDisabled               bool   `json:"setDisabled"`
+	Disabled                  bool   `json:"disabled"`
+	SetProxyUrl               bool   `json:"setProxyUrl"`
+	ProxyUrl                  string `json:"proxyUrl"`
+	SetModelsEndpointUrl      bool   `json:"setModelsEndpointUrl"`
+	ModelsEndpointUrl         string `json:"modelsEndpointUrl"`
+	SetModelsEndpointResolver bool   `json:"setModelsEndpointResolver"`
+	ModelsEndpointResolver    int32  `json:"modelsEndpointResolver"`
+	ID                        int32  `json:"id"`
 }
 
 func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error) {
@@ -159,6 +175,10 @@ func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) 
 		arg.Disabled,
 		arg.SetProxyUrl,
 		arg.ProxyUrl,
+		arg.SetModelsEndpointUrl,
+		arg.ModelsEndpointUrl,
+		arg.SetModelsEndpointResolver,
+		arg.ModelsEndpointResolver,
 		arg.ID,
 	)
 	var i Provider
@@ -171,6 +191,8 @@ func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) 
 		&i.Annotations,
 		&i.Disabled,
 		&i.ProxyUrl,
+		&i.ModelsEndpointUrl,
+		&i.ModelsEndpointResolver,
 	)
 	return i, err
 }

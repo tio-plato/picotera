@@ -235,7 +235,6 @@ type ProviderSummary struct {
 type RewriteProviderModelsInput struct {
 	Provider         ProviderSummary   `json:"provider"`
 	Model            *ModelSummary     `json:"model,omitempty"`
-	EndpointPath     string            `json:"endpointPath"`
 	UpstreamResponse json.RawMessage   `json:"upstreamResponse"`
 	Annotations      map[string]string `json:"annotations"`
 }

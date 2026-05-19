@@ -144,6 +144,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/kv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List KV entries */
+        get: operations["listKvEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/kv/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a KV entry */
+        post: operations["deleteKvEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/kv/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a KV entry */
+        get: operations["getKvEntry"];
+        /** Create or update a KV entry */
+        put: operations["upsertKvEntry"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/models": {
         parameters: {
             query?: never;
@@ -196,6 +248,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/overview/distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get overview distribution for a dimension */
+        get: operations["getOverviewDistribution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/overview/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get hourly overview series for a dimension */
+        get: operations["getOverviewSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/overview/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get overview summary totals */
+        get: operations["getOverviewSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/pricing/matches": {
         parameters: {
             query?: never;
@@ -207,6 +310,58 @@ export interface paths {
         put?: never;
         /** Match built-in pricing candidates for a model */
         post: operations["matchPricing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all projects */
+        get: operations["listProjects"];
+        /** Upsert a project */
+        put: operations["upsertProject"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/projects/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a project */
+        post: operations["deleteProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a project by ID */
+        get: operations["getProject"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -248,23 +403,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/picotera/provider-endpoints/fetch-models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Fetch model list from upstream provider */
-        post: operations["fetchModels"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/picotera/providers": {
         parameters: {
             query?: never;
@@ -295,6 +433,23 @@ export interface paths {
         put?: never;
         /** Delete a provider */
         post: operations["deleteProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/providers/fetch-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch model list from upstream provider */
+        post: operations["fetchModels"];
         delete?: never;
         options?: never;
         head?: never;
@@ -439,6 +594,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/simulate/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Simulate dispatch and return ranked candidates */
+        post: operations["simulateDispatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -487,10 +659,14 @@ export interface components {
             };
             credentials: string;
             disabled: boolean;
+            /** @enum {string} */
+            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
+            proxyUrl?: string;
         };
         DeleteApiKeyRequestBody: {
             /**
@@ -520,6 +696,15 @@ export interface components {
             readonly $schema?: string;
             code: string;
         };
+        DeleteKvEntryRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteKvEntryRequestBody.json
+             */
+            readonly $schema?: string;
+            key: string;
+        };
         DeleteModelRequestBody: {
             /**
              * Format: uri
@@ -528,6 +713,16 @@ export interface components {
              */
             readonly $schema?: string;
             name: string;
+        };
+        DeleteProjectRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/DeleteProjectRequestBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            id: number;
         };
         DeleteProviderEndpointRequestBody: {
             /**
@@ -569,7 +764,7 @@ export interface components {
             /** @enum {string} */
             credentialsResolver: "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey" | "unknown";
             /** @enum {string} */
-            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "generalListModels" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "unknown";
+            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "unknown";
             modelPath: string;
             name: string;
             path: string;
@@ -594,7 +789,6 @@ export interface components {
              * @example https://example.com/schemas/FetchModelsRequestBody.json
              */
             readonly $schema?: string;
-            endpointPath: string;
             /** Format: int32 */
             providerId: number;
         };
@@ -609,6 +803,29 @@ export interface components {
             providerId: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
             removedModels: string[] | null;
+        };
+        KvEntryView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/KvEntryView.json
+             */
+            readonly $schema?: string;
+            key: string;
+            /** Format: int64 */
+            ttl: number;
+            value: string;
+        };
+        KvMutateBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/KvMutateBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            ttlSeconds?: number;
+            value: string;
         };
         MatchPricingRequestBody: {
             /**
@@ -642,6 +859,117 @@ export interface components {
             disabled: boolean;
             name: string;
             pricing?: components["schemas"]["Pricing"];
+        };
+        OverviewBreakdownRowView: {
+            /** Format: int32 */
+            apiKeyId: number;
+            costs: components["schemas"]["OverviewCostView"][] | null;
+            model: string;
+            /** Format: int32 */
+            projectId: number;
+            /** Format: int32 */
+            providerId: number;
+            /** Format: int64 */
+            totalTokens: number;
+            upstreamModel: string;
+        };
+        OverviewCostView: {
+            /** Format: double */
+            amount: number;
+            currency: string;
+        };
+        OverviewDistributionRowView: {
+            costs: components["schemas"]["OverviewCostView"][] | null;
+            key: string;
+            label: string;
+            /** Format: int64 */
+            requestCount: number;
+            /** Format: int64 */
+            totalTokens: number;
+            /** Format: int64 */
+            traceCount: number;
+        };
+        OverviewDistributionView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/OverviewDistributionView.json
+             */
+            readonly $schema?: string;
+            dimension: string;
+            rows: components["schemas"]["OverviewDistributionRowView"][] | null;
+            window: components["schemas"]["OverviewWindowView"];
+        };
+        OverviewSeriesGroupView: {
+            key: string;
+            label: string;
+        };
+        OverviewSeriesPointView: {
+            bucketAt: string;
+            currency: string;
+            groupKey: string;
+            metric: string;
+            /** Format: double */
+            value: number;
+        };
+        OverviewSeriesView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/OverviewSeriesView.json
+             */
+            readonly $schema?: string;
+            buckets: string[] | null;
+            dimension: string;
+            groups: components["schemas"]["OverviewSeriesGroupView"][] | null;
+            points: components["schemas"]["OverviewSeriesPointView"][] | null;
+            window: components["schemas"]["OverviewWindowView"];
+        };
+        OverviewSummaryView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/OverviewSummaryView.json
+             */
+            readonly $schema?: string;
+            breakdown: components["schemas"]["OverviewBreakdownRowView"][] | null;
+            costs: components["schemas"]["OverviewCostView"][] | null;
+            tokenBreakdown: components["schemas"]["OverviewTokenBreakdownView"];
+            /** Format: int64 */
+            totalRequests: number;
+            /** Format: int64 */
+            totalTokens: number;
+            /** Format: int64 */
+            totalTraceCount: number;
+            window: components["schemas"]["OverviewWindowView"];
+        };
+        OverviewTokenBreakdownView: {
+            /** Format: int64 */
+            cacheRead: number;
+            /** Format: int64 */
+            cacheWrite: number;
+            /** Format: int64 */
+            cacheWrite1h: number;
+            /** Format: int64 */
+            input: number;
+            /** Format: int64 */
+            output: number;
+        };
+        OverviewWindowView: {
+            bucket: string;
+            endAt: string;
+            range: string;
+            startAt: string;
+        };
+        PaginatedBodyKvEntryView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PaginatedBodyKvEntryView.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["KvEntryView"][] | null;
+            pagination: components["schemas"]["PaginationInfo"];
         };
         PaginatedBodyRequestTraceView: {
             /**
@@ -714,6 +1042,22 @@ export interface components {
             /** Format: double */
             output: number;
         };
+        ProjectView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ProjectView.json
+             */
+            readonly $schema?: string;
+            createdAt: string;
+            firstSeenAt?: string;
+            /** Format: int32 */
+            id: number;
+            lastSeenAt?: string;
+            name: string;
+            paths: string[] | null;
+            updatedAt: string;
+        };
         ProviderEndpointView: {
             /**
              * Format: uri
@@ -754,10 +1098,14 @@ export interface components {
             disabled: boolean;
             /** Format: int32 */
             id: number;
+            /** @enum {string} */
+            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
+            proxyUrl?: string;
         };
         RequestTraceView: {
             /** Format: int64 */
@@ -777,6 +1125,8 @@ export interface components {
             /** Format: int64 */
             outputTokens: number;
             parentSpanId: string;
+            /** Format: int32 */
+            projectId?: number;
             /** Format: int64 */
             totalTokens: number;
             upstreamCosts: components["schemas"]["TraceCostView"][] | null;
@@ -812,6 +1162,8 @@ export interface components {
             /** Format: int32 */
             outputTokens?: number;
             parentSpanId?: string;
+            /** Format: int32 */
+            projectId?: number;
             /** Format: int32 */
             providerId?: number;
             requestArtifactUrl?: string;
@@ -858,10 +1210,112 @@ export interface components {
             source: string;
             updatedAt: string;
         };
+        SimulateCandidate: {
+            bridged: boolean;
+            mergedAnnotations: {
+                [key: string]: string;
+            };
+            mpe: components["schemas"]["SimulateMPE"];
+            outboundProfile?: components["schemas"]["SimulateOutboundProfile"];
+            provider: components["schemas"]["SimulateProviderSummary"];
+            upstreamFormat: string;
+        };
+        SimulateDispatchRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SimulateDispatchRequestBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            apiKeyId: number;
+            /** @description Raw JSON request body string. Empty allowed (body omitted from hook context). */
+            body: string;
+            endpoint: components["schemas"]["SimulateEndpointSelector"];
+            model: string;
+            /** @description Optional path variable map (used when the endpoint path contains {name} tokens). */
+            pathVars?: {
+                [key: string]: string;
+            };
+        };
+        SimulateDispatchResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SimulateDispatchResponseBody.json
+             */
+            readonly $schema?: string;
+            candidates: components["schemas"]["SimulateCandidate"][] | null;
+            logs: components["schemas"]["SimulateLogEntry"][] | null;
+            originalModel: string;
+            resolvedModel: string;
+            sourceFormat: string;
+            stream: boolean;
+        };
+        SimulateEndpointSelector: {
+            /**
+             * @description Unified source format; required when kind==unified.
+             * @enum {string}
+             */
+            format?: "anthropicMessages" | "openaiChatCompletions" | "openaiResponses" | "geminiGenerateContent" | "geminiStreamGenerateContent";
+            /**
+             * @description "path" picks a configured endpoint row; "unified" picks one of the five unified routes.
+             * @enum {string}
+             */
+            kind: "path" | "unified";
+            /** @description Endpoint path; required when kind==path. */
+            path?: string;
+        };
+        SimulateLogEntry: {
+            level: string;
+            message: string;
+            ts: string;
+        };
+        SimulateMPE: {
+            annotations: {
+                [key: string]: string;
+            };
+            endpointPath: string;
+            modelName: string;
+            /** Format: int32 */
+            priority: number;
+            /** Format: int32 */
+            providerId: number;
+            upstreamModelName: string;
+        };
+        SimulateOutboundProfile: {
+            config: {
+                [key: string]: unknown;
+            };
+            type: string;
+        };
+        SimulateProviderSummary: {
+            annotations: {
+                [key: string]: string;
+            };
+            disabled: boolean;
+            /** Format: int32 */
+            id: number;
+            name: string;
+            /** Format: int32 */
+            priority: number;
+        };
         TraceCostView: {
             /** Format: double */
             amount: number;
             currency: string;
+        };
+        UpsertProjectRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpsertProjectRequestBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            id?: number;
+            name: string;
+            paths: string[] | null;
         };
         UpsertProviderRequestBody: {
             /**
@@ -877,10 +1331,14 @@ export interface components {
             disabled: boolean;
             /** Format: int32 */
             id?: number;
+            /** @enum {string} */
+            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
+            proxyUrl?: string;
         };
     };
     responses: never;
@@ -1267,6 +1725,135 @@ export interface operations {
             };
         };
     };
+    listKvEntries: {
+        parameters: {
+            query?: {
+                pattern?: string;
+                cursor?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedBodyKvEntryView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    deleteKvEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteKvEntryRequestBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getKvEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KvEntryView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    upsertKvEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KvMutateBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KvEntryView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     listModels: {
         parameters: {
             query?: never;
@@ -1391,6 +1978,116 @@ export interface operations {
             };
         };
     };
+    getOverviewDistribution: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m";
+                apiKeyId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+                projectId?: number;
+                dimension: "apiKey" | "model" | "upstreamModel" | "provider" | "project";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewDistributionView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getOverviewSeries: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m";
+                apiKeyId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+                projectId?: number;
+                dimension: "none" | "apiKey" | "model" | "upstreamModel" | "provider" | "project";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewSeriesView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getOverviewSummary: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m";
+                apiKeyId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+                projectId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewSummaryView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     matchPricing: {
         parameters: {
             query?: never;
@@ -1411,6 +2108,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MatchPricingResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    upsertProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertProjectRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    deleteProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteProjectRequestBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
                 };
             };
             /** @description Error */
@@ -1507,39 +2328,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PicoTeraError"];
-                };
-            };
-        };
-    };
-    fetchModels: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FetchModelsRequestBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FetchModelsResponseBody"];
-                };
             };
             /** @description Error */
             default: {
@@ -1678,6 +2466,39 @@ export interface operations {
             };
         };
     };
+    fetchModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchModelsRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FetchModelsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     getProvider: {
         parameters: {
             query?: never;
@@ -1752,6 +2573,7 @@ export interface operations {
                 model?: string;
                 upstreamModel?: string;
                 traceId?: string;
+                projectId?: number;
             };
             header?: never;
             path?: never;
@@ -1987,6 +2809,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScriptView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    simulateDispatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulateDispatchRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateDispatchResponseBody"];
                 };
             };
             /** @description Error */

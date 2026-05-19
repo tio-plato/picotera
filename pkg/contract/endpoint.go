@@ -23,7 +23,6 @@ const (
 	EndpointType_OpenAIResponses             int32 = 3
 	EndpointType_AnthropicMessages           int32 = 4
 	EndpointType_AnthropicCountTokens        int32 = 5
-	EndpointType_GeneralListModels           int32 = 6
 	EndpointType_GeminiGenerateContent       int32 = 7
 	EndpointType_GeminiStreamGenerateContent int32 = 8
 )
@@ -42,8 +41,6 @@ func ToEndpointType(s string) int32 {
 		return EndpointType_AnthropicMessages
 	case "anthropicCountTokens":
 		return EndpointType_AnthropicCountTokens
-	case "generalListModels":
-		return EndpointType_GeneralListModels
 	case "geminiGenerateContent":
 		return EndpointType_GeminiGenerateContent
 	case "geminiStreamGenerateContent":
@@ -67,8 +64,6 @@ func FromEndpointType(t int32) string {
 		return "anthropicMessages"
 	case EndpointType_AnthropicCountTokens:
 		return "anthropicCountTokens"
-	case EndpointType_GeneralListModels:
-		return "generalListModels"
 	case EndpointType_GeminiGenerateContent:
 		return "geminiGenerateContent"
 	case EndpointType_GeminiStreamGenerateContent:
@@ -121,7 +116,7 @@ type EndpointView struct {
 	Path                string `json:"path"`
 	ModelPath           string `json:"modelPath"`
 	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,bearerToken,xApiKey,searchKey,googApiKey,unknown"`
-	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,generalListModels,geminiGenerateContent,geminiStreamGenerateContent,unknown"`
+	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,geminiGenerateContent,geminiStreamGenerateContent,unknown"`
 }
 
 func ToEndpointView(endpoint *db.Endpoint) (*EndpointView, error) {

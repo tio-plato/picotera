@@ -65,14 +65,7 @@ const deleteModelMutation = useMutation({
   onSuccess: () => invalidateModels(queryClient),
 })
 
-const routablePathSet = computed(
-  () =>
-    new Set(
-      endpoints.value
-        .filter((e) => e.endpointType !== 'generalListModels')
-        .map((e) => e.path),
-    ),
-)
+const routablePathSet = computed(() => new Set(endpoints.value.map((e) => e.path)))
 
 const endpointNameByPath = computed(() => {
   const map: Record<string, string> = {}

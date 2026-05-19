@@ -403,23 +403,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/picotera/provider-endpoints/fetch-models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Fetch model list from upstream provider */
-        post: operations["fetchModels"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/picotera/providers": {
         parameters: {
             query?: never;
@@ -456,6 +439,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/providers/fetch-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch model list from upstream provider */
+        post: operations["fetchModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/providers/{id}": {
         parameters: {
             query?: never;
@@ -466,6 +466,23 @@ export interface paths {
         /** Get a provider by ID */
         get: operations["getProvider"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/providers/{id}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a provider's model list without touching other fields */
+        put: operations["updateProviderModels"];
         post?: never;
         delete?: never;
         options?: never;
@@ -659,6 +676,9 @@ export interface components {
             };
             credentials: string;
             disabled: boolean;
+            /** @enum {string} */
+            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */
             priority: number;
@@ -761,7 +781,7 @@ export interface components {
             /** @enum {string} */
             credentialsResolver: "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey" | "unknown";
             /** @enum {string} */
-            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "generalListModels" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "unknown";
+            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "unknown";
             modelPath: string;
             name: string;
             path: string;
@@ -786,7 +806,6 @@ export interface components {
              * @example https://example.com/schemas/FetchModelsRequestBody.json
              */
             readonly $schema?: string;
-            endpointPath: string;
             /** Format: int32 */
             providerId: number;
         };
@@ -1096,6 +1115,9 @@ export interface components {
             disabled: boolean;
             /** Format: int32 */
             id: number;
+            /** @enum {string} */
+            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */
             priority: number;
@@ -1300,6 +1322,15 @@ export interface components {
             amount: number;
             currency: string;
         };
+        UpdateProviderModelsRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateProviderModelsRequestBody.json
+             */
+            readonly $schema?: string;
+            providerModels: components["schemas"]["ProviderModelEntry"][] | null;
+        };
         UpsertProjectRequestBody: {
             /**
              * Format: uri
@@ -1326,6 +1357,9 @@ export interface components {
             disabled: boolean;
             /** Format: int32 */
             id?: number;
+            /** @enum {string} */
+            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */
             priority: number;
@@ -2332,39 +2366,6 @@ export interface operations {
             };
         };
     };
-    fetchModels: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FetchModelsRequestBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FetchModelsResponseBody"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PicoTeraError"];
-                };
-            };
-        };
-    };
     listProviders: {
         parameters: {
             query?: never;
@@ -2491,6 +2492,39 @@ export interface operations {
             };
         };
     };
+    fetchModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchModelsRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FetchModelsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     getProvider: {
         parameters: {
             query?: never;
@@ -2501,6 +2535,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    updateProviderModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProviderModelsRequestBody"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

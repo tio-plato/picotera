@@ -3,14 +3,13 @@ import { ref, computed, watch } from 'vue'
 import { useMutation, useQueries, useQueryClient } from '@tanstack/vue-query'
 import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import PricingEditor from '@/components/PricingEditor.vue'
-import type { ProviderView, ProviderModelEntry, ProviderEndpointView, EndpointView, Pricing } from '@/api'
+import type { ProviderView, ProviderModelEntry, ProviderEndpointView, Pricing } from '@/api'
 import {
   fetchProviderModels,
   invalidateProviderEndpoints,
-  listEndpoints,
   listProviderEndpoints,
   getProvider,
-  upsertProvider,
+  updateProviderModels,
 } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import {
@@ -18,7 +17,6 @@ import {
   Button,
   IconButton,
   Input,
-  Select,
   Field,
   StateText,
   Tag,
@@ -47,7 +45,6 @@ const rows = ref<Row[]>([])
 const saving = ref(false)
 const error = ref('')
 const newModelName = ref('')
-const fetchEndpointPath = ref('')
 const fetching = ref(false)
 type MissingRow = { uid: number; modelName: string; upstreamModelName: string }
 
@@ -63,19 +60,18 @@ const queries = useQueries({
       queryKey: queryKeys.providerEndpoints.list({ providerId: props.providerId }),
       queryFn: () => listProviderEndpoints(props.providerId),
     },
-    { queryKey: queryKeys.endpoints.all, queryFn: listEndpoints },
   ]),
 })
 const providerEndpoints = computed<ProviderEndpointView[]>(
   () => (queries.value[1]?.data ?? []) as ProviderEndpointView[],
 )
-const endpoints = computed<EndpointView[]>(() => (queries.value[2]?.data ?? []) as EndpointView[])
 const loading = computed(() => queries.value.some((q) => q.isLoading))
 const fetchModelsMutation = useMutation({
   mutationFn: fetchProviderModels,
 })
 const saveProviderMutation = useMutation({
-  mutationFn: upsertProvider,
+  mutationFn: ({ id, providerModels }: { id: number; providerModels: ProviderModelEntry[] }) =>
+    updateProviderModels(id, providerModels),
   onSuccess: () => invalidateProviderEndpoints(queryClient),
 })
 
@@ -151,17 +147,7 @@ const modelCount = computed(() => rows.value.length)
 
 const availableEndpointPaths = computed(() => providerEndpoints.value.map((pe) => pe.endpointPath))
 
-const groupedFetchSources = computed(() => {
-  const epByPath = new Map(endpoints.value.map((e) => [e.path, e]))
-  const listModels: string[] = []
-  const general: string[] = []
-  for (const pe of providerEndpoints.value) {
-    const t = epByPath.get(pe.endpointPath)?.endpointType
-    if (t === 'generalListModels') listModels.push(pe.endpointPath)
-    else if (t === 'general') general.push(pe.endpointPath)
-  }
-  return { listModels, general }
-})
+const hasModelsEndpoint = computed(() => !!provider.value?.modelsEndpointUrl)
 
 function applyLoadedData() {
   error.value = ''
@@ -169,10 +155,6 @@ function applyLoadedData() {
   if (!pData) return
   provider.value = pData
   rows.value = rowsFromProvider(pData)
-  if (!fetchEndpointPath.value) {
-    const { listModels, general } = groupedFetchSources.value
-    fetchEndpointPath.value = listModels[0] ?? general[0] ?? ''
-  }
 }
 
 watch(
@@ -209,8 +191,8 @@ function toggleEndpoint(row: Row, path: string) {
 }
 
 async function fetchFromUpstream() {
-  if (!fetchEndpointPath.value) {
-    error.value = '请选择一个端点作为来源'
+  if (!hasModelsEndpoint.value) {
+    error.value = '请先在渠道编辑表单配置模型列表 URL'
     return
   }
   fetching.value = true
@@ -221,7 +203,6 @@ async function fetchFromUpstream() {
   try {
     data = await fetchModelsMutation.mutateAsync({
       providerId: props.providerId,
-      endpointPath: fetchEndpointPath.value,
     })
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '拉取模型失败'
@@ -303,17 +284,11 @@ async function save() {
   if (!provider.value) return
   saving.value = true
   error.value = ''
-  const body = {
-    id: provider.value.id,
-    name: provider.value.name,
-    credentials: provider.value.credentials,
-    priority: provider.value.priority,
-    providerModels: rowsToList(rows.value),
-    annotations: provider.value.annotations,
-    disabled: provider.value.disabled,
-  }
   try {
-    await saveProviderMutation.mutateAsync(body)
+    await saveProviderMutation.mutateAsync({
+      id: provider.value.id,
+      providerModels: rowsToList(rows.value),
+    })
     props.onSave?.()
     emit('close')
   } catch (e: unknown) {
@@ -339,26 +314,18 @@ async function save() {
         <div class="flex items-baseline justify-between">
           <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">从上游拉取</span>
         </div>
-        <div class="flex gap-2">
-          <Select v-model="fetchEndpointPath" size="sm" class="flex-1 min-w-0" :disabled="!groupedFetchSources.listModels.length && !groupedFetchSources.general.length">
-            <option value="" disabled>
-              {{ groupedFetchSources.listModels.length || groupedFetchSources.general.length ? '选择来源端点' : '无可用列表模型 / 通用端点' }}
-            </option>
-            <optgroup v-if="groupedFetchSources.listModels.length" label="模型列表端点">
-              <option v-for="p in groupedFetchSources.listModels" :key="p" :value="p">{{ p }}</option>
-            </optgroup>
-            <optgroup v-if="groupedFetchSources.general.length" label="通用端点">
-              <option v-for="p in groupedFetchSources.general" :key="p" :value="p">{{ p }}</option>
-            </optgroup>
-          </Select>
+        <div class="flex items-center gap-2">
           <Button
             size="sm"
-            :disabled="fetching || !fetchEndpointPath"
+            :disabled="fetching || !hasModelsEndpoint"
             @click="fetchFromUpstream"
           >
             <Icon :name="fetching ? 'loader' : 'cloud-download'" :size="13" :class="fetching ? 'animate-spin' : ''" />
             <span>{{ fetching ? '拉取中…' : '拉取' }}</span>
           </Button>
+          <span v-if="!hasModelsEndpoint" class="text-xs text-ink-faint">
+            请先在渠道编辑表单配置模型列表 URL
+          </span>
         </div>
 
         <div

@@ -78,8 +78,7 @@ export const queryKeys = {
   },
   fetchModels: {
     all: ['fetchModels'] as const,
-    source: (providerId: number, endpointPath: string) =>
-      ['fetchModels', { providerId, endpointPath }] as const,
+    source: (providerId: number) => ['fetchModels', { providerId }] as const,
   },
   kv: {
     all: ['kv'] as const,

@@ -68,34 +68,19 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 		return nil, huma.Error500InternalServerError("failed to get provider", err)
 	}
 
-	pe, err := s.queries.GetProviderEndpoint(ctx, db.GetProviderEndpointParams{
-		ProviderID:   input.Body.ProviderID,
-		EndpointPath: input.Body.EndpointPath,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, huma.Error404NotFound("provider-endpoint binding not found")
-		}
-		return nil, huma.Error500InternalServerError("failed to get provider endpoint", err)
-	}
-
-	endpoint, err := s.queries.GetEndpointByPath(ctx, input.Body.EndpointPath)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, huma.Error404NotFound("endpoint not found")
-		}
-		return nil, huma.Error500InternalServerError("failed to get endpoint", err)
+	if provider.ModelsEndpointUrl == "" {
+		return nil, huma.Error400BadRequest("provider has no models endpoint configured")
 	}
 
 	fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, pe.UpstreamUrl, nil)
+	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, provider.ModelsEndpointUrl, nil)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to create upstream request", err)
 	}
 
-	applyCredentials(req, provider.Credentials, effectiveSendResolver(endpoint.CredentialsResolver, pe.CredentialsResolver), nil)
+	applyCredentials(req, provider.Credentials, provider.ModelsEndpointResolver, nil)
 
 	var proxyURL string
 	if provider.ProxyUrl.Valid {
@@ -162,7 +147,6 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 			Disabled:       provider.Disabled,
 		},
 		Model:            nil,
-		EndpointPath:     input.Body.EndpointPath,
 		UpstreamResponse: upstreamRawJSON,
 		Annotations:      annotations.Merge(providerAnno),
 	}, contractToJsxEntries(aggregated))
