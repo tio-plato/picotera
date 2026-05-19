@@ -417,23 +417,23 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			if upstreamModel != "" {
 				srcBody, err = setUnifiedModel(srcFormat, body, upstreamModel)
 				if err != nil {
-					cancel()
 					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, err.Error())
 					lastErr = err
 					lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: err.Error()}
 					currentRetryCount++
 					totalAttemptCount++
+					cancel()
 					continue
 				}
 			}
 			req, reqBody, berr := buildUpstreamRequest(ctx, r, srcBody, side.upstreamURL, "", side.credentials, side.sendResolver, pathVars)
 			if berr != nil {
-				cancel()
 				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, berr.Error())
 				lastErr = berr
 				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: berr.Error()}
 				currentRetryCount++
 				totalAttemptCount++
+				cancel()
 				continue
 			}
 
@@ -451,25 +451,25 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				Annotations:       candAnno,
 			})
 			if rerr != nil {
-				cancel()
 				failHook(rerr)
+				cancel()
 				return
 			}
 			req, reqBody, rerr = buildRequestFromPending(ctx, newPending, reqBody)
 			if rerr != nil {
-				cancel()
 				failHook(rerr)
+				cancel()
 				return
 			}
 
 			baseProfile, perr := llmbridge.DefaultOutboundProfileForFormat(side.upFormat)
 			if perr != nil {
-				cancel()
 				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, perr.Error())
 				lastErr = perr
 				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: perr.Error()}
 				currentRetryCount++
 				totalAttemptCount++
+				cancel()
 				continue
 			}
 			initialProfile := jsx.OutboundProfile{Type: baseProfile.Type, Config: map[string]any{}}
@@ -489,8 +489,8 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				Stream:            streaming,
 			}, initialProfile)
 			if perr != nil {
-				cancel()
 				failHook(perr)
+				cancel()
 				return
 			}
 			outboundProfile := llmbridge.OutboundProfile{
@@ -505,12 +505,12 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			if side.upFormat != srcFormat {
 				if !s.llmBridge.Enabled() {
 					brerr := fmt.Errorf("llmbridge: wasm module is not configured")
-					cancel()
 					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, brerr.Error())
 					lastErr = brerr
 					lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: brerr.Error()}
 					currentRetryCount++
 					totalAttemptCount++
+					cancel()
 					continue
 				}
 				bridgeURL := req.URL.String()
@@ -523,12 +523,12 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				}
 				upBody, upCT, brerr := s.llmBridge.BridgeRequest(ctx, srcFormat, side.upFormat, reqBody, req.Header, bridgeURL, outboundProfile)
 				if brerr != nil {
-					cancel()
 					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, brerr.Error())
 					lastErr = brerr
 					lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: brerr.Error()}
 					currentRetryCount++
 					totalAttemptCount++
+					cancel()
 					continue
 				}
 				// Rewrite the upstream-bound request body. We keep the URL
@@ -551,12 +551,12 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			upstreamStartTime := time.Now()
 			resp, ferr := h.forwardRequest(req, side.proxyURL)
 			if ferr != nil {
-				cancel()
 				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, ferr.Error())
 				lastErr = ferr
 				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: ferr.Error()}
 				currentRetryCount++
 				totalAttemptCount++
+				cancel()
 				continue
 			}
 
@@ -588,7 +588,6 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 
 			// Non-200 — try the next candidate. The error body stays in the
 			// upstream's native format because we never bridge it.
-			cancel()
 			decoded, derr := decodedBody(resp)
 			if derr != nil {
 				_ = resp.Body.Close()
@@ -598,6 +597,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
 				currentRetryCount++
 				totalAttemptCount++
+				cancel()
 				continue
 			}
 			respBody, rerr := io.ReadAll(decoded.Body)
@@ -609,6 +609,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
 				currentRetryCount++
 				totalAttemptCount++
+				cancel()
 				continue
 			}
 			h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody)
@@ -625,6 +626,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: resp.StatusCode, Message: errMsg}
 			currentRetryCount++
 			totalAttemptCount++
+			cancel()
 		}
 
 		errMsg := "all providers failed"

@@ -415,12 +415,12 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		req, reqBody, berr := buildUpstreamRequest(ctx, r, body, side.upstreamURL, upstreamModel, side.credentials, side.sendResolver, pathVars)
 		if berr != nil {
-			cancel()
 			h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, berr.Error())
 			lastErr = berr
 			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: berr.Error()}
 			currentRetryCount++
 			totalAttemptCount++
+			cancel()
 			continue
 		}
 
@@ -441,14 +441,14 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Annotations:       candAnno,
 		})
 		if rerr != nil {
-			cancel()
 			failHook(rerr)
+			cancel()
 			return
 		}
 		req, reqBody, rerr = buildRequestFromPending(ctx, newPending, reqBody)
 		if rerr != nil {
-			cancel()
 			failHook(rerr)
+			cancel()
 			return
 		}
 
@@ -458,12 +458,12 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		upstreamStartTime := time.Now()
 		resp, err := h.forwardRequest(req, side.proxyURL)
 		if err != nil {
-			cancel()
 			h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, err.Error())
 			lastErr = err
 			lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: err.Error()}
 			currentRetryCount++
 			totalAttemptCount++
+			cancel()
 			continue
 		}
 
