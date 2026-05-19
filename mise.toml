@@ -1,4 +1,5 @@
 [tools]
+"aqua:pressly/goose" = "latest"
 go = "latest"
 node = "latest"
 oapi-codegen = "latest"
@@ -9,6 +10,9 @@ tinygo = "0.41.1"
 [env]
 _.file = [".env.default", { path = ".env", optional = true }]
 PICOTERA_LLMBRIDGE_WASM_PATH = "{{ config_root }}/dist/llmbridge.wasm"
+GOOSE_MIGRATION_DIR = "{{ config_root }}/db/migrations"
+GOOSE_DRIVER = "postgres"
+GOOSE_DBSTRING = "{{ env.PICOTERA_DATABASE_URL }}"
 
 [tasks.server]
 run = "go run ./cmd/picotera/main.go"
