@@ -53,6 +53,16 @@ const pendingDeletions = ref<Record<number, boolean>>({})
 
 let nextUid = 0
 
+type ComparableModel = {
+  modelName: string
+  upstreamModelName: string
+  endpoints: string[]
+  priority: number
+  annotations: Record<string, string>
+  disabled: boolean
+  pricing: Pricing | null
+}
+
 const queries = useQueries({
   queries: computed(() => [
     { queryKey: queryKeys.providers.detail(props.providerId), queryFn: () => getProvider(props.providerId) },
@@ -118,6 +128,59 @@ function pairKey(model: string, upstream: string): string {
   return `${model}\u0000${upstream ?? ''}`
 }
 
+function normalizeAnnotations(value: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(value ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+  )
+}
+
+function comparablePricing(value: Pricing | null | undefined): Pricing | null {
+  if (!value || !value.tiers || value.tiers.length === 0) return null
+  return structuredClone(value)
+}
+
+function comparableRow(row: Row): ComparableModel {
+  return {
+    modelName: row.modelName,
+    upstreamModelName: row.upstreamModelName,
+    endpoints: [...row.endpoints].sort(),
+    priority: row.priority,
+    annotations: normalizeAnnotations(row.annotations),
+    disabled: row.disabled,
+    pricing: comparablePricing(row.pricing),
+  }
+}
+
+function comparableEntry(entry: ProviderModelEntry): ComparableModel {
+  return {
+    modelName: entry.model ?? '',
+    upstreamModelName: entry.upstreamModelName ?? '',
+    endpoints: [...(entry.endpoints ?? [])].sort(),
+    priority: entry.priority ?? 0,
+    annotations: normalizeAnnotations(entry.annotations),
+    disabled: entry.disabled ?? false,
+    pricing: comparablePricing(entry.pricing),
+  }
+}
+
+function comparableModelSortKey(value: ComparableModel): string {
+  return [
+    value.modelName,
+    value.upstreamModelName,
+    String(value.priority),
+    value.disabled ? '1' : '0',
+    value.endpoints.join('\u0001'),
+    JSON.stringify(value.annotations),
+    JSON.stringify(value.pricing),
+  ].join('\u0000')
+}
+
+function modelSignatureFromComparable(list: ComparableModel[]): string {
+  return JSON.stringify(
+    [...list].sort((a, b) => comparableModelSortKey(a).localeCompare(comparableModelSortKey(b))),
+  )
+}
+
 function rowsToList(list: Row[]): ProviderModelEntry[] {
   const out: ProviderModelEntry[] = []
   for (const row of list) {
@@ -144,21 +207,51 @@ function rowsToList(list: Row[]): ProviderModelEntry[] {
 }
 
 const modelCount = computed(() => rows.value.length)
+const localModelSignature = computed(() =>
+  modelSignatureFromComparable(rows.value.map((row) => comparableRow(row))),
+)
+const serverModelSignature = computed(() =>
+  modelSignatureFromComparable(
+    ((provider.value?.providerModels ?? []) as ProviderModelEntry[]).map((entry) => comparableEntry(entry)),
+  ),
+)
+const hasUnsavedRows = computed(() => localModelSignature.value !== serverModelSignature.value)
 
 const availableEndpointPaths = computed(() => providerEndpoints.value.map((pe) => pe.endpointPath))
 
 const hasModelsEndpoint = computed(() => !!provider.value?.modelsEndpointUrl)
 
-function applyLoadedData() {
+function resetLocalSummaryState() {
+  fetchSummary.value = null
+  pendingDeletions.value = {}
+}
+
+function applyLoadedData(forceRows = false) {
   error.value = ''
   const pData = queries.value[0]?.data as ProviderView | undefined
   if (!pData) return
+  if (pData.id !== props.providerId) return
+  const providerChanged = provider.value?.id !== pData.id
+  const dirtyBeforeUpdate = hasUnsavedRows.value
   provider.value = pData
-  rows.value = rowsFromProvider(pData)
+  if (forceRows || providerChanged || !dirtyBeforeUpdate) {
+    rows.value = rowsFromProvider(pData)
+    resetLocalSummaryState()
+  }
 }
 
 watch(
-  () => [props.providerId, queries.value[0]?.data],
+  () => props.providerId,
+  () => {
+    provider.value = null
+    rows.value = []
+    resetLocalSummaryState()
+    error.value = ''
+  },
+)
+
+watch(
+  () => queries.value[0]?.data,
   () => applyLoadedData(),
   { immediate: true },
 )
