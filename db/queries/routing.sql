@@ -75,6 +75,31 @@ WHERE e.endpoint_type = ANY(sqlc.arg('endpoint_types')::int[])
     OR elem -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
   );
 
+-- name: GetProvidersByEndpoint :many
+-- Sister query to GetProvidersByEndpointAndModel for "no-model" endpoints
+-- (endpoint.model_path = ''). Returns every non-disabled provider bound to the
+-- given endpoint_path, with model-related columns flattened to constants so the
+-- consuming Go code can treat both shapes uniformly.
+SELECT
+  ''::text AS model_name,
+  p.id AS provider_id,
+  pe.endpoint_path,
+  ''::text AS upstream_model_name,
+  0::int AS priority,
+  '{}'::jsonb AS annotations,
+  p.name AS provider_name,
+  p.credentials AS provider_credentials,
+  p.priority AS provider_priority,
+  pe.upstream_url,
+  pe.credentials_resolver AS send_credentials_resolver,
+  p.proxy_url,
+  p.annotations AS provider_annotations,
+  '{}'::jsonb AS model_annotations
+FROM provider AS p
+JOIN provider_endpoint AS pe ON pe.provider_id = p.id
+WHERE pe.endpoint_path = sqlc.arg('endpoint_path')::text
+  AND p.disabled = FALSE;
+
 -- name: InsertRequest :one
 INSERT INTO request (
   id, span_id, parent_span_id, type, status,

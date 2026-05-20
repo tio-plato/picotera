@@ -28,6 +28,84 @@ func (q *Queries) GetEndpointByPath(ctx context.Context, path string) (Endpoint,
 	return i, err
 }
 
+const getProvidersByEndpoint = `-- name: GetProvidersByEndpoint :many
+SELECT
+  ''::text AS model_name,
+  p.id AS provider_id,
+  pe.endpoint_path,
+  ''::text AS upstream_model_name,
+  0::int AS priority,
+  '{}'::jsonb AS annotations,
+  p.name AS provider_name,
+  p.credentials AS provider_credentials,
+  p.priority AS provider_priority,
+  pe.upstream_url,
+  pe.credentials_resolver AS send_credentials_resolver,
+  p.proxy_url,
+  p.annotations AS provider_annotations,
+  '{}'::jsonb AS model_annotations
+FROM provider AS p
+JOIN provider_endpoint AS pe ON pe.provider_id = p.id
+WHERE pe.endpoint_path = $1::text
+  AND p.disabled = FALSE
+`
+
+type GetProvidersByEndpointRow struct {
+	ModelName               string      `json:"modelName"`
+	ProviderID              int32       `json:"providerId"`
+	EndpointPath            string      `json:"endpointPath"`
+	UpstreamModelName       string      `json:"upstreamModelName"`
+	Priority                int32       `json:"priority"`
+	Annotations             []byte      `json:"annotations"`
+	ProviderName            string      `json:"providerName"`
+	ProviderCredentials     string      `json:"providerCredentials"`
+	ProviderPriority        int32       `json:"providerPriority"`
+	UpstreamUrl             string      `json:"upstreamUrl"`
+	SendCredentialsResolver int32       `json:"sendCredentialsResolver"`
+	ProxyUrl                pgtype.Text `json:"proxyUrl"`
+	ProviderAnnotations     []byte      `json:"providerAnnotations"`
+	ModelAnnotations        []byte      `json:"modelAnnotations"`
+}
+
+// Sister query to GetProvidersByEndpointAndModel for "no-model" endpoints
+// (endpoint.model_path = ”). Returns every non-disabled provider bound to the
+// given endpoint_path, with model-related columns flattened to constants so the
+// consuming Go code can treat both shapes uniformly.
+func (q *Queries) GetProvidersByEndpoint(ctx context.Context, endpointPath string) ([]GetProvidersByEndpointRow, error) {
+	rows, err := q.db.Query(ctx, getProvidersByEndpoint, endpointPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProvidersByEndpointRow
+	for rows.Next() {
+		var i GetProvidersByEndpointRow
+		if err := rows.Scan(
+			&i.ModelName,
+			&i.ProviderID,
+			&i.EndpointPath,
+			&i.UpstreamModelName,
+			&i.Priority,
+			&i.Annotations,
+			&i.ProviderName,
+			&i.ProviderCredentials,
+			&i.ProviderPriority,
+			&i.UpstreamUrl,
+			&i.SendCredentialsResolver,
+			&i.ProxyUrl,
+			&i.ProviderAnnotations,
+			&i.ModelAnnotations,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getProvidersByEndpointAndModel = `-- name: GetProvidersByEndpointAndModel :many
 SELECT
   $1::text AS model_name,

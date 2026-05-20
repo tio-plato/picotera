@@ -3,10 +3,7 @@ import { ref, computed } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { SidePanel, Button, Input, Select, Field } from '@/ui'
 import type { EndpointView } from '@/api'
-import {
-  ENDPOINT_TYPES_MODEL_ROUTED,
-  ENDPOINT_TYPE_LABELS,
-} from '@/api'
+import { ENDPOINT_TYPE_LABELS } from '@/api'
 import type { EndpointType } from '@/api'
 import { invalidateEndpoints, upsertEndpoint } from '@/api/client'
 
@@ -29,10 +26,6 @@ const saveMutation = useMutation({
   onSuccess: () => invalidateEndpoints(queryClient),
 })
 
-const modelPathRequired = computed(() =>
-  ENDPOINT_TYPES_MODEL_ROUTED.includes(form.value.endpointType),
-)
-
 const endpointTypeOptions = computed(() => {
   const entries = Object.entries(ENDPOINT_TYPE_LABELS).filter(([k]) => k !== 'unknown') as [EndpointType, string][]
   if (form.value.endpointType === 'unknown') entries.push(['unknown', ENDPOINT_TYPE_LABELS.unknown])
@@ -40,10 +33,6 @@ const endpointTypeOptions = computed(() => {
 })
 
 async function submit() {
-  if (modelPathRequired.value && !form.value.modelPath.trim()) {
-    error.value = '该端点类型必须填写模型字段路径'
-    return
-  }
   saving.value = true
   error.value = ''
   try {
@@ -75,11 +64,10 @@ async function submit() {
           <option v-for="[value, label] in endpointTypeOptions" :key="value" :value="value">{{ label }}</option>
         </Select>
       </Field>
-      <Field label="模型字段路径" :required="modelPathRequired">
+      <Field label="模型字段路径">
         <Input
           v-model="form.modelPath"
-          :required="modelPathRequired"
-          :placeholder="modelPathRequired ? '例如 body.model' : '可选'"
+          placeholder="可选，留空表示该端点不解析模型"
         />
       </Field>
       <Field label="凭证解析">

@@ -248,10 +248,10 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 				ModelName:           r.ModelName,
 				EndpointPath:        r.EndpointPath,
 				UpstreamModelName:   r.UpstreamModelName,
-				Priority:            r.Priority,
-				Annotations:         r.Annotations,
+				Priority:            r.EntryPriority,
+				Annotations:         r.EntryAnnotations,
 				EndpointType:        endpoint.EndpointType,
-				UpstreamURL:         r.UpstreamUrl,
+				UpstreamURL:         r.UpstreamURL,
 			})
 		}
 	}

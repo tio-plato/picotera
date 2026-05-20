@@ -318,14 +318,9 @@ var pathVarRe = regexp.MustCompile(`^\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
 
 // extractModel extracts the model name from the request body or, when
 // modelPath is exactly "{name}", from the matched path variables.
+// Callers must skip this function entirely for no-model endpoints
+// (endpoint.model_path == "").
 func extractModel(body []byte, modelPath string, pathVars map[string]string) (string, error) {
-	if modelPath == "" {
-		return "", &gatewayError{
-			status:  http.StatusBadRequest,
-			message: "endpoint has no model path configured",
-			code:    errorx.ModelNotFound.Error(),
-		}
-	}
 	if m := pathVarRe.FindStringSubmatch(modelPath); m != nil {
 		// modelPath is "{name}" — take value from the path variable.
 		name := m[1]
@@ -369,32 +364,115 @@ func substitutePathVars(url string, vars map[string]string) (string, error) {
 	return result, nil
 }
 
+// providerCandidateRow is the internal unified shape consumed by the path
+// gateway handler (and the simulate path branch). Both the model-routed query
+// (GetProvidersByEndpointAndModel) and the no-model query (GetProvidersByEndpoint)
+// are projected onto this type so downstream code only has to think about one
+// row shape.
+type providerCandidateRow struct {
+	ProviderID              int32
+	ProviderName            string
+	ProviderCredentials     string
+	ProviderPriority        int32
+	UpstreamURL             string
+	SendCredentialsResolver int32
+	ProxyURL                pgtype.Text
+	ProviderAnnotations     []byte
+	ModelAnnotations        []byte
+	ModelName               string
+	UpstreamModelName       string
+	EntryPriority           int32
+	EntryAnnotations        []byte
+	EndpointPath            string
+}
+
+func fromModelRoutedRow(r db.GetProvidersByEndpointAndModelRow) providerCandidateRow {
+	return providerCandidateRow{
+		ProviderID:              r.ProviderID,
+		ProviderName:            r.ProviderName,
+		ProviderCredentials:     r.ProviderCredentials,
+		ProviderPriority:        r.ProviderPriority,
+		UpstreamURL:             r.UpstreamUrl,
+		SendCredentialsResolver: r.SendCredentialsResolver,
+		ProxyURL:                r.ProxyUrl,
+		ProviderAnnotations:     r.ProviderAnnotations,
+		ModelAnnotations:        r.ModelAnnotations,
+		ModelName:               r.ModelName,
+		UpstreamModelName:       r.UpstreamModelName,
+		EntryPriority:           r.Priority,
+		EntryAnnotations:        r.Annotations,
+		EndpointPath:            r.EndpointPath,
+	}
+}
+
+func fromNoModelRow(r db.GetProvidersByEndpointRow) providerCandidateRow {
+	return providerCandidateRow{
+		ProviderID:              r.ProviderID,
+		ProviderName:            r.ProviderName,
+		ProviderCredentials:     r.ProviderCredentials,
+		ProviderPriority:        r.ProviderPriority,
+		UpstreamURL:             r.UpstreamUrl,
+		SendCredentialsResolver: r.SendCredentialsResolver,
+		ProxyURL:                r.ProxyUrl,
+		ProviderAnnotations:     r.ProviderAnnotations,
+		ModelAnnotations:        r.ModelAnnotations,
+		ModelName:               r.ModelName,
+		UpstreamModelName:       r.UpstreamModelName,
+		EntryPriority:           r.Priority,
+		EntryAnnotations:        r.Annotations,
+		EndpointPath:            r.EndpointPath,
+	}
+}
+
 // resolveProviders gets providers for the given endpoint and model, filters out
 // those without upstream URLs, and sorts by combined priority (descending).
-func (s *Server) resolveProviders(ctx context.Context, endpointPath, model string) ([]db.GetProvidersByEndpointAndModelRow, error) {
-	rows, err := s.queries.GetProvidersByEndpointAndModel(ctx, db.GetProvidersByEndpointAndModelParams{
-		EndpointPath: endpointPath,
-		ModelName:    model,
-	})
-	if err != nil {
-		return nil, &gatewayError{
-			status:  http.StatusInternalServerError,
-			message: "failed to query providers",
-			code:    errorx.InternalError.Error(),
+// When model == "" the endpoint is a no-model endpoint (endpoint.model_path = '')
+// and every non-disabled provider bound to the path is considered, independent
+// of model / model_provider_endpoint configuration.
+func (s *Server) resolveProviders(ctx context.Context, endpointPath, model string) ([]providerCandidateRow, error) {
+	var rows []providerCandidateRow
+	if model == "" {
+		raw, err := s.queries.GetProvidersByEndpoint(ctx, endpointPath)
+		if err != nil {
+			return nil, &gatewayError{
+				status:  http.StatusInternalServerError,
+				message: "failed to query providers",
+				code:    errorx.InternalError.Error(),
+			}
+		}
+		rows = make([]providerCandidateRow, 0, len(raw))
+		for _, r := range raw {
+			rows = append(rows, fromNoModelRow(r))
+		}
+	} else {
+		raw, err := s.queries.GetProvidersByEndpointAndModel(ctx, db.GetProvidersByEndpointAndModelParams{
+			EndpointPath: endpointPath,
+			ModelName:    model,
+		})
+		if err != nil {
+			return nil, &gatewayError{
+				status:  http.StatusInternalServerError,
+				message: "failed to query providers",
+				code:    errorx.InternalError.Error(),
+			}
+		}
+		rows = make([]providerCandidateRow, 0, len(raw))
+		for _, r := range raw {
+			rows = append(rows, fromModelRoutedRow(r))
 		}
 	}
+
 	if len(rows) == 0 {
 		return nil, &gatewayError{
 			status:  http.StatusNotFound,
-			message: "no provider available for model",
+			message: "no provider available",
 			code:    errorx.NoProviderAvailable.Error(),
 		}
 	}
 
-	// Filter out providers without upstream URLs or credentials
-	valid := make([]db.GetProvidersByEndpointAndModelRow, 0, len(rows))
+	valid := make([]providerCandidateRow, 0, len(rows))
 	for _, row := range rows {
-		if row.UpstreamUrl != "" && row.ProviderCredentials != "" {
+		if row.UpstreamURL != "" && row.ProviderCredentials != "" {
 			valid = append(valid, row)
 		}
 	}
@@ -402,15 +480,14 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 	if len(valid) == 0 {
 		return nil, &gatewayError{
 			status:  http.StatusNotFound,
-			message: "no provider available for model",
+			message: "no provider available",
 			code:    errorx.NoProviderAvailable.Error(),
 		}
 	}
 
-	// Sort by combined priority (provider_priority + per-model priority) descending.
 	sort.Slice(valid, func(i, j int) bool {
-		pi := int(valid[i].Priority) + int(valid[i].ProviderPriority)
-		pj := int(valid[j].Priority) + int(valid[j].ProviderPriority)
+		pi := int(valid[i].EntryPriority) + int(valid[i].ProviderPriority)
+		pj := int(valid[j].EntryPriority) + int(valid[j].ProviderPriority)
 		return pi > pj
 	})
 

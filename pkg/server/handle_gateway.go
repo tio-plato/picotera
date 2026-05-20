@@ -159,17 +159,22 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
 
-	// 5. Extract model name
-	modelName, err := extractModel(body, endpoint.ModelPath, pathVars)
-	if err != nil {
-		var gwErr *gatewayError
-		if errors.As(err, &gwErr) {
-			failMeta(int32(gwErr.status), gwErr.message)
-		} else {
-			failMeta(http.StatusBadRequest, "model extraction failed")
+	// 5. Extract model name. When endpoint.ModelPath is empty the endpoint is
+	// a "no-model" endpoint: all providers bound to the path are candidates,
+	// and we skip body / path-var extraction entirely.
+	var modelName string
+	if endpoint.ModelPath != "" {
+		modelName, err = extractModel(body, endpoint.ModelPath, pathVars)
+		if err != nil {
+			var gwErr *gatewayError
+			if errors.As(err, &gwErr) {
+				failMeta(int32(gwErr.status), gwErr.message)
+			} else {
+				failMeta(http.StatusBadRequest, "model extraction failed")
+			}
+			failMetaResponse(err)
+			return
 		}
-		failMetaResponse(err)
-		return
 	}
 
 	h.updateRequestModel(bgCtx, db.UpdateRequestModelParams{
@@ -206,6 +211,10 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}, modelName)
 	if err != nil {
 		failHook(err)
+		return
+	}
+	if endpoint.ModelPath == "" && newModel != "" {
+		failHook(errors.New("rewriteModel returned non-empty model on no-model endpoint"))
 		return
 	}
 	if newModel != modelName {
@@ -266,14 +275,14 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sidecar := make(map[int32]providerSidecar, len(providers))
 	candidates := make([]jsx.Candidate, 0, len(providers))
 	for _, row := range providers {
-		entryAnno, _ := annotations.Decode(row.Annotations)
+		entryAnno, _ := annotations.Decode(row.EntryAnnotations)
 		merged, providerAnno := annoBuilder.merge(row.ProviderAnnotations, entryAnno)
 		var proxyURL string
-		if row.ProxyUrl.Valid {
-			proxyURL = row.ProxyUrl.String
+		if row.ProxyURL.Valid {
+			proxyURL = row.ProxyURL.String
 		}
 		sidecar[row.ProviderID] = providerSidecar{
-			upstreamURL:  row.UpstreamUrl,
+			upstreamURL:  row.UpstreamURL,
 			credentials:  row.ProviderCredentials,
 			sendResolver: effectiveSendResolver(endpoint.CredentialsResolver, row.SendCredentialsResolver),
 			proxyURL:     proxyURL,
@@ -291,7 +300,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				ProviderID:        row.ProviderID,
 				EndpointPath:      row.EndpointPath,
 				UpstreamModelName: row.UpstreamModelName,
-				Priority:          row.Priority,
+				Priority:          row.EntryPriority,
 				Annotations:       entryAnno,
 			},
 			Annotations: merged,

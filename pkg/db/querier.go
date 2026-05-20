@@ -38,6 +38,11 @@ type Querier interface {
 	GetProviderByID(ctx context.Context, id int32) (Provider, error)
 	GetProviderEndpoint(ctx context.Context, arg GetProviderEndpointParams) (ProviderEndpoint, error)
 	GetProviders(ctx context.Context) ([]Provider, error)
+	// Sister query to GetProvidersByEndpointAndModel for "no-model" endpoints
+	// (endpoint.model_path = ''). Returns every non-disabled provider bound to the
+	// given endpoint_path, with model-related columns flattened to constants so the
+	// consuming Go code can treat both shapes uniformly.
+	GetProvidersByEndpoint(ctx context.Context, endpointPath string) ([]GetProvidersByEndpointRow, error)
 	GetProvidersByEndpointAndModel(ctx context.Context, arg GetProvidersByEndpointAndModelParams) ([]GetProvidersByEndpointAndModelRow, error)
 	// Sister query to GetProvidersByEndpointAndModel that selects across a SET of
 	// endpoint types instead of a single endpoint path. The unified gateway
