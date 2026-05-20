@@ -28,6 +28,10 @@ func (s *Server) handleListEndpoints(ctx context.Context, input *struct{}) (*con
 }
 
 func (s *Server) handleUpsertEndpoint(ctx context.Context, input *contract.UpsertEndpointRequest) (*contract.UpsertEndpointResponse, error) {
+	if input.Body.EndpointType == "exaSearch" && input.Body.ModelPath != "" {
+		return nil, huma.Error400BadRequest("exaSearch endpoint must have empty modelPath")
+	}
+
 	endpoint, err := s.queries.UpsertEndpoint(ctx, db.UpsertEndpointParams{
 		Name:                input.Body.Name,
 		Path:                input.Body.Path,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { SidePanel, Button, Input, Select, Field } from '@/ui'
 import type { EndpointView } from '@/api'
@@ -25,6 +25,14 @@ const saveMutation = useMutation({
   mutationFn: upsertEndpoint,
   onSuccess: () => invalidateEndpoints(queryClient),
 })
+
+const isModelPathLocked = computed(() => form.value.endpointType === 'exaSearch')
+watch(
+  () => form.value.endpointType,
+  (t) => {
+    if (t === 'exaSearch') form.value.modelPath = ''
+  },
+)
 
 const endpointTypeOptions = computed(() => {
   const entries = Object.entries(ENDPOINT_TYPE_LABELS).filter(([k]) => k !== 'unknown') as [EndpointType, string][]
@@ -67,7 +75,8 @@ async function submit() {
       <Field label="模型字段路径">
         <Input
           v-model="form.modelPath"
-          placeholder="可选，留空表示该端点不解析模型"
+          :disabled="isModelPathLocked"
+          :placeholder="isModelPathLocked ? 'Exa 搜索端点不解析模型' : '可选，留空表示该端点不解析模型'"
         />
       </Field>
       <Field label="凭证解析">

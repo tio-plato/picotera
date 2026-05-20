@@ -265,6 +265,7 @@ components:
             - anthropicCountTokens
             - geminiGenerateContent
             - geminiStreamGenerateContent
+            - exaSearch
             - unknown
           type: string
         modelPath:

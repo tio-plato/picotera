@@ -49,6 +49,7 @@ function openEdit(ep: EndpointView) {
 function endpointTypeVariant(t: EndpointType): 'accent' | 'muted' | 'more' {
   if (ENDPOINT_TYPES_MODEL_ROUTED.includes(t)) return 'accent'
   if (t === 'general') return 'muted'
+  if (t === 'exaSearch') return 'more'
   return 'more'
 }
 
