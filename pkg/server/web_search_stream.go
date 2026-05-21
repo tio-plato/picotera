@@ -190,13 +190,20 @@ func (t *webSearchSSETransformer) flushBufferedWebSearch() {
 		inputJSON = "{}"
 	}
 
-	// 1) content_block_start for server_tool_use (empty input — the SDK will
-	// reassemble it from the following input_json_delta).
+	var inputObj map[string]any
+	if err := json.Unmarshal([]byte(inputJSON), &inputObj); err != nil || inputObj == nil {
+		inputObj = map[string]any{}
+	}
+
+	// 1) content_block_start for server_tool_use carrying the full input
+	// inline. Streaming the input via input_json_delta is unsafe here because
+	// downstream aggregators only accumulate partial_json for tool_use, not
+	// server_tool_use, and would lose the payload.
 	startBlock := map[string]any{
 		"type":  "server_tool_use",
 		"id":    t.bufServerToolUseID,
 		"name":  "web_search",
-		"input": map[string]any{},
+		"input": inputObj,
 	}
 	t.writeEvent("content_block_start", map[string]any{
 		"type":          "content_block_start",
@@ -204,23 +211,13 @@ func (t *webSearchSSETransformer) flushBufferedWebSearch() {
 		"content_block": startBlock,
 	})
 
-	// 2) content_block_delta carrying the full input JSON in a single chunk.
-	t.writeEvent("content_block_delta", map[string]any{
-		"type":  "content_block_delta",
-		"index": outIdxServer,
-		"delta": map[string]any{
-			"type":         "input_json_delta",
-			"partial_json": inputJSON,
-		},
-	})
-
-	// 3) content_block_stop for server_tool_use.
+	// 2) content_block_stop for server_tool_use.
 	t.writeEvent("content_block_stop", map[string]any{
 		"type":  "content_block_stop",
 		"index": outIdxServer,
 	})
 
-	// 4) Exa call.
+	// 3) Exa call.
 	var resultBlock map[string]any
 	if exaResp, err := t.h.callExa(t.ctx, json.RawMessage(inputJSON), t.wsCtx); err != nil {
 		resultBlock = rawMessageToMap(buildWebSearchToolResultError(t.bufServerToolUseID, "unavailable"))
@@ -228,13 +225,13 @@ func (t *webSearchSSETransformer) flushBufferedWebSearch() {
 		resultBlock = rawMessageToMap(buildWebSearchToolResult(t.bufServerToolUseID, exaResp))
 	}
 
-	// 5) content_block_start for web_search_tool_result (carries full content).
+	// 4) content_block_start for web_search_tool_result (carries full content).
 	t.writeEvent("content_block_start", map[string]any{
 		"type":          "content_block_start",
 		"index":         outIdxResult,
 		"content_block": resultBlock,
 	})
-	// 6) content_block_stop.
+	// 5) content_block_stop.
 	t.writeEvent("content_block_stop", map[string]any{
 		"type":  "content_block_stop",
 		"index": outIdxResult,
