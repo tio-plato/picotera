@@ -21,26 +21,49 @@ func extractUserMessagePreview(body []byte, endpointType int32) pgtype.Text {
 func extractUserMessage(body []byte, endpointType int32) (string, bool) {
 	switch endpointType {
 	case contract.EndpointType_OpenAIChatCompletions:
-		return extractOpenAIChatUserMessage(body)
+		if text, ok := extractOpenAIChatUserMessage(body); ok {
+			return text, true
+		}
 	case contract.EndpointType_AnthropicMessages:
-		return extractAnthropicUserMessage(body)
+		if text, ok := extractAnthropicUserMessage(body); ok {
+			return text, true
+		}
 	case contract.EndpointType_OpenAIResponses:
-		return extractOpenAIResponsesUserMessage(body)
+		if text, ok := extractOpenAIResponsesUserMessage(body); ok {
+			return text, true
+		}
 	case contract.EndpointType_GeminiGenerateContent, contract.EndpointType_GeminiStreamGenerateContent:
-		return extractGeminiUserMessage(body)
+		if text, ok := extractGeminiUserMessage(body); ok {
+			return text, true
+		}
+	case contract.EndpointType_ExaSearch:
+		return extractQueryUserMessage(body)
 	default:
 		for _, fn := range []func([]byte) (string, bool){
 			extractOpenAIChatUserMessage,
 			extractAnthropicUserMessage,
 			extractOpenAIResponsesUserMessage,
 			extractGeminiUserMessage,
+			extractQueryUserMessage,
 		} {
 			if text, ok := fn(body); ok {
 				return text, true
 			}
 		}
+	}
+	return "", false
+}
+
+func extractQueryUserMessage(body []byte) (string, bool) {
+	root, ok := decodeJSONObject(body)
+	if !ok {
 		return "", false
 	}
+	q, ok := root["query"].(string)
+	if !ok || q == "" {
+		return "", false
+	}
+	return q, true
 }
 
 func shortenUserMessagePreview(text string) string {
