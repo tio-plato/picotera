@@ -229,7 +229,19 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body = updated
 		modelName = newModel
 		modelAnno = h.fetchModelAnnotations(r.Context(), modelName)
+		// request.model tracks the routed (post-rewrite) model — the name
+		// used to resolve MPE rows and match billing. Overwrite the
+		// extracted value now that rewriteModel has settled.
+		h.updateRequestModel(bgCtx, db.UpdateRequestModelParams{
+			ID:        metaID,
+			Model:     pgtype.Text{String: modelName, Valid: modelName != ""},
+			CreatedAt: pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
+		})
 	}
+	// routedModel is the post-rewrite model name: matches the `model` table
+	// row that drives pricing and was used to resolve providers. All
+	// subsequent request-row writes use this, not originalModelName.
+	routedModel := modelName
 
 	// 7. Resolve providers using the (possibly rewritten) modelName.
 	providers, err := h.resolveProviders(r.Context(), endpoint.Path, modelName)
@@ -412,7 +424,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ProviderID:         pgtype.Int4{Int32: providerID, Valid: true},
 			EndpointPath:       pgtype.Text{String: endpoint.Path, Valid: true},
 			ApiKeyID:           apiKeyID,
-			Model:              pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
+			Model:              pgtype.Text{String: routedModel, Valid: routedModel != ""},
 			UpstreamModel:      pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
 			StatusCode:         pgtype.Int4{Valid: false},
 			ErrorMessage:       pgtype.Text{Valid: false},
@@ -478,7 +490,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if resp.StatusCode == http.StatusOK {
 			metaLogs := collectLogs()
-			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, originalModelName, upstreamModel, endpoint.EndpointType, endpoint.Path, upstreamStartTime, bgCtx, metaLogs, apiKeyID)
+			h.streamSuccess(w, r, ctx, cancel, resp, upstreamID, upstreamCreatedAt, attemptStart, metaID, metaCreatedAt, gatewayStart, providerID, routedModel, upstreamModel, endpoint.EndpointType, endpoint.Path, upstreamStartTime, bgCtx, metaLogs, apiKeyID)
 			return
 		}
 
@@ -612,7 +624,7 @@ func (h *gatewayHandler) streamSuccess(
 	ctx context.Context, cancel context.CancelFunc, resp *http.Response,
 	upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time,
 	metaID string, metaCreatedAt time.Time, gatewayStart time.Time,
-	providerID int32, originalModelName, upstreamModel string, endpointType int32, endpointPath string,
+	providerID int32, routedModel, upstreamModel string, endpointType int32, endpointPath string,
 	upstreamStartTime time.Time,
 	bgCtx context.Context,
 	metaLogs []artifacts.LogEntry,
@@ -621,7 +633,7 @@ func (h *gatewayHandler) streamSuccess(
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            metaID,
 		ProviderID:    pgtype.Int4{Int32: providerID, Valid: true},
-		Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
+		Model:         pgtype.Text{String: routedModel, Valid: routedModel != ""},
 		UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
 		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
 		ApiKeyID:      apiKeyID,
@@ -631,7 +643,7 @@ func (h *gatewayHandler) streamSuccess(
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            upstreamID,
 		ProviderID:    pgtype.Int4{Int32: providerID, Valid: true},
-		Model:         pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
+		Model:         pgtype.Text{String: routedModel, Valid: routedModel != ""},
 		UpstreamModel: pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
 		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
 		ApiKeyID:      apiKeyID,
@@ -715,7 +727,7 @@ func (h *gatewayHandler) streamSuccess(
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
 
-	modelCost, modelCcy := h.costsFor(bgCtx, originalModelName, upstreamModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
+	modelCost, modelCcy := h.costsFor(bgCtx, routedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 
 	upstreamTimeSpent := int32(time.Since(attemptStart).Milliseconds())
 	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{

@@ -642,28 +642,31 @@ func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateReque
 }
 
 // costsFor computes the per-request cost snapshot from model.pricing.
+// model is the post-rewrite model name — the same name used to resolve the
+// MPE row, i.e. the value that actually matches the `model` table.
+// upstreamModel (the literal name sent to the provider) is intentionally not
+// consulted: billing tracks our catalog, not the upstream's name aliasing.
 // Missing pricing returns invalid pgtype values.
-func (s *Server) costsFor(ctx context.Context, model, upstreamModel string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens pgtype.Int4) (modelCost pgtype.Numeric, modelCcy pgtype.Text) {
+func (s *Server) costsFor(ctx context.Context, model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens pgtype.Int4) (modelCost pgtype.Numeric, modelCcy pgtype.Text) {
+	if model == "" {
+		return
+	}
 	in := pgInt4ToPtr(inputTokens)
 	out := pgInt4ToPtr(outputTokens)
 	cr := pgInt4ToPtr(cacheReadTokens)
 	cw := pgInt4ToPtr(cacheWriteTokens)
 	cw1h := pgInt4ToPtr(cacheWrite1hTokens)
 
-	billingModel := upstreamModel
-	if billingModel == "" {
-		billingModel = model
+	row, err := s.queries.GetModelByName(ctx, model)
+	if err != nil {
+		return
 	}
-
-	if billingModel != "" {
-		row, err := s.queries.GetModelByName(ctx, billingModel)
-		if err == nil {
-			if pricing, perr := contract.PricingFromJSONB(row.Pricing); perr == nil && pricing != nil {
-				if num, ccy, ok := computeCost(pricing, in, out, cr, cw, cw1h); ok {
-					modelCost, modelCcy = num, ccy
-				}
-			}
-		}
+	pricing, perr := contract.PricingFromJSONB(row.Pricing)
+	if perr != nil || pricing == nil {
+		return
+	}
+	if num, ccy, ok := computeCost(pricing, in, out, cr, cw, cw1h); ok {
+		modelCost, modelCcy = num, ccy
 	}
 	return
 }

@@ -218,7 +218,19 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			body = updated
 			modelName = newModel
 			modelAnno = h.fetchModelAnnotations(r.Context(), modelName)
+			// request.model tracks the routed (post-rewrite) model — the
+			// name used to resolve MPE rows and match billing. Overwrite
+			// the extracted value now that rewriteModel has settled.
+			h.updateRequestModel(bgCtx, db.UpdateRequestModelParams{
+				ID:        metaID,
+				Model:     pgtype.Text{String: modelName, Valid: modelName != ""},
+				CreatedAt: pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
+			})
 		}
+		// routedModel is the post-rewrite model name: matches the `model`
+		// table row that drives pricing and was used to resolve providers.
+		// Subsequent request-row writes use this, not originalModelName.
+		routedModel := modelName
 
 		// 8. Resolve candidate providers across the endpoint-type set.
 		typeSet := candidateEndpointTypes(srcFormat, streaming)
@@ -407,7 +419,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				ProviderID:         pgtype.Int4{Int32: providerID, Valid: true},
 				EndpointPath:       pgtype.Text{String: side.endpointPath, Valid: side.endpointPath != ""},
 				ApiKeyID:           apiKeyID,
-				Model:              pgtype.Text{String: originalModelName, Valid: originalModelName != ""},
+				Model:              pgtype.Text{String: routedModel, Valid: routedModel != ""},
 				UpstreamModel:      pgtype.Text{String: upstreamModel, Valid: upstreamModel != ""},
 				StatusCode:         pgtype.Int4{Valid: false},
 				ErrorMessage:       pgtype.Text{Valid: false},
@@ -623,7 +635,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 					metaCreatedAt:     metaCreatedAt,
 					gatewayStart:      gatewayStart,
 					providerID:        providerID,
-					originalModelName: originalModelName,
+					routedModel:       routedModel,
 					upstreamModel:     upstreamModel,
 					metaEndpointPath:  virtualEndpoint.Path,
 					upstreamPath:      side.endpointPath,
@@ -950,7 +962,7 @@ type unifiedStreamArgs struct {
 	metaCreatedAt     time.Time
 	gatewayStart      time.Time
 	providerID        int32
-	originalModelName string
+	routedModel       string
 	upstreamModel     string
 	metaEndpointPath  string
 	upstreamPath      string
@@ -975,7 +987,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	h.updateRequestOnHeader(a.bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            a.metaID,
 		ProviderID:    pgtype.Int4{Int32: a.providerID, Valid: true},
-		Model:         pgtype.Text{String: a.originalModelName, Valid: a.originalModelName != ""},
+		Model:         pgtype.Text{String: a.routedModel, Valid: a.routedModel != ""},
 		UpstreamModel: pgtype.Text{String: a.upstreamModel, Valid: a.upstreamModel != ""},
 		EndpointPath:  pgtype.Text{String: a.metaEndpointPath, Valid: a.metaEndpointPath != ""},
 		ApiKeyID:      a.apiKeyID,
@@ -985,7 +997,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	h.updateRequestOnHeader(a.bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            a.upstreamID,
 		ProviderID:    pgtype.Int4{Int32: a.providerID, Valid: true},
-		Model:         pgtype.Text{String: a.originalModelName, Valid: a.originalModelName != ""},
+		Model:         pgtype.Text{String: a.routedModel, Valid: a.routedModel != ""},
 		UpstreamModel: pgtype.Text{String: a.upstreamModel, Valid: a.upstreamModel != ""},
 		EndpointPath:  pgtype.Text{String: a.upstreamPath, Valid: a.upstreamPath != ""},
 		ApiKeyID:      a.apiKeyID,
@@ -1171,7 +1183,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
-	modelCost, modelCcy := h.costsFor(a.bgCtx, a.originalModelName, a.upstreamModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
+	modelCost, modelCcy := h.costsFor(a.bgCtx, a.routedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 
 	upstreamTimeSpent := int32(time.Since(a.attemptStart).Milliseconds())
 	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{

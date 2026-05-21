@@ -516,16 +516,16 @@ function resetCursorAndReload() {
         </template>
         <template #header-model>
           <ColumnFilter
-            v-model="filters.upstreamModel"
+            v-model="filters.model"
             label="模型"
-            :options="upstreamModelOptions"
-            placeholder="过滤实际上游请求模型…"
+            :options="modelOptions"
+            placeholder="按路由的模型过滤"
           />
           <ColumnFilter
-            v-model="filters.model"
-            label="请求"
-            :options="modelOptions"
-            placeholder="过滤客户端请求模型…"
+            v-model="filters.upstreamModel"
+            label="上游"
+            :options="upstreamModelOptions"
+            placeholder="按实际发到上游的模型过滤"
           />
         </template>
         <template #cell-createdAt="{ row }">
