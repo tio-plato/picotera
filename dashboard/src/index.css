@@ -238,3 +238,19 @@ body {
   font-weight: 400;
   font-display: swap;
 }
+
+/* Slide-up animation for new rows */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 120ms ease-out;
+}

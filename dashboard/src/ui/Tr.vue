@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ selected?: boolean; hoverable?: boolean }>()
+defineProps<{ selected?: boolean; hoverable?: boolean; isNew?: boolean }>()
 </script>
 
 <template>
@@ -10,6 +10,7 @@ defineProps<{ selected?: boolean; hoverable?: boolean }>()
       selected
         ? 'bg-surface-50 shadow-[inset_2px_0_0_var(--color-accent)] hover:bg-surface-100'
         : '',
+      isNew ? 'animate-slide-up' : '',
     ]"
   >
     <slot />

@@ -20,6 +20,7 @@ const props = defineProps<{
   rowKey: (row: Row, index: number) => string | number
   selected?: (row: Row) => boolean
   hoverable?: boolean
+  newRowKeys?: Set<string | number>
   onRowClick?: (row: Row, event: MouseEvent) => void
 }>()
 
@@ -68,6 +69,7 @@ function handleRowClick(row: Row, event: MouseEvent) {
         :key="rowKey(row, i)"
         :selected="selected?.(row)"
         :hoverable="hoverable"
+        :is-new="newRowKeys?.has(rowKey(row, i))"
         :class="onRowClick ? 'cursor-pointer' : ''"
         @click="(event: MouseEvent) => handleRowClick(row, event)"
       >

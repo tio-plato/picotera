@@ -30,6 +30,11 @@ const router = useRouter()
 const { providers, providerLabel } = useProvidersMap()
 const { projects, projectLabel } = useProjectsMap()
 
+// Track new rows for animation on refresh
+const previousRequestIds = ref(new Set<string | number>())
+const newRowKeys = ref(new Set<string | number>())
+const isRefreshing = ref(false)
+
 type RequestKind = 'meta' | 'upstream' | 'all'
 
 const filters = reactive({
@@ -106,6 +111,26 @@ const requestsQuery = useQuery({
     }),
 })
 const requests = computed<RequestView[]>(() => requestsQuery.data.value?.items ?? [])
+
+// When requests change after refresh, compute which ones are new
+watch(requests, (newRequests) => {
+  if (!isRefreshing.value) return
+  isRefreshing.value = false
+  const currentIds = new Set(newRequests.map((r) => rowKey(r)))
+  const fresh = new Set<string | number>()
+  for (const id of currentIds) {
+    if (!previousRequestIds.value.has(id)) {
+      fresh.add(id)
+    }
+  }
+  newRowKeys.value = fresh
+  previousRequestIds.value = currentIds
+  if (fresh.size > 0) {
+    setTimeout(() => {
+      newRowKeys.value = new Set()
+    }, 100)
+  }
+}, { flush: 'post' })
 const loading = computed(() => requestsQuery.isLoading.value || requestsQuery.isFetching.value)
 const hasMore = computed(() => requestsQuery.data.value?.pagination.hasMore ?? false)
 const canGoHome = computed(() => !!currentCursor.value)
@@ -437,6 +462,8 @@ function cacheHitRate(r: RequestView): number | null {
 }
 
 function resetCursorAndReload() {
+  previousRequestIds.value = new Set(requests.value.map((r) => rowKey(r)))
+  isRefreshing.value = true
   requestsQuery.refetch()
 }
 </script>
@@ -492,6 +519,7 @@ function resetCursorAndReload() {
         :items="requests"
         :row-key="rowKey"
         :selected="rowSelected"
+        :new-row-keys="newRowKeys"
         :on-row-click="(r) => openDetails(r)"
       >
         <template #header-projectId>
