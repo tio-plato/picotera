@@ -81,6 +81,7 @@ func (s *Server) handleFetchModels(ctx context.Context, input *contract.FetchMod
 	}
 
 	applyCredentials(req, provider.Credentials, provider.ModelsEndpointResolver, nil)
+	req.Header.Set("anthropic-version", "2023-06-01")
 
 	var proxyURL string
 	if provider.ProxyUrl.Valid {
