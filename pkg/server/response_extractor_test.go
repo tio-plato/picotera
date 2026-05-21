@@ -423,6 +423,38 @@ func TestResponseExtractor_SSE_Anthropic_CacheReadInMessageDelta(t *testing.T) {
 	}
 }
 
+func TestResponseExtractor_SSE_Anthropic_CacheReadWriteFixture(t *testing.T) {
+	// anthropic-cache-read-write.sse: message_start carries the detailed
+	// cache_creation breakdown (ephemeral_5m=0, ephemeral_1h=250), while
+	// message_delta carries only the flat cache_creation_input_tokens=250.
+	// The flat fallback in message_delta must NOT clobber the correctly
+	// split values established in message_start.
+	data, err := os.ReadFile("../../fixtures/anthropic-cache-read-write.sse")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	extractor := NewResponseExtractor(strings.NewReader(string(data)), "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 1 {
+		t.Errorf("InputTokens: got %v, want 1", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 504 {
+		t.Errorf("OutputTokens: got %v, want 504", m.OutputTokens)
+	}
+	if m.CacheReadTokens == nil || *m.CacheReadTokens != 124342 {
+		t.Errorf("CacheReadTokens: got %v, want 124342", m.CacheReadTokens)
+	}
+	if m.CacheWriteTokens == nil || *m.CacheWriteTokens != 0 {
+		t.Errorf("CacheWriteTokens: got %v, want 0", m.CacheWriteTokens)
+	}
+	if m.CacheWrite1HTokens == nil || *m.CacheWrite1HTokens != 250 {
+		t.Errorf("CacheWrite1HTokens: got %v, want 250", m.CacheWrite1HTokens)
+	}
+}
+
 func TestResponseExtractor_SSE_MultiLineData(t *testing.T) {
 	// SSE spec: multiple data: lines in one event are joined with \n
 	events := "data: {\"id\":\"1\",\ndata: \"choices\":[]}\n\n"

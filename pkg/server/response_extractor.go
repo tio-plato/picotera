@@ -311,6 +311,12 @@ func (e *ResponseExtractor) extractAnthropicCacheCreation(usage gjson.Result) {
 		return
 	}
 
+	// Flat total only — don't clobber a previously-extracted breakdown.
+	// Why: message_delta repeats cache_creation_input_tokens but often omits
+	// the cache_creation breakdown that message_start already supplied.
+	if e.metrics.CacheWriteTokens != nil {
+		return
+	}
 	if v := usage.Get("cache_creation_input_tokens"); v.Exists() {
 		val := v.Int()
 		e.metrics.CacheWriteTokens = &val

@@ -1,0 +1,60 @@
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-opus-4-7","id":"msg_01BaiSnpFKmrAEPhmVT9iuAf","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1,"cache_creation_input_tokens":250,"cache_read_input_tokens":124342,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":250},"output_tokens":9,"service_tier":"standard","inference_geo":"not_available"}}               }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done. Summary of changes"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":":\n\n**Before**: `costsFor` preferred `upstreamModel`"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":", falling back to `originalModelName` (pre-rewrite). `request.model` recorded the pre-rewrite client name.\n\n**Now**"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" (`pkg/server/{gateway_helpers,handle_gateway,handle_unified_gateway}.go`):\n- `costsFor()` takes a single `model` ar"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"g — the routed (post-rewrite) name — and ignores `upstreamModel`. Drops the"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" lookup entirely when empty.\n- Both gateways introduce `routedModel := modelName` right after the `rewriteModel`"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" hook settles, and use it for: the upstream-row insert, `streamS"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"uccess` / `unifiedStreamSuccess` (both `updateRequestOnHeader`"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" calls and the `costsFor` call). The `unifiedStreamArgs.originalModelName` field is renamed to `routedModel`.\n- When the rewrite chang"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"es the model, a second `updateRequestModel` overwrites `request.model` with the routed name; if it doesn't change, the early"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" write already holds the routed value.\n- `originalModelName` survives only where it's sem"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"antically correct: as the `Model` input to `RunRewriteModelHook`, in `llmbridge.SyntheticGeminiPath`, and the `jsx"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":".ModelSummary` exposed to JS hooks (untouched — separate concern you didn't ask about)."}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"\n\nTests pass (`go test ./pkg/server/... ./pkg/llmbridge/...`)."}    }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0       }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":1,"cache_creation_input_tokens":250,"cache_read_input_tokens":124342,"output_tokens":504},"context_management":{"applied_edits":[]}}
+
+event: message_stop
+data: {"type":"message_stop"               }
+
