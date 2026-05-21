@@ -51,16 +51,17 @@ type Project struct {
 }
 
 type Provider struct {
-	ID                     int32       `json:"id"`
-	Name                   string      `json:"name"`
-	Credentials            string      `json:"credentials"`
-	Priority               int32       `json:"priority"`
-	ProviderModels         []byte      `json:"providerModels"`
-	Annotations            []byte      `json:"annotations"`
-	Disabled               bool        `json:"disabled"`
-	ProxyUrl               pgtype.Text `json:"proxyUrl"`
-	ModelsEndpointUrl      string      `json:"modelsEndpointUrl"`
-	ModelsEndpointResolver int32       `json:"modelsEndpointResolver"`
+	ID                      int32       `json:"id"`
+	Name                    string      `json:"name"`
+	Credentials             string      `json:"credentials"`
+	Priority                int32       `json:"priority"`
+	ProviderModels          []byte      `json:"providerModels"`
+	Annotations             []byte      `json:"annotations"`
+	Disabled                bool        `json:"disabled"`
+	ProxyUrl                pgtype.Text `json:"proxyUrl"`
+	ModelsEndpointUrl       string      `json:"modelsEndpointUrl"`
+	ModelsEndpointResolver  int32       `json:"modelsEndpointResolver"`
+	SupportsNativeWebSearch bool        `json:"supportsNativeWebSearch"`
 }
 
 type ProviderEndpoint struct {

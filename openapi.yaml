@@ -97,6 +97,8 @@ components:
           type: array
         proxyUrl:
           type: string
+        supportsNativeWebSearch:
+          type: boolean
       required:
         - name
         - credentials
@@ -104,6 +106,7 @@ components:
         - providerModels
         - annotations
         - disabled
+        - supportsNativeWebSearch
       type: object
     DeleteApiKeyRequestBody:
       additionalProperties: false
@@ -990,6 +993,8 @@ components:
           type: array
         proxyUrl:
           type: string
+        supportsNativeWebSearch:
+          type: boolean
       required:
         - id
         - name
@@ -998,6 +1003,7 @@ components:
         - providerModels
         - annotations
         - disabled
+        - supportsNativeWebSearch
       type: object
     RequestTraceView:
       additionalProperties: false
@@ -1484,6 +1490,8 @@ components:
           type: array
         proxyUrl:
           type: string
+        supportsNativeWebSearch:
+          type: boolean
       required:
         - name
         - credentials
@@ -1491,6 +1499,7 @@ components:
         - providerModels
         - annotations
         - disabled
+        - supportsNativeWebSearch
       type: object
 info:
   title: PicoTera Management API

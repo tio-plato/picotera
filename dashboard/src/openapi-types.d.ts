@@ -684,6 +684,7 @@ export interface components {
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
             proxyUrl?: string;
+            supportsNativeWebSearch: boolean;
         };
         DeleteApiKeyRequestBody: {
             /**
@@ -1123,6 +1124,7 @@ export interface components {
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
             proxyUrl?: string;
+            supportsNativeWebSearch: boolean;
         };
         RequestTraceView: {
             /** Format: int64 */
@@ -1365,6 +1367,7 @@ export interface components {
             priority: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
             proxyUrl?: string;
+            supportsNativeWebSearch: boolean;
         };
     };
     responses: never;

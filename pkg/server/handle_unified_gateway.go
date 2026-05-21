@@ -255,13 +255,14 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		annoBuilder.modelAnno = modelAnno
 
 		type providerSidecar struct {
-			upstreamURL  string
-			credentials  string
-			sendResolver int32
-			proxyURL     string
-			upFormat     llmbridge.Format
-			endpointPath string
-			annotations  map[string]string
+			upstreamURL             string
+			credentials             string
+			sendResolver            int32
+			proxyURL                string
+			upFormat                llmbridge.Format
+			endpointPath            string
+			annotations             map[string]string
+			supportsNativeWebSearch bool
 		}
 		sidecar := make(map[string]providerSidecar, len(providers))
 		candidates := make([]jsx.Candidate, 0, len(providers))
@@ -274,13 +275,14 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			}
 			key := fmt.Sprintf("%d|%s", row.ProviderID, row.EndpointPath)
 			sidecar[key] = providerSidecar{
-				upstreamURL:  row.UpstreamUrl,
-				credentials:  row.ProviderCredentials,
-				sendResolver: effectiveSendResolver(virtualEndpoint.CredentialsResolver, row.SendCredentialsResolver),
-				proxyURL:     proxyURL,
-				upFormat:     upstreamFormatFor(row.EndpointType),
-				endpointPath: row.EndpointPath,
-				annotations:  merged,
+				upstreamURL:             row.UpstreamUrl,
+				credentials:             row.ProviderCredentials,
+				sendResolver:            effectiveSendResolver(virtualEndpoint.CredentialsResolver, row.SendCredentialsResolver),
+				proxyURL:                proxyURL,
+				upFormat:                upstreamFormatFor(row.EndpointType),
+				endpointPath:            row.EndpointPath,
+				annotations:             merged,
+				supportsNativeWebSearch: row.SupportsNativeWebSearch,
 			}
 			candidates = append(candidates, jsx.Candidate{
 				Provider: jsx.ProviderSummary{
@@ -325,6 +327,11 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		i := 0
 		currentRetryCount := 0
 		totalAttemptCount := 0
+		// wsCtx is populated when the current attempt's chosen provider
+		// requires emulating Anthropic web search via Exa. It survives a
+		// successful attempt into unifiedStreamSuccess; on retry we reset it
+		// per attempt because the next candidate may not need emulation.
+		var wsCtx *webSearchContext
 
 		for {
 			if i >= len(sortedCandidates) {
@@ -462,6 +469,46 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				return
 			}
 
+			// Web search emulation: when the source is Anthropic Messages and
+			// the chosen upstream does not support native web search, rewrite
+			// the outbound tools array and history to use a function-tool
+			// equivalent. The response transformer wraps the reverse leg.
+			wsCtx = nil
+			if srcFormat == llmbridge.FormatAnthropicMessages && !side.supportsNativeWebSearch && hasWebSearchTool(reqBody) {
+				rewrote, wsErr := rewriteWebSearchTools(reqBody)
+				if wsErr != nil {
+					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, wsErr.Error())
+					lastErr = wsErr
+					lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: wsErr.Error()}
+					currentRetryCount++
+					totalAttemptCount++
+					cancel()
+					continue
+				}
+				rewrote, wsErr = rewriteWebSearchHistory(rewrote)
+				if wsErr != nil {
+					h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, wsErr.Error())
+					lastErr = wsErr
+					lastJSErr = &jsx.LastError{ProviderID: int(providerID), StatusCode: 0, Message: wsErr.Error()}
+					currentRetryCount++
+					totalAttemptCount++
+					cancel()
+					continue
+				}
+				reqBody = rewrote
+				req.Body = io.NopCloser(bytes.NewReader(reqBody))
+				req.ContentLength = int64(len(reqBody))
+				req.GetBody = func() (io.ReadCloser, error) {
+					return io.NopCloser(bytes.NewReader(reqBody)), nil
+				}
+				wsCtx = &webSearchContext{
+					active:        true,
+					apiKeyToken:   apiKey.Key,
+					metaID:        metaID,
+					metaCreatedAt: metaCreatedAt,
+				}
+			}
+
 			baseProfile, perr := llmbridge.DefaultOutboundProfileForFormat(side.upFormat)
 			if perr != nil {
 				h.completeFailedAttempt(bgCtx, upstreamID, upstreamCreatedAt, attemptStart, 0, perr.Error())
@@ -582,6 +629,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 					bgCtx:             bgCtx,
 					metaLogs:          metaLogs,
 					apiKeyID:          apiKeyID,
+					wsCtx:             wsCtx,
 				})
 				return
 			}
@@ -908,6 +956,7 @@ type unifiedStreamArgs struct {
 	bgCtx             context.Context
 	metaLogs          []artifacts.LogEntry
 	apiKeyID          pgtype.Int4
+	wsCtx             *webSearchContext
 }
 
 // unifiedStreamSuccess is the streamSuccess analogue for unified routes. It
@@ -944,14 +993,22 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 
 	// Forward upstream headers as-is when there's no bridge. When bridging,
 	// strip Content-Type and Content-Length because the body shape changes;
-	// we restore Content-Type below from the bridged side.
+	// we restore Content-Type below from the bridged side. Web-search
+	// emulation also rewrites the body, so the same content-encoding stripping
+	// applies — otherwise the client receives gzip headers but plaintext
+	// bytes.
 	bridging := a.srcFormat != a.upFormat
+	wsActive := a.wsCtx != nil && a.wsCtx.active
+	transforming := bridging || wsActive
 	for key, values := range resp.Header {
 		lower := strings.ToLower(key)
 		if lower == "content-length" {
 			continue
 		}
-		if bridging && (lower == "content-type" || lower == "transfer-encoding" || lower == "content-encoding") {
+		if transforming && (lower == "content-encoding" || lower == "transfer-encoding") {
+			continue
+		}
+		if bridging && lower == "content-type" {
 			continue
 		}
 		for _, value := range values {
@@ -977,7 +1034,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 
 	responseWriter := newLockedResponseWriter(w)
 	clientWriter := io.Discard
-	if !bridging {
+	if !transforming {
 		clientWriter = responseWriter
 	}
 	internalReader, derr := decodedInternalResponseReader(resp, clientWriter)
@@ -1038,6 +1095,31 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 		clientReader = teedUpstream
 	}
 
+	// Web search emulation transformer wraps the client-facing reader so that
+	// the source-format bytes the browser sees include synthesized
+	// server_tool_use + web_search_tool_result blocks. Applied AFTER bridging
+	// because the bridge operates on the upstream's native format.
+	if a.wsCtx != nil && a.wsCtx.active {
+		if streamMode {
+			clientReader = newWebSearchSSETransformer(ctx, clientReader, a.wsCtx, h)
+		} else {
+			allBytes, rerr := io.ReadAll(clientReader)
+			_ = clientReader.Close()
+			if rerr != nil {
+				cancel()
+				h.failUnifiedSuccess(a, "read bridge output: "+rerr.Error())
+				return
+			}
+			transformed, terr := h.transformWebSearchResponse(ctx, allBytes, a.wsCtx)
+			if terr != nil {
+				cancel()
+				h.failUnifiedSuccess(a, "web search transform: "+terr.Error())
+				return
+			}
+			clientReader = io.NopCloser(bytes.NewReader(transformed))
+		}
+	}
+
 	idleReader := newIdleTimeoutReader(clientReader, h.config.GatewayReadTimeout, cancel)
 	flusher, canFlush := w.(http.Flusher)
 	buf := make([]byte, 32*1024)
@@ -1045,12 +1127,12 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	for {
 		n, readErr := idleReader.Read(buf)
 		if n > 0 {
-			if bridging || internalBody == resp.Body {
+			if transforming || internalBody == resp.Body {
 				w.Write(buf[:n])
 			}
 			clientCapture.Write(buf[:n])
 			if canFlush {
-				if !bridging && internalBody != resp.Body {
+				if !transforming && internalBody != resp.Body {
 					responseWriter.Flush()
 				} else {
 					flusher.Flush()
@@ -1067,7 +1149,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 
 	upstreamBytes := upstreamCapture.Bytes()
 	clientBytes := clientCapture.Bytes()
-	if !bridging {
+	if !transforming {
 		// 1:1 path — the upstream tee may have a few bytes the client write
 		// loop hasn't accumulated by the time it hits EOF; in that case
 		// upstreamCapture is already authoritative for both views, so we

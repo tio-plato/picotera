@@ -24,16 +24,17 @@ type GetProviderRequest struct {
 }
 
 type ProviderView struct {
-	ID                     int32                `json:"id"`
-	Name                   string               `json:"name"`
-	Credentials            string               `json:"credentials"`
-	Priority               int32                `json:"priority"`
-	ProviderModels         []ProviderModelEntry `json:"providerModels"`
-	Annotations            map[string]string    `json:"annotations"`
-	Disabled               bool                 `json:"disabled"`
-	ProxyUrl               string               `json:"proxyUrl,omitempty"`
-	ModelsEndpointUrl      string               `json:"modelsEndpointUrl,omitempty"`
-	ModelsEndpointResolver string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+	ID                      int32                `json:"id"`
+	Name                    string               `json:"name"`
+	Credentials             string               `json:"credentials"`
+	Priority                int32                `json:"priority"`
+	ProviderModels          []ProviderModelEntry `json:"providerModels"`
+	Annotations             map[string]string    `json:"annotations"`
+	Disabled                bool                 `json:"disabled"`
+	ProxyUrl                string               `json:"proxyUrl,omitempty"`
+	ModelsEndpointUrl       string               `json:"modelsEndpointUrl,omitempty"`
+	ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+	SupportsNativeWebSearch bool                 `json:"supportsNativeWebSearch"`
 }
 
 type GetProviderResponse struct {
@@ -42,15 +43,16 @@ type GetProviderResponse struct {
 
 type CreateProviderRequest struct {
 	Body struct {
-		Name                   string               `json:"name"`
-		Credentials            string               `json:"credentials"`
-		Priority               int32                `json:"priority"`
-		ProviderModels         []ProviderModelEntry `json:"providerModels"`
-		Annotations            map[string]string    `json:"annotations"`
-		Disabled               bool                 `json:"disabled"`
-		ProxyUrl               string               `json:"proxyUrl,omitempty"`
-		ModelsEndpointUrl      string               `json:"modelsEndpointUrl,omitempty"`
-		ModelsEndpointResolver string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+		Name                    string               `json:"name"`
+		Credentials             string               `json:"credentials"`
+		Priority                int32                `json:"priority"`
+		ProviderModels          []ProviderModelEntry `json:"providerModels"`
+		Annotations             map[string]string    `json:"annotations"`
+		Disabled                bool                 `json:"disabled"`
+		ProxyUrl                string               `json:"proxyUrl,omitempty"`
+		ModelsEndpointUrl       string               `json:"modelsEndpointUrl,omitempty"`
+		ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+		SupportsNativeWebSearch bool                 `json:"supportsNativeWebSearch"`
 	}
 }
 
@@ -60,16 +62,17 @@ type CreateProviderResponse struct {
 
 type UpsertProviderRequest struct {
 	Body struct {
-		ID                     int32                `json:"id,omitempty"`
-		Name                   string               `json:"name"`
-		Credentials            string               `json:"credentials"`
-		Priority               int32                `json:"priority"`
-		ProviderModels         []ProviderModelEntry `json:"providerModels"`
-		Annotations            map[string]string    `json:"annotations"`
-		Disabled               bool                 `json:"disabled"`
-		ProxyUrl               string               `json:"proxyUrl,omitempty"`
-		ModelsEndpointUrl      string               `json:"modelsEndpointUrl,omitempty"`
-		ModelsEndpointResolver string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+		ID                      int32                `json:"id,omitempty"`
+		Name                    string               `json:"name"`
+		Credentials             string               `json:"credentials"`
+		Priority                int32                `json:"priority"`
+		ProviderModels          []ProviderModelEntry `json:"providerModels"`
+		Annotations             map[string]string    `json:"annotations"`
+		Disabled                bool                 `json:"disabled"`
+		ProxyUrl                string               `json:"proxyUrl,omitempty"`
+		ModelsEndpointUrl       string               `json:"modelsEndpointUrl,omitempty"`
+		ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+		SupportsNativeWebSearch bool                 `json:"supportsNativeWebSearch"`
 	}
 }
 
@@ -113,16 +116,17 @@ func ToProviderView(provider *db.Provider) (*ProviderView, error) {
 	}
 
 	return &ProviderView{
-		ID:                     provider.ID,
-		Name:                   provider.Name,
-		Credentials:            provider.Credentials,
-		Priority:               provider.Priority,
-		ProviderModels:         providerModels,
-		Annotations:            annotations,
-		Disabled:               provider.Disabled,
-		ProxyUrl:               provider.ProxyUrl.String,
-		ModelsEndpointUrl:      provider.ModelsEndpointUrl,
-		ModelsEndpointResolver: FromCredentialsResolver(provider.ModelsEndpointResolver),
+		ID:                      provider.ID,
+		Name:                    provider.Name,
+		Credentials:             provider.Credentials,
+		Priority:                provider.Priority,
+		ProviderModels:          providerModels,
+		Annotations:             annotations,
+		Disabled:                provider.Disabled,
+		ProxyUrl:                provider.ProxyUrl.String,
+		ModelsEndpointUrl:       provider.ModelsEndpointUrl,
+		ModelsEndpointResolver:  FromCredentialsResolver(provider.ModelsEndpointResolver),
+		SupportsNativeWebSearch: provider.SupportsNativeWebSearch,
 	}, nil
 }
 
@@ -151,16 +155,17 @@ func FromProviderView(providerView *ProviderView) (*db.Provider, error) {
 	}
 
 	return &db.Provider{
-		ID:                     providerView.ID,
-		Name:                   providerView.Name,
-		Credentials:            providerView.Credentials,
-		Priority:               providerView.Priority,
-		ProviderModels:         providerModels,
-		Annotations:            annotations,
-		Disabled:               providerView.Disabled,
-		ProxyUrl:               pgProxyUrl,
-		ModelsEndpointUrl:      providerView.ModelsEndpointUrl,
-		ModelsEndpointResolver: ToCredentialsResolver(providerView.ModelsEndpointResolver),
+		ID:                      providerView.ID,
+		Name:                    providerView.Name,
+		Credentials:             providerView.Credentials,
+		Priority:                providerView.Priority,
+		ProviderModels:          providerModels,
+		Annotations:             annotations,
+		Disabled:                providerView.Disabled,
+		ProxyUrl:                pgProxyUrl,
+		ModelsEndpointUrl:       providerView.ModelsEndpointUrl,
+		ModelsEndpointResolver:  ToCredentialsResolver(providerView.ModelsEndpointResolver),
+		SupportsNativeWebSearch: providerView.SupportsNativeWebSearch,
 	}, nil
 }
 

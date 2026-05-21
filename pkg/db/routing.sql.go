@@ -213,7 +213,8 @@ SELECT
   pe.credentials_resolver AS send_credentials_resolver,
   p.proxy_url,
   p.annotations AS provider_annotations,
-  m.annotations AS model_annotations
+  m.annotations AS model_annotations,
+  p.supports_native_web_search
 FROM provider AS p
 JOIN provider_endpoint AS pe ON pe.provider_id = p.id
 JOIN endpoint AS e ON e.path = pe.endpoint_path
@@ -254,6 +255,7 @@ type GetProvidersByEndpointTypesAndModelRow struct {
 	ProxyUrl                pgtype.Text `json:"proxyUrl"`
 	ProviderAnnotations     []byte      `json:"providerAnnotations"`
 	ModelAnnotations        []byte      `json:"modelAnnotations"`
+	SupportsNativeWebSearch bool        `json:"supportsNativeWebSearch"`
 }
 
 // Sister query to GetProvidersByEndpointAndModel that selects across a SET of
@@ -287,6 +289,7 @@ func (q *Queries) GetProvidersByEndpointTypesAndModel(ctx context.Context, arg G
 			&i.ProxyUrl,
 			&i.ProviderAnnotations,
 			&i.ModelAnnotations,
+			&i.SupportsNativeWebSearch,
 		); err != nil {
 			return nil, err
 		}

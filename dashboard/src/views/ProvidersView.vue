@@ -94,6 +94,7 @@ async function toggleDisabled(p: ProviderView) {
     providerModels: p.providerModels,
     annotations: p.annotations,
     disabled: !p.disabled,
+    supportsNativeWebSearch: p.supportsNativeWebSearch,
   }
   await updateProviderMutation.mutateAsync(body)
 }

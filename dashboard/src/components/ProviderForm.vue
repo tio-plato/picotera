@@ -20,6 +20,7 @@ const form = ref({
   proxyUrl: props.provider?.proxyUrl ?? '',
   modelsEndpointUrl: props.provider?.modelsEndpointUrl ?? '',
   modelsEndpointResolver: props.provider?.modelsEndpointResolver ?? 'generalApiKey',
+  supportsNativeWebSearch: props.provider?.supportsNativeWebSearch ?? false,
 })
 const saving = ref(false)
 const error = ref('')
@@ -42,6 +43,7 @@ async function submit() {
     ...(form.value.proxyUrl ? { proxyUrl: form.value.proxyUrl } : {}),
     modelsEndpointUrl: form.value.modelsEndpointUrl,
     modelsEndpointResolver: form.value.modelsEndpointResolver,
+    supportsNativeWebSearch: form.value.supportsNativeWebSearch,
   }
   try {
     await saveMutation.mutateAsync(body)
@@ -93,6 +95,12 @@ async function submit() {
           <option value="searchKey">Search Key</option>
           <option value="googApiKey">Google API Key</option>
         </Select>
+      </Field>
+      <Field label="Web 搜索" as="div">
+        <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+          <input v-model="form.supportsNativeWebSearch" type="checkbox" class="cursor-pointer" />
+          <span>支持原生 Web 搜索（关闭时由网关使用 Exa 模拟）</span>
+        </label>
       </Field>
       <p v-if="!isEdit" class="text-xs text-ink-faint">
         保存后请在「模型」面板配置该渠道的模型列表。

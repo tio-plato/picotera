@@ -79,14 +79,15 @@ func (s *Server) handleCreateProvider(ctx context.Context, input *contract.Creat
 		proxyUrl = pgtype.Text{String: input.Body.ProxyUrl, Valid: true}
 	}
 	newProvider, err := s.queries.CreateProvider(ctx, db.CreateProviderParams{
-		Name:                   input.Body.Name,
-		Credentials:            input.Body.Credentials,
-		Priority:               input.Body.Priority,
-		ProviderModels:         providerModelsBytes,
-		Annotations:            annotationsBytes,
-		ProxyUrl:               proxyUrl,
-		ModelsEndpointUrl:      input.Body.ModelsEndpointUrl,
-		ModelsEndpointResolver: contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
+		Name:                    input.Body.Name,
+		Credentials:             input.Body.Credentials,
+		Priority:                input.Body.Priority,
+		ProviderModels:          providerModelsBytes,
+		Annotations:             annotationsBytes,
+		ProxyUrl:                proxyUrl,
+		ModelsEndpointUrl:       input.Body.ModelsEndpointUrl,
+		ModelsEndpointResolver:  contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
+		SupportsNativeWebSearch: input.Body.SupportsNativeWebSearch,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to create provider", err)
@@ -130,15 +131,16 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 	}
 	if input.Body.ID == 0 {
 		newProvider, err := s.queries.CreateProvider(ctx, db.CreateProviderParams{
-			Name:                   input.Body.Name,
-			Credentials:            input.Body.Credentials,
-			Priority:               input.Body.Priority,
-			ProviderModels:         providerModelsBytes,
-			Annotations:            annotationsBytes,
-			Disabled:               input.Body.Disabled,
-			ProxyUrl:               proxyUrl,
-			ModelsEndpointUrl:      input.Body.ModelsEndpointUrl,
-			ModelsEndpointResolver: contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
+			Name:                    input.Body.Name,
+			Credentials:             input.Body.Credentials,
+			Priority:                input.Body.Priority,
+			ProviderModels:          providerModelsBytes,
+			Annotations:             annotationsBytes,
+			Disabled:                input.Body.Disabled,
+			ProxyUrl:                proxyUrl,
+			ModelsEndpointUrl:       input.Body.ModelsEndpointUrl,
+			ModelsEndpointResolver:  contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
+			SupportsNativeWebSearch: input.Body.SupportsNativeWebSearch,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create provider", err)
@@ -151,25 +153,27 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 	}
 
 	updated, err := s.queries.UpdateProvider(ctx, db.UpdateProviderParams{
-		ID:                        input.Body.ID,
-		SetName:                   true,
-		Name:                      input.Body.Name,
-		SetCredentials:            true,
-		Credentials:               input.Body.Credentials,
-		SetPriority:               true,
-		Priority:                  input.Body.Priority,
-		SetProviderModels:         true,
-		ProviderModels:            providerModelsBytes,
-		SetAnnotations:            true,
-		Annotations:               annotationsBytes,
-		SetDisabled:               true,
-		Disabled:                  input.Body.Disabled,
-		SetProxyUrl:               true,
-		ProxyUrl:                  proxyUrl.String,
-		SetModelsEndpointUrl:      true,
-		ModelsEndpointUrl:         input.Body.ModelsEndpointUrl,
-		SetModelsEndpointResolver: true,
-		ModelsEndpointResolver:    contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
+		ID:                         input.Body.ID,
+		SetName:                    true,
+		Name:                       input.Body.Name,
+		SetCredentials:             true,
+		Credentials:                input.Body.Credentials,
+		SetPriority:                true,
+		Priority:                   input.Body.Priority,
+		SetProviderModels:          true,
+		ProviderModels:             providerModelsBytes,
+		SetAnnotations:             true,
+		Annotations:                annotationsBytes,
+		SetDisabled:                true,
+		Disabled:                   input.Body.Disabled,
+		SetProxyUrl:                true,
+		ProxyUrl:                   proxyUrl.String,
+		SetModelsEndpointUrl:       true,
+		ModelsEndpointUrl:          input.Body.ModelsEndpointUrl,
+		SetModelsEndpointResolver:  true,
+		ModelsEndpointResolver:     contract.ToCredentialsResolver(input.Body.ModelsEndpointResolver),
+		SetSupportsNativeWebSearch: true,
+		SupportsNativeWebSearch:    input.Body.SupportsNativeWebSearch,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
