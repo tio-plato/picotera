@@ -91,7 +91,7 @@ func (q *Queries) GetProviderByID(ctx context.Context, id int32) (Provider, erro
 }
 
 const getProviders = `-- name: GetProviders :many
-SELECT id, name, credentials, priority, provider_models, annotations, disabled, proxy_url, models_endpoint_url, models_endpoint_resolver, supports_native_web_search FROM provider
+SELECT id, name, credentials, priority, provider_models, annotations, disabled, proxy_url, models_endpoint_url, models_endpoint_resolver, supports_native_web_search FROM provider ORDER BY priority DESC, id DESC
 `
 
 func (q *Queries) GetProviders(ctx context.Context) ([]Provider, error) {

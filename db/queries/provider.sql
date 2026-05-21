@@ -2,7 +2,7 @@
 SELECT * FROM provider WHERE id = $1 LIMIT 1;
 
 -- name: GetProviders :many
-SELECT * FROM provider;
+SELECT * FROM provider ORDER BY priority DESC, id DESC;
 
 -- name: CreateProvider :one
 INSERT INTO provider (name, credentials, priority, provider_models, annotations, disabled, proxy_url, models_endpoint_url, models_endpoint_resolver, supports_native_web_search) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *;
