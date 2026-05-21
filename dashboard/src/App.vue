@@ -31,7 +31,6 @@ const pageMeta = computed(() => {
   }
   return map[route.name as string] ?? { title: '', hint: '' }
 })
-
 </script>
 
 <template>

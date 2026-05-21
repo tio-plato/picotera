@@ -19,7 +19,9 @@ const cursorIndex = ref(initialCursor ? 1 : 0)
 const pageCursors = ref<string[]>(initialCursor ? ['', initialCursor] : [''])
 const hasPaginationHistory = ref(!initialCursor)
 
-const currentCursor = computed(() => (typeof route.query.cursor === 'string' ? route.query.cursor : ''))
+const currentCursor = computed(() =>
+  typeof route.query.cursor === 'string' ? route.query.cursor : '',
+)
 
 const tracesQuery = useQuery({
   queryKey: computed(() =>
@@ -175,7 +177,12 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
         {{ traces.length }} 条追踪<span v-if="hasMore">（还有更多）</span>
       </span>
       <div class="flex items-center gap-2">
-        <IconButton title="刷新" aria-label="刷新" :disabled="loading" @click="tracesQuery.refetch()">
+        <IconButton
+          title="刷新"
+          aria-label="刷新"
+          :disabled="loading"
+          @click="tracesQuery.refetch()"
+        >
           <Icon name="refresh" :size="13" />
         </IconButton>
       </div>

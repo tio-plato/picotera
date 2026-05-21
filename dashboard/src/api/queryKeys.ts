@@ -40,8 +40,7 @@ export const queryKeys = {
   },
   providerEndpoints: {
     all: ['providerEndpoints'] as const,
-    list: (filters: ProviderEndpointFilters = {}) =>
-      ['providerEndpoints', { ...filters }] as const,
+    list: (filters: ProviderEndpointFilters = {}) => ['providerEndpoints', { ...filters }] as const,
   },
   scripts: {
     all: ['scripts'] as const,

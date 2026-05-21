@@ -58,7 +58,7 @@ async function submit() {
 
 <template>
   <SidePanel
-    :title="isEdit ? (form.name || '渠道') : '新增渠道'"
+    :title="isEdit ? form.name || '渠道' : '新增渠道'"
     :kicker="isEdit ? '编辑渠道' : '渠道'"
     @close="emit('close')"
   >

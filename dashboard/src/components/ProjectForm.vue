@@ -12,7 +12,10 @@ const queryClient = useQueryClient()
 const isEdit = !!props.project
 type PathRow = { id: number; value: string }
 let nextId = 0
-const initialPaths: PathRow[] = (props.project?.paths ?? []).map((p) => ({ id: nextId++, value: p }))
+const initialPaths: PathRow[] = (props.project?.paths ?? []).map((p) => ({
+  id: nextId++,
+  value: p,
+}))
 const form = ref({
   name: props.project?.name ?? '',
   paths: initialPaths.length ? initialPaths : [{ id: nextId++, value: '' }],
@@ -66,11 +69,7 @@ async function submit() {
       </Field>
       <Field label="路径前缀" as="div">
         <div class="flex flex-col gap-1.5">
-          <div
-            v-for="row in form.paths"
-            :key="row.id"
-            class="flex items-center gap-1"
-          >
+          <div v-for="row in form.paths" :key="row.id" class="flex items-center gap-1">
             <Input
               v-model="row.value"
               placeholder="/home/user/project"

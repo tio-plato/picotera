@@ -86,11 +86,17 @@ const requestFilters = computed<RequestsFilters>(() => {
   return out
 })
 
-const currentCursor = computed(() => (typeof route.query.cursor === 'string' ? route.query.cursor : ''))
+const currentCursor = computed(() =>
+  typeof route.query.cursor === 'string' ? route.query.cursor : '',
+)
 
 const requestsQuery = useQuery({
   queryKey: computed(() =>
-    queryKeys.requests.list({ ...requestFilters.value, limit: pageSize, cursor: currentCursor.value }),
+    queryKeys.requests.list({
+      ...requestFilters.value,
+      limit: pageSize,
+      cursor: currentCursor.value,
+    }),
   ),
   queryFn: () =>
     listRequests({
@@ -610,10 +616,7 @@ function resetCursorAndReload() {
         </template>
         <template #cell-cost="{ row }">
           <div class="flex justify-end">
-            <MoneyDisplay
-              :amount="row.modelCost ?? null"
-              :currency="row.modelCostCurrency || ''"
-            />
+            <MoneyDisplay :amount="row.modelCost ?? null" :currency="row.modelCostCurrency || ''" />
           </div>
         </template>
         <template #cell-timeSpentMs="{ row }">

@@ -23,8 +23,12 @@ const form = ref({
 const saving = ref(false)
 const error = ref('')
 const saveMutation = useMutation({
-  mutationFn: (body: { name: string; key: string; disabled: boolean; annotations: Record<string, string> }) =>
-    isEdit ? updateApiKey(props.apiKey!.id, body) : createApiKey(body),
+  mutationFn: (body: {
+    name: string
+    key: string
+    disabled: boolean
+    annotations: Record<string, string>
+  }) => (isEdit ? updateApiKey(props.apiKey!.id, body) : createApiKey(body)),
   onSuccess: () => invalidateApiKeys(queryClient),
 })
 

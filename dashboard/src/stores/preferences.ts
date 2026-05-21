@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
-
 export type Theme = 'light' | 'solarized-light' | 'solarized-dark' | 'dark'
 export type PanelMode = 'auto' | 'right' | 'modal'
 export type FontSize = 'tall' | 'grande' | 'venti' | 'trenta'
@@ -28,22 +27,30 @@ export const FONT_SIZE_PX: Record<FontSize, number> = {
   trenta: 24,
 }
 
-
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { ...DEFAULTS }
     const parsed = JSON.parse(raw) as Partial<typeof DEFAULTS>
     return {
-      theme: THEME_VALUES.includes(parsed.theme as Theme) ? (parsed.theme as Theme) : DEFAULTS.theme,
-      panelMode: PANEL_MODE_VALUES.includes(parsed.panelMode as PanelMode) ? (parsed.panelMode as PanelMode) : DEFAULTS.panelMode,
-      fontSize: FONT_SIZE_VALUES.includes(parsed.fontSize as FontSize) ? (parsed.fontSize as FontSize) : DEFAULTS.fontSize,
-      displayCurrency: typeof parsed.displayCurrency === 'string' && parsed.displayCurrency.length > 0
-        ? parsed.displayCurrency
-        : DEFAULTS.displayCurrency,
-      overviewCurrencyOverride: typeof parsed.overviewCurrencyOverride === 'string' && parsed.overviewCurrencyOverride.length > 0
-        ? parsed.overviewCurrencyOverride
-        : DEFAULTS.overviewCurrencyOverride,
+      theme: THEME_VALUES.includes(parsed.theme as Theme)
+        ? (parsed.theme as Theme)
+        : DEFAULTS.theme,
+      panelMode: PANEL_MODE_VALUES.includes(parsed.panelMode as PanelMode)
+        ? (parsed.panelMode as PanelMode)
+        : DEFAULTS.panelMode,
+      fontSize: FONT_SIZE_VALUES.includes(parsed.fontSize as FontSize)
+        ? (parsed.fontSize as FontSize)
+        : DEFAULTS.fontSize,
+      displayCurrency:
+        typeof parsed.displayCurrency === 'string' && parsed.displayCurrency.length > 0
+          ? parsed.displayCurrency
+          : DEFAULTS.displayCurrency,
+      overviewCurrencyOverride:
+        typeof parsed.overviewCurrencyOverride === 'string' &&
+        parsed.overviewCurrencyOverride.length > 0
+          ? parsed.overviewCurrencyOverride
+          : DEFAULTS.overviewCurrencyOverride,
     }
   } catch {
     return { ...DEFAULTS }

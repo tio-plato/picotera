@@ -162,10 +162,7 @@ onBeforeUnmount(() => {
     :aria-expanded="open"
     aria-haspopup="listbox"
     class="group inline-flex items-center gap-1 -mx-1 px-1 py-0.5 max-w-full bg-transparent border-0 rounded-xs text-ink-muted text-xs font-medium uppercase tracking-[0.03em] cursor-pointer transition-colors hover:text-ink hover:bg-surface-100 focus:outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 mr-1"
-    :class="[
-      isActive ? 'text-accent-ink' : '',
-      align === 'right' ? 'flex-row-reverse' : '',
-    ]"
+    :class="[isActive ? 'text-accent-ink' : '', align === 'right' ? 'flex-row-reverse' : '']"
     @click="toggle"
   >
     <span class="inline-flex items-center gap-1 min-w-0">
@@ -207,7 +204,10 @@ onBeforeUnmount(() => {
       role="listbox"
       :style="floatingStyles"
     >
-      <div v-if="searchable" class="flex items-center gap-1.5 px-2.5 py-2 border-b border-line-soft">
+      <div
+        v-if="searchable"
+        class="flex items-center gap-1.5 px-2.5 py-2 border-b border-line-soft"
+      >
         <Icon name="search" :size="12" class="text-ink-faint flex-none" />
         <input
           ref="inputRef"
@@ -252,7 +252,9 @@ onBeforeUnmount(() => {
         >
           <span class="flex flex-col min-w-0 leading-tight">
             <span class="truncate">{{ opt.label }}</span>
-            <span v-if="opt.hint" class="font-mono text-2xs text-ink-faint truncate">{{ opt.hint }}</span>
+            <span v-if="opt.hint" class="font-mono text-2xs text-ink-faint truncate">{{
+              opt.hint
+            }}</span>
           </span>
           <span
             v-if="opt.value === modelValue"
@@ -260,10 +262,7 @@ onBeforeUnmount(() => {
             aria-hidden="true"
           />
         </button>
-        <div
-          v-if="filtered.length === 0"
-          class="px-2.5 py-3 text-center text-xs text-ink-faint"
-        >
+        <div v-if="filtered.length === 0" class="px-2.5 py-3 text-center text-xs text-ink-faint">
           无匹配项
         </div>
       </div>

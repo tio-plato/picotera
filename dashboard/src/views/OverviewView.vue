@@ -24,7 +24,10 @@ import { provideCurrencyContext, useCurrencyContext } from '@/composables/useCur
 import { usePreferencesStore } from '@/stores/preferences'
 import OverviewDonut from '@/components/charts/OverviewDonut.vue'
 import OverviewAreaStack from '@/components/charts/OverviewAreaStack.vue'
-import OverviewSankey, { type SankeyLink, type SankeyNode } from '@/components/charts/OverviewSankey.vue'
+import OverviewSankey, {
+  type SankeyLink,
+  type SankeyNode,
+} from '@/components/charts/OverviewSankey.vue'
 
 const prefs = usePreferencesStore()
 const filters = reactive({
@@ -43,10 +46,10 @@ type SankeyVariant = 'tokenComposition' | 'tokensIn' | 'tokensOut' | 'costIn' | 
 const sankeyVariant = ref<SankeyVariant>('tokenComposition')
 const sankeyVariantOptions: { value: SankeyVariant; label: string }[] = [
   { value: 'tokenComposition', label: '词元类型' },
-  { value: 'tokensIn',         label: '词元渠道' },
-  { value: 'tokensOut',        label: '词元请求' },
-  { value: 'costIn',           label: '费用渠道' },
-  { value: 'costOut',          label: '费用请求' },
+  { value: 'tokensIn', label: '词元渠道' },
+  { value: 'tokensOut', label: '词元请求' },
+  { value: 'costIn', label: '费用渠道' },
+  { value: 'costOut', label: '费用请求' },
 ]
 
 const parentCurrency = useCurrencyContext()
@@ -86,7 +89,14 @@ const seriesDimensionOptions: { value: OverviewSeriesDimension; label: string }[
 ]
 
 const overviewFilters = computed<OverviewFilters>(() => {
-  const out: { range: OverviewRange; apiKeyId?: number; model?: string; upstreamModel?: string; providerId?: number; projectId?: number } = {
+  const out: {
+    range: OverviewRange
+    apiKeyId?: number
+    model?: string
+    upstreamModel?: string
+    providerId?: number
+    projectId?: number
+  } = {
     range: filters.range,
   }
   if (filters.apiKeyId) out.apiKeyId = filters.apiKeyId
@@ -147,7 +157,9 @@ const summaryQuery = useQuery({
 })
 
 const distributionQuery = useQuery({
-  queryKey: computed(() => queryKeys.overview.distribution(overviewFilters.value, distributionDimension.value)),
+  queryKey: computed(() =>
+    queryKeys.overview.distribution(overviewFilters.value, distributionDimension.value),
+  ),
   queryFn: () => getOverviewDistribution(overviewFilters.value, distributionDimension.value),
   staleTime: OPERATIONAL_STALE_TIME,
 })
@@ -166,27 +178,23 @@ const overviewRefreshing = computed(
 )
 
 function refreshOverview() {
-  void Promise.all([
-    summaryQuery.refetch(),
-    distributionQuery.refetch(),
-    seriesQuery.refetch(),
-  ])
+  void Promise.all([summaryQuery.refetch(), distributionQuery.refetch(), seriesQuery.refetch()])
 }
 
 function dimensionLabel(dim: OverviewDimension | OverviewSeriesDimension, key: string): string {
   if (dim === 'project') {
     if (key === '' || key === '0') return '未关联'
     const id = Number(key)
-    return Number.isFinite(id) ? projectLabelById.value.get(id) ?? `#${key}` : key
+    return Number.isFinite(id) ? (projectLabelById.value.get(id) ?? `#${key}`) : key
   }
   if (key === '') return '全部'
   if (dim === 'provider') {
     const id = Number(key)
-    return Number.isFinite(id) ? providerLabelById.value.get(id) ?? `#${key}` : key
+    return Number.isFinite(id) ? (providerLabelById.value.get(id) ?? `#${key}`) : key
   }
   if (dim === 'apiKey') {
     const id = Number(key)
-    return Number.isFinite(id) ? apiKeyLabelById.value.get(id) ?? `#${key}` : key
+    return Number.isFinite(id) ? (apiKeyLabelById.value.get(id) ?? `#${key}`) : key
   }
   return key
 }
@@ -195,7 +203,11 @@ const TOP_N = 8
 
 const distributionRows = computed(() => distributionQuery.data.value?.rows ?? [])
 
-interface DonutItem { key: string; label: string; value: number }
+interface DonutItem {
+  key: string
+  label: string
+  value: number
+}
 
 function buildItemsAndTopN(items: DonutItem[]): DonutItem[] {
   const sorted = items.filter((d) => d.value > 0).sort((a, b) => b.value - a.value)
@@ -271,7 +283,11 @@ const seriesGroups = computed(() => {
 })
 const seriesBuckets = computed(() => seriesData.value?.buckets ?? [])
 
-interface SeriesPointVM { groupKey: string; bucketAt: string; value: number }
+interface SeriesPointVM {
+  groupKey: string
+  bucketAt: string
+  value: number
+}
 
 function nonCostPoints(metric: 'tokens' | 'requests' | 'traces'): SeriesPointVM[] {
   const points: OverviewSeriesPointView[] = seriesData.value?.points ?? []
@@ -293,7 +309,10 @@ const costPointsConverted = computed<SeriesPointVM[]>(() => {
   for (const p of seriesData.value?.points ?? []) {
     if (p.metric !== 'cost' || !p.currency) continue
     let m = byGroup.get(p.groupKey)
-    if (!m) { m = new Map(); byGroup.set(p.groupKey, m) }
+    if (!m) {
+      m = new Map()
+      byGroup.set(p.groupKey, m)
+    }
     const v = ccy.convert(p.value, p.currency).amount
     m.set(p.bucketAt, (m.get(p.bucketAt) ?? 0) + v)
   }
@@ -325,24 +344,30 @@ const tokenCompositionSankey = computed<{ nodes: SankeyNode[]; links: SankeyLink
   if (inputTotal === 0 && outputTotal === 0) return { nodes: [], links: [] }
 
   const allNodes: SankeyNode[] = [
-    { id: 'root',                label: '总 Token',     layer: 0 },
-    { id: 'output',              label: '输出',          layer: 1 },
-    { id: 'input',               label: '输入',          layer: 1 },
-    { id: 'in_uncached',         label: '未缓存输入',     layer: 2 },
-    { id: 'in_cache_read',       label: '缓存读取',       layer: 2 },
-    { id: 'in_cache_write',      label: '缓存写入',       layer: 2 },
-    { id: 'in_cache_write_1h',   label: '长期缓存写入',   layer: 2 },
+    { id: 'root', label: '总 Token', layer: 0 },
+    { id: 'output', label: '输出', layer: 1 },
+    { id: 'input', label: '输入', layer: 1 },
+    { id: 'in_uncached', label: '未缓存输入', layer: 2 },
+    { id: 'in_cache_read', label: '缓存读取', layer: 2 },
+    { id: 'in_cache_write', label: '缓存写入', layer: 2 },
+    { id: 'in_cache_write_1h', label: '长期缓存写入', layer: 2 },
   ]
   const links: SankeyLink[] = []
-  if (outputTotal > 0)     links.push({ source: 'root',  target: 'output',              value: outputTotal })
-  if (inputTotal > 0)      links.push({ source: 'root',  target: 'input',               value: inputTotal })
-  if (tb.input > 0)        links.push({ source: 'input', target: 'in_uncached',         value: tb.input })
-  if (tb.cacheRead > 0)    links.push({ source: 'input', target: 'in_cache_read',       value: tb.cacheRead })
-  if (tb.cacheWrite > 0)   links.push({ source: 'input', target: 'in_cache_write',      value: tb.cacheWrite })
-  if (tb.cacheWrite1h > 0) links.push({ source: 'input', target: 'in_cache_write_1h',   value: tb.cacheWrite1h })
+  if (outputTotal > 0) links.push({ source: 'root', target: 'output', value: outputTotal })
+  if (inputTotal > 0) links.push({ source: 'root', target: 'input', value: inputTotal })
+  if (tb.input > 0) links.push({ source: 'input', target: 'in_uncached', value: tb.input })
+  if (tb.cacheRead > 0)
+    links.push({ source: 'input', target: 'in_cache_read', value: tb.cacheRead })
+  if (tb.cacheWrite > 0)
+    links.push({ source: 'input', target: 'in_cache_write', value: tb.cacheWrite })
+  if (tb.cacheWrite1h > 0)
+    links.push({ source: 'input', target: 'in_cache_write_1h', value: tb.cacheWrite1h })
 
   const used = new Set<string>(['root'])
-  for (const l of links) { used.add(l.source); used.add(l.target) }
+  for (const l of links) {
+    used.add(l.source)
+    used.add(l.target)
+  }
   return { nodes: allNodes.filter((n) => used.has(n.id)), links }
 })
 
@@ -352,11 +377,16 @@ const TOP_PER_LAYER = 8
 
 function rowDimKey(row: OverviewBreakdownRowView, dim: DimKind): string {
   switch (dim) {
-    case 'apiKey':        return `apiKey:${row.apiKeyId || 0}`
-    case 'model':         return `model:${row.model || ''}`
-    case 'upstreamModel': return `upstreamModel:${row.upstreamModel || ''}`
-    case 'provider':      return `provider:${row.providerId || 0}`
-    case 'project':       return `project:${row.projectId || 0}`
+    case 'apiKey':
+      return `apiKey:${row.apiKeyId || 0}`
+    case 'model':
+      return `model:${row.model || ''}`
+    case 'upstreamModel':
+      return `upstreamModel:${row.upstreamModel || ''}`
+    case 'provider':
+      return `provider:${row.providerId || 0}`
+    case 'project':
+      return `project:${row.projectId || 0}`
   }
 }
 
@@ -365,9 +395,13 @@ function rawValueFromKey(key: string): { dim: DimKind; raw: string } | null {
   if (idx < 0) return null
   const dim = key.slice(0, idx) as DimKind
   if (
-    dim !== 'apiKey' && dim !== 'model' && dim !== 'upstreamModel' &&
-    dim !== 'provider' && dim !== 'project'
-  ) return null
+    dim !== 'apiKey' &&
+    dim !== 'model' &&
+    dim !== 'upstreamModel' &&
+    dim !== 'provider' &&
+    dim !== 'project'
+  )
+    return null
   return { dim, raw: key.slice(idx + 1) }
 }
 
@@ -393,11 +427,17 @@ function buildDimensionSankey(
       totalsByLayer[i]!.set(k, (totalsByLayer[i]!.get(k) ?? 0) + v)
     })
   }
-  const keepPerLayer: Set<string>[] = totalsByLayer.map((m) =>
-    new Set([...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_PER_LAYER).map(([k]) => k)),
+  const keepPerLayer: Set<string>[] = totalsByLayer.map(
+    (m) =>
+      new Set(
+        [...m.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, TOP_PER_LAYER)
+          .map(([k]) => k),
+      ),
   )
   const folded = (layerIdx: number, rawKey: string) =>
-    (keepPerLayer[layerIdx]?.has(rawKey) ? rawKey : `__other__@${layerIdx}`)
+    keepPerLayer[layerIdx]?.has(rawKey) ? rawKey : `__other__@${layerIdx}`
 
   const linkSums = new Map<string, number>()
   const addLink = (source: string, target: string, v: number) => {
@@ -443,7 +483,9 @@ function buildDimensionSankey(
   return { nodes, links }
 }
 
-const breakdownRows = computed<OverviewBreakdownRowView[]>(() => summaryQuery.data.value?.breakdown ?? [])
+const breakdownRows = computed<OverviewBreakdownRowView[]>(
+  () => summaryQuery.data.value?.breakdown ?? [],
+)
 
 const tokensInLayers: DimKind[] = ['provider', 'upstreamModel', 'model', 'apiKey', 'project']
 const tokensOutLayers: DimKind[] = ['project', 'apiKey', 'model', 'upstreamModel', 'provider']
@@ -499,7 +541,13 @@ const costInSankeyConverted = computed(() => {
 const costOutSankeyConverted = computed(() => {
   const target = ccy.targetCurrency.value
   if (!target) return { nodes: [], links: [] }
-  return buildDimensionSankey(breakdownRows.value, costOutLayers, 'root', '总费用', rowCostConverted)
+  return buildDimensionSankey(
+    breakdownRows.value,
+    costOutLayers,
+    'root',
+    '总费用',
+    rowCostConverted,
+  )
 })
 
 function buildCostInSankeyForCurrency(currency: string) {
@@ -547,9 +595,16 @@ function formatCurrencyCompact(v: number, code: string) {
   const abs = Math.abs(v)
   let scaled = v
   let suffix = ''
-  if (abs >= 1e9) { scaled = v / 1e9; suffix = 'B' }
-  else if (abs >= 1e6) { scaled = v / 1e6; suffix = 'M' }
-  else if (abs >= 1e3) { scaled = v / 1e3; suffix = 'k' }
+  if (abs >= 1e9) {
+    scaled = v / 1e9
+    suffix = 'B'
+  } else if (abs >= 1e6) {
+    scaled = v / 1e6
+    suffix = 'M'
+  } else if (abs >= 1e3) {
+    scaled = v / 1e3
+    suffix = 'k'
+  }
   const digits = suffix ? 1 : 2
   return ccy.format(scaled, code, { minDigits: digits, maxDigits: digits }) + suffix
 }
@@ -560,7 +615,9 @@ function formatCurrencyCompact(v: number, code: string) {
     <!-- Controls bar -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">时间范围</span>
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >时间范围</span
+        >
         <SegmentedControl v-model="filters.range" :options="rangeOptions" />
       </div>
       <div class="flex flex-col gap-1">
@@ -581,14 +638,18 @@ function formatCurrencyCompact(v: number, code: string) {
         </Select>
       </div>
       <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">请求模型</span>
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >请求模型</span
+        >
         <Select v-model="filters.model" size="sm">
           <option value="">全部</option>
           <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
         </Select>
       </div>
       <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">上游模型</span>
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >上游模型</span
+        >
         <Select v-model="filters.upstreamModel" size="sm">
           <option value="">全部</option>
           <option v-for="u in upstreamModelOptions" :key="u" :value="u">{{ u }}</option>
@@ -624,26 +685,47 @@ function formatCurrencyCompact(v: number, code: string) {
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       <DataCard class="min-h-20">
         <div class="p-4 min-h-20 flex flex-col gap-1.5">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总 Token</span>
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >总 Token</span
+          >
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
-          <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalTokens ?? 0).toLocaleString() }}</span>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{
+            (summaryQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <span v-else class="text-xl font-semibold mono tabular text-ink">{{
+            (summaryQuery.data.value?.totalTokens ?? 0).toLocaleString()
+          }}</span>
         </div>
       </DataCard>
       <DataCard class="min-h-20">
         <div class="p-4 min-h-20 flex flex-col gap-1.5">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总请求</span>
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >总请求</span
+          >
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
-          <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalRequests ?? 0).toLocaleString() }}</span>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{
+            (summaryQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <span v-else class="text-xl font-semibold mono tabular text-ink">{{
+            (summaryQuery.data.value?.totalRequests ?? 0).toLocaleString()
+          }}</span>
         </div>
       </DataCard>
       <DataCard class="min-h-20">
         <div class="p-4 min-h-20 flex flex-col gap-1.5">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总费用</span>
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >总费用</span
+          >
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
-          <div v-else-if="(summaryQuery.data.value?.costs ?? []).length === 0" class="text-xl text-ink-faint">—</div>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{
+            (summaryQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <div
+            v-else-if="(summaryQuery.data.value?.costs ?? []).length === 0"
+            class="text-xl text-ink-faint"
+          >
+            —
+          </div>
           <MoneyDisplay
             v-else-if="!isOriginalMode"
             class="text-xl font-semibold mono tabular text-ink"
@@ -664,10 +746,16 @@ function formatCurrencyCompact(v: number, code: string) {
       </DataCard>
       <DataCard class="min-h-20">
         <div class="p-4 min-h-20 flex flex-col gap-1.5">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">总追踪</span>
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >总追踪</span
+          >
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
-          <span v-else class="text-xl font-semibold mono tabular text-ink">{{ (summaryQuery.data.value?.totalTraceCount ?? 0).toLocaleString() }}</span>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{
+            (summaryQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <span v-else class="text-xl font-semibold mono tabular text-ink">{{
+            (summaryQuery.data.value?.totalTraceCount ?? 0).toLocaleString()
+          }}</span>
         </div>
       </DataCard>
     </div>
@@ -686,20 +774,16 @@ function formatCurrencyCompact(v: number, code: string) {
           !isOriginalMode ||
           (sankeyVariant !== 'costIn' && sankeyVariant !== 'costOut') ||
           breakdownCurrenciesPresent.length <= 0
-        ">
+        "
+      >
         <div class="p-4 min-h-[22.5rem] flex flex-col gap-3">
           <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText
-            v-else-if="summaryQuery.isError.value"
-            compact
-            :dashed="false"
-          >{{ (summaryQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{
+            (summaryQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
 
           <template v-else-if="sankeyVariant === 'tokenComposition'">
-            <StateText
-              v-if="!tokenCompositionSankey.links.length"
-              compact
-            >暂无数据</StateText>
+            <StateText v-if="!tokenCompositionSankey.links.length" compact>暂无数据</StateText>
             <OverviewSankey
               v-else
               :nodes="tokenCompositionSankey.nodes"
@@ -781,7 +865,8 @@ function formatCurrencyCompact(v: number, code: string) {
                 ).links.length === 0
               "
               compact
-            >暂无数据</StateText>
+              >暂无数据</StateText
+            >
             <OverviewSankey
               v-else
               :nodes="
@@ -806,30 +891,42 @@ function formatCurrencyCompact(v: number, code: string) {
     <!-- Distribution -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">分布统计</span>
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >分布统计</span
+        >
         <SegmentedControl v-model="distributionDimension" :options="distributionDimensionOptions" />
       </div>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <DataCard class="min-h-[17.5rem]">
         <div class="p-4 min-h-[17.5rem] flex flex-col gap-3">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">Token 分布</span>
-          <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >Token 分布</span
+          >
+          <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
+          <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{
+            (distributionQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
           <StateText v-else-if="!tokenDonutData.length" compact>暂无数据</StateText>
-          <OverviewDonut
-            v-else
-            :data="tokenDonutData"
-            :value-format="(v) => compactNumber(v)"
-          />
+          <OverviewDonut v-else :data="tokenDonutData" :value-format="(v) => compactNumber(v)" />
         </div>
       </DataCard>
       <template v-if="!isOriginalMode">
         <DataCard class="min-h-[17.5rem]">
           <div class="p-4 min-h-[17.5rem] flex flex-col gap-3">
-            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布<span class="ml-1 text-ink-faint normal-case">· {{ ccy.targetCurrency.value }}</span></span>
-            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+              >费用分布<span class="ml-1 text-ink-faint normal-case"
+                >· {{ ccy.targetCurrency.value }}</span
+              ></span
+            >
+            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false"
+              >加载中…</StateText
+            >
+            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{
+              (distributionQuery.error.value as Error)?.message ?? '加载失败'
+            }}</StateText>
             <StateText v-else-if="!costDonutDataConverted.length" compact>暂无数据</StateText>
             <OverviewDonut
               v-else
@@ -842,20 +939,38 @@ function formatCurrencyCompact(v: number, code: string) {
       <template v-else-if="distributionCurrenciesPresent.length === 0">
         <DataCard class="min-h-[17.5rem]">
           <div class="p-4 min-h-[17.5rem] flex flex-col gap-3">
-            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布</span>
-            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+              >费用分布</span
+            >
+            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false"
+              >加载中…</StateText
+            >
+            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{
+              (distributionQuery.error.value as Error)?.message ?? '加载失败'
+            }}</StateText>
             <StateText v-else compact>暂无数据</StateText>
           </div>
         </DataCard>
       </template>
       <template v-else>
-        <DataCard v-for="currency in distributionCurrenciesPresent" :key="currency" class="min-h-[17.5rem]">
+        <DataCard
+          v-for="currency in distributionCurrenciesPresent"
+          :key="currency"
+          class="min-h-[17.5rem]"
+        >
           <div class="p-4 min-h-[17.5rem] flex flex-col gap-3">
-            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用分布<span class="ml-1 text-ink-faint normal-case">· {{ currency }}</span></span>
-            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{ (distributionQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
-            <StateText v-else-if="!buildCostDonutDataForCurrency(currency).length" compact>暂无数据</StateText>
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+              >费用分布<span class="ml-1 text-ink-faint normal-case">· {{ currency }}</span></span
+            >
+            <StateText v-if="distributionQuery.isLoading.value" compact :dashed="false"
+              >加载中…</StateText
+            >
+            <StateText v-else-if="distributionQuery.isError.value" compact :dashed="false">{{
+              (distributionQuery.error.value as Error)?.message ?? '加载失败'
+            }}</StateText>
+            <StateText v-else-if="!buildCostDonutDataForCurrency(currency).length" compact
+              >暂无数据</StateText
+            >
             <OverviewDonut
               v-else
               :data="buildCostDonutDataForCurrency(currency)"
@@ -869,7 +984,9 @@ function formatCurrencyCompact(v: number, code: string) {
     <!-- Series -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">用量统计</span>
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >用量统计</span
+        >
         <SegmentedControl v-model="seriesDimension" :options="seriesDimensionOptions" />
       </div>
     </div>
@@ -878,7 +995,9 @@ function formatCurrencyCompact(v: number, code: string) {
         <div class="p-4 min-h-[17rem] flex flex-col gap-3">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">Token</span>
           <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{
+            (seriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
           <OverviewAreaStack
             v-else
             :groups="seriesGroups"
@@ -892,9 +1011,17 @@ function formatCurrencyCompact(v: number, code: string) {
       <template v-if="!isOriginalMode">
         <DataCard class="min-h-[17rem]">
           <div class="p-4 min-h-[17rem] flex flex-col gap-3">
-            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用<span class="ml-1 text-ink-faint normal-case">· {{ ccy.targetCurrency.value }}</span></span>
-            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+              >费用<span class="ml-1 text-ink-faint normal-case"
+                >· {{ ccy.targetCurrency.value }}</span
+              ></span
+            >
+            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false"
+              >加载中…</StateText
+            >
+            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{
+              (seriesQuery.error.value as Error)?.message ?? '加载失败'
+            }}</StateText>
             <OverviewAreaStack
               v-else
               :groups="seriesGroups"
@@ -909,9 +1036,15 @@ function formatCurrencyCompact(v: number, code: string) {
       <template v-else-if="seriesCurrenciesPresent.length === 0">
         <DataCard class="min-h-[17rem]">
           <div class="p-4 min-h-[17rem] flex flex-col gap-3">
-            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用</span>
-            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+              >费用</span
+            >
+            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false"
+              >加载中…</StateText
+            >
+            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{
+              (seriesQuery.error.value as Error)?.message ?? '加载失败'
+            }}</StateText>
             <StateText v-else compact>暂无数据</StateText>
           </div>
         </DataCard>
@@ -919,9 +1052,15 @@ function formatCurrencyCompact(v: number, code: string) {
       <template v-else>
         <DataCard v-for="currency in seriesCurrenciesPresent" :key="currency" class="min-h-[17rem]">
           <div class="p-4 min-h-[17rem] flex flex-col gap-3">
-            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">费用<span class="ml-1 text-ink-faint normal-case">· {{ currency }}</span></span>
-            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+              >费用<span class="ml-1 text-ink-faint normal-case">· {{ currency }}</span></span
+            >
+            <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false"
+              >加载中…</StateText
+            >
+            <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{
+              (seriesQuery.error.value as Error)?.message ?? '加载失败'
+            }}</StateText>
             <OverviewAreaStack
               v-else
               :groups="seriesGroups"
@@ -935,9 +1074,13 @@ function formatCurrencyCompact(v: number, code: string) {
       </template>
       <DataCard class="min-h-[17rem]">
         <div class="p-4 min-h-[17rem] flex flex-col gap-3">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">请求数</span>
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >请求数</span
+          >
           <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{
+            (seriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
           <OverviewAreaStack
             v-else
             :groups="seriesGroups"
@@ -950,9 +1093,13 @@ function formatCurrencyCompact(v: number, code: string) {
       </DataCard>
       <DataCard class="min-h-[17rem]">
         <div class="p-4 min-h-[17rem] flex flex-col gap-3">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">追踪数</span>
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >追踪数</span
+          >
           <StateText v-if="seriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{ (seriesQuery.error.value as Error)?.message ?? '加载失败' }}</StateText>
+          <StateText v-else-if="seriesQuery.isError.value" compact :dashed="false">{{
+            (seriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
           <OverviewAreaStack
             v-else
             :groups="seriesGroups"

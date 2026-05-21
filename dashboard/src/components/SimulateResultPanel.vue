@@ -82,7 +82,8 @@ const modelChanged = computed(() => props.result.originalModel !== props.result.
           <pre
             v-if="Object.keys(c.outboundProfile.config ?? {}).length > 0"
             class="mt-1.5 font-mono text-2xs text-ink whitespace-pre-wrap break-all m-0 bg-surface-50 border border-line rounded-md px-2.5 py-1.5"
-          >{{ JSON.stringify(c.outboundProfile.config, null, 2) }}</pre>
+            >{{ JSON.stringify(c.outboundProfile.config, null, 2) }}</pre
+          >
           <div v-else class="mt-1.5 text-ink-faint font-mono">{}</div>
         </details>
         <details v-if="Object.keys(c.mergedAnnotations).length > 0" class="text-xs">
@@ -111,8 +112,15 @@ const modelChanged = computed(() => props.result.originalModel !== props.result.
           <span class="text-ink-faint tabular-nums">{{ log.ts.slice(11, 23) }}</span>
           <span
             class="uppercase shrink-0"
-            :class="log.level === 'error' ? 'text-err' : log.level === 'warn' ? 'text-warn-ink' : 'text-ink-muted'"
-          >{{ log.level }}</span>
+            :class="
+              log.level === 'error'
+                ? 'text-err'
+                : log.level === 'warn'
+                  ? 'text-warn-ink'
+                  : 'text-ink-muted'
+            "
+            >{{ log.level }}</span
+          >
           <span class="break-all whitespace-pre-wrap text-ink">{{ log.message }}</span>
         </li>
       </ul>

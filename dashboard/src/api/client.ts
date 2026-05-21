@@ -26,7 +26,12 @@ import type {
   UpsertProjectRequestBody,
 } from '@/api'
 import type { components } from '@/openapi-types'
-import { queryKeys, type KvListFilters, type OverviewFilters, type RequestsFilters } from '@/api/queryKeys'
+import {
+  queryKeys,
+  type KvListFilters,
+  type OverviewFilters,
+  type RequestsFilters,
+} from '@/api/queryKeys'
 
 type ApiErrorShape = Partial<components['schemas']['PicoTeraError']>
 
@@ -61,7 +66,9 @@ export async function getProvider(id: number): Promise<ProviderView> {
   return data
 }
 
-export async function upsertProvider(body: components['schemas']['UpsertProviderRequestBody']): Promise<ProviderView> {
+export async function upsertProvider(
+  body: components['schemas']['UpsertProviderRequestBody'],
+): Promise<ProviderView> {
   const { data, error } = await api.PUT('/api/picotera/providers', { body })
   if (error) fail(error, '保存渠道失败')
   return data
@@ -126,18 +133,24 @@ export async function listProviderEndpoints(providerId?: number): Promise<Provid
   return data ?? []
 }
 
-export async function upsertProviderEndpoint(body: ProviderEndpointView): Promise<ProviderEndpointView> {
+export async function upsertProviderEndpoint(
+  body: ProviderEndpointView,
+): Promise<ProviderEndpointView> {
   const { data, error } = await api.PUT('/api/picotera/provider-endpoints', { body })
   if (error) fail(error, '保存绑定失败')
   return data
 }
 
-export async function deleteProviderEndpoint(body: components['schemas']['DeleteProviderEndpointRequestBody']): Promise<void> {
+export async function deleteProviderEndpoint(
+  body: components['schemas']['DeleteProviderEndpointRequestBody'],
+): Promise<void> {
   const { error } = await api.POST('/api/picotera/provider-endpoints/delete', { body })
   if (error) fail(error, '删除绑定失败')
 }
 
-export async function fetchProviderModels(body: FetchModelsRequestBody): Promise<FetchModelsResponseBody> {
+export async function fetchProviderModels(
+  body: FetchModelsRequestBody,
+): Promise<FetchModelsResponseBody> {
   const { data, error } = await api.POST('/api/picotera/providers/fetch-models', { body })
   if (error) fail(error, '拉取模型失败')
   return data
@@ -157,13 +170,18 @@ export async function listScripts(): Promise<ScriptView[]> {
   return data ?? []
 }
 
-export async function createScript(body: components['schemas']['ScriptMutateBody']): Promise<ScriptView> {
+export async function createScript(
+  body: components['schemas']['ScriptMutateBody'],
+): Promise<ScriptView> {
   const { data, error } = await api.POST('/api/picotera/scripts', { body })
   if (error) fail(error, '创建脚本失败')
   return data
 }
 
-export async function updateScript(id: string, body: components['schemas']['ScriptMutateBody']): Promise<ScriptView> {
+export async function updateScript(
+  id: string,
+  body: components['schemas']['ScriptMutateBody'],
+): Promise<ScriptView> {
   const { data, error } = await api.PUT('/api/picotera/scripts/{id}', {
     params: { path: { id } },
     body,
@@ -245,7 +263,9 @@ export async function deleteExchangeRate(code: string): Promise<void> {
   if (error) fail(error, '删除汇率失败')
 }
 
-export async function listKvEntries(filters: KvListFilters = {}): Promise<{ items: KvEntryView[]; nextCursor?: string; hasMore: boolean }> {
+export async function listKvEntries(
+  filters: KvListFilters = {},
+): Promise<{ items: KvEntryView[]; nextCursor?: string; hasMore: boolean }> {
   const { data, error } = await api.GET('/api/picotera/kv', {
     params: { query: { pattern: filters.pattern, cursor: filters.cursor } },
   })
@@ -397,7 +417,9 @@ export function invalidateOverview(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.overview.all })
 }
 
-export async function simulateDispatch(body: SimulateDispatchRequestBody): Promise<SimulateDispatchResponseBody> {
+export async function simulateDispatch(
+  body: SimulateDispatchRequestBody,
+): Promise<SimulateDispatchResponseBody> {
   const { data, error } = await api.POST('/api/picotera/simulate/dispatch', { body })
   if (error) fail(error, '模拟调度失败')
   return data

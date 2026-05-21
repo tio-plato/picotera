@@ -23,7 +23,10 @@ export function isJsonContentType(headers: ArtifactHeaders | undefined): boolean
   return mediaType === 'application/json' || mediaType.endsWith('+json')
 }
 
-export function parseJsonBody(body: string | undefined, bodyEncoding: string | undefined): ParsedJsonBody {
+export function parseJsonBody(
+  body: string | undefined,
+  bodyEncoding: string | undefined,
+): ParsedJsonBody {
   if (bodyEncoding === 'base64') {
     return { ok: false, value: null, error: '二进制内容不能解析为 JSON' }
   }

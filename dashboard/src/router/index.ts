@@ -9,7 +9,11 @@ const router = createRouter({
     { path: '/models', name: 'models', component: () => import('@/views/ModelsView.vue') },
     { path: '/endpoints', name: 'endpoints', component: () => import('@/views/EndpointsView.vue') },
     { path: '/requests', name: 'requests', component: () => import('@/views/RequestsView.vue') },
-    { path: '/requests/:requestId', name: 'requestDetail', component: () => import('@/views/RequestDetailView.vue') },
+    {
+      path: '/requests/:requestId',
+      name: 'requestDetail',
+      component: () => import('@/views/RequestDetailView.vue'),
+    },
     { path: '/traces', name: 'traces', component: () => import('@/views/TracesView.vue') },
     { path: '/api-keys', name: 'apiKeys', component: () => import('@/views/ApiKeysView.vue') },
     { path: '/projects', name: 'projects', component: () => import('@/views/ProjectsView.vue') },

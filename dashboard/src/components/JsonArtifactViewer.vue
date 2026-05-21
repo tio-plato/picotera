@@ -43,7 +43,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="json-artifact-viewer overflow-hidden rounded-md border border-line-soft bg-surface-50">
+  <div
+    class="json-artifact-viewer overflow-hidden rounded-md border border-line-soft bg-surface-50"
+  >
     <div ref="target" />
   </div>
 </template>

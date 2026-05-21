@@ -67,23 +67,43 @@ function setTheme(t: Theme) {
 
 type ThemeOption = { value: Theme; label: string; surface: string; accent: string }
 const themes: ThemeOption[] = [
-  { value: 'light',            label: 'Pico Light',       surface: 'oklch(0.986 0.003 250)', accent: 'oklch(0.54 0.19 262)' },
-  { value: 'solarized-light',  label: 'Solarized Light',  surface: 'oklch(0.965 0.036 92)',  accent: 'oklch(0.72 0.15 85)'  },
-  { value: 'solarized-dark',   label: 'Solarized Dark',   surface: 'oklch(0.30 0.035 210)',  accent: 'oklch(0.68 0.14 235)' },
-  { value: 'dark',             label: 'Tera Dark',        surface: 'oklch(0.22 0.02 255)',   accent: 'oklch(0.70 0.18 262)' },
+  {
+    value: 'light',
+    label: 'Pico Light',
+    surface: 'oklch(0.986 0.003 250)',
+    accent: 'oklch(0.54 0.19 262)',
+  },
+  {
+    value: 'solarized-light',
+    label: 'Solarized Light',
+    surface: 'oklch(0.965 0.036 92)',
+    accent: 'oklch(0.72 0.15 85)',
+  },
+  {
+    value: 'solarized-dark',
+    label: 'Solarized Dark',
+    surface: 'oklch(0.30 0.035 210)',
+    accent: 'oklch(0.68 0.14 235)',
+  },
+  {
+    value: 'dark',
+    label: 'Tera Dark',
+    surface: 'oklch(0.22 0.02 255)',
+    accent: 'oklch(0.70 0.18 262)',
+  },
 ]
 
 const panelModes: { value: PanelMode; label: string }[] = [
-  { value: 'auto',  label: '自动' },
+  { value: 'auto', label: '自动' },
   { value: 'right', label: '右侧' },
   { value: 'modal', label: '弹窗' },
 ]
 
 const fontSizes: { value: FontSize; label: string }[] = [
-  { value: 'tall',    label: 'Tall' },
-  { value: 'grande',  label: 'Grande' },
-  { value: 'venti',   label: 'Venti' },
-  { value: 'trenta',  label: 'Trenta' },
+  { value: 'tall', label: 'Tall' },
+  { value: 'grande', label: 'Grande' },
+  { value: 'venti', label: 'Venti' },
+  { value: 'trenta', label: 'Trenta' },
 ]
 </script>
 
@@ -110,7 +130,9 @@ const fontSizes: { value: FontSize; label: string }[] = [
       :style="floatingStyles"
     >
       <section class="px-1 pt-1.5 pb-2">
-        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">外观</h3>
+        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">
+          外观
+        </h3>
         <ul class="list-none p-0 m-0 flex flex-col gap-px" role="radiogroup" aria-label="外观主题">
           <li v-for="t in themes" :key="t.value">
             <button
@@ -136,7 +158,9 @@ const fontSizes: { value: FontSize; label: string }[] = [
                 }"
                 aria-hidden="true"
               />
-              <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{{ t.label }}</span>
+              <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{{
+                t.label
+              }}</span>
               <span
                 v-if="prefs.theme === t.value"
                 class="inline-block w-1.5 h-1.5 rounded-full bg-accent"
@@ -150,21 +174,27 @@ const fontSizes: { value: FontSize; label: string }[] = [
       <hr class="m-0 h-px border-0 bg-line-soft" />
 
       <section class="px-1 pt-1.5 pb-2">
-        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">面板位置</h3>
+        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">
+          面板位置
+        </h3>
         <SegmentedControl v-model="prefs.panelMode" :options="panelModes" :columns="3" />
       </section>
 
       <hr class="m-0 h-px border-0 bg-line-soft" />
 
       <section class="px-1 pt-1.5 pb-2">
-        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">字体大小</h3>
+        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">
+          字体大小
+        </h3>
         <SegmentedControl v-model="prefs.fontSize" :options="fontSizes" :columns="4" />
       </section>
 
       <hr class="m-0 h-px border-0 bg-line-soft" />
 
       <section class="px-1 pt-1.5 pb-2">
-        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">主要货币</h3>
+        <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">
+          主要货币
+        </h3>
         <Select v-model="currencyValue" size="sm" class="w-full">
           <option value="">原始货币</option>
           <option v-for="r in rates" :key="r.code" :value="r.code">

@@ -56,7 +56,7 @@ async function submit() {
 
 <template>
   <SidePanel
-    :title="isEdit ? (form.key || 'KV 条目') : '新增 KV 条目'"
+    :title="isEdit ? form.key || 'KV 条目' : '新增 KV 条目'"
     :kicker="isEdit ? '编辑 KV' : 'KV'"
     @close="emit('close')"
   >
@@ -68,7 +68,13 @@ async function submit() {
         <Input v-model="form.key" required placeholder="例如 my-key" />
       </Field>
       <Field label="Value" :error="jsonWarning">
-        <CodeEditor v-model="form.value" language="javascript" min-height="200px" max-height="50vh" @blur="validateJson" />
+        <CodeEditor
+          v-model="form.value"
+          language="javascript"
+          min-height="200px"
+          max-height="50vh"
+          @blur="validateJson"
+        />
       </Field>
       <Field label="TTL（秒）" help="留空或 0 表示永不过期">
         <Input v-model="form.ttlSeconds" type="number" min="0" placeholder="永不过期" />

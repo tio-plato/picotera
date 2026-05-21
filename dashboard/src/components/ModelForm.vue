@@ -52,7 +52,7 @@ async function submit() {
 
 <template>
   <SidePanel
-    :title="isEdit ? (form.name || '模型') : '新增模型'"
+    :title="isEdit ? form.name || '模型' : '新增模型'"
     :kicker="isEdit ? '编辑模型' : lockedName ? '新增模型 · 来自上游' : '模型'"
     @close="emit('close')"
   >

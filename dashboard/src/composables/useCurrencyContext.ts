@@ -72,7 +72,9 @@ function createCurrencyContext(targetCurrency: ComputedRef<string | null>): Curr
   return { rates, byCode, targetCurrency, convert, convertTo, format }
 }
 
-export function provideCurrencyContext(targetCurrency: ComputedRef<string | null>): CurrencyContext {
+export function provideCurrencyContext(
+  targetCurrency: ComputedRef<string | null>,
+): CurrencyContext {
   const ctx = createCurrencyContext(targetCurrency)
   provide(currencyContextKey, ctx)
   return ctx

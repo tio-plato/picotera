@@ -242,7 +242,7 @@ watch(jsonBody, (parsed) => {
               :src="openAIImageGeneration.src"
               alt="OpenAI image generation result"
               class="block max-h-[640px] w-full object-contain"
-            >
+            />
           </figure>
           <details v-if="content.thinking" class="group">
             <summary
@@ -263,11 +263,9 @@ watch(jsonBody, (parsed) => {
             />
           </details>
           <div v-if="content.reply" class="prose prose-sm max-w-none" v-html="replyHtml" />
-          <StateText
-            v-else-if="!content.thinking && !openAIImageGeneration"
-            :dashed="false"
-            compact
-          >无可渲染内容</StateText>
+          <StateText v-else-if="!content.thinking && !openAIImageGeneration" :dashed="false" compact
+            >无可渲染内容</StateText
+          >
         </div>
       </template>
     </section>

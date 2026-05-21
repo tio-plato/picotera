@@ -7,18 +7,7 @@ import type { ScriptView } from '@/api'
 import { deleteScript, invalidateScripts, listScripts, updateScript } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import ScriptForm from '@/components/ScriptForm.vue'
-import {
-  Button,
-  IconButton,
-  DataCard,
-  DataTable,
-  Th,
-  Td,
-  Tr,
-  StateText,
-  Tag,
-  Icon,
-} from '@/ui'
+import { Button, IconButton, DataCard, DataTable, Th, Td, Tr, StateText, Tag, Icon } from '@/ui'
 
 const panel = useSidePanel()
 const confirm = useConfirm()

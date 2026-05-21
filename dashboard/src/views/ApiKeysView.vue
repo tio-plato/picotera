@@ -7,18 +7,7 @@ import type { ApiKeyView } from '@/api'
 import { deleteApiKey, invalidateApiKeys, listApiKeys, updateApiKey } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import ApiKeyForm from '@/components/ApiKeyForm.vue'
-import {
-  Button,
-  IconButton,
-  DataCard,
-  DataTable,
-  Th,
-  Td,
-  Tr,
-  StateText,
-  Tag,
-  Icon,
-} from '@/ui'
+import { Button, IconButton, DataCard, DataTable, Th, Td, Tr, StateText, Tag, Icon } from '@/ui'
 
 const panel = useSidePanel()
 const confirm = useConfirm()
@@ -53,11 +42,7 @@ function openCreate() {
 }
 
 function openEdit(k: ApiKeyView) {
-  panel.open(
-    ApiKeyForm,
-    { apiKey: k },
-    { key: `apiKey:${k.id}`, width: '560px' },
-  )
+  panel.open(ApiKeyForm, { apiKey: k }, { key: `apiKey:${k.id}`, width: '560px' })
 }
 
 function confirmDelete(_event: Event, k: ApiKeyView) {

@@ -78,12 +78,7 @@ watch(requestJsonBody, (parsed) => {
   <template v-else-if="payload">
     <template v-if="kind === 'request'">
       <div class="relative flex flex-col gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          class="absolute top-0 right-0 z-10"
-          @click="copyAsCurl"
-        >
+        <Button variant="ghost" size="sm" class="absolute top-0 right-0 z-10" @click="copyAsCurl">
           <Icon :name="curlCopied ? 'check' : 'copy'" :size="13" />
           <span>{{ curlCopied ? '已复制' : '复制为 cURL' }}</span>
         </Button>

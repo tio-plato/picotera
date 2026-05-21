@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import {
-  VisXYContainer,
-  VisArea,
-  VisAxis,
-  VisCrosshair,
-  VisTooltip,
-} from '@unovis/vue'
+import { VisXYContainer, VisArea, VisAxis, VisCrosshair, VisTooltip } from '@unovis/vue'
 import { Tag } from '@/ui'
 import { groupColor } from './colors'
 
@@ -94,27 +88,24 @@ function tooltipTemplate(datum: Datum | undefined) {
     .map((g, i) => {
       const v = datum.values[g.key] ?? 0
       const formatted = props.valueFormat ? props.valueFormat(v) : compactNumber(v)
-      return {...g, html: `<div class="flex items-center gap-1 text-2xs"><span style="background:${colors.value[i]};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`}
+      return {
+        ...g,
+        html: `<div class="flex items-center gap-1 text-2xs"><span style="background:${colors.value[i]};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`,
+      }
     })
-    .filter(g => datum.values[g.key] !== undefined && datum.values[g.key] !== 0)
-    .map(g => g.html)
+    .filter((g) => datum.values[g.key] !== undefined && datum.values[g.key] !== 0)
+    .map((g) => g.html)
     .join('')
-  const bucket = props.bucketFormat ? props.bucketFormat(datum.bucket) : defaultBucketFormat(datum.bucket)
+  const bucket = props.bucketFormat
+    ? props.bucketFormat(datum.bucket)
+    : defaultBucketFormat(datum.bucket)
   const head = `<div class="text-2xs text-ink-muted mb-1">${escape(bucket)}</div>`
   return `<div class="min-w-32">${head}${lines}</div>`
 }
 
 function escape(s: string) {
   return s.replace(/[&<>"']/g, (c) =>
-    c === '&'
-      ? '&amp;'
-      : c === '<'
-        ? '&lt;'
-        : c === '>'
-          ? '&gt;'
-          : c === '"'
-            ? '&quot;'
-            : '&#39;',
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   )
 }
 </script>
@@ -142,10 +133,7 @@ function escape(s: string) {
     </div>
     <ul class="flex flex-wrap gap-1">
       <li v-for="(g, i) in groups" :key="g.key || `__${i}`" class="flex items-center gap-1">
-        <span
-          class="h-2 w-2 shrink-0 rounded-xs"
-          :style="{ background: colors[i] }"
-        />
+        <span class="h-2 w-2 shrink-0 rounded-xs" :style="{ background: colors[i] }" />
         <Tag variant="default">{{ g.label || '—' }}</Tag>
       </li>
     </ul>

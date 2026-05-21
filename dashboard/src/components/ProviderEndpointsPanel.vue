@@ -10,17 +10,7 @@ import {
   upsertProviderEndpoint,
 } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
-import {
-  SidePanel,
-  Button,
-  IconButton,
-  Input,
-  Select,
-  Field,
-  StateText,
-  Tag,
-  Icon,
-} from '@/ui'
+import { SidePanel, Button, IconButton, Input, Select, Field, StateText, Tag, Icon } from '@/ui'
 
 type Resolver = NonNullable<ProviderEndpointView['credentialsResolver']>
 
@@ -51,8 +41,12 @@ const providerEndpointsQuery = useQuery({
   queryFn: () => listProviderEndpoints(props.providerId),
 })
 const endpoints = computed<EndpointView[]>(() => endpointsQuery.data.value ?? [])
-const providerEndpoints = computed<ProviderEndpointView[]>(() => providerEndpointsQuery.data.value ?? [])
-const loading = computed(() => endpointsQuery.isLoading.value || providerEndpointsQuery.isLoading.value)
+const providerEndpoints = computed<ProviderEndpointView[]>(
+  () => providerEndpointsQuery.data.value ?? [],
+)
+const loading = computed(
+  () => endpointsQuery.isLoading.value || providerEndpointsQuery.isLoading.value,
+)
 const form = ref<{ endpointPath: string; upstreamUrl: string; credentialsResolver: Resolver }>({
   endpointPath: '',
   upstreamUrl: '',
@@ -73,9 +67,7 @@ const endpointNameByPath = computed(() => {
 })
 
 const availableEndpoints = computed(() =>
-  endpoints.value.filter(
-    (e) => !providerEndpoints.value.some((pe) => pe.endpointPath === e.path),
-  ),
+  endpoints.value.filter((e) => !providerEndpoints.value.some((pe) => pe.endpointPath === e.path)),
 )
 
 function guessUpstreamUrl(endpointPath: string) {
@@ -201,18 +193,16 @@ function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
 </script>
 
 <template>
-  <SidePanel
-    :title="providerName"
-    kicker="端点绑定"
-    @close="emit('close')"
-  >
+  <SidePanel :title="providerName" kicker="端点绑定" @close="emit('close')">
     <section class="flex flex-col gap-2">
       <div class="flex items-baseline justify-between">
         <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">已绑定</span>
         <span class="text-xs text-ink-faint tabular-nums">{{ providerEndpoints.length }}</span>
       </div>
       <StateText v-if="loading" :dashed="false" compact>加载中…</StateText>
-      <StateText v-else-if="!providerEndpoints.length" compact>暂无绑定，下方选择端点添加</StateText>
+      <StateText v-else-if="!providerEndpoints.length" compact
+        >暂无绑定，下方选择端点添加</StateText
+      >
       <ul v-else class="list-none m-0 p-0 flex flex-col gap-2">
         <li
           v-for="pe in providerEndpoints"

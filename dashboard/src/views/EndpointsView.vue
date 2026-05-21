@@ -9,18 +9,7 @@ import { deleteEndpoint, invalidateEndpoints, listEndpoints } from '@/api/client
 import { queryKeys } from '@/api/queryKeys'
 import EndpointForm from '@/components/EndpointForm.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
-import {
-  Button,
-  IconButton,
-  DataCard,
-  DataTable,
-  Th,
-  Td,
-  Tr,
-  StateText,
-  Tag,
-  Icon,
-} from '@/ui'
+import { Button, IconButton, DataCard, DataTable, Th, Td, Tr, StateText, Tag, Icon } from '@/ui'
 
 const panel = useSidePanel()
 const confirm = useConfirm()
@@ -89,12 +78,18 @@ function confirmDeleteEndpoint(_event: Event, path: string) {
         </thead>
         <tbody>
           <Tr v-for="e in endpoints" :key="e.path" :selected="panel.isActive(`endpoint:${e.path}`)">
-            <Td><span class="font-mono font-medium">{{ e.path }}</span></Td>
+            <Td
+              ><span class="font-mono font-medium">{{ e.path }}</span></Td
+            >
             <Td>{{ e.name }}</Td>
             <Td>
-              <Tag :variant="endpointTypeVariant(e.endpointType)">{{ ENDPOINT_TYPE_LABELS[e.endpointType] }}</Tag>
+              <Tag :variant="endpointTypeVariant(e.endpointType)">{{
+                ENDPOINT_TYPE_LABELS[e.endpointType]
+              }}</Tag>
             </Td>
-            <Td><span class="font-mono text-ink-faint">{{ e.modelPath || '—' }}</span></Td>
+            <Td
+              ><span class="font-mono text-ink-faint">{{ e.modelPath || '—' }}</span></Td
+            >
             <Td>
               <Tag :variant="e.credentialsResolver === 'generalApiKey' ? 'ok' : 'muted'">
                 {{ e.credentialsResolver }}

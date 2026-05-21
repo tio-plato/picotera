@@ -22,7 +22,11 @@ const jsonText = ref('')
 const jsonError = ref('')
 
 function toEntries(obj: Record<string, string>): Entry[] {
-  return Object.entries(obj ?? {}).map(([k, v]) => ({ id: nextId++, key: k, value: String(v ?? '') }))
+  return Object.entries(obj ?? {}).map(([k, v]) => ({
+    id: nextId++,
+    key: k,
+    value: String(v ?? ''),
+  }))
 }
 
 function entriesToObj(list: Pair[]): Record<string, string> {
@@ -97,7 +101,7 @@ watch(
     entries.value = toEntries(val)
     lastEmitted = next
   },
-  { deep: true }
+  { deep: true },
 )
 
 function emitUpdate() {
@@ -193,7 +197,9 @@ function onModeChange(v: string | number) {
 
 <template>
   <div class="flex flex-col gap-2 border border-line rounded-lg bg-surface-0 overflow-hidden">
-    <div class="flex items-center justify-between py-1.5 pl-2 pr-1.5 bg-surface-50 border-b border-line">
+    <div
+      class="flex items-center justify-between py-1.5 pl-2 pr-1.5 bg-surface-50 border-b border-line"
+    >
       <Tabs :model-value="mode" :tabs="tabs" @update:model-value="onModeChange" />
       <span class="font-mono text-2xs text-ink-faint pr-2 tabular-nums">
         {{ entryCount }} {{ entryCount === 1 ? 'entry' : 'entries' }}
@@ -252,7 +258,10 @@ function onModeChange(v: string | number) {
         :placeholder="'KEY=value\nregion=us-east-1\ntier=premium'"
         @input="onBulkInput"
       />
-      <div v-if="bulkError" class="text-2xs text-err-ink bg-err-faint px-2 py-1.5 rounded-sm font-mono">
+      <div
+        v-if="bulkError"
+        class="text-2xs text-err-ink bg-err-faint px-2 py-1.5 rounded-sm font-mono"
+      >
         {{ bulkError }}
       </div>
       <div v-else class="text-2xs text-ink-faint px-0.5 pb-1">
@@ -272,7 +281,10 @@ function onModeChange(v: string | number) {
         placeholder='{ "region": "us-east-1" }'
         @input="onJsonInput"
       />
-      <div v-if="jsonError" class="text-2xs text-err-ink bg-err-faint px-2 py-1.5 rounded-sm font-mono">
+      <div
+        v-if="jsonError"
+        class="text-2xs text-err-ink bg-err-faint px-2 py-1.5 rounded-sm font-mono"
+      >
         {{ jsonError }}
       </div>
       <div v-else class="text-2xs text-ink-faint px-0.5 pb-1">对象字面量，值必须为字符串</div>

@@ -1,15 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
-import {
-  Button,
-  Field,
-  Input,
-  SegmentedControl,
-  Select,
-  Textarea,
-  Icon,
-} from '@/ui'
+import { Button, Field, Input, SegmentedControl, Select, Textarea, Icon } from '@/ui'
 import { useSidePanel } from '@/composables/useSidePanel'
 import { listApiKeys, listEndpoints, listModels, simulateDispatch } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
@@ -37,7 +29,7 @@ const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listMode
 
 const kind = ref<Kind>('path')
 const selectedPath = ref('')
-const selectedFormat = ref<typeof UNIFIED_FORMATS[number]['value']>('anthropicMessages')
+const selectedFormat = ref<(typeof UNIFIED_FORMATS)[number]['value']>('anthropicMessages')
 const apiKeyId = ref<number | undefined>(undefined)
 const model = ref('')
 const bodyText = ref('')
@@ -49,8 +41,8 @@ const endpoints = computed(() => endpointsQuery.data.value ?? [])
 const apiKeys = computed(() => apiKeysQuery.data.value ?? [])
 const modelNames = computed(() => (modelsQuery.data.value ?? []).map((m) => m.name))
 
-const selectedEndpoint = computed(() =>
-  endpoints.value.find((e) => e.path === selectedPath.value) ?? null,
+const selectedEndpoint = computed(
+  () => endpoints.value.find((e) => e.path === selectedPath.value) ?? null,
 )
 
 const pathVarNames = computed(() => {
@@ -84,11 +76,7 @@ const panel = useSidePanel()
 const simulate = useMutation({
   mutationFn: (body: SimulateDispatchRequestBody) => simulateDispatch(body),
   onSuccess: (data) => {
-    panel.open(
-      SimulateResultPanel,
-      { result: data },
-      { key: 'simulate:result', width: '640px' },
-    )
+    panel.open(SimulateResultPanel, { result: data }, { key: 'simulate:result', width: '640px' })
   },
 })
 

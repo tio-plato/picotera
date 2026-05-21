@@ -27,11 +27,16 @@ const queryClient = useQueryClient()
 
 const pattern = ref('')
 const cursorStack = ref<number[]>([])
-const currentCursor = computed(() => cursorStack.value.length > 0 ? cursorStack.value[cursorStack.value.length - 1] : undefined)
+const currentCursor = computed(() =>
+  cursorStack.value.length > 0 ? cursorStack.value[cursorStack.value.length - 1] : undefined,
+)
 
 const kvQuery = useQuery({
-  queryKey: computed(() => queryKeys.kv.list({ pattern: pattern.value || undefined, cursor: currentCursor.value })),
-  queryFn: () => listKvEntries({ pattern: pattern.value || undefined, cursor: currentCursor.value }),
+  queryKey: computed(() =>
+    queryKeys.kv.list({ pattern: pattern.value || undefined, cursor: currentCursor.value }),
+  ),
+  queryFn: () =>
+    listKvEntries({ pattern: pattern.value || undefined, cursor: currentCursor.value }),
 })
 const entries = computed(() => kvQuery.data.value?.items ?? [])
 const loading = computed(() => kvQuery.isLoading.value)
@@ -101,7 +106,11 @@ function truncateValue(value: string, max = 80): string {
             class="w-48 pl-8"
             @keydown.enter="onSearch"
           />
-          <Icon name="search" :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+          <Icon
+            name="search"
+            :size="14"
+            class="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint"
+          />
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -163,7 +172,10 @@ function truncateValue(value: string, max = 80): string {
           </Tr>
         </tbody>
       </DataTable>
-      <div v-if="hasMore || cursorStack.length > 0" class="flex items-center justify-between px-4 py-2 border-t border-line">
+      <div
+        v-if="hasMore || cursorStack.length > 0"
+        class="flex items-center justify-between px-4 py-2 border-t border-line"
+      >
         <Button v-if="cursorStack.length > 0" variant="ghost" size="sm" @click="goBack">
           <Icon name="arrow-left" :size="14" />
           <span>上一页</span>

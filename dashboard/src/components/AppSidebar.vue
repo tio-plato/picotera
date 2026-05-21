@@ -28,13 +28,24 @@ const nav: { name: string; label: string; icon: IconName }[] = [
 </script>
 
 <template>
-  <aside class="w-72 min-w-72 bg-sidebar-bg border-r border-line flex flex-col h-[100dvh] sticky top-0">
+  <aside
+    class="w-72 min-w-72 bg-sidebar-bg border-r border-line flex flex-col h-[100dvh] sticky top-0"
+  >
     <div class="px-4 pt-[1.125rem] pb-4 flex items-center gap-2.5">
       <span
         class="inline-flex items-center justify-center w-[1.875rem] h-[1.875rem] bg-accent text-white rounded-md shadow-[inset_0_0_0_1px_oklch(1_0_0/0.12),0_1px_2px_oklch(0.3_0.1_262/0.25)]"
         aria-hidden="true"
       >
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <path d="M4 7h10a4 4 0 0 1 0 8H8" />
           <path d="M8 4v16" />
         </svg>
@@ -46,7 +57,11 @@ const nav: { name: string; label: string; icon: IconName }[] = [
     </div>
 
     <nav class="flex-1 px-2 py-1.5 pb-4 flex flex-col gap-px" aria-label="主导航">
-      <div class="px-2.5 pt-3 pb-1.5 text-2xs font-medium text-ink-faint uppercase tracking-[0.06em]">配置</div>
+      <div
+        class="px-2.5 pt-3 pb-1.5 text-2xs font-medium text-ink-faint uppercase tracking-[0.06em]"
+      >
+        配置
+      </div>
       <RouterLink
         v-for="item in nav"
         :key="item.name"

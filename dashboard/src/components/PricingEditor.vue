@@ -106,7 +106,9 @@ const numericFields: { key: keyof PricingTier; label: string }[] = [
           </option>
         </Select>
         <span class="text-2xs text-ink-faint">每百万 tokens</span>
-        <span v-if="isMultiTier" class="text-2xs font-medium text-accent">阶梯定价 · {{ tiers.length }} 档</span>
+        <span v-if="isMultiTier" class="text-2xs font-medium text-accent"
+          >阶梯定价 · {{ tiers.length }} 档</span
+        >
         <span class="flex-1" />
         <Button type="button" variant="ghost" size="sm" @click="clearPricing">
           <Icon name="trash" :size="13" />
@@ -144,11 +146,7 @@ const numericFields: { key: keyof PricingTier; label: string }[] = [
             </IconButton>
           </div>
           <div class="grid grid-cols-3 gap-2">
-            <label
-              v-for="f in numericFields"
-              :key="f.key"
-              class="flex flex-col gap-0.5"
-            >
+            <label v-for="f in numericFields" :key="f.key" class="flex flex-col gap-0.5">
               <span class="text-2xs text-ink-faint">{{ f.label }}</span>
               <Input
                 :model-value="tier[f.key]"
@@ -156,7 +154,9 @@ const numericFields: { key: keyof PricingTier; label: string }[] = [
                 size="sm"
                 step="0.0001"
                 min="0"
-                @update:model-value="(v) => updateTier(idx, { [f.key]: Number(v) } as Partial<PricingTier>)"
+                @update:model-value="
+                  (v) => updateTier(idx, { [f.key]: Number(v) } as Partial<PricingTier>)
+                "
               />
             </label>
           </div>

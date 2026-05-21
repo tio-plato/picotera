@@ -23,13 +23,11 @@ const props = defineProps<{
   onRowClick?: (row: Row, event: MouseEvent) => void
 }>()
 
-defineSlots<
-  {
-    [K: `header-${string}`]: () => unknown
-    [K: `cell-${string}`]: (p: { row: Row; value: unknown; index: number }) => unknown
-    empty: () => unknown
-  }
->()
+defineSlots<{
+  [K: `header-${string}`]: () => unknown
+  [K: `cell-${string}`]: (p: { row: Row; value: unknown; index: number }) => unknown
+  empty: () => unknown
+}>()
 
 function get(row: Row, path: keyof Row | string | undefined): unknown {
   if (path === undefined || path === null) return undefined
@@ -59,12 +57,7 @@ function handleRowClick(row: Row, event: MouseEvent) {
   <DataTable>
     <thead>
       <tr>
-        <Th
-          v-for="col in columns"
-          :key="col.key"
-          :actions="col.actions"
-          :class="col.headerClass"
-        >
+        <Th v-for="col in columns" :key="col.key" :actions="col.actions" :class="col.headerClass">
           <slot :name="`header-${col.key}`">{{ col.header ?? '' }}</slot>
         </Th>
       </tr>
@@ -82,24 +75,15 @@ function handleRowClick(row: Row, event: MouseEvent) {
           v-for="col in columns"
           :key="col.key"
           :actions="col.actions"
-          :class="[
-            col.align === 'right' ? 'text-right' : '',
-            col.cellClass,
-          ]"
+          :class="[col.align === 'right' ? 'text-right' : '', col.cellClass]"
         >
-          <slot
-            :name="`cell-${col.key}`"
-            :row="row"
-            :value="get(row, col.field)"
-            :index="i"
-          >{{ defaultFormat(get(row, col.field)) }}</slot>
+          <slot :name="`cell-${col.key}`" :row="row" :value="get(row, col.field)" :index="i">{{
+            defaultFormat(get(row, col.field))
+          }}</slot>
         </Td>
       </Tr>
       <tr v-if="items.length === 0">
-        <td
-          :colspan="columns.length"
-          class="px-4 py-10 text-center text-sm text-ink-faint"
-        >
+        <td :colspan="columns.length" class="px-4 py-10 text-center text-sm text-ink-faint">
           <slot name="empty">暂无数据</slot>
         </td>
       </tr>

@@ -7,4 +7,12 @@ export function useApi(): ApiClient {
   return api
 }
 
-export type { ProviderView, ProviderModelEntry, CreateProviderRequestBody, ModelView, EndpointView, ProviderEndpointView, RequestView } from '@/api'
+export type {
+  ProviderView,
+  ProviderModelEntry,
+  CreateProviderRequestBody,
+  ModelView,
+  EndpointView,
+  ProviderEndpointView,
+  RequestView,
+} from '@/api'

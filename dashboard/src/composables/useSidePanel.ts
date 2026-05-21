@@ -18,7 +18,11 @@ interface OpenOptions {
   width?: string
 }
 
-function open(comp: Component, props: ComponentPublicInstance['$props'] = {}, options: OpenOptions = {}) {
+function open(
+  comp: Component,
+  props: ComponentPublicInstance['$props'] = {},
+  options: OpenOptions = {},
+) {
   state.value = {
     key: options.key ?? comp,
     component: comp,
@@ -31,7 +35,11 @@ function close() {
   state.value = null
 }
 
-function toggle(comp: Component, props: ComponentPublicInstance['$props'] = {}, options: OpenOptions = {}) {
+function toggle(
+  comp: Component,
+  props: ComponentPublicInstance['$props'] = {},
+  options: OpenOptions = {},
+) {
   const key = options.key ?? comp
   if (state.value?.key === key) {
     close()

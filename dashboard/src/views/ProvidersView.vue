@@ -116,9 +116,7 @@ function confirmDelete(_event: Event, p: ProviderView) {
 
 function rowSelected(id: number) {
   return (
-    panel.isActive(editKey(id)) ||
-    panel.isActive(bindingKey(id)) ||
-    panel.isActive(modelsKey(id))
+    panel.isActive(editKey(id)) || panel.isActive(bindingKey(id)) || panel.isActive(modelsKey(id))
   )
 }
 </script>
@@ -141,32 +139,34 @@ function rowSelected(id: number) {
           <tr>
             <Th>ID</Th>
             <Th>名称</Th>
-            <Th>凭证</Th>
             <Th>优先级</Th>
             <Th>模型</Th>
             <Th actions />
           </tr>
         </thead>
         <tbody>
-          <Tr v-for="p in providers" :key="p.id" :selected="rowSelected(p.id)" :class="p.disabled ? 'opacity-55' : ''">
-            <Td><span class="font-mono text-ink-faint">{{ p.id }}</span></Td>
+          <Tr
+            v-for="p in providers"
+            :key="p.id"
+            :selected="rowSelected(p.id)"
+            :class="p.disabled ? 'opacity-55' : ''"
+          >
+            <Td
+              ><span class="font-mono text-ink-faint">{{ p.id }}</span></Td
+            >
             <Td>
               <span class="font-medium">{{ p.name }}</span>
               <Tag v-if="p.disabled" variant="muted" class="ml-1.5">已禁用</Tag>
             </Td>
-            <Td><span class="font-mono text-ink-faint">{{ p.credentials.slice(0, 12) }}…</span></Td>
-            <Td><Badge>{{ p.priority }}</Badge></Td>
+            <Td
+              ><Badge>{{ p.priority }}</Badge></Td
+            >
             <Td>
               <TagList>
-                <Tag
-                  v-for="m in modelNames(p).slice(0, 3)"
-                  :key="m"
-                  variant="accent"
-                >{{ m }}</Tag>
-                <Tag
-                  v-if="modelNames(p).length > 3"
-                  variant="more"
-                >+{{ modelNames(p).length - 3 }}</Tag>
+                <Tag v-for="m in modelNames(p).slice(0, 3)" :key="m" variant="accent">{{ m }}</Tag>
+                <Tag v-if="modelNames(p).length > 3" variant="more"
+                  >+{{ modelNames(p).length - 3 }}</Tag
+                >
               </TagList>
             </Td>
             <Td actions>

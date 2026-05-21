@@ -93,7 +93,7 @@ const upstreamIndex = computed<Record<string, Upstream[]>>(() => {
       const entryEndpoints = entry.endpoints ?? []
       const expandedFromProvider = !entryEndpoints.length
       const endpointPaths = expandedFromProvider
-        ? providerEndpointMap.value[provider.id] ?? []
+        ? (providerEndpointMap.value[provider.id] ?? [])
         : entryEndpoints.filter((p) => routablePathSet.value.has(p))
       const upstream: Upstream = {
         providerId: provider.id,
@@ -157,11 +157,7 @@ function openUpstreams(m: ModelView) {
 }
 
 function openPricingMatch(m: ModelView) {
-  panel.open(
-    ModelPricingMatchPanel,
-    { model: m },
-    { key: `model-pricing-match:${m.name}` },
-  )
+  panel.open(ModelPricingMatchPanel, { model: m }, { key: `model-pricing-match:${m.name}` })
 }
 
 async function toggleDisabled(m: ModelView) {
@@ -175,11 +171,7 @@ async function toggleDisabled(m: ModelView) {
 }
 
 function openCreateFromOrphan(name: string) {
-  panel.open(
-    ModelForm,
-    { defaultName: name, lockedName: true },
-    { key: `model:new:${name}` },
-  )
+  panel.open(ModelForm, { defaultName: name, lockedName: true }, { key: `model:new:${name}` })
 }
 
 function confirmDelete(_event: Event, m: ModelView) {
@@ -216,11 +208,16 @@ function confirmDelete(_event: Event, m: ModelView) {
             </tr>
           </thead>
           <tbody>
-            <Tr v-for="m in sortedModels" :key="m.name" :selected="panel.isActive(`model:${m.name}`)" :class="m.disabled ? 'opacity-55' : ''">
+            <Tr
+              v-for="m in sortedModels"
+              :key="m.name"
+              :selected="panel.isActive(`model:${m.name}`)"
+              :class="m.disabled ? 'opacity-55' : ''"
+            >
               <Td>
-	                <span class="font-mono font-medium">{{ m.name }}</span>
-	                <span v-if="m.disabled" class="text-ink-faint ml-1.5">（已禁用）</span>
-	              </Td>
+                <span class="font-mono font-medium">{{ m.name }}</span>
+                <span v-if="m.disabled" class="text-ink-faint ml-1.5">（已禁用）</span>
+              </Td>
               <Td>
                 <template v-if="!m.pricing || !m.pricing.tiers || m.pricing.tiers.length === 0">
                   <div class="inline-flex items-center gap-2">
@@ -232,10 +229,20 @@ function confirmDelete(_event: Event, m: ModelView) {
                 </template>
                 <template v-else>
                   <span class="inline-flex items-baseline gap-1.5 text-xs">
-                    <MoneyDisplay :amount="m.pricing.tiers[0]?.input ?? null" :currency="m.pricing.currency" :max-digits="2" />
+                    <MoneyDisplay
+                      :amount="m.pricing.tiers[0]?.input ?? null"
+                      :currency="m.pricing.currency"
+                      :max-digits="2"
+                    />
                     <span class="text-ink-faint">/</span>
-                    <MoneyDisplay :amount="m.pricing.tiers[0]?.output ?? null" :currency="m.pricing.currency" :max-digits="2" />
-                    <Tag v-if="m.pricing.tiers.length > 1" variant="accent">+{{ m.pricing.tiers.length - 1 }}</Tag>
+                    <MoneyDisplay
+                      :amount="m.pricing.tiers[0]?.output ?? null"
+                      :currency="m.pricing.currency"
+                      :max-digits="2"
+                    />
+                    <Tag v-if="m.pricing.tiers.length > 1" variant="accent"
+                      >+{{ m.pricing.tiers.length - 1 }}</Tag
+                    >
                   </span>
                 </template>
               </Td>
@@ -243,11 +250,14 @@ function confirmDelete(_event: Event, m: ModelView) {
                 <span
                   v-if="(upstreamIndex[m.name]?.length ?? 0) > 0"
                   class="font-medium tabular-nums text-ink"
-                >{{ upstreamIndex[m.name]!.length }}</span>
+                  >{{ upstreamIndex[m.name]!.length }}</span
+                >
                 <span v-else class="text-ink-faint">—</span>
               </Td>
               <Td actions>
-                <div class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity">
+                <div
+                  class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity"
+                >
                   <IconButton
                     :title="m.disabled ? '启用模型' : '禁用模型'"
                     :aria-label="m.disabled ? '启用模型' : '禁用模型'"
@@ -302,11 +312,7 @@ function confirmDelete(_event: Event, m: ModelView) {
           class="flex items-center gap-1.5 text-left bg-transparent border-0 cursor-pointer p-0 text-xs font-medium text-ink-muted uppercase tracking-[0.03em]"
           @click="orphanExpanded = !orphanExpanded"
         >
-          <Icon
-            name="chevron-down"
-            :size="12"
-            :class="orphanExpanded ? '' : '-rotate-90'"
-          />
+          <Icon name="chevron-down" :size="12" :class="orphanExpanded ? '' : '-rotate-90'" />
           <span>未注册上游模型 ({{ orphanRows.length }})</span>
         </button>
         <DataCard v-if="orphanExpanded">

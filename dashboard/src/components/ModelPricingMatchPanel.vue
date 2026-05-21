@@ -154,9 +154,12 @@ async function save() {
                   :key="segmentIndex"
                   :class="[
                     segment.kind === 'insert' ? 'bg-ok-faint text-ok-ink px-0.5 rounded-xs' : '',
-                    segment.kind === 'delete' ? 'bg-err-faint text-err-ink line-through px-0.5 rounded-xs' : '',
+                    segment.kind === 'delete'
+                      ? 'bg-err-faint text-err-ink line-through px-0.5 rounded-xs'
+                      : '',
                   ]"
-                >{{ segment.text }}</span>
+                  >{{ segment.text }}</span
+                >
               </div>
             </Td>
             <Td>
@@ -172,7 +175,11 @@ async function save() {
     <template #footer>
       <Button variant="ghost" @click="emit('close')">取消</Button>
       <Button variant="ghost" :disabled="loading || saving" @click="load">
-        <Icon :name="loading ? 'loader' : 'refresh'" :size="13" :class="loading ? 'animate-spin' : ''" />
+        <Icon
+          :name="loading ? 'loader' : 'refresh'"
+          :size="13"
+          :class="loading ? 'animate-spin' : ''"
+        />
         <span>重新匹配</span>
       </Button>
       <Button :disabled="loading || saving || !selected" @click="save">

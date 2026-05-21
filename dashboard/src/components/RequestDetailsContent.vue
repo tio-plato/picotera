@@ -36,25 +36,24 @@ const providersMap = computed(() => {
   return m
 })
 
-const meta = computed(() => spans.value.find(s => s.id === s.spanId) ?? null)
-const upstreams = computed(() =>
-  spans.value.filter(s => s.id !== s.spanId),
-)
-const selected = computed(
-  () => spans.value.find(s => s.id === selectedId.value) ?? null,
-)
+const meta = computed(() => spans.value.find((s) => s.id === s.spanId) ?? null)
+const upstreams = computed(() => spans.value.filter((s) => s.id !== s.spanId))
+const selected = computed(() => spans.value.find((s) => s.id === selectedId.value) ?? null)
 
 function ensureSelectedRequest(sorted = spans.value) {
-  if (!selectedId.value || !sorted.find(s => s.id === selectedId.value)) {
-    const match = sorted.find(s => s.id === props.requestId)
+  if (!selectedId.value || !sorted.find((s) => s.id === selectedId.value)) {
+    const match = sorted.find((s) => s.id === props.requestId)
     selectedId.value = match?.id ?? sorted[0]?.id ?? ''
   }
 }
 
-watch(() => props.requestId, () => {
-  selectedId.value = ''
-  ensureSelectedRequest()
-})
+watch(
+  () => props.requestId,
+  () => {
+    selectedId.value = ''
+    ensureSelectedRequest()
+  },
+)
 watch(spans, (sorted) => ensureSelectedRequest(sorted), { immediate: true })
 
 function formatTime(iso: string | undefined) {
@@ -116,11 +115,16 @@ function typeLabel(t: number) {
 
 function statusLabel(s: number) {
   switch (s) {
-    case 0: return 'pending'
-    case 1: return 'header'
-    case 2: return 'completed'
-    case 3: return 'failed'
-    default: return String(s)
+    case 0:
+      return 'pending'
+    case 1:
+      return 'header'
+    case 2:
+      return 'completed'
+    case 3:
+      return 'failed'
+    default:
+      return String(s)
   }
 }
 
@@ -130,12 +134,9 @@ function selectRequest(requestId: string) {
   emit('selectedRequest', requestId)
 }
 
-
 type DetailTab = 'overview' | 'request' | 'response' | 'logs'
 const detailTab = ref<DetailTab>('overview')
-const isMeta = computed(
-  () => !!selected.value && selected.value.id === selected.value.spanId,
-)
+const isMeta = computed(() => !!selected.value && selected.value.id === selected.value.spanId)
 const detailTabs = computed(() => {
   const base: { value: DetailTab; label: string }[] = [
     { value: 'overview', label: '概览' },
@@ -148,8 +149,8 @@ const detailTabs = computed(() => {
 watch(selectedId, () => {
   detailTab.value = 'overview'
 })
-watch(detailTabs, tabs => {
-  if (!tabs.find(t => t.value === detailTab.value)) {
+watch(detailTabs, (tabs) => {
+  if (!tabs.find((t) => t.value === detailTab.value)) {
     detailTab.value = 'overview'
   }
 })
@@ -180,11 +181,18 @@ watch(detailTabs, tabs => {
             @click="selectRequest(meta.id)"
           >
             <div class="flex items-center justify-between gap-2">
-              <span class="text-2xs font-semibold text-accent-ink uppercase tracking-[0.04em]">meta</span>
+              <span class="text-2xs font-semibold text-accent-ink uppercase tracking-[0.04em]"
+                >meta</span
+              >
               <span
                 class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2]"
-                :class="requestState(meta) === 'pending' ? 'bg-surface-100 text-ink-muted border border-line-soft' : statusCodeClass(meta.statusCode)"
-              >{{ requestState(meta) === 'pending' ? '处理中' : meta.statusCode }}</span>
+                :class="
+                  requestState(meta) === 'pending'
+                    ? 'bg-surface-100 text-ink-muted border border-line-soft'
+                    : statusCodeClass(meta.statusCode)
+                "
+                >{{ requestState(meta) === 'pending' ? '处理中' : meta.statusCode }}</span
+              >
             </div>
             <div class="font-mono tabular-nums text-2xs text-ink-faint">
               {{ formatTimeSpent(meta.timeSpentMs) }}
@@ -204,11 +212,17 @@ watch(detailTabs, tabs => {
           >
             <div class="flex items-center justify-between gap-2">
               <span class="text-2xs font-semibold text-ink-muted uppercase tracking-[0.04em]">
-              {{ providerLabel(s.providerId) }}</span>
+                {{ providerLabel(s.providerId) }}</span
+              >
               <span
                 class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2]"
-                :class="requestState(s) === 'pending' ? 'bg-surface-100 text-ink-muted border border-line-soft' : statusCodeClass(s.statusCode)"
-              >{{ requestState(s) === 'pending' ? '处理中' : s.statusCode }}</span>
+                :class="
+                  requestState(s) === 'pending'
+                    ? 'bg-surface-100 text-ink-muted border border-line-soft'
+                    : statusCodeClass(s.statusCode)
+                "
+                >{{ requestState(s) === 'pending' ? '处理中' : s.statusCode }}</span
+              >
             </div>
             <div class="font-mono tabular-nums text-2xs text-ink-faint">
               {{ formatTimeSpent(s.timeSpentMs) }}
@@ -227,112 +241,154 @@ watch(detailTabs, tabs => {
           @update:model-value="(v: string | number) => (detailTab = v as DetailTab)"
         />
         <template v-if="detailTab === 'overview'">
-        <section class="flex flex-col gap-2.5">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">基本信息</span>
-          <div class="grid grid-cols-2 gap-2.5">
-            <Field label="ID" as="div" class="col-span-2">
-              <span class="font-mono text-xs text-ink break-all">{{ selected.id }}</span>
-            </Field>
-            <Field label="类型" as="div">
-              <Tag :variant="selected.type === 0 ? 'accent' : 'muted'">{{ typeLabel(selected.type) }}</Tag>
-            </Field>
-            <Field label="状态" as="div">
-              <Tag :variant="requestState(selected) === 'pending' ? 'muted' : statusVariantTag(selected.statusCode)">{{ statusLabel(selected.status) }}</Tag>
-            </Field>
-            <Field v-if="selected.spanId" label="Span" as="div">
-              <span class="font-mono text-xs text-ink break-all">{{ selected.spanId }}</span>
-            </Field>
-            <Field v-if="selected.parentSpanId" label="Parent Span" as="div">
-              <span class="font-mono text-xs text-ink break-all">{{ selected.parentSpanId }}</span>
-            </Field>
-            <Field v-if="selected.userMessagePreview" label="用户消息" as="div" class="col-span-2">
-              <span class="block truncate text-sm text-ink" :title="selected.userMessagePreview">
-                {{ selected.userMessagePreview }}
-              </span>
-            </Field>
-            <Field label="渠道" as="div">
-              <span class="font-mono text-sm">{{ providerLabel(selected.providerId) }}</span>
-            </Field>
-            <Field label="端点" as="div">
-              <span class="font-mono text-sm">{{ selected.endpointPath || '—' }}</span>
-            </Field>
-            <Field label="模型" as="div">
-              <span class="font-mono text-sm">{{ selected.model || '—' }}</span>
-            </Field>
-            <Field label="状态码" as="div">
-              <span
-                v-if="requestState(selected) === 'pending'"
-                class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-xs bg-surface-100 text-ink-muted border border-line-soft w-fit"
-              >处理中</span>
-              <span
-                v-else
-                class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-xs border border-transparent w-fit"
-                :class="statusCodeClass(selected.statusCode)"
-              >{{ selected.statusCode }}</span>
-            </Field>
-            <Field label="时间" as="div">
-              <span class="font-mono text-xs">{{ formatTime(selected.createdAt) }}</span>
-            </Field>
-          </div>
-        </section>
+          <section class="flex flex-col gap-2.5">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >基本信息</span
+            >
+            <div class="grid grid-cols-2 gap-2.5">
+              <Field label="ID" as="div" class="col-span-2">
+                <span class="font-mono text-xs text-ink break-all">{{ selected.id }}</span>
+              </Field>
+              <Field label="类型" as="div">
+                <Tag :variant="selected.type === 0 ? 'accent' : 'muted'">{{
+                  typeLabel(selected.type)
+                }}</Tag>
+              </Field>
+              <Field label="状态" as="div">
+                <Tag
+                  :variant="
+                    requestState(selected) === 'pending'
+                      ? 'muted'
+                      : statusVariantTag(selected.statusCode)
+                  "
+                  >{{ statusLabel(selected.status) }}</Tag
+                >
+              </Field>
+              <Field v-if="selected.spanId" label="Span" as="div">
+                <span class="font-mono text-xs text-ink break-all">{{ selected.spanId }}</span>
+              </Field>
+              <Field v-if="selected.parentSpanId" label="Parent Span" as="div">
+                <span class="font-mono text-xs text-ink break-all">{{
+                  selected.parentSpanId
+                }}</span>
+              </Field>
+              <Field
+                v-if="selected.userMessagePreview"
+                label="用户消息"
+                as="div"
+                class="col-span-2"
+              >
+                <span class="block truncate text-sm text-ink" :title="selected.userMessagePreview">
+                  {{ selected.userMessagePreview }}
+                </span>
+              </Field>
+              <Field label="渠道" as="div">
+                <span class="font-mono text-sm">{{ providerLabel(selected.providerId) }}</span>
+              </Field>
+              <Field label="端点" as="div">
+                <span class="font-mono text-sm">{{ selected.endpointPath || '—' }}</span>
+              </Field>
+              <Field label="模型" as="div">
+                <span class="font-mono text-sm">{{ selected.model || '—' }}</span>
+              </Field>
+              <Field label="状态码" as="div">
+                <span
+                  v-if="requestState(selected) === 'pending'"
+                  class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-xs bg-surface-100 text-ink-muted border border-line-soft w-fit"
+                  >处理中</span
+                >
+                <span
+                  v-else
+                  class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-xs border border-transparent w-fit"
+                  :class="statusCodeClass(selected.statusCode)"
+                  >{{ selected.statusCode }}</span
+                >
+              </Field>
+              <Field label="时间" as="div">
+                <span class="font-mono text-xs">{{ formatTime(selected.createdAt) }}</span>
+              </Field>
+            </div>
+          </section>
 
-        <section class="flex flex-col gap-2.5">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">性能</span>
-          <div class="grid grid-cols-2 gap-2.5">
-            <Field label="TTFT" as="div">
-              <span class="font-mono tabular-nums text-sm">{{ formatTimeSpent(selected.ttftMs) }}</span>
-            </Field>
-            <Field label="总耗时" as="div">
-              <span class="font-mono tabular-nums text-sm">{{ formatTimeSpent(selected.timeSpentMs) }}</span>
-            </Field>
-            <Field label="输出速度" as="div">
-              <span class="font-mono tabular-nums text-sm">{{ outputSpeed(selected) }}</span>
-            </Field>
-          </div>
-        </section>
+          <section class="flex flex-col gap-2.5">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >性能</span
+            >
+            <div class="grid grid-cols-2 gap-2.5">
+              <Field label="TTFT" as="div">
+                <span class="font-mono tabular-nums text-sm">{{
+                  formatTimeSpent(selected.ttftMs)
+                }}</span>
+              </Field>
+              <Field label="总耗时" as="div">
+                <span class="font-mono tabular-nums text-sm">{{
+                  formatTimeSpent(selected.timeSpentMs)
+                }}</span>
+              </Field>
+              <Field label="输出速度" as="div">
+                <span class="font-mono tabular-nums text-sm">{{ outputSpeed(selected) }}</span>
+              </Field>
+            </div>
+          </section>
 
-        <section class="flex flex-col gap-2.5">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">Token</span>
-          <div class="grid grid-cols-2 gap-2.5">
-            <Field label="输入" as="div">
-              <span class="font-mono tabular-nums text-sm">{{ fmtNum(selected.inputTokens) }}</span>
-            </Field>
-            <Field label="输出" as="div">
-              <span class="font-mono tabular-nums text-sm">{{ fmtNum(selected.outputTokens) }}</span>
-            </Field>
-            <Field label="缓存读取" as="div">
-              <span class="font-mono tabular-nums text-sm">{{ fmtNum(selected.cacheReadTokens) }}</span>
-            </Field>
-            <Field label="缓存写入" as="div">
-              <span class="font-mono tabular-nums text-sm">{{ fmtNum(selected.cacheWriteTokens) }}</span>
-            </Field>
-            <Field label="1h 缓存写入" as="div">
-              <span class="font-mono tabular-nums text-sm">{{ fmtNum(selected.cacheWrite1hTokens) }}</span>
-            </Field>
-          </div>
-        </section>
+          <section class="flex flex-col gap-2.5">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >Token</span
+            >
+            <div class="grid grid-cols-2 gap-2.5">
+              <Field label="输入" as="div">
+                <span class="font-mono tabular-nums text-sm">{{
+                  fmtNum(selected.inputTokens)
+                }}</span>
+              </Field>
+              <Field label="输出" as="div">
+                <span class="font-mono tabular-nums text-sm">{{
+                  fmtNum(selected.outputTokens)
+                }}</span>
+              </Field>
+              <Field label="缓存读取" as="div">
+                <span class="font-mono tabular-nums text-sm">{{
+                  fmtNum(selected.cacheReadTokens)
+                }}</span>
+              </Field>
+              <Field label="缓存写入" as="div">
+                <span class="font-mono tabular-nums text-sm">{{
+                  fmtNum(selected.cacheWriteTokens)
+                }}</span>
+              </Field>
+              <Field label="1h 缓存写入" as="div">
+                <span class="font-mono tabular-nums text-sm">{{
+                  fmtNum(selected.cacheWrite1hTokens)
+                }}</span>
+              </Field>
+            </div>
+          </section>
 
-        <section
-          v-if="selected.modelCost != null"
-          class="flex flex-col gap-2.5"
-        >
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">成本</span>
-          <div class="grid grid-cols-2 gap-2.5">
-            <Field label="模型价" as="div">
-              <span class="font-mono tabular-nums text-sm">
-                <MoneyDisplay
-                  :amount="selected.modelCost ?? null"
-                  :currency="selected.modelCostCurrency ?? ''"
-                />
-              </span>
-            </Field>
-          </div>
-        </section>
+          <section v-if="selected.modelCost != null" class="flex flex-col gap-2.5">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >成本</span
+            >
+            <div class="grid grid-cols-2 gap-2.5">
+              <Field label="模型价" as="div">
+                <span class="font-mono tabular-nums text-sm">
+                  <MoneyDisplay
+                    :amount="selected.modelCost ?? null"
+                    :currency="selected.modelCostCurrency ?? ''"
+                  />
+                </span>
+              </Field>
+            </div>
+          </section>
 
-        <section v-if="selected.errorMessage" class="flex flex-col gap-2.5">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">错误信息</span>
-          <pre class="font-mono text-xs whitespace-pre-wrap bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink">{{ selected.errorMessage }}</pre>
-        </section>
+          <section v-if="selected.errorMessage" class="flex flex-col gap-2.5">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >错误信息</span
+            >
+            <pre
+              class="font-mono text-xs whitespace-pre-wrap bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink"
+              >{{ selected.errorMessage }}</pre
+            >
+          </section>
         </template>
         <RawArtifactView
           v-else-if="detailTab === 'request'"
@@ -345,12 +401,8 @@ watch(detailTabs, tabs => {
           kind="response"
           :request-id="selected.id"
         />
-        <LogsArtifactView
-          v-else-if="detailTab === 'logs'"
-          :url="selected.responseArtifactUrl"
-        />
+        <LogsArtifactView v-else-if="detailTab === 'logs'" :url="selected.responseArtifactUrl" />
       </template>
     </template>
-
   </div>
 </template>

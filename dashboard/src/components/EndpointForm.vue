@@ -35,7 +35,10 @@ watch(
 )
 
 const endpointTypeOptions = computed(() => {
-  const entries = Object.entries(ENDPOINT_TYPE_LABELS).filter(([k]) => k !== 'unknown') as [EndpointType, string][]
+  const entries = Object.entries(ENDPOINT_TYPE_LABELS).filter(([k]) => k !== 'unknown') as [
+    EndpointType,
+    string,
+  ][]
   if (form.value.endpointType === 'unknown') entries.push(['unknown', ENDPOINT_TYPE_LABELS.unknown])
   return entries
 })
@@ -56,27 +59,36 @@ async function submit() {
 
 <template>
   <SidePanel
-    :title="isEdit ? (form.name || form.path || '端点') : '新增端点'"
+    :title="isEdit ? form.name || form.path || '端点' : '新增端点'"
     :kicker="isEdit ? '编辑端点' : '端点'"
     @close="emit('close')"
   >
     <form id="endpoint-form" class="flex flex-col gap-4" @submit.prevent="submit">
       <Field label="路径">
-        <Input v-model="form.path" required placeholder="例如 /api/v1/chat/completions" :disabled="isEdit" />
+        <Input
+          v-model="form.path"
+          required
+          placeholder="例如 /api/v1/chat/completions"
+          :disabled="isEdit"
+        />
       </Field>
       <Field label="名称">
         <Input v-model="form.name" required placeholder="例如 Chat Completions" />
       </Field>
       <Field label="类型">
         <Select v-model="form.endpointType">
-          <option v-for="[value, label] in endpointTypeOptions" :key="value" :value="value">{{ label }}</option>
+          <option v-for="[value, label] in endpointTypeOptions" :key="value" :value="value">
+            {{ label }}
+          </option>
         </Select>
       </Field>
       <Field label="模型字段路径">
         <Input
           v-model="form.modelPath"
           :disabled="isModelPathLocked"
-          :placeholder="isModelPathLocked ? 'Exa 搜索端点不解析模型' : '可选，留空表示该端点不解析模型'"
+          :placeholder="
+            isModelPathLocked ? 'Exa 搜索端点不解析模型' : '可选，留空表示该端点不解析模型'
+          "
         />
       </Field>
       <Field label="凭证解析">

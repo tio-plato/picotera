@@ -36,8 +36,12 @@ function replaceDetailUrl(nextRequestId: string) {
     <DataCard>
       <div class="flex items-start justify-between gap-3 px-4 py-3 border-b border-line">
         <div class="min-w-0 flex flex-col gap-1">
-          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">请求详情</span>
-          <span class="font-mono text-sm text-ink break-all">{{ displayRequestId || '参数错误' }}</span>
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+            >请求详情</span
+          >
+          <span class="font-mono text-sm text-ink break-all">{{
+            displayRequestId || '参数错误'
+          }}</span>
         </div>
         <Button variant="ghost" @click="backToRequests">
           <Icon name="arrow-left" :size="14" />

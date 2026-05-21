@@ -1,11 +1,30 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { EditorState, Compartment } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  drawSelection,
+} from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { bracketMatching, defaultHighlightStyle, foldGutter, foldKeymap, indentOnInput, syntaxHighlighting } from '@codemirror/language'
+import {
+  bracketMatching,
+  defaultHighlightStyle,
+  foldGutter,
+  foldKeymap,
+  indentOnInput,
+  syntaxHighlighting,
+} from '@codemirror/language'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+} from '@codemirror/autocomplete'
 import { javascript } from '@codemirror/lang-javascript'
 import { oneDark } from '@codemirror/theme-one-dark'
 
@@ -45,8 +64,7 @@ const baseTheme = EditorView.theme({
     boxShadow: '0 0 0 3px color-mix(in oklch, var(--color-accent) 20%, transparent)',
   },
   '.cm-scroller': {
-    fontFamily:
-      'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
     lineHeight: '1.55',
   },
   '.cm-gutters': {
@@ -56,7 +74,9 @@ const baseTheme = EditorView.theme({
     borderRight: '1px solid var(--color-line)',
   },
   '.cm-activeLine': { backgroundColor: 'color-mix(in oklch, var(--color-accent) 6%, transparent)' },
-  '.cm-activeLineGutter': { backgroundColor: 'color-mix(in oklch, var(--color-accent) 8%, transparent)' },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'color-mix(in oklch, var(--color-accent) 8%, transparent)',
+  },
   '.cm-selectionBackground, ::selection': {
     backgroundColor: 'color-mix(in oklch, var(--color-accent) 25%, transparent) !important',
   },
@@ -64,7 +84,9 @@ const baseTheme = EditorView.theme({
 })
 
 function themeExt() {
-  return isDark() ? [oneDark, baseTheme] : [baseTheme, syntaxHighlighting(defaultHighlightStyle, { fallback: true })]
+  return isDark()
+    ? [oneDark, baseTheme]
+    : [baseTheme, syntaxHighlighting(defaultHighlightStyle, { fallback: true })]
 }
 
 function createState(value: string) {
@@ -112,7 +134,10 @@ onMounted(() => {
   themeObserver = new MutationObserver(() => {
     view?.dispatch({ effects: themeComp.reconfigure(themeExt()) })
   })
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  })
 })
 
 onBeforeUnmount(() => {

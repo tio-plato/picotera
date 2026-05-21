@@ -48,15 +48,7 @@ const fmt = (v: number) => (props.valueFormat ? props.valueFormat(v) : String(v)
 
 function escape(s: string) {
   return s.replace(/[&<>"']/g, (c) =>
-    c === '&'
-      ? '&amp;'
-      : c === '<'
-        ? '&lt;'
-        : c === '>'
-          ? '&gt;'
-          : c === '"'
-            ? '&quot;'
-            : '&#39;',
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   )
 }
 
@@ -83,12 +75,7 @@ const tooltipTriggers = computed(() => ({
 <template>
   <div>
     <VisSingleContainer :data="graphData" :height="288">
-      <VisSankey
-        :node-color="nodeColor"
-        :label="nodeLabel"
-        :node-padding="14"
-        :node-width="14"
-      />
+      <VisSankey :node-color="nodeColor" :label="nodeLabel" :node-padding="14" :node-width="14" />
       <VisTooltip :triggers="tooltipTriggers" />
     </VisSingleContainer>
   </div>

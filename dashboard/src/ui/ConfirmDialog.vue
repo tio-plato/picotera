@@ -25,7 +25,9 @@ function reject() {
       class="fixed inset-0 z-[9999] flex items-center justify-center bg-overlay-bg"
       @click.self="reject"
     >
-      <div class="min-w-80 max-w-[420px] px-6 py-5 bg-surface-0 border border-line rounded-xl shadow-lg">
+      <div
+        class="min-w-80 max-w-[420px] px-6 py-5 bg-surface-0 border border-line rounded-xl shadow-lg"
+      >
         <p class="m-0 mb-4 text-sm leading-[1.5] text-ink">{{ confirmState.message }}</p>
         <div class="flex justify-end gap-2">
           <Button variant="ghost" @click="reject">取消</Button>

@@ -24,9 +24,7 @@ const props = defineProps<{
 
 const total = computed(() => props.data.reduce((acc, d) => acc + (d.value ?? 0), 0))
 
-const colored = computed(() =>
-  props.data.map((d, i) => ({ ...d, _color: groupColor(i) })),
-)
+const colored = computed(() => props.data.map((d, i) => ({ ...d, _color: groupColor(i) })))
 
 const value = (d: DonutDatum) => d.value
 const colorFn = (d: DonutDatum & { _color: string }) => d._color
@@ -45,15 +43,7 @@ const tooltipTriggers = computed(() => ({
 
 function escape(s: string) {
   return s.replace(/[&<>"']/g, (c) =>
-    c === '&'
-      ? '&amp;'
-      : c === '<'
-        ? '&lt;'
-        : c === '>'
-          ? '&gt;'
-          : c === '"'
-            ? '&quot;'
-            : '&#39;',
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   )
 }
 </script>
@@ -77,10 +67,7 @@ function escape(s: string) {
     </div>
     <ul class="flex flex-wrap gap-1">
       <li v-for="d in colored" :key="d.key" class="flex items-center gap-1">
-        <span
-          class="h-2 w-2 shrink-0 rounded-xs"
-          :style="{ background: d._color }"
-        />
+        <span class="h-2 w-2 shrink-0 rounded-xs" :style="{ background: d._color }" />
         <Tag variant="default">{{ d.label }}</Tag>
         <span class="mono tabular text-ink-muted text-2xs">
           {{ valueFormat ? valueFormat(d.value, d) : d.value }}

@@ -11,17 +11,7 @@ import {
   updateProviderModels,
 } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
-import {
-  SidePanel,
-  Button,
-  IconButton,
-  Input,
-  Field,
-  StateText,
-  Tag,
-  TagList,
-  Icon,
-} from '@/ui'
+import { SidePanel, Button, IconButton, Input, Field, StateText, Tag, TagList, Icon } from '@/ui'
 
 type Row = {
   uid: number
@@ -46,7 +36,9 @@ const newModelName = ref('')
 const fetching = ref(false)
 type MissingRow = { uid: number; modelName: string; upstreamModelName: string }
 
-const fetchSummary = ref<{ added: number; missing: MissingRow[]; removedHint: string[] } | null>(null)
+const fetchSummary = ref<{ added: number; missing: MissingRow[]; removedHint: string[] } | null>(
+  null,
+)
 const pendingDeletions = ref<Record<number, boolean>>({})
 
 let nextUid = 0
@@ -62,7 +54,10 @@ type ComparableModel = {
 
 const queries = useQueries({
   queries: computed(() => [
-    { queryKey: queryKeys.providers.detail(props.providerId), queryFn: () => getProvider(props.providerId) },
+    {
+      queryKey: queryKeys.providers.detail(props.providerId),
+      queryFn: () => getProvider(props.providerId),
+    },
     {
       queryKey: queryKeys.providerEndpoints.list({ providerId: props.providerId }),
       queryFn: () => listProviderEndpoints(props.providerId),
@@ -124,9 +119,7 @@ function pairKey(model: string, upstream: string): string {
 }
 
 function normalizeAnnotations(value: Record<string, string> | undefined): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(value ?? {}).sort(([a], [b]) => a.localeCompare(b)),
-  )
+  return Object.fromEntries(Object.entries(value ?? {}).sort(([a], [b]) => a.localeCompare(b)))
 }
 
 function comparableRow(row: Row): ComparableModel {
@@ -196,7 +189,9 @@ const localModelSignature = computed(() =>
 )
 const serverModelSignature = computed(() =>
   modelSignatureFromComparable(
-    ((provider.value?.providerModels ?? []) as ProviderModelEntry[]).map((entry) => comparableEntry(entry)),
+    ((provider.value?.providerModels ?? []) as ProviderModelEntry[]).map((entry) =>
+      comparableEntry(entry),
+    ),
   ),
 )
 const hasUnsavedRows = computed(() => localModelSignature.value !== serverModelSignature.value)
@@ -255,7 +250,11 @@ function removeRow(uid: number) {
 
 function onLocalModelNameChange(row: Row, newName: string | number) {
   const trimmed = String(newName).trim()
-  if (row.upstreamModelName.trim() === '' && row.modelName.trim() !== '' && trimmed !== row.modelName) {
+  if (
+    row.upstreamModelName.trim() === '' &&
+    row.modelName.trim() !== '' &&
+    trimmed !== row.modelName
+  ) {
     row.upstreamModelName = row.modelName
   }
   row.modelName = trimmed
@@ -377,11 +376,7 @@ async function save() {
 </script>
 
 <template>
-  <SidePanel
-    :title="providerName"
-    kicker="模型"
-    @close="emit('close')"
-  >
+  <SidePanel :title="providerName" kicker="模型" @close="emit('close')">
     <section v-if="loading" class="flex flex-col gap-2">
       <StateText compact>加载中…</StateText>
     </section>
@@ -389,15 +384,17 @@ async function save() {
     <template v-else>
       <section class="flex flex-col gap-2">
         <div class="flex items-baseline justify-between">
-          <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">从上游拉取</span>
+          <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >从上游拉取</span
+          >
         </div>
         <div class="flex items-center gap-2">
-          <Button
-            size="sm"
-            :disabled="fetching || !hasModelsEndpoint"
-            @click="fetchFromUpstream"
-          >
-            <Icon :name="fetching ? 'loader' : 'cloud-download'" :size="13" :class="fetching ? 'animate-spin' : ''" />
+          <Button size="sm" :disabled="fetching || !hasModelsEndpoint" @click="fetchFromUpstream">
+            <Icon
+              :name="fetching ? 'loader' : 'cloud-download'"
+              :size="13"
+              :class="fetching ? 'animate-spin' : ''"
+            />
             <span>{{ fetching ? '拉取中…' : '拉取' }}</span>
           </Button>
           <span v-if="!hasModelsEndpoint" class="text-xs text-ink-faint">
@@ -410,12 +407,16 @@ async function save() {
           class="flex flex-col gap-2 px-2.5 py-2 border border-line rounded-md bg-surface-50"
         >
           <div class="text-xs text-ink">
-            新增 {{ fetchSummary.added }} 项<span v-if="fetchSummary.missing.length">，本地有但上游缺失 {{ fetchSummary.missing.length }} 项</span>
+            新增 {{ fetchSummary.added }} 项<span v-if="fetchSummary.missing.length"
+              >，本地有但上游缺失 {{ fetchSummary.missing.length }} 项</span
+            >
           </div>
           <div v-if="fetchSummary.missing.length" class="flex flex-col gap-1.5">
             <div class="flex items-center justify-between">
               <div class="text-2xs text-ink-muted">勾选要删除的模型：</div>
-              <label class="inline-flex items-center gap-1.5 text-2xs text-ink-muted cursor-pointer">
+              <label
+                class="inline-flex items-center gap-1.5 text-2xs text-ink-muted cursor-pointer"
+              >
                 <input
                   type="checkbox"
                   class="cursor-pointer"
@@ -437,7 +438,10 @@ async function save() {
                   type="checkbox"
                   class="cursor-pointer"
                 />
-                <label :for="`del-${row.uid}`" class="font-mono text-ink cursor-pointer">{{ row.modelName }}<span v-if="row.upstreamModelName"> → {{ row.upstreamModelName }}</span></label>
+                <label :for="`del-${row.uid}`" class="font-mono text-ink cursor-pointer"
+                  >{{ row.modelName
+                  }}<span v-if="row.upstreamModelName"> → {{ row.upstreamModelName }}</span></label
+                >
               </li>
             </ul>
             <div class="flex gap-2 justify-end">
@@ -453,7 +457,9 @@ async function save() {
 
       <section class="flex flex-col gap-2">
         <div class="flex items-baseline justify-between">
-          <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]">模型列表</span>
+          <span class="text-xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >模型列表</span
+          >
           <span class="text-xs text-ink-faint tabular-nums">{{ modelCount }}</span>
         </div>
         <form class="flex gap-2" @submit.prevent="addModel">
@@ -492,13 +498,24 @@ async function save() {
                 class="flex-1 min-w-0 flex items-center gap-1.5 text-left bg-transparent border-0 cursor-pointer p-0"
                 @click="row.expanded = !row.expanded"
               >
-                <Icon :name="row.expanded ? 'chevron-down' : 'chevron-down'" :size="12" :class="row.expanded ? '' : '-rotate-90'" />
-                <span class="font-mono text-sm text-ink overflow-hidden text-ellipsis whitespace-nowrap">{{ row.modelName }}</span>
+                <Icon
+                  :name="row.expanded ? 'chevron-down' : 'chevron-down'"
+                  :size="12"
+                  :class="row.expanded ? '' : '-rotate-90'"
+                />
+                <span
+                  class="font-mono text-sm text-ink overflow-hidden text-ellipsis whitespace-nowrap"
+                  >{{ row.modelName }}</span
+                >
               </button>
               <TagList v-if="!row.expanded">
-                <Tag v-if="row.upstreamModelName" variant="accent">→ {{ row.upstreamModelName }}</Tag>
+                <Tag v-if="row.upstreamModelName" variant="accent"
+                  >→ {{ row.upstreamModelName }}</Tag
+                >
                 <Tag v-if="row.priority" variant="more">P{{ row.priority }}</Tag>
-                <Tag v-if="row.endpoints.length" variant="more">{{ row.endpoints.length }} 端点</Tag>
+                <Tag v-if="row.endpoints.length" variant="more"
+                  >{{ row.endpoints.length }} 端点</Tag
+                >
                 <Tag v-if="row.disabled" variant="muted">已禁用</Tag>
               </TagList>
               <IconButton
@@ -519,10 +536,18 @@ async function save() {
             </div>
             <div v-if="row.expanded" class="flex flex-col gap-3 pl-4">
               <Field label="本地模型名">
-                <Input :model-value="row.modelName" size="sm" @update:model-value="onLocalModelNameChange(row, $event)" />
+                <Input
+                  :model-value="row.modelName"
+                  size="sm"
+                  @update:model-value="onLocalModelNameChange(row, $event)"
+                />
               </Field>
               <Field label="上游模型名（可选）">
-                <Input v-model="row.upstreamModelName" size="sm" placeholder="保留为空 = 与本地名一致" />
+                <Input
+                  v-model="row.upstreamModelName"
+                  size="sm"
+                  placeholder="保留为空 = 与本地名一致"
+                />
               </Field>
               <Field label="优先级">
                 <Input v-model.number="row.priority" type="number" size="sm" />
@@ -544,7 +569,11 @@ async function save() {
                       :checked="row.endpoints.includes(path)"
                       @change="toggleEndpoint(row, path)"
                     />
-                    <label :for="`ep-${row.uid}-${path}`" class="font-mono text-ink cursor-pointer">{{ path }}</label>
+                    <label
+                      :for="`ep-${row.uid}-${path}`"
+                      class="font-mono text-ink cursor-pointer"
+                      >{{ path }}</label
+                    >
                   </li>
                 </ul>
               </Field>

@@ -7,7 +7,9 @@ defineProps<{ selected?: boolean; hoverable?: boolean }>()
     class="group transition-colors"
     :class="[
       hoverable !== false ? 'hover:bg-surface-50' : '',
-      selected ? 'bg-surface-50 shadow-[inset_2px_0_0_var(--color-accent)] hover:bg-surface-100' : '',
+      selected
+        ? 'bg-surface-50 shadow-[inset_2px_0_0_var(--color-accent)] hover:bg-surface-100'
+        : '',
     ]"
   >
     <slot />

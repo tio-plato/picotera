@@ -43,7 +43,7 @@ async function submit() {
 
 <template>
   <SidePanel
-    :title="isEdit ? (form.name || '脚本') : '新增脚本'"
+    :title="isEdit ? form.name || '脚本' : '新增脚本'"
     :kicker="isEdit ? '编辑脚本' : '脚本'"
     @close="emit('close')"
   >
@@ -61,7 +61,12 @@ async function submit() {
         </label>
       </Field>
       <Field label="源代码">
-        <CodeEditor v-model="form.source" language="javascript" min-height="400px" max-height="70vh" />
+        <CodeEditor
+          v-model="form.source"
+          language="javascript"
+          min-height="400px"
+          max-height="70vh"
+        />
       </Field>
     </form>
 

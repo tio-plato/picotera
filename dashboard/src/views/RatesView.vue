@@ -5,18 +5,7 @@ import { useSidePanel } from '@/composables/useSidePanel'
 import { useExchangeRates } from '@/composables/useExchangeRates'
 import type { ExchangeRateView } from '@/api'
 import RateForm from '@/components/RateForm.vue'
-import {
-  Button,
-  IconButton,
-  DataCard,
-  DataTable,
-  Th,
-  Td,
-  Tr,
-  StateText,
-  Tag,
-  Icon,
-} from '@/ui'
+import { Button, IconButton, DataCard, DataTable, Th, Td, Tr, StateText, Tag, Icon } from '@/ui'
 
 const panel = useSidePanel()
 const confirm = useConfirm()
@@ -76,7 +65,9 @@ function confirmDelete(_event: Event, r: ExchangeRateView) {
               <Tag v-if="r.code === 'USD'" variant="muted" class="ml-1.5">基准</Tag>
             </Td>
             <Td>{{ r.name }}</Td>
-            <Td><span class="font-mono">{{ r.symbol }}</span></Td>
+            <Td
+              ><span class="font-mono">{{ r.symbol }}</span></Td
+            >
             <Td>
               <span class="tabular-nums">{{ r.unitsPerUsd }}</span>
             </Td>

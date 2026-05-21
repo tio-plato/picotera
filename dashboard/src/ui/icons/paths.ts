@@ -114,5 +114,5 @@ export const iconComponents: Record<IconName, Component> = {
   folder: IconFolder,
   bolt: IconBolt,
   'cloud-fog': IconCloudFog,
-  'geometry': IconGeometry
+  geometry: IconGeometry,
 }

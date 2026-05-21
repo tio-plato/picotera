@@ -7,18 +7,7 @@ import type { ProjectView } from '@/api'
 import { deleteProject, invalidateProjects, listProjects } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import ProjectForm from '@/components/ProjectForm.vue'
-import {
-  Button,
-  IconButton,
-  DataCard,
-  DataTable,
-  Th,
-  Td,
-  Tr,
-  StateText,
-  Tag,
-  Icon,
-} from '@/ui'
+import { Button, IconButton, DataCard, DataTable, Th, Td, Tr, StateText, Tag, Icon } from '@/ui'
 
 const panel = useSidePanel()
 const confirm = useConfirm()
@@ -86,11 +75,7 @@ function fmtTimestamp(ts?: string): string {
           </tr>
         </thead>
         <tbody>
-          <Tr
-            v-for="p in projects"
-            :key="p.id"
-            :selected="panel.isActive(`project:${p.id}`)"
-          >
+          <Tr v-for="p in projects" :key="p.id" :selected="panel.isActive(`project:${p.id}`)">
             <Td>
               <span class="font-medium">{{ p.name }}</span>
               <Tag v-if="!(p.paths?.length ?? 0)" variant="muted" class="ml-1.5">无路径</Tag>
@@ -99,10 +84,14 @@ function fmtTimestamp(ts?: string): string {
               <span class="tabular-nums text-ink-muted">{{ p.paths?.length ?? 0 }}</span>
             </Td>
             <Td>
-              <span class="text-2xs text-ink-muted tabular-nums">{{ fmtTimestamp(p.firstSeenAt) }}</span>
+              <span class="text-2xs text-ink-muted tabular-nums">{{
+                fmtTimestamp(p.firstSeenAt)
+              }}</span>
             </Td>
             <Td>
-              <span class="text-2xs text-ink-muted tabular-nums">{{ fmtTimestamp(p.lastSeenAt) }}</span>
+              <span class="text-2xs text-ink-muted tabular-nums">{{
+                fmtTimestamp(p.lastSeenAt)
+              }}</span>
             </Td>
             <Td actions>
               <div class="inline-flex gap-1 opacity-55 group-hover:opacity-100 transition-opacity">
