@@ -19,16 +19,19 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+const webSearchMaxRounds = 10
+
 // webSearchContext tracks the per-request state needed to emulate
 // Anthropic-native web search using Exa when the chosen upstream does not
 // natively support web search. It is created by the unified gateway after the
 // outbound rewrite fires and consumed by both the non-stream and SSE response
 // transformers.
 type webSearchContext struct {
-	active        bool
-	apiKeyToken   string
-	metaID        string
-	metaCreatedAt time.Time
+	active              bool
+	apiKeyToken         string
+	metaID              string
+	metaCreatedAt       time.Time
+	originalRequestBody []byte // pre-rewrite client body for sub-call construction
 }
 
 // hasWebSearchTool reports whether the Anthropic Messages body declares an

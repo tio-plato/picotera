@@ -41,6 +41,21 @@ type webSearchSSETransformer struct {
 	idxOffset      int64
 	webSearchCalls int
 	otherToolCalls int
+
+	holdPauseTurn       bool
+	outerContentBlocks  []json.RawMessage
+	blockBuilders       map[int64]*streamingBlock
+	outerUsage          map[string]any
+	pendingMessageDelta []byte
+	pendingMessageStop  []byte
+}
+
+// streamingBlock accumulates incremental content for one output-index block.
+type streamingBlock struct {
+	blockType string
+	raw       json.RawMessage // content_block_start payload
+	textBuf   strings.Builder
+	inputBuf  strings.Builder
 }
 
 type sseState int
@@ -50,15 +65,18 @@ const (
 	sseBuffering
 )
 
-func newWebSearchSSETransformer(ctx context.Context, upstream io.ReadCloser, wsCtx *webSearchContext, h *gatewayHandler) io.ReadCloser {
+func newWebSearchSSETransformer(ctx context.Context, upstream io.ReadCloser, wsCtx *webSearchContext, h *gatewayHandler, holdPauseTurn bool) *webSearchSSETransformer {
 	pr, pw := io.Pipe()
 	t := &webSearchSSETransformer{
-		upstream: upstream,
-		pr:       pr,
-		pw:       pw,
-		ctx:      ctx,
-		wsCtx:    wsCtx,
-		h:        h,
+		upstream:      upstream,
+		pr:            pr,
+		pw:            pw,
+		ctx:           ctx,
+		wsCtx:         wsCtx,
+		h:             h,
+		holdPauseTurn: holdPauseTurn,
+		blockBuilders: make(map[int64]*streamingBlock),
+		outerUsage:    make(map[string]any),
 	}
 	go t.run()
 	return t
@@ -98,11 +116,6 @@ func (t *webSearchSSETransformer) feedChunk(chunk []byte) {
 	}
 }
 
-// handleEvent dispatches one fully-buffered SSE frame. The frame's raw bytes
-// (`event: …\n data: …`) are split into the event name and the data payload;
-// dispatch is keyed off the data payload's `type` (Anthropic puts the
-// canonical event type there, which matches the SSE event: header for native
-// streams but is the authoritative field).
 func (t *webSearchSSETransformer) handleEvent(evt []byte) {
 	eventName, dataPayload := parseSSEFrame(evt)
 	if dataPayload == "" {
@@ -120,8 +133,6 @@ func (t *webSearchSSETransformer) handleEvent(evt []byte) {
 		switch eventType {
 		case "content_block_delta":
 			if parsed.Get("index").Int() != t.bufUpstreamIdx {
-				// Out-of-order event for a different block — keep buffering
-				// the current one and forward this one (after offset).
 				t.writeAdjusted(eventName, parsed)
 				return
 			}
@@ -151,8 +162,20 @@ func (t *webSearchSSETransformer) handleEvent(evt []byte) {
 				t.otherToolCalls++
 			}
 			t.writeAdjusted(eventName, parsed)
+			t.onContentBlockStart(parsed)
+		case "content_block_delta":
+			t.writeAdjusted(eventName, parsed)
+			t.onContentBlockDelta(parsed)
+		case "content_block_stop":
+			t.writeAdjusted(eventName, parsed)
+			t.onContentBlockStop(parsed)
+		case "message_start":
+			t.writeAdjusted(eventName, parsed)
+			t.onMessageStart(parsed)
 		case "message_delta":
 			t.writeMessageDelta(eventName, parsed)
+		case "message_stop":
+			t.onMessageStop(eventName, evt)
 		default:
 			t.writeAdjusted(eventName, parsed)
 		}
@@ -177,9 +200,6 @@ func (t *webSearchSSETransformer) beginBuffering(parsed gjson.Result) {
 	}
 }
 
-// flushBufferedWebSearch emits the server_tool_use + web_search_tool_result
-// pair that replaces the buffered upstream tool_use(web_search) block. The
-// Exa call is synchronous and happens between the two start/stop pairs.
 func (t *webSearchSSETransformer) flushBufferedWebSearch() {
 	t.webSearchCalls++
 	outIdxServer := t.bufUpstreamIdx + t.idxOffset
@@ -195,10 +215,6 @@ func (t *webSearchSSETransformer) flushBufferedWebSearch() {
 		inputObj = map[string]any{}
 	}
 
-	// 1) content_block_start for server_tool_use carrying the full input
-	// inline. Streaming the input via input_json_delta is unsafe here because
-	// downstream aggregators only accumulate partial_json for tool_use, not
-	// server_tool_use, and would lose the payload.
 	startBlock := map[string]any{
 		"type":  "server_tool_use",
 		"id":    t.bufServerToolUseID,
@@ -210,14 +226,14 @@ func (t *webSearchSSETransformer) flushBufferedWebSearch() {
 		"index":         outIdxServer,
 		"content_block": startBlock,
 	})
-
-	// 2) content_block_stop for server_tool_use.
 	t.writeEvent("content_block_stop", map[string]any{
 		"type":  "content_block_stop",
 		"index": outIdxServer,
 	})
 
-	// 3) Exa call.
+	serverToolUseBlock, _ := json.Marshal(startBlock)
+	t.recordBlock(outIdxServer, serverToolUseBlock)
+
 	var resultBlock map[string]any
 	if exaResp, err := t.h.callExa(t.ctx, json.RawMessage(inputJSON), t.wsCtx); err != nil {
 		resultBlock = rawMessageToMap(buildWebSearchToolResultError(t.bufServerToolUseID, "unavailable"))
@@ -225,25 +241,196 @@ func (t *webSearchSSETransformer) flushBufferedWebSearch() {
 		resultBlock = rawMessageToMap(buildWebSearchToolResult(t.bufServerToolUseID, exaResp))
 	}
 
-	// 4) content_block_start for web_search_tool_result (carries full content).
 	t.writeEvent("content_block_start", map[string]any{
 		"type":          "content_block_start",
 		"index":         outIdxResult,
 		"content_block": resultBlock,
 	})
-	// 5) content_block_stop.
 	t.writeEvent("content_block_stop", map[string]any{
 		"type":  "content_block_stop",
 		"index": outIdxResult,
 	})
 
+	resultBlockBytes, _ := json.Marshal(resultBlock)
+	t.recordBlock(outIdxResult, resultBlockBytes)
+
 	t.idxOffset++
 	t.state = ssePassthrough
 }
 
-// writeAdjusted emits the upstream event after applying the running index
-// offset to any `index` field. Bytes-level reuse is impossible because the
-// JSON payload changes shape; we re-marshal from the parsed gjson result.
+// --- Content block accumulation for Snapshot ---
+
+func (t *webSearchSSETransformer) onMessageStart(parsed gjson.Result) {
+	usage := parsed.Get("message.usage")
+	if usage.Exists() {
+		t.accumulateUsage(usage)
+	}
+}
+
+func (t *webSearchSSETransformer) onContentBlockStart(parsed gjson.Result) {
+	outIdx := parsed.Get("index").Int() + t.idxOffset
+	cb := parsed.Get("content_block")
+	bt := cb.Get("type").Str
+	t.blockBuilders[outIdx] = &streamingBlock{
+		blockType: bt,
+		raw:       json.RawMessage(cb.Raw),
+	}
+}
+
+func (t *webSearchSSETransformer) onContentBlockDelta(parsed gjson.Result) {
+	outIdx := parsed.Get("index").Int() + t.idxOffset
+	b, ok := t.blockBuilders[outIdx]
+	if !ok {
+		return
+	}
+	delta := parsed.Get("delta")
+	switch delta.Get("type").Str {
+	case "text_delta":
+		b.textBuf.WriteString(delta.Get("text").Str)
+	case "input_json_delta":
+		b.inputBuf.WriteString(delta.Get("partial_json").Str)
+	}
+}
+
+func (t *webSearchSSETransformer) onContentBlockStop(parsed gjson.Result) {
+	outIdx := parsed.Get("index").Int() + t.idxOffset
+	b, ok := t.blockBuilders[outIdx]
+	if !ok {
+		return
+	}
+	delete(t.blockBuilders, outIdx)
+
+	var block json.RawMessage
+	switch b.blockType {
+	case "text":
+		var m map[string]json.RawMessage
+		_ = json.Unmarshal(b.raw, &m)
+		if m == nil {
+			m = map[string]json.RawMessage{"type": json.RawMessage(`"text"`)}
+		}
+		text := b.textBuf.String()
+		encoded, _ := json.Marshal(text)
+		m["text"] = encoded
+		block, _ = json.Marshal(m)
+	case "tool_use":
+		var m map[string]json.RawMessage
+		_ = json.Unmarshal(b.raw, &m)
+		if m == nil {
+			m = map[string]json.RawMessage{"type": json.RawMessage(`"tool_use"`)}
+		}
+		inputStr := b.inputBuf.String()
+		if inputStr == "" {
+			m["input"] = json.RawMessage(`{}`)
+		} else {
+			if json.Valid([]byte(inputStr)) {
+				m["input"] = json.RawMessage(inputStr)
+			} else {
+				m["input"] = json.RawMessage(`{}`)
+			}
+		}
+		block, _ = json.Marshal(m)
+	default:
+		block = b.raw
+	}
+	t.recordBlock(outIdx, block)
+}
+
+func (t *webSearchSSETransformer) recordBlock(outIdx int64, block json.RawMessage) {
+	for int64(len(t.outerContentBlocks)) <= outIdx {
+		t.outerContentBlocks = append(t.outerContentBlocks, nil)
+	}
+	t.outerContentBlocks[outIdx] = block
+}
+
+func (t *webSearchSSETransformer) accumulateUsage(usage gjson.Result) {
+	usage.ForEach(func(key, val gjson.Result) bool {
+		k := key.Str
+		if val.Type == gjson.JSON {
+			sub, ok := t.outerUsage[k].(map[string]any)
+			if !ok {
+				sub = make(map[string]any)
+				t.outerUsage[k] = sub
+			}
+			val.ForEach(func(sk, sv gjson.Result) bool {
+				if sv.Type == gjson.Number {
+					existing, _ := sub[sk.Str]
+					sub[sk.Str] = toFloat64(existing) + sv.Float()
+				}
+				return true
+			})
+		} else if val.Type == gjson.Number {
+			existing, _ := t.outerUsage[k]
+			t.outerUsage[k] = toFloat64(existing) + val.Float()
+		}
+		return true
+	})
+}
+
+// --- message_delta / message_stop handling ---
+
+func (t *webSearchSSETransformer) writeMessageDelta(eventName string, parsed gjson.Result) {
+	deltaUsage := parsed.Get("delta.usage")
+	if deltaUsage.Exists() {
+		t.accumulateUsage(deltaUsage)
+	}
+
+	payload := parsed.Raw
+	stopReason := parsed.Get("delta.stop_reason").Str
+
+	if stopReason == "tool_use" && t.webSearchCalls > 0 && t.otherToolCalls == 0 {
+		if t.holdPauseTurn {
+			rewritten, err := setJSONField(payload, "delta.stop_reason", "pause_turn")
+			if err == nil {
+				payload = rewritten
+			}
+			t.pendingMessageDelta = []byte("event: " + eventName + "\ndata: " + payload + "\n\n")
+			return
+		}
+		updated, err := setJSONField(payload, "delta.stop_reason", "pause_turn")
+		if err == nil {
+			payload = updated
+		}
+	}
+	t.writeRawEvent(eventName, []byte(payload))
+}
+
+func (t *webSearchSSETransformer) onMessageStop(eventName string, evt []byte) {
+	if t.pendingMessageDelta != nil {
+		t.pendingMessageStop = append(evt, '\n', '\n')
+		return
+	}
+	t.writeRaw(evt)
+}
+
+// --- Public methods for loop driver ---
+
+// HasPendingPauseTurn reports whether this transformer ended with a pending
+// pause_turn that was withheld from the pipe (holdPauseTurn == true path).
+func (t *webSearchSSETransformer) HasPendingPauseTurn() bool {
+	return t.pendingMessageDelta != nil
+}
+
+// Snapshot returns the accumulated content blocks and usage from this
+// transformer's output. Used by the loop driver to construct the next
+// sub-request body.
+func (t *webSearchSSETransformer) Snapshot() ([]json.RawMessage, map[string]any) {
+	blocks := make([]json.RawMessage, 0, len(t.outerContentBlocks))
+	for _, b := range t.outerContentBlocks {
+		if b != nil {
+			blocks = append(blocks, b)
+		}
+	}
+	return blocks, t.outerUsage
+}
+
+// PendingFrames returns the withheld message_delta and message_stop SSE frame
+// bytes. Used by the loop driver for fallback when it can't continue looping.
+func (t *webSearchSSETransformer) PendingFrames() (delta, stop []byte) {
+	return t.pendingMessageDelta, t.pendingMessageStop
+}
+
+// --- Low-level SSE helpers ---
+
 func (t *webSearchSSETransformer) writeAdjusted(eventName string, parsed gjson.Result) {
 	idxResult := parsed.Get("index")
 	payload := parsed.Raw
@@ -257,21 +444,6 @@ func (t *webSearchSSETransformer) writeAdjusted(eventName string, parsed gjson.R
 	t.writeRawEvent(eventName, []byte(payload))
 }
 
-// writeMessageDelta forwards message_delta, optionally rewriting stop_reason
-// to "pause_turn" when every tool_use seen this turn was a web_search call.
-func (t *webSearchSSETransformer) writeMessageDelta(eventName string, parsed gjson.Result) {
-	payload := parsed.Raw
-	stopReason := parsed.Get("delta.stop_reason").Str
-	if stopReason == "tool_use" && t.webSearchCalls > 0 && t.otherToolCalls == 0 {
-		updated, err := setJSONField(payload, "delta.stop_reason", "pause_turn")
-		if err == nil {
-			payload = updated
-		}
-	}
-	t.writeRawEvent(eventName, []byte(payload))
-}
-
-// writeEvent encodes a freshly-built map and sends it as an SSE frame.
 func (t *webSearchSSETransformer) writeEvent(eventName string, payload map[string]any) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -319,8 +491,6 @@ func parseSSEFrame(evt []byte) (string, string) {
 	return eventName, strings.Join(dataLines, "\n")
 }
 
-// setJSONField rewrites a single JSON field by path while preserving the
-// surrounding structure.
 func setJSONField(raw string, path string, value any) (string, error) {
 	out, err := sjson.SetBytes([]byte(raw), path, value)
 	if err != nil {
@@ -329,8 +499,6 @@ func setJSONField(raw string, path string, value any) (string, error) {
 	return string(out), nil
 }
 
-// rawMessageToMap turns a json.RawMessage carrying a JSON object into a
-// generic map for re-marshalling inside larger SSE payloads.
 func rawMessageToMap(raw json.RawMessage) map[string]any {
 	var m map[string]any
 	_ = json.Unmarshal(raw, &m)

@@ -205,6 +205,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			failHook(err)
 			return
 		}
+		preRewriteBody := body
 		if newModel != modelName {
 			updated, serr := setUnifiedModel(srcFormat, body, newModel)
 			if serr != nil {
@@ -502,10 +503,11 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 					return io.NopCloser(bytes.NewReader(reqBody)), nil
 				}
 				wsCtx = &webSearchContext{
-					active:        true,
-					apiKeyToken:   apiKey.Key,
-					metaID:        metaID,
-					metaCreatedAt: metaCreatedAt,
+					active:              true,
+					apiKeyToken:         apiKey.Key,
+					metaID:              metaID,
+					metaCreatedAt:       metaCreatedAt,
+					originalRequestBody: append([]byte(nil), preRewriteBody...),
 				}
 			}
 
@@ -1101,7 +1103,8 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	// because the bridge operates on the upstream's native format.
 	if a.wsCtx != nil && a.wsCtx.active {
 		if streamMode {
-			clientReader = newWebSearchSSETransformer(ctx, clientReader, a.wsCtx, h)
+			transformer := newWebSearchSSETransformer(ctx, clientReader, a.wsCtx, h, true)
+			clientReader = newWebSearchSSELoopDriver(ctx, transformer, a.wsCtx, h, buildForwardedHeaders(r))
 		} else {
 			allBytes, rerr := io.ReadAll(clientReader)
 			_ = clientReader.Close()
@@ -1116,6 +1119,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 				h.failUnifiedSuccess(a, "web search transform: "+terr.Error())
 				return
 			}
+			transformed = h.loopWebSearchNonStream(ctx, transformed, a.wsCtx, buildForwardedHeaders(r))
 			clientReader = io.NopCloser(bytes.NewReader(transformed))
 		}
 	}
