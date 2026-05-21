@@ -519,6 +519,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 					apiKeyToken:         apiKey.Key,
 					metaID:              metaID,
 					metaCreatedAt:       metaCreatedAt,
+					parentSpanID:        parentSpanID,
 					originalRequestBody: append([]byte(nil), preRewriteBody...),
 				}
 			}

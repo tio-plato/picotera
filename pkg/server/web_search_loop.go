@@ -182,8 +182,8 @@ func (h *gatewayHandler) loopWebSearchNonStream(ctx context.Context, accumulated
 		subReq.Header.Set("Content-Type", "application/json")
 		subReq.Header.Set("Accept", "application/json")
 		subReq.Header.Set("Authorization", "Bearer "+wsCtx.apiKeyToken)
-		if wsCtx.metaID != "" {
-			subReq.Header.Set("X-Claude-Code-Session-Id", wsCtx.metaID)
+		if wsCtx.parentSpanID != "" {
+			subReq.Header.Set("X-Session-Affinity", wsCtx.parentSpanID)
 		}
 
 		rec := httptest.NewRecorder()
@@ -260,4 +260,3 @@ func toFloat64(v any) float64 {
 	}
 	return 0
 }
-

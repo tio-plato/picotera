@@ -121,8 +121,8 @@ func (d *webSearchSSELoopDriver) applyHeaders(req *http.Request) {
 	if d.wsCtx.apiKeyToken != "" {
 		req.Header.Set("Authorization", "Bearer "+d.wsCtx.apiKeyToken)
 	}
-	if d.wsCtx.metaID != "" {
-		req.Header.Set("X-Claude-Code-Session-Id", d.wsCtx.metaID)
+	if d.wsCtx.parentSpanID != "" {
+		req.Header.Set("X-Claude-Code-Session-Id", d.wsCtx.parentSpanID)
 	}
 }
 
@@ -276,4 +276,3 @@ func (d *webSearchSSELoopDriver) fallbackPauseTurn() {
 		_, _ = d.outPW.Write(stop)
 	}
 }
-

@@ -30,6 +30,7 @@ type webSearchContext struct {
 	active              bool
 	apiKeyToken         string
 	metaID              string
+	parentSpanID        string
 	metaCreatedAt       time.Time
 	originalRequestBody []byte // pre-rewrite client body for sub-call construction
 }
@@ -419,8 +420,8 @@ func (h *gatewayHandler) callExa(ctx context.Context, toolInput json.RawMessage,
 	if wsCtx.apiKeyToken != "" {
 		subReq.Header.Set("Authorization", "Bearer "+wsCtx.apiKeyToken)
 	}
-	if wsCtx.metaID != "" {
-		subReq.Header.Set("X-Claude-Code-Session-Id", wsCtx.metaID)
+	if wsCtx.parentSpanID != "" {
+		subReq.Header.Set("X-Session-Affinity", wsCtx.parentSpanID)
 	}
 
 	rec := httptest.NewRecorder()
@@ -610,4 +611,3 @@ func buildServerToolUseFromToolUse(block gjson.Result, serverToolUseID string) (
 	}
 	return json.Marshal(fields)
 }
-
