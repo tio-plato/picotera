@@ -715,7 +715,7 @@ func (h *gatewayHandler) streamSuccess(
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
 
-	modelCost, modelCcy, upstreamCost, upstreamCcy := h.costsFor(bgCtx, originalModelName, providerID, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
+	modelCost, modelCcy, upstreamCost, upstreamCcy := h.costsFor(bgCtx, originalModelName, upstreamModel, providerID, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 
 	upstreamTimeSpent := int32(time.Since(attemptStart).Milliseconds())
 	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
