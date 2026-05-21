@@ -42,8 +42,8 @@ func ValidateProxyUrl(raw string) error {
 		return nil
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return huma.Error400BadRequest(fmt.Sprintf("invalid proxyUrl %q: must be empty, \"direct\", or an http(s) URL", raw))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https" && parsed.Scheme != "socks5" && parsed.Scheme != "socks5h") || parsed.Host == "" {
+		return huma.Error400BadRequest(fmt.Sprintf("invalid proxyUrl %q: must be empty, \"direct\", or an http(s) / socks5(h) URL", raw))
 	}
 	return nil
 }
