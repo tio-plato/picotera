@@ -292,9 +292,12 @@ func applyCredentials(req *http.Request, credentials string, resolver int32, sou
 
 // extractParentSpanID returns the external session identifier carried on the
 // inbound request, used as the meta/upstream rows' parent_span_id. Recognizes
-// X-Claude-Code-Session-Id (preferred) and the non-canonical conversation_id
-// header (matched case-insensitively via map iteration to bypass http.Header's
-// MIME normalization, which would mangle the underscore).
+// three headers in descending priority:
+//  1. X-Claude-Code-Session-Id
+//  2. session_id (non-canonical; matched case-insensitively via map iteration
+//     to bypass http.Header's MIME normalization, which would mangle the
+//     underscore)
+//  3. x-session-affinity
 func extractParentSpanID(h http.Header) string {
 	if v := strings.TrimSpace(h.Get("X-Claude-Code-Session-Id")); v != "" {
 		return v
@@ -308,6 +311,9 @@ func extractParentSpanID(h http.Header) string {
 				return s
 			}
 		}
+	}
+	if v := strings.TrimSpace(h.Get("x-session-affinity")); v != "" {
+		return v
 	}
 	return ""
 }
