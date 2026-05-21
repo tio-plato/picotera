@@ -416,6 +416,7 @@ function buildDimensionSankey(
   rootId: string,
   rootLabel: string,
   valueOf: (row: OverviewBreakdownRowView) => number,
+  skipLayer?: (row: OverviewBreakdownRowView, layerIdx: number) => boolean,
 ): { nodes: SankeyNode[]; links: SankeyLink[] } {
   // Per-layer aggregate value per raw key, used to pick top N per layer.
   const totalsByLayer: Map<string, number>[] = layers.map(() => new Map())
@@ -423,6 +424,7 @@ function buildDimensionSankey(
     const v = valueOf(row)
     if (v <= 0) continue
     layers.forEach((dim, i) => {
+      if (skipLayer?.(row, i)) return
       const k = rowDimKey(row, dim)
       totalsByLayer[i]!.set(k, (totalsByLayer[i]!.get(k) ?? 0) + v)
     })
@@ -449,10 +451,13 @@ function buildDimensionSankey(
     if (v <= 0) continue
     const fold0 = folded(0, rowDimKey(row, layers[0]!))
     addLink(rootId, fold0, v)
+    let prevIdx = 0
     for (let i = 1; i < layers.length; i++) {
-      const a = folded(i - 1, rowDimKey(row, layers[i - 1]!))
+      if (skipLayer?.(row, i)) continue
+      const a = folded(prevIdx, rowDimKey(row, layers[prevIdx]!))
       const b = folded(i, rowDimKey(row, layers[i]!))
       addLink(a, b, v)
+      prevIdx = i
     }
   }
 
@@ -490,6 +495,11 @@ const breakdownRows = computed<OverviewBreakdownRowView[]>(
 const tokensInLayers: DimKind[] = ['provider', 'upstreamModel', 'model', 'apiKey', 'project']
 const tokensOutLayers: DimKind[] = ['project', 'apiKey', 'model', 'upstreamModel', 'provider']
 
+function collapseUpstreamModel(layers: DimKind[]) {
+  return (row: OverviewBreakdownRowView, layerIdx: number): boolean =>
+    layers[layerIdx] === 'upstreamModel' && row.model !== '' && row.model === row.upstreamModel
+}
+
 const tokensInSankey = computed(() =>
   buildDimensionSankey(
     breakdownRows.value,
@@ -497,6 +507,7 @@ const tokensInSankey = computed(() =>
     'root',
     '总 Token',
     (row) => row.totalTokens,
+    collapseUpstreamModel(tokensInLayers),
   ),
 )
 
@@ -507,6 +518,7 @@ const tokensOutSankey = computed(() =>
     'root',
     '总 Token',
     (row) => row.totalTokens,
+    collapseUpstreamModel(tokensOutLayers),
   ),
 )
 
@@ -535,7 +547,14 @@ const costOutLayers: DimKind[] = ['project', 'apiKey', 'model', 'upstreamModel',
 const costInSankeyConverted = computed(() => {
   const target = ccy.targetCurrency.value
   if (!target) return { nodes: [], links: [] }
-  return buildDimensionSankey(breakdownRows.value, costInLayers, 'root', '总费用', rowCostConverted)
+  return buildDimensionSankey(
+    breakdownRows.value,
+    costInLayers,
+    'root',
+    '总费用',
+    rowCostConverted,
+    collapseUpstreamModel(costInLayers),
+  )
 })
 
 const costOutSankeyConverted = computed(() => {
@@ -547,6 +566,7 @@ const costOutSankeyConverted = computed(() => {
     'root',
     '总费用',
     rowCostConverted,
+    collapseUpstreamModel(costOutLayers),
   )
 })
 
@@ -557,6 +577,7 @@ function buildCostInSankeyForCurrency(currency: string) {
     'root',
     `总费用 · ${currency}`,
     (row) => rowCostInCurrency(row, currency),
+    collapseUpstreamModel(costInLayers),
   )
 }
 function buildCostOutSankeyForCurrency(currency: string) {
@@ -566,6 +587,7 @@ function buildCostOutSankeyForCurrency(currency: string) {
     'root',
     `总费用 · ${currency}`,
     (row) => rowCostInCurrency(row, currency),
+    collapseUpstreamModel(costOutLayers),
   )
 }
 
