@@ -715,46 +715,42 @@ func (h *gatewayHandler) streamSuccess(
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
 
-	modelCost, modelCcy, upstreamCost, upstreamCcy := h.costsFor(bgCtx, originalModelName, upstreamModel, providerID, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
+	modelCost, modelCcy := h.costsFor(bgCtx, originalModelName, upstreamModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 
 	upstreamTimeSpent := int32(time.Since(attemptStart).Milliseconds())
 	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-		ID:                   upstreamID,
-		StatusCode:           pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage:         pgtype.Text{Valid: false},
-		TimeSpentMs:          pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
-		Status:               db.RequestStatusCompleted,
-		TtftMs:               ttftMs,
-		InputTokens:          inputTokens,
-		OutputTokens:         outputTokens,
-		CacheReadTokens:      cacheReadTokens,
-		CacheWriteTokens:     cacheWriteTokens,
-		CacheWrite1hTokens:   cacheWrite1hTokens,
-		ModelCost:            modelCost,
-		ModelCostCurrency:    modelCcy,
-		UpstreamCost:         upstreamCost,
-		UpstreamCostCurrency: upstreamCcy,
-		CreatedAt:            pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
+		ID:                 upstreamID,
+		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+		ErrorMessage:       pgtype.Text{Valid: false},
+		TimeSpentMs:        pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
+		Status:             db.RequestStatusCompleted,
+		TtftMs:             ttftMs,
+		InputTokens:        inputTokens,
+		OutputTokens:       outputTokens,
+		CacheReadTokens:    cacheReadTokens,
+		CacheWriteTokens:   cacheWriteTokens,
+		CacheWrite1hTokens: cacheWrite1hTokens,
+		ModelCost:          modelCost,
+		ModelCostCurrency:  modelCcy,
+		CreatedAt:          pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
 	})
 
 	metaTimeSpent := int32(time.Since(gatewayStart).Milliseconds())
 	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-		ID:                   metaID,
-		StatusCode:           pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage:         pgtype.Text{Valid: false},
-		TimeSpentMs:          pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-		Status:               db.RequestStatusCompleted,
-		TtftMs:               ttftMs,
-		InputTokens:          inputTokens,
-		OutputTokens:         outputTokens,
-		CacheReadTokens:      cacheReadTokens,
-		CacheWriteTokens:     cacheWriteTokens,
-		CacheWrite1hTokens:   cacheWrite1hTokens,
-		ModelCost:            modelCost,
-		ModelCostCurrency:    modelCcy,
-		UpstreamCost:         upstreamCost,
-		UpstreamCostCurrency: upstreamCcy,
-		CreatedAt:            pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
+		ID:                 metaID,
+		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+		ErrorMessage:       pgtype.Text{Valid: false},
+		TimeSpentMs:        pgtype.Int4{Int32: metaTimeSpent, Valid: true},
+		Status:             db.RequestStatusCompleted,
+		TtftMs:             ttftMs,
+		InputTokens:        inputTokens,
+		OutputTokens:       outputTokens,
+		CacheReadTokens:    cacheReadTokens,
+		CacheWriteTokens:   cacheWriteTokens,
+		CacheWrite1hTokens: cacheWrite1hTokens,
+		ModelCost:          modelCost,
+		ModelCostCurrency:  modelCcy,
+		CreatedAt:          pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
 	_ = r // kept for interface symmetry; r.Context() may be useful for future hooks
 }

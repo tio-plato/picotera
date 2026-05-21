@@ -2,7 +2,7 @@
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path, r.api_key_id, r.model,
        r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens, r.cache_write_tokens, r.cache_write_1h_tokens,
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
-       r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
+       r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = sqlc.narg('trace_id')::text
@@ -41,7 +41,6 @@ SELECT
   COALESCE(metrics.cache_write_tokens, 0)::bigint AS cache_write_tokens,
   COALESCE(metrics.cache_write_1h_tokens, 0)::bigint AS cache_write_1h_tokens,
   COALESCE(model_costs.costs, '[]'::jsonb)::jsonb AS model_costs,
-  COALESCE(upstream_costs.costs, '[]'::jsonb)::jsonb AS upstream_costs,
   traces.first_request_at,
   traces.last_request_at,
   preview.user_message_preview,
@@ -85,23 +84,6 @@ LEFT JOIN LATERAL (
     GROUP BY model_cost_currency
   ) grouped
 ) model_costs ON true
-LEFT JOIN LATERAL (
-  SELECT jsonb_agg(
-    jsonb_build_object('currency', grouped.currency, 'amount', grouped.amount)
-    ORDER BY grouped.currency
-  ) AS costs
-  FROM (
-    SELECT upstream_cost_currency AS currency, SUM(upstream_cost)::float8 AS amount
-    FROM request
-    WHERE parent_span_id = traces.parent_span_id
-      AND created_at >= traces.first_request_at
-      AND created_at <= traces.last_request_at
-      AND type = 1
-      AND upstream_cost IS NOT NULL
-      AND upstream_cost_currency IS NOT NULL
-    GROUP BY upstream_cost_currency
-  ) grouped
-) upstream_costs ON true
 LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
@@ -147,7 +129,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
        r.cache_write_tokens, r.cache_write_1h_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at,
-       r.model_cost, r.model_cost_currency, r.upstream_cost, r.upstream_cost_currency,
+       r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
@@ -164,8 +146,7 @@ SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     ttft_ms = $6, input_tokens = $7, output_tokens = $8,
     cache_read_tokens = $9, cache_write_tokens = $10,
     cache_write_1h_tokens = $11,
-    model_cost = $12, model_cost_currency = $13,
-    upstream_cost = $14, upstream_cost_currency = $15
+    model_cost = $12, model_cost_currency = $13
 WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 
 -- name: UpdateRequestModel :exec

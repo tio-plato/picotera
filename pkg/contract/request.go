@@ -37,8 +37,6 @@ type RequestView struct {
 	UserMessagePreview   string   `json:"userMessagePreview,omitempty"`
 	ModelCost            *float64 `json:"modelCost,omitempty"`
 	ModelCostCurrency    string   `json:"modelCostCurrency,omitempty"`
-	UpstreamCost         *float64 `json:"upstreamCost,omitempty"`
-	UpstreamCostCurrency string   `json:"upstreamCostCurrency,omitempty"`
 	ProjectID            *int32   `json:"projectId,omitempty"`
 }
 
@@ -59,7 +57,6 @@ type RequestTraceView struct {
 	CacheWriteTokens     int64           `json:"cacheWriteTokens"`
 	CacheWrite1HTokens   int64           `json:"cacheWrite1hTokens"`
 	ModelCosts           []TraceCostView `json:"modelCosts"`
-	UpstreamCosts        []TraceCostView `json:"upstreamCosts"`
 	FirstRequestAt       string          `json:"firstRequestAt,omitempty"`
 	LastRequestAt        string          `json:"lastRequestAt,omitempty"`
 	UserMessagePreview   string          `json:"userMessagePreview,omitempty"`
@@ -89,8 +86,6 @@ type requestLike struct {
 	CreatedAt            pgtype.Timestamp
 	ModelCost            pgtype.Numeric
 	ModelCostCurrency    pgtype.Text
-	UpstreamCost         pgtype.Numeric
-	UpstreamCostCurrency pgtype.Text
 	UserMessagePreview   pgtype.Text
 	ProjectID            pgtype.Int4
 }
@@ -170,14 +165,6 @@ func toRequestView(r requestLike) *RequestView {
 	if r.ModelCostCurrency.Valid {
 		view.ModelCostCurrency = r.ModelCostCurrency.String
 	}
-	if r.UpstreamCost.Valid {
-		if f, err := numericToFloat(r.UpstreamCost); err == nil {
-			view.UpstreamCost = &f
-		}
-	}
-	if r.UpstreamCostCurrency.Valid {
-		view.UpstreamCostCurrency = r.UpstreamCostCurrency.String
-	}
 	if r.UserMessagePreview.Valid {
 		view.UserMessagePreview = r.UserMessagePreview.String
 	}
@@ -212,8 +199,6 @@ func ToRequestView(r *db.Request) *RequestView {
 		CreatedAt:            r.CreatedAt,
 		ModelCost:            r.ModelCost,
 		ModelCostCurrency:    r.ModelCostCurrency,
-		UpstreamCost:         r.UpstreamCost,
-		UpstreamCostCurrency: r.UpstreamCostCurrency,
 		UserMessagePreview:   r.UserMessagePreview,
 		ProjectID:            r.ProjectID,
 	})
@@ -243,8 +228,6 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		CreatedAt:            r.CreatedAt,
 		ModelCost:            r.ModelCost,
 		ModelCostCurrency:    r.ModelCostCurrency,
-		UpstreamCost:         r.UpstreamCost,
-		UpstreamCostCurrency: r.UpstreamCostCurrency,
 		UserMessagePreview:   r.UserMessagePreview,
 		ProjectID:            r.ProjectID,
 	})
@@ -274,8 +257,6 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		CreatedAt:            r.CreatedAt,
 		ModelCost:            r.ModelCost,
 		ModelCostCurrency:    r.ModelCostCurrency,
-		UpstreamCost:         r.UpstreamCost,
-		UpstreamCostCurrency: r.UpstreamCostCurrency,
 		UserMessagePreview:   r.UserMessagePreview,
 		ProjectID:            r.ProjectID,
 	})
@@ -297,10 +278,6 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 	if err != nil {
 		return nil, err
 	}
-	upstreamCosts, err := parseTraceCosts(r.UpstreamCosts)
-	if err != nil {
-		return nil, err
-	}
 	view := &RequestTraceView{
 		ID:                   r.ID,
 		ParentSpanID:         r.ParentSpanID,
@@ -313,7 +290,6 @@ func ToRequestTraceView(r *db.ListRequestTracesRow) (*RequestTraceView, error) {
 		CacheWriteTokens:     r.CacheWriteTokens,
 		CacheWrite1HTokens:   r.CacheWrite1hTokens,
 		ModelCosts:           modelCosts,
-		UpstreamCosts:        upstreamCosts,
 	}
 	if r.FirstRequestAt.Valid {
 		view.FirstRequestAt = r.FirstRequestAt.Time.UTC().Format(time.RFC3339Nano)

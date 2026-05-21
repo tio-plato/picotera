@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"math/big"
 
 	"picotera/pkg/contract"
@@ -102,22 +101,4 @@ func ratToNumeric6(r *big.Rat) (pgtype.Numeric, error) {
 		}
 	}
 	return pgtype.Numeric{Int: q, Exp: -6, Valid: true}, nil
-}
-
-// providerEntryPricing returns the Pricing for the given model in provider's
-// providerModels[]. Nil if not found / no pricing configured.
-func providerEntryPricing(providerModels []byte, model string) (*contract.Pricing, error) {
-	if len(providerModels) == 0 {
-		return nil, nil
-	}
-	var entries []contract.ProviderModelEntry
-	if err := json.Unmarshal(providerModels, &entries); err != nil {
-		return nil, err
-	}
-	for i := range entries {
-		if entries[i].Model == model {
-			return entries[i].Pricing, nil
-		}
-	}
-	return nil, nil
 }

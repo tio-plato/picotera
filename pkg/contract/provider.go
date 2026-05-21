@@ -16,7 +16,6 @@ type ProviderModelEntry struct {
 	Priority          int32             `json:"priority,omitempty"`
 	Annotations       map[string]string `json:"annotations,omitempty"`
 	Disabled          bool              `json:"disabled,omitempty"`
-	Pricing           *Pricing          `json:"pricing,omitempty"`
 }
 
 type GetProviderRequest struct {

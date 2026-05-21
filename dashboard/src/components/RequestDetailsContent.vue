@@ -313,7 +313,7 @@ watch(detailTabs, tabs => {
         </section>
 
         <section
-          v-if="selected.modelCost != null || selected.upstreamCost != null"
+          v-if="selected.modelCost != null"
           class="flex flex-col gap-2.5"
         >
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]">成本</span>
@@ -323,14 +323,6 @@ watch(detailTabs, tabs => {
                 <MoneyDisplay
                   :amount="selected.modelCost ?? null"
                   :currency="selected.modelCostCurrency ?? ''"
-                />
-              </span>
-            </Field>
-            <Field label="上游价" as="div">
-              <span class="font-mono tabular-nums text-sm">
-                <MoneyDisplay
-                  :amount="selected.upstreamCost ?? null"
-                  :currency="selected.upstreamCostCurrency ?? ''"
                 />
               </span>
             </Field>

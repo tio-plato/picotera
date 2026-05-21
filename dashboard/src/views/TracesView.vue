@@ -58,7 +58,6 @@ const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'totalTokens', header: 'Token', align: 'right' },
   { key: 'cacheHitRate', header: '缓存命中', align: 'right' },
   { key: 'modelCosts', header: '模型成本', align: 'right' },
-  { key: 'upstreamCosts', header: '上游成本', align: 'right' },
 ])
 
 function rowKey(row: RequestTraceView) {
@@ -282,15 +281,6 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
             :title="formatCosts(row.modelCosts).title"
           >
             {{ formatCosts(row.modelCosts).text }}
-          </span>
-        </template>
-        <template #cell-upstreamCosts="{ row }">
-          <span
-            class="font-mono tabular-nums"
-            :class="normalizeCosts(row.upstreamCosts).length === 0 ? 'text-ink-faint' : 'text-ink'"
-            :title="formatCosts(row.upstreamCosts).title"
-          >
-            {{ formatCosts(row.upstreamCosts).text }}
           </span>
         </template>
         <template #empty>

@@ -72,32 +72,30 @@ type ProviderEndpoint struct {
 }
 
 type Request struct {
-	ID                   string           `json:"id"`
-	SpanID               pgtype.Text      `json:"spanId"`
-	ParentSpanID         pgtype.Text      `json:"parentSpanId"`
-	ProviderID           pgtype.Int4      `json:"providerId"`
-	EndpointPath         pgtype.Text      `json:"endpointPath"`
-	ApiKeyID             pgtype.Int4      `json:"apiKeyId"`
-	Model                pgtype.Text      `json:"model"`
-	InputTokens          pgtype.Int4      `json:"inputTokens"`
-	CacheReadTokens      pgtype.Int4      `json:"cacheReadTokens"`
-	OutputTokens         pgtype.Int4      `json:"outputTokens"`
-	CacheWriteTokens     pgtype.Int4      `json:"cacheWriteTokens"`
-	StatusCode           pgtype.Int4      `json:"statusCode"`
-	ErrorMessage         pgtype.Text      `json:"errorMessage"`
-	TtftMs               pgtype.Int4      `json:"ttftMs"`
-	TimeSpentMs          pgtype.Int4      `json:"timeSpentMs"`
-	CreatedAt            pgtype.Timestamp `json:"createdAt"`
-	Type                 int32            `json:"type"`
-	Status               int32            `json:"status"`
-	UpstreamModel        pgtype.Text      `json:"upstreamModel"`
-	ModelCost            pgtype.Numeric   `json:"modelCost"`
-	ModelCostCurrency    pgtype.Text      `json:"modelCostCurrency"`
-	UpstreamCost         pgtype.Numeric   `json:"upstreamCost"`
-	UpstreamCostCurrency pgtype.Text      `json:"upstreamCostCurrency"`
-	UserMessagePreview   pgtype.Text      `json:"userMessagePreview"`
-	CacheWrite1hTokens   pgtype.Int4      `json:"cacheWrite1hTokens"`
-	ProjectID            pgtype.Int4      `json:"projectId"`
+	ID                 string           `json:"id"`
+	SpanID             pgtype.Text      `json:"spanId"`
+	ParentSpanID       pgtype.Text      `json:"parentSpanId"`
+	ProviderID         pgtype.Int4      `json:"providerId"`
+	EndpointPath       pgtype.Text      `json:"endpointPath"`
+	ApiKeyID           pgtype.Int4      `json:"apiKeyId"`
+	Model              pgtype.Text      `json:"model"`
+	InputTokens        pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens    pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens       pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens   pgtype.Int4      `json:"cacheWriteTokens"`
+	StatusCode         pgtype.Int4      `json:"statusCode"`
+	ErrorMessage       pgtype.Text      `json:"errorMessage"`
+	TtftMs             pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs        pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt          pgtype.Timestamp `json:"createdAt"`
+	Type               int32            `json:"type"`
+	Status             int32            `json:"status"`
+	UpstreamModel      pgtype.Text      `json:"upstreamModel"`
+	ModelCost          pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency  pgtype.Text      `json:"modelCostCurrency"`
+	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
+	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
+	ProjectID          pgtype.Int4      `json:"projectId"`
 }
 
 type RequestOverviewHourly struct {

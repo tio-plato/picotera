@@ -58,11 +58,6 @@ func (s *Server) handleCreateProvider(ctx context.Context, input *contract.Creat
 	if input.Body.ProviderModels == nil {
 		input.Body.ProviderModels = []contract.ProviderModelEntry{}
 	}
-	for i := range input.Body.ProviderModels {
-		if err := input.Body.ProviderModels[i].Pricing.Validate(); err != nil {
-			return nil, huma.Error400BadRequest("providerModels[" + input.Body.ProviderModels[i].Model + "]: " + err.Error())
-		}
-	}
 
 	providerModelsBytes, err := json.Marshal(input.Body.ProviderModels)
 	if err != nil {
@@ -109,11 +104,6 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 	}
 	if input.Body.ProviderModels == nil {
 		input.Body.ProviderModels = []contract.ProviderModelEntry{}
-	}
-	for i := range input.Body.ProviderModels {
-		if err := input.Body.ProviderModels[i].Pricing.Validate(); err != nil {
-			return nil, huma.Error400BadRequest("providerModels[" + input.Body.ProviderModels[i].Model + "]: " + err.Error())
-		}
 	}
 	providerModelsBytes, err := json.Marshal(input.Body.ProviderModels)
 	if err != nil {
@@ -192,11 +182,6 @@ func (s *Server) handleUpsertProvider(ctx context.Context, input *contract.Upser
 func (s *Server) handleUpdateProviderModels(ctx context.Context, input *contract.UpdateProviderModelsRequest) (*contract.UpdateProviderModelsResponse, error) {
 	if input.Body.ProviderModels == nil {
 		input.Body.ProviderModels = []contract.ProviderModelEntry{}
-	}
-	for i := range input.Body.ProviderModels {
-		if err := input.Body.ProviderModels[i].Pricing.Validate(); err != nil {
-			return nil, huma.Error400BadRequest("providerModels[" + input.Body.ProviderModels[i].Model + "]: " + err.Error())
-		}
 	}
 	providerModelsBytes, err := json.Marshal(input.Body.ProviderModels)
 	if err != nil {

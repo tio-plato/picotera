@@ -641,11 +641,9 @@ func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateReque
 	}
 }
 
-// costsFor computes per-request cost snapshots for both the model.pricing and
-// the matching provider.providerModels[].pricing entries. Either side may be
-// absent — its two columns are returned as invalid pgtype values in that case.
-// providerID == 0 / model == "" short-circuits the corresponding side.
-func (s *Server) costsFor(ctx context.Context, model, upstreamModel string, providerID int32, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens pgtype.Int4) (modelCost pgtype.Numeric, modelCcy pgtype.Text, upstreamCost pgtype.Numeric, upstreamCcy pgtype.Text) {
+// costsFor computes the per-request cost snapshot from model.pricing.
+// Missing pricing returns invalid pgtype values.
+func (s *Server) costsFor(ctx context.Context, model, upstreamModel string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens pgtype.Int4) (modelCost pgtype.Numeric, modelCcy pgtype.Text) {
 	in := pgInt4ToPtr(inputTokens)
 	out := pgInt4ToPtr(outputTokens)
 	cr := pgInt4ToPtr(cacheReadTokens)
@@ -663,17 +661,6 @@ func (s *Server) costsFor(ctx context.Context, model, upstreamModel string, prov
 			if pricing, perr := contract.PricingFromJSONB(row.Pricing); perr == nil && pricing != nil {
 				if num, ccy, ok := computeCost(pricing, in, out, cr, cw, cw1h); ok {
 					modelCost, modelCcy = num, ccy
-				}
-			}
-		}
-	}
-
-	if providerID > 0 && billingModel != "" {
-		prov, err := s.queries.GetProviderByID(ctx, providerID)
-		if err == nil {
-			if pricing, perr := providerEntryPricing(prov.ProviderModels, billingModel); perr == nil && pricing != nil {
-				if num, ccy, ok := computeCost(pricing, in, out, cr, cw, cw1h); ok {
-					upstreamCost, upstreamCcy = num, ccy
 				}
 			}
 		}

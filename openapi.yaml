@@ -940,8 +940,6 @@ components:
           type: array
         model:
           type: string
-        pricing:
-          $ref: "#/components/schemas/Pricing"
         priority:
           format: int32
           type: integer
@@ -1045,11 +1043,6 @@ components:
         totalTokens:
           format: int64
           type: integer
-        upstreamCosts:
-          items:
-            $ref: "#/components/schemas/TraceCostView"
-          nullable: true
-          type: array
         upstreamRequestCount:
           format: int64
           type: integer
@@ -1067,7 +1060,6 @@ components:
         - cacheWriteTokens
         - cacheWrite1hTokens
         - modelCosts
-        - upstreamCosts
       type: object
     RequestView:
       additionalProperties: false
@@ -1140,11 +1132,6 @@ components:
         type:
           format: int32
           type: integer
-        upstreamCost:
-          format: double
-          type: number
-        upstreamCostCurrency:
-          type: string
         upstreamModel:
           type: string
         userMessagePreview:

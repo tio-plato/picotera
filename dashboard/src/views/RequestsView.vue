@@ -612,8 +612,8 @@ function resetCursorAndReload() {
         <template #cell-cost="{ row }">
           <div class="flex justify-end">
             <MoneyDisplay
-              :amount="row.upstreamCost ?? row.modelCost ?? null"
-              :currency="row.upstreamCostCurrency || row.modelCostCurrency || ''"
+              :amount="row.modelCost ?? null"
+              :currency="row.modelCostCurrency || ''"
             />
           </div>
         </template>

@@ -1171,45 +1171,41 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
-	modelCost, modelCcy, upstreamCost, upstreamCcy := h.costsFor(a.bgCtx, a.originalModelName, a.upstreamModel, a.providerID, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
+	modelCost, modelCcy := h.costsFor(a.bgCtx, a.originalModelName, a.upstreamModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 
 	upstreamTimeSpent := int32(time.Since(a.attemptStart).Milliseconds())
 	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
-		ID:                   a.upstreamID,
-		StatusCode:           pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage:         pgtype.Text{Valid: false},
-		TimeSpentMs:          pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
-		Status:               db.RequestStatusCompleted,
-		TtftMs:               ttftMs,
-		InputTokens:          inputTokens,
-		OutputTokens:         outputTokens,
-		CacheReadTokens:      cacheReadTokens,
-		CacheWriteTokens:     cacheWriteTokens,
-		CacheWrite1hTokens:   cacheWrite1hTokens,
-		ModelCost:            modelCost,
-		ModelCostCurrency:    modelCcy,
-		UpstreamCost:         upstreamCost,
-		UpstreamCostCurrency: upstreamCcy,
-		CreatedAt:            pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
+		ID:                 a.upstreamID,
+		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+		ErrorMessage:       pgtype.Text{Valid: false},
+		TimeSpentMs:        pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
+		Status:             db.RequestStatusCompleted,
+		TtftMs:             ttftMs,
+		InputTokens:        inputTokens,
+		OutputTokens:       outputTokens,
+		CacheReadTokens:    cacheReadTokens,
+		CacheWriteTokens:   cacheWriteTokens,
+		CacheWrite1hTokens: cacheWrite1hTokens,
+		ModelCost:          modelCost,
+		ModelCostCurrency:  modelCcy,
+		CreatedAt:          pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(a.gatewayStart).Milliseconds())
 	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
-		ID:                   a.metaID,
-		StatusCode:           pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage:         pgtype.Text{Valid: false},
-		TimeSpentMs:          pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-		Status:               db.RequestStatusCompleted,
-		TtftMs:               ttftMs,
-		InputTokens:          inputTokens,
-		OutputTokens:         outputTokens,
-		CacheReadTokens:      cacheReadTokens,
-		CacheWriteTokens:     cacheWriteTokens,
-		CacheWrite1hTokens:   cacheWrite1hTokens,
-		ModelCost:            modelCost,
-		ModelCostCurrency:    modelCcy,
-		UpstreamCost:         upstreamCost,
-		UpstreamCostCurrency: upstreamCcy,
-		CreatedAt:            pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
+		ID:                 a.metaID,
+		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
+		ErrorMessage:       pgtype.Text{Valid: false},
+		TimeSpentMs:        pgtype.Int4{Int32: metaTimeSpent, Valid: true},
+		Status:             db.RequestStatusCompleted,
+		TtftMs:             ttftMs,
+		InputTokens:        inputTokens,
+		OutputTokens:       outputTokens,
+		CacheReadTokens:    cacheReadTokens,
+		CacheWriteTokens:   cacheWriteTokens,
+		CacheWrite1hTokens: cacheWrite1hTokens,
+		ModelCost:          modelCost,
+		ModelCostCurrency:  modelCcy,
+		CreatedAt:          pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	_ = r
 }

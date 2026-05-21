@@ -1097,7 +1097,6 @@ export interface components {
             disabled?: boolean;
             endpoints?: string[] | null;
             model: string;
-            pricing?: components["schemas"]["Pricing"];
             /** Format: int32 */
             priority?: number;
             upstreamModelName?: string;
@@ -1148,7 +1147,6 @@ export interface components {
             projectId?: number;
             /** Format: int64 */
             totalTokens: number;
-            upstreamCosts: components["schemas"]["TraceCostView"][] | null;
             /** Format: int64 */
             upstreamRequestCount: number;
             userMessagePreview?: string;
@@ -1198,9 +1196,6 @@ export interface components {
             ttftMs?: number;
             /** Format: int32 */
             type: number;
-            /** Format: double */
-            upstreamCost?: number;
-            upstreamCostCurrency?: string;
             upstreamModel?: string;
             userMessagePreview?: string;
         };
