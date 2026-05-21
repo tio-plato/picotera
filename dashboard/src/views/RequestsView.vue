@@ -565,13 +565,12 @@ function resetCursorAndReload() {
         </template>
         <template #cell-model="{ row }">
           <div class="flex flex-col leading-tight">
-            <span v-if="row.upstreamModel" class="font-mono text-ink">{{ row.upstreamModel }}</span>
-            <span v-else-if="row.model" class="font-mono text-ink">{{ row.model }}</span>
+            <span v-if="row.model" class="font-mono text-ink">{{ row.model }}</span>
             <span v-else class="text-ink-faint">—</span>
             <span
               v-if="row.model && row.upstreamModel && row.model !== row.upstreamModel"
               class="font-mono text-2xs text-ink-faint"
-              >{{ row.model }}</span
+              >{{ row.upstreamModel }}</span
             >
           </div>
         </template>
