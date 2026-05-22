@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { VisXYContainer, VisArea, VisAxis, VisCrosshair, VisTooltip } from '@unovis/vue'
 import { Tag } from '@/ui'
 import { groupColor } from './colors'
@@ -30,6 +30,41 @@ interface Datum {
   values: Record<string, number>
 }
 
+const hiddenKeys = ref<Set<string>>(new Set())
+
+function toggleSeries(key: string) {
+  // Clicking the only visible series — restore all instead of hiding it
+  if (hiddenKeys.value.size === props.groups.length - 1 && !hiddenKeys.value.has(key)) {
+    hiddenKeys.value = new Set()
+    return
+  }
+  const next = new Set(hiddenKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  hiddenKeys.value = next
+}
+
+function isolateSeries(key: string) {
+  if (hiddenKeys.value.size === props.groups.length - 1 && !hiddenKeys.value.has(key)) {
+    // Already isolated on this series — restore all
+    hiddenKeys.value = new Set()
+  } else {
+    // Hide everything except this key
+    const next = new Set(props.groups.map((g) => g.key))
+    next.delete(key)
+    hiddenKeys.value = next
+  }
+}
+
+const visibleGroups = computed(() => props.groups.filter((g) => !hiddenKeys.value.has(g.key)))
+const visibleColors = computed(() => {
+  const idxMap = new Map(props.groups.map((g, i) => [g.key, i]))
+  return visibleGroups.value.map((g) => {
+    const i = idxMap.get(g.key)
+    return i !== undefined ? colors.value[i] : colors.value[0]
+  })
+})
+
 const dataset = computed<Datum[]>(() => {
   const indexByBucket = new Map<string, number>()
   props.buckets.forEach((b, i) => indexByBucket.set(b, i))
@@ -51,7 +86,7 @@ const dataset = computed<Datum[]>(() => {
 const colors = computed(() => props.groups.map((_, i) => groupColor(i)))
 
 const accessorsX = (d: Datum) => d.bucketIndex
-const accessorsY = computed(() => props.groups.map((g) => (d: Datum) => d.values[g.key] ?? 0))
+const accessorsY = computed(() => visibleGroups.value.map((g) => (d: Datum) => d.values[g.key] ?? 0))
 
 const xTickFormat = (i: number | { valueOf(): number }) => {
   const idx = typeof i === 'number' ? i : Number(i)
@@ -84,16 +119,18 @@ function compactNumber(v: number) {
 
 function tooltipTemplate(datum: Datum | undefined) {
   if (!datum) return ''
-  const lines = props.groups
-    .map((g, i) => {
+  const lines = visibleGroups.value
+    .map((g) => {
+      const originalIdx = props.groups.findIndex((pg) => pg.key === g.key)
+      const color = originalIdx >= 0 ? colors.value[originalIdx] : colors.value[0]
       const v = datum.values[g.key] ?? 0
       const formatted = props.valueFormat ? props.valueFormat(v) : compactNumber(v)
       return {
         ...g,
-        html: `<div class="flex items-center gap-1 text-2xs"><span style="background:${colors.value[i]};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`,
+        html: `<div class="flex items-center gap-1 text-2xs"><span style="background:${color};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`,
       }
     })
-    .filter((g) => datum.values[g.key] !== undefined && datum.values[g.key] !== 0)
+    .filter((g) => datum.values[g.key] != null && datum.values[g.key] !== 0)
     .map((g) => g.html)
     .join('')
   const bucket = props.bucketFormat
@@ -121,7 +158,7 @@ function escape(s: string) {
         <VisArea
           :x="accessorsX"
           :y="accessorsY"
-          :color="colors"
+                    :color="visibleColors"
           :curve-type="'monotoneX'"
           :opacity="0.85"
         />
@@ -132,7 +169,14 @@ function escape(s: string) {
       </VisXYContainer>
     </div>
     <ul class="flex flex-wrap gap-1">
-      <li v-for="(g, i) in groups" :key="g.key || `__${i}`" class="flex items-center gap-1">
+      <li
+        v-for="(g, i) in groups"
+        :key="g.key || `__${i}`"
+        class="flex items-center gap-1 cursor-pointer select-none"
+        :class="{ 'opacity-30': hiddenKeys.has(g.key) }"
+        @click="toggleSeries(g.key)"
+        @contextmenu.prevent="isolateSeries(g.key)"
+      >
         <span class="h-2 w-2 shrink-0 rounded-xs" :style="{ background: colors[i] }" />
         <Tag variant="default">{{ g.label || '—' }}</Tag>
       </li>
