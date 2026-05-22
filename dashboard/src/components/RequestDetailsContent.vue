@@ -7,6 +7,10 @@ import { queryKeys } from '@/api/queryKeys'
 import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay } from '@/ui'
 import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
+import {
+  useRequestDetailUiState,
+  type DetailTab,
+} from '@/composables/useRequestDetailUiState'
 
 const props = defineProps<{ requestId: string; providers?: ProviderView[] }>()
 const emit = defineEmits<{ selectedRequest: [requestId: string] }>()
@@ -134,8 +138,14 @@ function selectRequest(requestId: string) {
   emit('selectedRequest', requestId)
 }
 
-type DetailTab = 'overview' | 'request' | 'response' | 'logs'
-const detailTab = ref<DetailTab>('overview')
+const {
+  detailTab,
+  requestBodyView,
+  requestHeadersOpen,
+  responseSubView,
+  responseHeadersOpen,
+  responseThinkingOpen,
+} = useRequestDetailUiState()
 const isMeta = computed(() => !!selected.value && selected.value.id === selected.value.spanId)
 const detailTabs = computed(() => {
   const base: { value: DetailTab; label: string }[] = [
@@ -145,9 +155,6 @@ const detailTabs = computed(() => {
   ]
   if (isMeta.value) base.push({ value: 'logs', label: '日志' })
   return base
-})
-watch(selectedId, () => {
-  detailTab.value = 'overview'
 })
 watch(detailTabs, (tabs) => {
   if (!tabs.find((t) => t.value === detailTab.value)) {
@@ -392,11 +399,16 @@ watch(detailTabs, (tabs) => {
         </template>
         <RawArtifactView
           v-else-if="detailTab === 'request'"
+          v-model:body-view="requestBodyView"
+          v-model:headers-open="requestHeadersOpen"
           :url="selected.requestArtifactUrl"
           kind="request"
         />
         <RawArtifactView
           v-else-if="detailTab === 'response'"
+          v-model:body-view="responseSubView"
+          v-model:headers-open="responseHeadersOpen"
+          v-model:thinking-open="responseThinkingOpen"
           :url="selected.responseArtifactUrl"
           kind="response"
           :request-id="selected.id"

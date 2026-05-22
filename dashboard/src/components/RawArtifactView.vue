@@ -3,12 +3,14 @@ import { computed, ref, watch } from 'vue'
 import { StateText, DataTable, Th, Td, Tr, Field, SegmentedControl, Button, Icon } from '@/ui'
 import { isJsonContentType, parseJsonBody, rawBodyText, buildCurlCommand } from './artifactBody'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
-import ResponseArtifactView from './ResponseArtifactView.vue'
+import ResponseArtifactView, { type SubView } from './ResponseArtifactView.vue'
 import { useArtifact } from '@/composables/useArtifact'
 
 const props = defineProps<{ url?: string; kind: 'request' | 'response'; requestId?: string }>()
 
-const requestBodyView = ref<'raw' | 'json'>('json')
+const bodyView = defineModel<'raw' | 'json' | SubView>('bodyView', { required: true })
+const headersOpen = defineModel<boolean>('headersOpen', { required: true })
+const thinkingOpen = defineModel<boolean>('thinkingOpen', { default: false })
 const artifactQuery = useArtifact(() => props.url)
 const payload = computed(() => artifactQuery.data.value ?? null)
 const loading = computed(() => artifactQuery.isLoading.value)
@@ -43,8 +45,8 @@ function bodyDisplay(body: string | undefined, encoding: string | undefined) {
 }
 
 watch(requestBodyOptions, (opts) => {
-  if (!opts.some((o) => o.value === requestBodyView.value)) {
-    requestBodyView.value = opts[0]?.value as 'raw' | 'json'
+  if (props.kind === 'request' && !opts.some((o) => o.value === bodyView.value)) {
+    bodyView.value = opts[0]?.value as 'raw' | 'json'
   }
 })
 
@@ -66,9 +68,7 @@ async function copyAsCurl() {
   }
 }
 
-watch(requestJsonBody, (parsed) => {
-  requestBodyView.value = parsed.ok ? 'json' : 'raw'
-})
+
 </script>
 
 <template>
@@ -91,7 +91,11 @@ watch(requestJsonBody, (parsed) => {
           </Field>
         </div>
 
-        <details class="group flex flex-col gap-2">
+        <details
+          :open="headersOpen"
+          @toggle="headersOpen = ($event.currentTarget as HTMLDetailsElement).open"
+          class="group flex flex-col gap-2"
+        >
           <summary
             class="flex items-center gap-1.5 cursor-pointer select-none list-none text-2xs font-medium text-ink-muted uppercase tracking-[0.04em] hover:text-ink"
           >
@@ -137,8 +141,9 @@ watch(requestJsonBody, (parsed) => {
             >
             <SegmentedControl
               v-if="payload.bodyEncoding !== 'base64' && requestBodyOptions.length > 1"
-              v-model="requestBodyView"
+              :model-value="(bodyView as 'raw' | 'json')"
               :options="requestBodyOptions"
+              @update:model-value="bodyView = ($event as 'raw' | 'json')"
             />
           </div>
           <div
@@ -150,7 +155,7 @@ watch(requestJsonBody, (parsed) => {
               >下载原始数据</a
             >
           </div>
-          <template v-else-if="requestBodyView === 'json' && requestJsonBody.ok">
+          <template v-else-if="bodyView === 'json' && requestJsonBody.ok">
             <JsonArtifactViewer :value="requestJsonBody.value" />
           </template>
           <StateText
@@ -160,7 +165,7 @@ watch(requestJsonBody, (parsed) => {
           >
             {{ requestJsonBody.error }}
           </StateText>
-          <template v-if="requestBodyView === 'raw'">
+          <template v-if="bodyView === 'raw'">
             <pre
               class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
               >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre
@@ -169,6 +174,14 @@ watch(requestJsonBody, (parsed) => {
         </section>
       </div>
     </template>
-    <ResponseArtifactView v-else :payload="payload" :url="url" :request-id="requestId" />
+    <ResponseArtifactView
+      v-else
+      v-model:sub-view="bodyView"
+      v-model:headers-open="headersOpen"
+      v-model:thinking-open="thinkingOpen"
+      :payload="payload"
+      :url="url"
+      :request-id="requestId"
+    />
   </template>
 </template>

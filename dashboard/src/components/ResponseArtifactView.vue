@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { DataTable, Th, Td, Tr, Field, SegmentedControl, StateText, IconButton, Icon } from '@/ui'
 import {
   extractContentFromAggregated,
@@ -15,8 +15,10 @@ import SSEEventsVirtualList from './SSEEventsVirtualList.vue'
 
 const props = defineProps<{ payload: ArtifactPayload; url?: string; requestId?: string }>()
 
-type SubView = 'raw' | 'json' | 'aggregated' | 'rendered' | 'events'
-const subView = ref<SubView>('raw')
+export type SubView = 'raw' | 'json' | 'aggregated' | 'rendered' | 'events'
+const subView = defineModel<SubView>('subView', { required: true })
+const headersOpen = defineModel<boolean>('headersOpen', { required: true })
+const thinkingOpen = defineModel<boolean>('thinkingOpen', { required: true })
 
 const isSSE = computed(() => isSSEContentType(props.payload.headers))
 const isBinary = computed(() => props.payload.bodyEncoding === 'base64')
@@ -112,10 +114,6 @@ watch(
   },
   { immediate: true },
 )
-
-watch(jsonBody, (parsed) => {
-  if (!isSSE.value && parsed.ok) subView.value = 'json'
-})
 </script>
 
 <template>
@@ -126,7 +124,11 @@ watch(jsonBody, (parsed) => {
       </Field>
     </div>
 
-    <details class="group flex flex-col gap-2">
+    <details
+      :open="headersOpen"
+      @toggle="headersOpen = ($event.currentTarget as HTMLDetailsElement).open"
+      class="group flex flex-col gap-2"
+    >
       <summary
         class="flex items-center gap-1.5 cursor-pointer select-none list-none text-2xs font-medium text-ink-muted uppercase tracking-[0.04em] hover:text-ink"
       >
@@ -244,7 +246,12 @@ watch(jsonBody, (parsed) => {
               class="block max-h-[640px] w-full object-contain"
             />
           </figure>
-          <details v-if="content.thinking" class="group">
+          <details
+            v-if="content.thinking"
+            :open="thinkingOpen"
+            class="group"
+            @toggle="thinkingOpen = ($event.currentTarget as HTMLDetailsElement).open"
+          >
             <summary
               class="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-ink-muted select-none hover:text-ink"
             >
