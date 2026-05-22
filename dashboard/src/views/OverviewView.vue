@@ -24,6 +24,7 @@ import { provideCurrencyContext, useCurrencyContext } from '@/composables/useCur
 import { usePreferencesStore } from '@/stores/preferences'
 import OverviewDonut from '@/components/charts/OverviewDonut.vue'
 import OverviewAreaStack from '@/components/charts/OverviewAreaStack.vue'
+import OverviewLineChart from '@/components/charts/OverviewLineChart.vue'
 import OverviewSankey, {
   type SankeyLink,
   type SankeyNode,
@@ -40,6 +41,7 @@ const filters = reactive({
 })
 const distributionDimension = ref<OverviewDimension>('provider')
 const seriesDimension = ref<OverviewSeriesDimension>('none')
+const speedDimension = ref<OverviewSeriesDimension>('model')
 
 type SankeyVariant = 'tokenComposition' | 'tokensIn' | 'tokensOut' | 'costIn' | 'costOut'
 
@@ -170,15 +172,22 @@ const seriesQuery = useQuery({
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
+const speedSeriesQuery = useQuery({
+  queryKey: computed(() => queryKeys.overview.speed(overviewFilters.value, speedDimension.value)),
+  queryFn: () => getOverviewSeries(overviewFilters.value, speedDimension.value),
+  staleTime: OPERATIONAL_STALE_TIME,
+})
+
 const overviewRefreshing = computed(
   () =>
     summaryQuery.isFetching.value ||
     distributionQuery.isFetching.value ||
-    seriesQuery.isFetching.value,
+    seriesQuery.isFetching.value ||
+    speedSeriesQuery.isFetching.value,
 )
 
 function refreshOverview() {
-  void Promise.all([summaryQuery.refetch(), distributionQuery.refetch(), seriesQuery.refetch()])
+  void Promise.all([summaryQuery.refetch(), distributionQuery.refetch(), seriesQuery.refetch(), speedSeriesQuery.refetch()])
 }
 
 function dimensionLabel(dim: OverviewDimension | OverviewSeriesDimension, key: string): string {
@@ -326,6 +335,33 @@ const costPointsConverted = computed<SeriesPointVM[]>(() => {
 const seriesTokens = computed(() => nonCostPoints('tokens'))
 const seriesRequests = computed(() => nonCostPoints('requests'))
 const seriesTraces = computed(() => nonCostPoints('traces'))
+
+const speedSeriesData = computed(() => speedSeriesQuery.data.value)
+const speedGroups = computed(() => {
+  const groups = speedSeriesData.value?.groups ?? []
+  return groups.map((g) => ({ key: g.key, label: dimensionLabel(speedDimension.value, g.key) }))
+})
+const speedBuckets = computed(() => speedSeriesData.value?.buckets ?? [])
+const seriesPrefillSpeed = computed(() => {
+  const points: OverviewSeriesPointView[] = speedSeriesData.value?.points ?? []
+  return points
+    .filter((p) => p.metric === 'prefillSpeed')
+    .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
+})
+const seriesDecodeSpeed = computed(() => {
+  const points: OverviewSeriesPointView[] = speedSeriesData.value?.points ?? []
+  return points
+    .filter((p) => p.metric === 'decodeSpeed')
+    .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
+})
+
+function formatSpeed(v: number) {
+  if (!Number.isFinite(v)) return ''
+  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}k tok/s`
+  if (Math.abs(v) >= 1) return `${v.toFixed(0)} tok/s`
+  if (v === 0) return '0 tok/s'
+  return `${v.toFixed(1)} tok/s`
+}
 
 const summaryConvertedTotal = computed(() => {
   const target = ccy.targetCurrency.value
@@ -1128,6 +1164,56 @@ function formatCurrencyCompact(v: number, code: string) {
             :buckets="seriesBuckets"
             :points="seriesTraces"
             :value-format="(v) => compactNumber(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+    </div>
+
+    <!-- Speed -->
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >速度统计</span
+        >
+        <SegmentedControl v-model="speedDimension" :options="seriesDimensionOptions" />
+      </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >Prefill 速度</span
+          >
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
+            (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewLineChart
+            v-else
+            :groups="speedGroups"
+            :buckets="speedBuckets"
+            :points="seriesPrefillSpeed"
+            :value-format="(v) => formatSpeed(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >Decode 速度</span
+          >
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
+            (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewLineChart
+            v-else
+            :groups="speedGroups"
+            :buckets="speedBuckets"
+            :points="seriesDecodeSpeed"
+            :value-format="(v) => formatSpeed(v)"
             :bucket-format="formatBucket"
           />
         </div>

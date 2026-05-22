@@ -66,6 +66,7 @@ type Querier interface {
 	ListOverviewDistributionCosts(ctx context.Context, arg ListOverviewDistributionCostsParams) ([]ListOverviewDistributionCostsRow, error)
 	ListOverviewSeriesMetrics(ctx context.Context, arg ListOverviewSeriesMetricsParams) ([]ListOverviewSeriesMetricsRow, error)
 	ListOverviewSeriesTraces(ctx context.Context, arg ListOverviewSeriesTracesParams) ([]ListOverviewSeriesTracesRow, error)
+	ListOverviewSpeedSeries(ctx context.Context, arg ListOverviewSpeedSeriesParams) ([]ListOverviewSpeedSeriesRow, error)
 	ListOverviewTraceCountsByDimension(ctx context.Context, arg ListOverviewTraceCountsByDimensionParams) ([]ListOverviewTraceCountsByDimensionRow, error)
 	ListProjectPaths(ctx context.Context) ([]ListProjectPathsRow, error)
 	ListProjects(ctx context.Context) ([]Project, error)

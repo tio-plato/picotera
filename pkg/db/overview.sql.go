@@ -666,6 +666,84 @@ func (q *Queries) ListOverviewSeriesTraces(ctx context.Context, arg ListOverview
 	return items, nil
 }
 
+const listOverviewSpeedSeries = `-- name: ListOverviewSpeedSeries :many
+SELECT
+  bucket_at::timestamp AS bucket_at,
+  CASE $1::text
+    WHEN 'model' THEN COALESCE(model, '')
+    WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
+    WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'apiKey' THEN COALESCE(api_key_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
+    ELSE ''
+  END AS group_key,
+  COALESCE((SUM(prefill_token_sum) / (SUM(prefill_time_sum) / 1000.0))::float8, 0)::float8 AS prefill_speed,
+  COALESCE((SUM(decode_token_sum) / (SUM(decode_time_sum) / 1000.0))::float8, 0)::float8 AS decode_speed
+FROM request_speed_hourly
+WHERE bucket_at >= $2::timestamp
+  AND bucket_at < $3::timestamp
+  AND ($4::int IS NULL OR api_key_id = $4::int)
+  AND ($5::text IS NULL OR model = $5::text)
+  AND ($6::text IS NULL OR upstream_model = $6::text)
+  AND ($7::int IS NULL OR provider_id = $7::int)
+  AND ($8::int IS NULL OR project_id = $8::int)
+GROUP BY bucket_at, group_key
+HAVING SUM(prefill_time_sum) > 0 OR SUM(decode_time_sum) > 0
+ORDER BY bucket_at ASC, group_key ASC
+`
+
+type ListOverviewSpeedSeriesParams struct {
+	Dimension     string           `json:"dimension"`
+	StartAt       pgtype.Timestamp `json:"startAt"`
+	EndAt         pgtype.Timestamp `json:"endAt"`
+	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
+	Model         pgtype.Text      `json:"model"`
+	UpstreamModel pgtype.Text      `json:"upstreamModel"`
+	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
+}
+
+type ListOverviewSpeedSeriesRow struct {
+	BucketAt     pgtype.Timestamp `json:"bucketAt"`
+	GroupKey     string           `json:"groupKey"`
+	PrefillSpeed float64          `json:"prefillSpeed"`
+	DecodeSpeed  float64          `json:"decodeSpeed"`
+}
+
+func (q *Queries) ListOverviewSpeedSeries(ctx context.Context, arg ListOverviewSpeedSeriesParams) ([]ListOverviewSpeedSeriesRow, error) {
+	rows, err := q.db.Query(ctx, listOverviewSpeedSeries,
+		arg.Dimension,
+		arg.StartAt,
+		arg.EndAt,
+		arg.ApiKeyID,
+		arg.Model,
+		arg.UpstreamModel,
+		arg.ProviderID,
+		arg.ProjectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOverviewSpeedSeriesRow
+	for rows.Next() {
+		var i ListOverviewSpeedSeriesRow
+		if err := rows.Scan(
+			&i.BucketAt,
+			&i.GroupKey,
+			&i.PrefillSpeed,
+			&i.DecodeSpeed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOverviewTraceCountsByDimension = `-- name: ListOverviewTraceCountsByDimension :many
 SELECT
   CASE $1::text

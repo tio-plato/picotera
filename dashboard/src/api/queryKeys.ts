@@ -95,5 +95,7 @@ export const queryKeys = {
       ['overview', 'distribution', dim, { ...f }] as const,
     series: (f: OverviewFilters, dim: OverviewSeriesDimension) =>
       ['overview', 'series', dim, { ...f }] as const,
+    speed: (f: OverviewFilters, dim: OverviewSeriesDimension) =>
+      ['overview', 'speed', dim, { ...f }] as const,
   },
 }

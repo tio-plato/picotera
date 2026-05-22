@@ -323,6 +323,19 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to query series metrics", err)
 	}
+	speedRows, err := s.queries.ListOverviewSpeedSeries(ctx, db.ListOverviewSpeedSeriesParams{
+		Dimension:     in.Dimension,
+		StartAt:       startTS,
+		EndAt:         endTS,
+		ApiKeyID:      toPgInt4(in.ApiKeyID),
+		Model:         toPgText(in.Model),
+		UpstreamModel: toPgText(in.UpstreamModel),
+		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to query speed series", err)
+	}
 	traceRows, err := s.queries.ListOverviewSeriesTraces(ctx, db.ListOverviewSeriesTracesParams{
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
@@ -400,6 +413,24 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		tracesByBG[tokensReqsKey{bucket: bucket, group: group}] += t.TraceCount
 	}
 
+	prefillSpeedByBG := make(map[tokensReqsKey]float64)
+	decodeSpeedByBG := make(map[tokensReqsKey]float64)
+	for _, s := range speedRows {
+		if !s.BucketAt.Valid {
+			continue
+		}
+		bucket := overviewBucketAt(start, s.BucketAt.Time, bucketInterval).Format(time.RFC3339Nano)
+		group := s.GroupKey
+		addGroup(group)
+		bg := tokensReqsKey{bucket: bucket, group: group}
+		if s.PrefillSpeed != 0 {
+			prefillSpeedByBG[bg] = s.PrefillSpeed
+		}
+		if s.DecodeSpeed != 0 {
+			decodeSpeedByBG[bg] = s.DecodeSpeed
+		}
+	}
+
 	if len(groupKeys) == 0 {
 		groupKeys = []string{""}
 	}
@@ -444,6 +475,24 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 				Value:    float64(tracesByBG[bg]),
 				Currency: "",
 			})
+			if v, ok := prefillSpeedByBG[bg]; ok {
+				points = append(points, contract.OverviewSeriesPointView{
+					Metric:   "prefillSpeed",
+					BucketAt: bucket,
+					GroupKey: group,
+					Value:    v,
+					Currency: "",
+				})
+			}
+			if v, ok := decodeSpeedByBG[bg]; ok {
+				points = append(points, contract.OverviewSeriesPointView{
+					Metric:   "decodeSpeed",
+					BucketAt: bucket,
+					GroupKey: group,
+					Value:    v,
+					Currency: "",
+				})
+			}
 			for _, currency := range currencies {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "cost",

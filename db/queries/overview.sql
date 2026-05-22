@@ -255,3 +255,28 @@ WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND cost_currency IS NOT NULL
   AND cost_currency <> ''
 GROUP BY 1, 2, 3, 4, 5, 6;
+
+-- name: ListOverviewSpeedSeries :many
+SELECT
+  bucket_at::timestamp AS bucket_at,
+  CASE sqlc.arg('dimension')::text
+    WHEN 'model' THEN COALESCE(model, '')
+    WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
+    WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'apiKey' THEN COALESCE(api_key_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
+    ELSE ''
+  END AS group_key,
+  COALESCE((SUM(prefill_token_sum) / (SUM(prefill_time_sum) / 1000.0))::float8, 0)::float8 AS prefill_speed,
+  COALESCE((SUM(decode_token_sum) / (SUM(decode_time_sum) / 1000.0))::float8, 0)::float8 AS decode_speed
+FROM request_speed_hourly
+WHERE bucket_at >= sqlc.arg('start_at')::timestamp
+  AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
+  AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
+  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
+GROUP BY bucket_at, group_key
+HAVING SUM(prefill_time_sum) > 0 OR SUM(decode_time_sum) > 0
+ORDER BY bucket_at ASC, group_key ASC;
