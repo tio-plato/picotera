@@ -17,7 +17,7 @@ type MemoryStore struct {
 // NewMemoryStore creates a MemoryStore and starts the background expiration
 // goroutine. Call Close to stop it.
 func NewMemoryStore() *MemoryStore {
-	cache := ttlcache.New[string, string]()
+	cache := ttlcache.New(ttlcache.WithDisableTouchOnHit[string, string]())
 	go cache.Start()
 	return &MemoryStore{cache: cache}
 }
