@@ -127,7 +127,7 @@ func (e *ResponseExtractor) extractOpenAISSE(payload string) {
 		reasoning := result.Get("choices.0.delta.reasoning")
 		reasoningContent := result.Get("choices.0.delta.reasoning_content")
 		toolCalls := result.Get("choices.0.delta.tool_calls")
-		if (content.Exists() && content.String() != "") || (reasoning.Exists() && reasoning.String() != "") || (reasoningContent.Exists() && reasoningContent.String() != "") || toolCalls.Exists() {
+		if (content.Exists()) || (reasoning.Exists()) || (reasoningContent.Exists()) || toolCalls.Exists() {
 			ttft := time.Since(e.startTime).Milliseconds()
 			e.metrics.TTFTMs = &ttft
 			e.ttftRecorded = true
@@ -160,7 +160,7 @@ func (e *ResponseExtractor) extractOpenAIResponsesSSE(payload string) {
 
 	// TTFT: first output text or function call delta
 	if !e.ttftRecorded {
-		if eventType == "response.output_text.delta" || eventType == "response.function_call_arguments.delta" {
+		if eventType == "response.output_text.delta" || eventType == "response.function_call_arguments.delta" || eventType == "response.output_item.added" {
 			ttft := time.Since(e.startTime).Milliseconds()
 			e.metrics.TTFTMs = &ttft
 			e.ttftRecorded = true
@@ -190,23 +190,10 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 
 	// TTFT: first content_block_delta with text_delta, or content_block_start with tool_use
 	if !e.ttftRecorded {
-		if eventType == "content_block_delta" {
-			deltaType := result.Get("delta.type").String()
-			text := result.Get("delta.text").String()
-			if deltaType == "text_delta" && text != "" {
-				ttft := time.Since(e.startTime).Milliseconds()
-				e.metrics.TTFTMs = &ttft
-				e.ttftRecorded = true
-			}
-		}
-		if eventType == "content_block_start" {
-			blockType := result.Get("content_block.type").String()
-			text := result.Get("content_block.text").String()
-			if blockType == "tool_use" || (blockType == "text" && text != "") {
-				ttft := time.Since(e.startTime).Milliseconds()
-				e.metrics.TTFTMs = &ttft
-				e.ttftRecorded = true
-			}
+		if eventType == "content_block_delta" || eventType == "content_block_start" {
+			ttft := time.Since(e.startTime).Milliseconds()
+			e.metrics.TTFTMs = &ttft
+			e.ttftRecorded = true
 		}
 	}
 
