@@ -9,10 +9,28 @@ SELECT
   provider_id,
   api_key_id,
   project_id,
-  SUM(input_tokens::float8) AS prefill_token_sum,
-  SUM(ttft_ms::float8) AS prefill_time_sum,
-  SUM(output_tokens::float8) AS decode_token_sum,
-  SUM((time_spent_ms - ttft_ms)::float8) AS decode_time_sum
+  SUM(CASE
+    WHEN input_tokens >= 50 AND ttft_ms >= 500
+    THEN input_tokens::float8
+  END) AS prefill_token_sum,
+  SUM(CASE
+    WHEN input_tokens >= 50 AND ttft_ms >= 500
+    THEN ttft_ms::float8
+  END) AS prefill_time_sum,
+  SUM(CASE
+    WHEN output_tokens >= 50
+      AND ttft_ms IS NOT NULL
+      AND time_spent_ms IS NOT NULL
+      AND (time_spent_ms - ttft_ms) >= 500
+    THEN output_tokens::float8
+  END) AS decode_token_sum,
+  SUM(CASE
+    WHEN output_tokens >= 50
+      AND ttft_ms IS NOT NULL
+      AND time_spent_ms IS NOT NULL
+      AND (time_spent_ms - ttft_ms) >= 500
+    THEN (time_spent_ms - ttft_ms)::float8
+  END) AS decode_time_sum
 FROM request
 WHERE type = 1
 GROUP BY bucket_at, model, upstream_model, provider_id, api_key_id, project_id

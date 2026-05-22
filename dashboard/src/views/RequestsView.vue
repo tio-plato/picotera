@@ -437,7 +437,7 @@ function formatTimeSpent(ms: number | undefined): string {
 
 function outputSpeed(r: RequestView): string | null {
   if (!r.outputTokens || !r.timeSpentMs) return null
-  const seconds = r.timeSpentMs / 1000
+  const seconds = (r.timeSpentMs - (r.ttftMs ?? 0)) / 1000
   if (seconds <= 0) return null
   return (r.outputTokens / seconds).toFixed(0)
 }
