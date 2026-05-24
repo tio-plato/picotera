@@ -118,7 +118,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	failMetaResponse := func(err error) {
 		statusCode, respBody := handleGatewayErr(w, err)
-		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, statusCode, w.Header().Clone(), respBody, collectLogs())
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, statusCode, w.Header().Clone(), respBody, collectLogs(), nil)
 	}
 
 	failHook := func(err error) {
@@ -129,7 +129,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errMsg := err.Error()
 		failMeta(int32(status), errMsg)
 		respBody := writeGatewayError(w, status, errMsg, errorx.UpstreamError.Error())
-		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody, collectLogs())
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody, collectLogs(), nil)
 	}
 
 	// 4. Authenticate client. Returns the matched api_key row when the
@@ -191,7 +191,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errMsg := "failed to load js hooks: " + err.Error()
 		failMeta(http.StatusBadGateway, errMsg)
 		respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
-		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, nil)
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, nil, nil)
 		return
 	}
 	defer session.Close()
@@ -223,7 +223,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errMsg := "failed to set model in body: " + serr.Error()
 			failMeta(http.StatusInternalServerError, errMsg)
 			respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
-			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs())
+			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs(), nil)
 			return
 		}
 		body = updated
@@ -272,7 +272,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errMsg := "failed to build annotations: " + err.Error()
 		failMeta(http.StatusInternalServerError, errMsg)
 		respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
-		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs())
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs(), nil)
 		return
 	}
 	annoBuilder.modelAnno = modelAnno
@@ -517,7 +517,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			totalAttemptCount++
 			continue
 		}
-		h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody)
+		h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody, nil)
 		errMsg := string(respBody)
 		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 			ID:           upstreamID,
@@ -541,7 +541,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	failMeta(http.StatusBadGateway, errMsg)
 	respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
-	h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, collectLogs())
+	h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, collectLogs(), nil)
 }
 
 func mapLowerKeys(header http.Header) http.Header {
@@ -566,11 +566,11 @@ func (h *gatewayHandler) uploadRequestArtifact(ctx context.Context, id string, t
 }
 
 // uploadResponseArtifact builds and asynchronously uploads a response artifact for the given id+ts.
-func (h *gatewayHandler) uploadResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte) {
+func (h *gatewayHandler) uploadResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, timings []float64) {
 	if !h.artifacts.Enabled() {
 		return
 	}
-	payload, err := artifacts.BuildResponse(statusCode, header, body)
+	payload, err := artifacts.BuildResponse(statusCode, header, body, timings)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build response failed")
 		return
@@ -578,11 +578,11 @@ func (h *gatewayHandler) uploadResponseArtifact(ctx context.Context, id string, 
 	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
 }
 
-func (h *gatewayHandler) uploadResponseArtifactWithAggregation(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, aggregated *artifacts.AggregatedResponse) {
+func (h *gatewayHandler) uploadResponseArtifactWithAggregation(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, aggregated *artifacts.AggregatedResponse, timings []float64) {
 	if !h.artifacts.Enabled() {
 		return
 	}
-	payload, err := artifacts.BuildResponseWithAggregated(statusCode, header, body, aggregated)
+	payload, err := artifacts.BuildResponseWithAggregated(statusCode, header, body, aggregated, timings)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build response failed")
 		return
@@ -592,11 +592,11 @@ func (h *gatewayHandler) uploadResponseArtifactWithAggregation(ctx context.Conte
 
 // uploadMetaResponseArtifact is uploadResponseArtifact for the meta request,
 // embedding any captured JSX console output. Only meta artifacts carry logs.
-func (h *gatewayHandler) uploadMetaResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry) {
+func (h *gatewayHandler) uploadMetaResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry, timings []float64) {
 	if !h.artifacts.Enabled() {
 		return
 	}
-	payload, err := artifacts.BuildResponseWithLogs(statusCode, header, body, logs)
+	payload, err := artifacts.BuildResponseWithLogs(statusCode, header, body, logs, timings)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build meta response failed")
 		return
@@ -604,11 +604,11 @@ func (h *gatewayHandler) uploadMetaResponseArtifact(ctx context.Context, id stri
 	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
 }
 
-func (h *gatewayHandler) uploadMetaResponseArtifactWithAggregation(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry, aggregated *artifacts.AggregatedResponse) {
+func (h *gatewayHandler) uploadMetaResponseArtifactWithAggregation(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry, aggregated *artifacts.AggregatedResponse, timings []float64) {
 	if !h.artifacts.Enabled() {
 		return
 	}
-	payload, err := artifacts.BuildResponseWithLogsAndAggregated(statusCode, header, body, logs, aggregated)
+	payload, err := artifacts.BuildResponseWithLogsAndAggregated(statusCode, header, body, logs, aggregated, timings)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build meta response failed")
 		return
@@ -675,7 +675,7 @@ func (h *gatewayHandler) streamSuccess(
 			Status:       db.RequestStatusFailed,
 			CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 		})
-		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, metaLogs)
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, metaLogs, nil)
 		_ = resp.Body.Close()
 		return
 	}
@@ -688,7 +688,8 @@ func (h *gatewayHandler) streamSuccess(
 	}
 
 	extractor := NewResponseExtractor(internalBody, resp.Header.Get("Content-Type"), upstreamStartTime)
-	reader := newIdleTimeoutReader(extractor, h.config.GatewayReadTimeout, cancel)
+	timingRecorder := NewLineTimingRecorder(extractor, upstreamStartTime)
+	reader := newIdleTimeoutReader(timingRecorder, h.config.GatewayReadTimeout, cancel)
 	flusher, canFlush := w.(http.Flusher)
 	buf := make([]byte, 32*1024)
 	var captureBuf bytes.Buffer
@@ -721,8 +722,8 @@ func (h *gatewayHandler) streamSuccess(
 			aggregated = buildAggregatedArtifact(bgCtx, h.llmBridge, format, resp.Header.Get("Content-Type"), respBytes, profile)
 		}
 	}
-	h.uploadResponseArtifactWithAggregation(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes, aggregated)
-	h.uploadMetaResponseArtifactWithAggregation(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes, metaLogs, aggregated)
+	h.uploadResponseArtifactWithAggregation(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBytes, aggregated, timingRecorder.Timings)
+	h.uploadMetaResponseArtifactWithAggregation(bgCtx, metaID, metaCreatedAt, http.StatusOK, metaRespHeader, respBytes, metaLogs, aggregated, timingRecorder.Timings)
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)

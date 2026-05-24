@@ -122,7 +122,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		}
 		failMetaResponse := func(err error) {
 			statusCode, respBody := handleGatewayErr(w, err)
-			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, statusCode, w.Header().Clone(), respBody, collectLogs())
+			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, statusCode, w.Header().Clone(), respBody, collectLogs(), nil)
 		}
 		failHook := func(err error) {
 			status := http.StatusBadGateway
@@ -132,7 +132,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			errMsg := err.Error()
 			failMeta(int32(status), errMsg)
 			respBody := writeGatewayError(w, status, errMsg, errorx.UpstreamError.Error())
-			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody, collectLogs())
+			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody, collectLogs(), nil)
 		}
 
 		// 5. Authenticate. Resolver=Unknown forces the full fallback chain
@@ -184,7 +184,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			errMsg := "failed to load js hooks: " + err.Error()
 			failMeta(http.StatusBadGateway, errMsg)
 			respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
-			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, nil)
+			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, nil, nil)
 			return
 		}
 		defer session.Close()
@@ -212,7 +212,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				errMsg := "failed to set model in body: " + serr.Error()
 				failMeta(http.StatusInternalServerError, errMsg)
 				respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
-				h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs())
+				h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs(), nil)
 				return
 			}
 			body = updated
@@ -262,7 +262,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 			errMsg := "failed to build annotations: " + err.Error()
 			failMeta(http.StatusInternalServerError, errMsg)
 			respBody := writeGatewayError(w, http.StatusInternalServerError, errMsg, errorx.InternalError.Error())
-			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs())
+			h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusInternalServerError, w.Header().Clone(), respBody, collectLogs(), nil)
 			return
 		}
 		annoBuilder.modelAnno = modelAnno
@@ -675,7 +675,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 				cancel()
 				continue
 			}
-			h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody)
+			h.uploadResponseArtifact(bgCtx, upstreamID, upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody, nil)
 			errMsg := string(respBody)
 			h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 				ID:           upstreamID,
@@ -698,7 +698,7 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 		}
 		failMeta(http.StatusBadGateway, errMsg)
 		respBody := writeGatewayError(w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
-		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, collectLogs())
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, collectLogs(), nil)
 	}
 }
 
@@ -1071,9 +1071,10 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	// Extractor reads decoded upstream bytes and forwards them; metrics come
 	// from the upstream's native response format regardless of bridging.
 	extractor := NewResponseExtractor(internalBody, upstreamCT, a.upstreamStartTime)
+	timingRecorder := NewLineTimingRecorder(extractor, a.upstreamStartTime)
 
 	var upstreamCapture bytes.Buffer
-	teedUpstream := llmbridge.NewUpstreamTee(asReadCloser(extractor, internalBody), &upstreamCapture)
+	teedUpstream := llmbridge.NewUpstreamTee(asReadCloser(timingRecorder, internalBody), &upstreamCapture)
 
 	// clientReader produces the bytes we will actually write to the client
 	// (and into the meta-artifact buffer). When bridging it's the bridge
@@ -1179,8 +1180,12 @@ func (h *gatewayHandler) unifiedStreamSuccess(a unifiedStreamArgs) {
 	if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
 		metaAggregated = buildAggregatedArtifact(a.bgCtx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
 	}
-	h.uploadResponseArtifactWithAggregation(a.bgCtx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated)
-	h.uploadMetaResponseArtifactWithAggregation(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated)
+	h.uploadResponseArtifactWithAggregation(a.bgCtx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated, timingRecorder.Timings)
+	var metaTimings []float64
+	if !transforming {
+		metaTimings = timingRecorder.Timings
+	}
+	h.uploadMetaResponseArtifactWithAggregation(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated, metaTimings)
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
@@ -1245,7 +1250,7 @@ func (h *gatewayHandler) failUnifiedSuccess(a unifiedStreamArgs, errMsg string) 
 		Status:       db.RequestStatusFailed,
 		CreatedAt:    pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
-	h.uploadMetaResponseArtifact(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), respBody, a.metaLogs)
+	h.uploadMetaResponseArtifact(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), respBody, a.metaLogs, nil)
 	_ = a.resp.Body.Close()
 }
 

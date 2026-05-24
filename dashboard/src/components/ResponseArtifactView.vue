@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { DataTable, Th, Td, Tr, Field, SegmentedControl, StateText, IconButton, Icon } from '@/ui'
 import {
   extractContentFromAggregated,
@@ -12,6 +12,7 @@ import { isJsonContentType, parseJsonBody, rawBodyText } from './artifactBody'
 import type { ArtifactPayload } from './artifactTypes'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
 import SSEEventsVirtualList from './SSEEventsVirtualList.vue'
+import TimedRawView from './TimedRawView.vue'
 
 const props = defineProps<{ payload: ArtifactPayload; url?: string; requestId?: string }>()
 
@@ -20,6 +21,7 @@ const subView = defineModel<SubView>('subView', { required: true })
 const headersOpen = defineModel<boolean>('headersOpen', { required: true })
 const thinkingOpen = defineModel<boolean>('thinkingOpen', { required: true })
 
+const showTimings = ref(false)
 const isSSE = computed(() => isSSEContentType(props.payload.headers))
 const isBinary = computed(() => props.payload.bodyEncoding === 'base64')
 const jsonBody = computed(() => {
@@ -47,7 +49,7 @@ const subViewOptions = computed(() => {
 
 const sseEvents = computed(() => {
   if (!isSSE.value || !props.payload.body) return []
-  return parseSSEEventsForDisplay(props.payload.body)
+  return parseSSEEventsForDisplay(props.payload.body, props.payload.timings)
 })
 
 const content = computed(() => {
@@ -198,7 +200,17 @@ watch(
         >
           {{ jsonBody.error }}
         </StateText>
+        <label v-if="payload.timings?.length" class="flex items-center gap-1.5 text-2xs text-ink-muted select-none">
+          <input type="checkbox" v-model="showTimings" class="accent-accent-ink" />
+          显示到达时间
+        </label>
+        <TimedRawView
+          v-if="showTimings && payload.timings?.length"
+          :body="bodyDisplay(payload.body, payload.bodyEncoding) ?? ''"
+          :timings="payload.timings!"
+        />
         <pre
+          v-else
           class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-50 border border-line-soft rounded-md p-3 m-0 text-ink overflow-auto max-h-[480px]"
           >{{ bodyDisplay(payload.body, payload.bodyEncoding) }}</pre
         >

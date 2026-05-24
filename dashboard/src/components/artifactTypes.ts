@@ -26,4 +26,5 @@ export interface ArtifactPayload {
   bodyEncoding?: 'utf8' | 'base64'
   aggregated?: AggregatedResponse
   logs?: LogEntry[]
+  timings?: number[]
 }

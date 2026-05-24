@@ -29,6 +29,7 @@ type Payload struct {
 	BodyEncoding string              `json:"bodyEncoding"`
 	Aggregated   *AggregatedResponse `json:"aggregated,omitempty"`
 	Logs         []LogEntry          `json:"logs,omitempty"`
+	Timings      []float64           `json:"timings,omitempty"`
 }
 
 type AggregatedResponse struct {
@@ -48,15 +49,15 @@ func BuildRequest(method, url string, header http.Header, body []byte) ([]byte, 
 	return marshalAndCompress(&p)
 }
 
-func BuildResponse(statusCode int, header http.Header, body []byte) ([]byte, error) {
-	return buildResponse(statusCode, header, body, nil, nil)
+func BuildResponse(statusCode int, header http.Header, body []byte, timings []float64) ([]byte, error) {
+	return buildResponse(statusCode, header, body, nil, nil, timings)
 }
 
-func BuildResponseWithAggregated(statusCode int, header http.Header, body []byte, aggregated *AggregatedResponse) ([]byte, error) {
-	return buildResponse(statusCode, header, body, nil, aggregated)
+func BuildResponseWithAggregated(statusCode int, header http.Header, body []byte, aggregated *AggregatedResponse, timings []float64) ([]byte, error) {
+	return buildResponse(statusCode, header, body, nil, aggregated, timings)
 }
 
-func buildResponse(statusCode int, header http.Header, body []byte, logs []LogEntry, aggregated *AggregatedResponse) ([]byte, error) {
+func buildResponse(statusCode int, header http.Header, body []byte, logs []LogEntry, aggregated *AggregatedResponse, timings []float64) ([]byte, error) {
 	if err := validateAggregated(aggregated); err != nil {
 		return nil, err
 	}
@@ -65,6 +66,7 @@ func buildResponse(statusCode int, header http.Header, body []byte, logs []LogEn
 		Headers:    normalizeHeader(header),
 		Logs:       logs,
 		Aggregated: aggregated,
+		Timings:    timings,
 	}
 	encodeBody(&p, body)
 	return marshalAndCompress(&p)
@@ -72,12 +74,12 @@ func buildResponse(statusCode int, header http.Header, body []byte, logs []LogEn
 
 // BuildResponseWithLogs is BuildResponse plus a logs array — used for meta
 // response artifacts so JSX console output is visible in the dashboard.
-func BuildResponseWithLogs(statusCode int, header http.Header, body []byte, logs []LogEntry) ([]byte, error) {
-	return buildResponse(statusCode, header, body, logs, nil)
+func BuildResponseWithLogs(statusCode int, header http.Header, body []byte, logs []LogEntry, timings []float64) ([]byte, error) {
+	return buildResponse(statusCode, header, body, logs, nil, timings)
 }
 
-func BuildResponseWithLogsAndAggregated(statusCode int, header http.Header, body []byte, logs []LogEntry, aggregated *AggregatedResponse) ([]byte, error) {
-	return buildResponse(statusCode, header, body, logs, aggregated)
+func BuildResponseWithLogsAndAggregated(statusCode int, header http.Header, body []byte, logs []LogEntry, aggregated *AggregatedResponse, timings []float64) ([]byte, error) {
+	return buildResponse(statusCode, header, body, logs, aggregated, timings)
 }
 
 func normalizeHeader(h http.Header) http.Header {

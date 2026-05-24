@@ -17,6 +17,7 @@ export interface ParsedSSEEvent {
   event: string | null
   data: string
   json: unknown | null
+  timeMs?: number
 }
 
 function parseSSEEvents(body: string): SSEEvent[] {
@@ -157,21 +158,69 @@ export function formatAggregatedLabel(format: AggregatedFormat | undefined): str
   }
 }
 
-export function parseSSEEventsForDisplay(body: string): ParsedSSEEvent[] {
-  return parseSSEEvents(body).map((event, index) => {
-    let json: unknown | null = null
-    try {
-      json = JSON.parse(event.data)
-    } catch {
-      json = null
+export function parseSSEEventsForDisplay(body: string, timings?: number[]): ParsedSSEEvent[] {
+  const events = parseSSEEvents(body)
+  if (!timings || timings.length === 0) {
+    return events.map((event, index) => {
+      let json: unknown | null = null
+      try {
+        json = JSON.parse(event.data)
+      } catch {
+        json = null
+      }
+      return { index, event: event.event ?? null, data: event.data, json }
+    })
+  }
+
+  let newlineIndex = 0
+  let pos = 0
+  const chunks = body.split(/\n\n+/)
+  const chunkTimings: (number | undefined)[] = []
+  for (const chunk of chunks) {
+    chunkTimings.push(timings[newlineIndex])
+    for (let i = 0; i < chunk.length; i++) {
+      if (chunk[i] === '\n') newlineIndex++
     }
-    return {
-      index,
-      event: event.event ?? null,
-      data: event.data,
-      json,
+    pos += chunk.length
+    while (pos < body.length && body[pos] === '\n') {
+      newlineIndex++
+      pos++
     }
-  })
+  }
+
+  let chunkIdx = 0
+  let eventIdx = 0
+  const result: ParsedSSEEvent[] = []
+  for (const chunk of chunks) {
+    const lines = chunk.split('\n')
+    const dataParts: string[] = []
+    let eventType: string | undefined
+    for (const line of lines) {
+      if (line.startsWith('event:')) eventType = line.slice(6).trim()
+      else if (line.startsWith('data:')) dataParts.push(line.slice(5).trimStart())
+    }
+    if (dataParts.length > 0) {
+      const data = dataParts.join('\n')
+      if (data !== '[DONE]') {
+        let json: unknown | null = null
+        try {
+          json = JSON.parse(data)
+        } catch {
+          json = null
+        }
+        result.push({
+          index: eventIdx,
+          event: eventType ?? null,
+          data,
+          json,
+          timeMs: chunkTimings[chunkIdx],
+        })
+        eventIdx++
+      }
+    }
+    chunkIdx++
+  }
+  return result
 }
 
 export function isSSEContentType(headers: Record<string, string[]> | undefined): boolean {

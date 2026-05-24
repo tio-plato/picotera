@@ -84,6 +84,9 @@ watch(
             class="flex flex-wrap items-center gap-2 border-b border-line-soft bg-surface-50 px-3 py-2"
           >
             <span class="font-mono text-xs tabular text-ink">#{{ event.index + 1 }}</span>
+            <span v-if="event.timeMs != null" class="font-mono text-2xs tabular text-ink-faint">
+              {{ event.timeMs >= 1000 ? `+${(event.timeMs / 1000).toFixed(1)}s` : `+${Math.round(event.timeMs)}ms` }}
+            </span>
             <span class="font-mono text-2xs text-ink-muted">{{ event.event ?? 'message' }}</span>
             <span
               class="ml-auto rounded-[5px] border border-line-soft bg-surface-0 px-1.5 py-0.5 font-mono text-2xs"
