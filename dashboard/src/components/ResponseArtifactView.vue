@@ -13,6 +13,7 @@ import type { ArtifactPayload } from './artifactTypes'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
 import SSEEventsVirtualList from './SSEEventsVirtualList.vue'
 import TimedRawView from './TimedRawView.vue'
+import { useRequestDetailUiState } from '@/composables/useRequestDetailUiState'
 
 const props = defineProps<{ payload: ArtifactPayload; url?: string; requestId?: string }>()
 
@@ -21,7 +22,8 @@ const subView = defineModel<SubView>('subView', { required: true })
 const headersOpen = defineModel<boolean>('headersOpen', { required: true })
 const thinkingOpen = defineModel<boolean>('thinkingOpen', { required: true })
 
-const showTimings = ref(false)
+const {responseRawShowTimings: showTimings} = useRequestDetailUiState()
+console.log(showTimings.value)
 const isSSE = computed(() => isSSEContentType(props.payload.headers))
 const isBinary = computed(() => props.payload.bodyEncoding === 'base64')
 const jsonBody = computed(() => {

@@ -9,6 +9,7 @@ const requestHeadersOpen = ref(false)
 const responseSubView = ref<ResponseSubView>('json')
 const responseHeadersOpen = ref(false)
 const responseThinkingOpen = ref(false)
+const responseRawShowTimings = ref(false)
 
 export function useRequestDetailUiState() {
   return {
@@ -18,5 +19,6 @@ export function useRequestDetailUiState() {
     responseSubView,
     responseHeadersOpen,
     responseThinkingOpen,
+    responseRawShowTimings,
   }
 }
