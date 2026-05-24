@@ -26,11 +26,13 @@ const saveMutation = useMutation({
   onSuccess: () => invalidateEndpoints(queryClient),
 })
 
-const isModelPathLocked = computed(() => form.value.endpointType === 'exaSearch')
+const isModelPathLocked = computed(
+  () => form.value.endpointType === 'exaSearch' || form.value.endpointType === 'modelList',
+)
 watch(
   () => form.value.endpointType,
   (t) => {
-    if (t === 'exaSearch') form.value.modelPath = ''
+    if (t === 'exaSearch' || t === 'modelList') form.value.modelPath = ''
   },
 )
 
@@ -87,7 +89,11 @@ async function submit() {
           v-model="form.modelPath"
           :disabled="isModelPathLocked"
           :placeholder="
-            isModelPathLocked ? 'Exa 搜索端点不解析模型' : '可选，留空表示该端点不解析模型'
+            form.endpointType === 'modelList'
+              ? '模型列表端点不解析模型'
+              : form.endpointType === 'exaSearch'
+                ? 'Exa 搜索端点不解析模型'
+                : '可选，留空表示该端点不解析模型'
           "
         />
       </Field>

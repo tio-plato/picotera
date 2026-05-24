@@ -12,6 +12,7 @@ import (
 
 	"picotera/pkg/annotations"
 	"picotera/pkg/artifacts"
+	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
@@ -45,7 +46,14 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Read request body
+	// 2. modelList endpoints are handled separately — no body, no meta request,
+	// no JS hooks, no upstream forwarding.
+	if endpoint.EndpointType == contract.EndpointType_ModelList {
+		h.handleModelList(w, r, endpoint)
+		return
+	}
+
+	// 3. Read request body
 	body, err := io.ReadAll(r.Body)
 	r.Body.Close()
 	if err != nil {
@@ -53,7 +61,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Insert meta request now that we know the endpoint matched.
+	// 4. Insert meta request now that we know the endpoint matched.
 	metaID, metaIDCreatedAt := newRequestID()
 	metaReqHeader := r.Header.Clone()
 	parentSpanID := extractParentSpanID(metaReqHeader)
@@ -132,7 +140,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, status, w.Header().Clone(), respBody, collectLogs(), nil)
 	}
 
-	// 4. Authenticate client. Returns the matched api_key row when the
+	// 5. Authenticate client. Returns the matched api_key row when the
 	// supplied credentials are valid and the key is not disabled.
 	apiKey, err := h.authenticateClient(r.Context(), r, endpoint.CredentialsResolver)
 	if err != nil {
@@ -159,7 +167,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
 
-	// 5. Extract model name. When endpoint.ModelPath is empty the endpoint is
+	// 6. Extract model name. When endpoint.ModelPath is empty the endpoint is
 	// a "no-model" endpoint: all providers bound to the path are candidates,
 	// and we skip body / path-var extraction entirely.
 	var modelName string
@@ -183,7 +191,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
 
-	// 6. Build jsx session up front so the rewriteModel hook can run before
+	// 7. Build jsx session up front so the rewriteModel hook can run before
 	// MPE resolution. The session loads enabled scripts from the DB; if no
 	// scripts are enabled this is essentially a no-op pass-through.
 	session, err = h.jsxEngine.NewSession(r.Context(), metaID)
@@ -196,7 +204,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer session.Close()
 
-	// 6a. rewriteModel hook — once before MPE lookup. ctx is a snapshot of the
+	// 7a. rewriteModel hook — once before MPE lookup. ctx is a snapshot of the
 	// raw client request (modelName as extracted). If the hook returns a new
 	// modelName, body.model is rewritten in lockstep so downstream hooks see
 	// a consistent client-request shape.
@@ -243,7 +251,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// subsequent request-row writes use this, not originalModelName.
 	routedModel := modelName
 
-	// 7. Resolve providers using the (possibly rewritten) modelName.
+	// 8. Resolve providers using the (possibly rewritten) modelName.
 	providers, err := h.resolveProviders(r.Context(), endpoint.Path, modelName)
 	if err != nil {
 		var gwErr *gatewayError
@@ -256,7 +264,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 8a. Build candidate list and a sidecar map for fields not exposed to JS
+	// 9a. Build candidate list and a sidecar map for fields not exposed to JS
 	// (upstream URL, credentials, merged annotations). The hooks see
 	// {provider, mpe, annotations}; we look up the rest by providerID after
 	// the hook returns. Refresh modelAnno from the route SQL so a single
@@ -322,10 +330,10 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	modelJS := &jsx.ModelSummary{Name: originalModelName, Annotations: modelAnno}
 	endpointJS := endpointSummaryFromRow(endpoint)
 
-	// 8b. The JS-visible client request shape (read-only).
+	// 9b. The JS-visible client request shape (read-only).
 	jsClientRequest := serializeClientRequest(r, body, modelName, pathVars)
 
-	// 8c. sortProviders — once before the loop.
+	// 9c. sortProviders — once before the loop.
 	sortedCandidates, err := session.RunSortHook(jsx.SortInput{
 		Endpoint:    endpointJS,
 		Model:       modelJS,
@@ -339,7 +347,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 8d. Retry loop
+	// 9d. Retry loop
 	var lastErr error
 	var lastJSErr *jsx.LastError
 	i := 0
@@ -534,7 +542,7 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	}
 
-	// 9. All providers failed (or attempts cap reached) — fail meta with 502.
+	// 10. All providers failed (or attempts cap reached) — fail meta with 502.
 	errMsg := "all providers failed"
 	if lastErr != nil {
 		errMsg = lastErr.Error()

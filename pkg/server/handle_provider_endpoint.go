@@ -40,6 +40,12 @@ func (s *Server) handleListProviderEndpoints(ctx context.Context, input *contrac
 }
 
 func (s *Server) handleUpsertProviderEndpoint(ctx context.Context, input *contract.UpsertProviderEndpointRequest) (*contract.UpsertProviderEndpointResponse, error) {
+	// modelList endpoints cannot have provider bindings.
+	endpoint, err := s.queries.GetEndpointByPath(ctx, input.Body.EndpointPath)
+	if err == nil && endpoint.EndpointType == contract.EndpointType_ModelList {
+		return nil, huma.Error400BadRequest("modelList endpoint cannot have provider bindings")
+	}
+
 	params := contract.FromProviderEndpointView(&input.Body)
 	pe, err := s.queries.UpsertProviderEndpoint(ctx, *params)
 	if err != nil {

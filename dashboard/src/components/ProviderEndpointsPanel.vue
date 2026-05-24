@@ -67,7 +67,11 @@ const endpointNameByPath = computed(() => {
 })
 
 const availableEndpoints = computed(() =>
-  endpoints.value.filter((e) => !providerEndpoints.value.some((pe) => pe.endpointPath === e.path)),
+  endpoints.value.filter(
+    (e) =>
+      e.endpointType !== 'modelList' &&
+      !providerEndpoints.value.some((pe) => pe.endpointPath === e.path),
+  ),
 )
 
 function guessUpstreamUrl(endpointPath: string) {

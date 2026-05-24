@@ -372,3 +372,48 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (p
 	err := row.Scan(&created_at)
 	return created_at, err
 }
+
+const listAvailableModelNames = `-- name: ListAvailableModelNames :many
+SELECT DISTINCT m.name
+FROM model AS m
+WHERE m.disabled = FALSE
+  AND EXISTS (
+    SELECT 1
+    FROM provider AS p
+    CROSS JOIN LATERAL jsonb_array_elements(p.provider_models) AS elem
+    JOIN provider_endpoint AS pe ON pe.provider_id = p.id
+    WHERE p.provider_models @> jsonb_build_array(jsonb_build_object('model', m.name))
+      AND elem ->> 'model' = m.name
+      AND p.disabled = FALSE
+      AND COALESCE((elem ->> 'disabled')::boolean, false) = false
+      AND pe.upstream_url <> ''
+      AND p.credentials <> ''
+      AND (
+        elem -> 'endpoints' IS NULL
+        OR jsonb_typeof(elem -> 'endpoints') <> 'array'
+        OR jsonb_array_length(elem -> 'endpoints') = 0
+        OR elem -> 'endpoints' @> to_jsonb(ARRAY[pe.endpoint_path])
+      )
+  )
+ORDER BY m.name
+`
+
+func (q *Queries) ListAvailableModelNames(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listAvailableModelNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

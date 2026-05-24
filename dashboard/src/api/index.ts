@@ -59,5 +59,6 @@ export const ENDPOINT_TYPE_LABELS: Record<EndpointType, string> = {
   geminiGenerateContent: 'Gemini 生成内容',
   geminiStreamGenerateContent: 'Gemini 流式生成内容',
   exaSearch: 'Exa 搜索',
+  modelList: '模型列表',
   unknown: '未知',
 }

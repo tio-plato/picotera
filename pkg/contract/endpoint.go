@@ -26,6 +26,7 @@ const (
 	EndpointType_GeminiGenerateContent       int32 = 7
 	EndpointType_GeminiStreamGenerateContent int32 = 8
 	EndpointType_ExaSearch                   int32 = 9
+EndpointType_ModelList                   int32 = 10
 )
 
 func ToEndpointType(s string) int32 {
@@ -48,6 +49,8 @@ func ToEndpointType(s string) int32 {
 		return EndpointType_GeminiStreamGenerateContent
 	case "exaSearch":
 		return EndpointType_ExaSearch
+	case "modelList":
+		return EndpointType_ModelList
 	default:
 		return EndpointType_Unknown
 	}
@@ -73,6 +76,8 @@ func FromEndpointType(t int32) string {
 		return "geminiStreamGenerateContent"
 	case EndpointType_ExaSearch:
 		return "exaSearch"
+	case EndpointType_ModelList:
+		return "modelList"
 	default:
 		return "unknown"
 	}
@@ -121,7 +126,7 @@ type EndpointView struct {
 	Path                string `json:"path"`
 	ModelPath           string `json:"modelPath"`
 	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,bearerToken,xApiKey,searchKey,googApiKey,unknown"`
-	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,geminiGenerateContent,geminiStreamGenerateContent,exaSearch,unknown"`
+	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,geminiGenerateContent,geminiStreamGenerateContent,exaSearch,modelList,unknown"`
 }
 
 func ToEndpointView(endpoint *db.Endpoint) (*EndpointView, error) {
