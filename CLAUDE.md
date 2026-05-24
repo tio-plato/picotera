@@ -9,14 +9,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run Commands
 
-Toolchain is pinned via `mise.toml` (go, node, pnpm, sqlc). The `[tasks]` block in `mise.toml` defines shortcuts; direct commands also work.
+Toolchain is pinned via `mise.toml` (go, node, pnpm, sqlc, tinygo). The `[tasks]` block in `mise.toml` defines shortcuts; direct commands also work.
 
 ```bash
 # Backend
-mise run server                         # go run ./cmd/picotera/main.go
-go build -o picotera ./cmd/picotera     # build binary
+mise run server                         # go run ./cmd/picotera/main.go (auto-builds WASM first)
+go build -o picotera ./cmd/picotera     # build binary (needs dist/llmbridge.wasm)
 
-# Infra (Postgres on :34052, KeyDB/Redis on :34051)
+# WASM (llmbridge cross-format converter, built with tinygo)
+mise run wasm                           # tinygo build → dist/llmbridge.wasm
+mise run precompile-wasm                # ahead-of-time compile the WASM module
+
+# Infra (Postgres on :34052, KeyDB/Redis on :34051, MinIO on :34050)
 docker compose up -d
 
 # sqlc — edit db/queries/*.sql, then regenerate pkg/db/
@@ -73,7 +77,13 @@ PicoTera is an API gateway that routes LLM inference requests across multiple pr
 - `pkg/errorx/` — Custom error types with structured codes.
 - `pkg/logx/` — logrus wrapper.
 - `pkg/jsx/` — embedded JavaScript runtime (built on `github.com/fastschema/qjs`) that runs user-supplied scripts as request-lifecycle hooks. See "Scripts" below.
-- `pkg/llmbridge/` — adapter over `github.com/looplj/axonhub/llm` that converts LLM request/response payloads between Anthropic Messages, OpenAI Chat Completions, OpenAI Responses, and Gemini GenerateContent formats. Used by the unified gateway routes (see "Unified generation routes" below). Axonhub's `llm/` sub-tree is LGPL-3.0; attribution lives in `THIRD_PARTY_NOTICES.md`.
+- `pkg/llmbridge/` — adapter types and interfaces for cross-format LLM payload conversion (Anthropic Messages, OpenAI Chat Completions, OpenAI Responses, Gemini GenerateContent). Built as a WASM module via tinygo for runtime use.
+- `pkg/llmbridgeimpl/` — concrete implementations of `llmbridge` converters, compiled into the WASM target (`cmd/llmbridge-wasm`). Depends on `github.com/looplj/axonhub/llm` (LGPL-3.0; attribution in `THIRD_PARTY_NOTICES.md`).
+- `pkg/kv/` — key-value store abstraction with memory and Redis (KeyDB) backends. Used by user-supplied scripts. CRUD exposed at `/api/picotera/kv`.
+- `pkg/artifacts/` — request/response payload serialization. Stores bodies as zstd-compressed JSON with optional line-by-line SSE timings. MinIO-backed via the `picotera-artifacts` bucket.
+- `pkg/pricing/` — model pricing calculation and matching logic.
+- `pkg/annotations/` — request annotation parsing and handling.
+- `pkg/transform/` — generic data transformation utilities.
 
 ### Scripts (user JS hooks)
 
@@ -95,7 +105,7 @@ Hooks are run as priority-sorted waterfalls (higher priority first); each tap ma
 - **Adding an API operation**: Define operation + request/response types in `pkg/contract/`, add handler method on `*Server` in `pkg/server/`, register in `registerOperations()`. After the change, regenerate `openapi.yaml` so the dashboard's typed client picks it up.
 - **Config**: All settings via env vars with `PICOTERA_` prefix (e.g., `PICOTERA_DATABASE_URL`, `PICOTERA_PORT`). Default port is 9898.
 - **API base path**: All management operations are under `/api/picotera`.
-- **Database**: TimescaleDB (`timescale/timescaledb:2.26.4-pg17` image) on port 34052 via docker-compose. Migrations auto-run on startup. A KeyDB (Redis-compatible) service on 34051 and a MinIO instance on 34050 (bucket `picotera-artifacts`, bootstrapped by `minio-init`) run alongside; KeyDB is not yet consumed by the backend, MinIO backs the artifact sink (`pkg/artifacts/`).
+- **Database**: TimescaleDB (`timescale/timescaledb:2.26.4-pg17` image) on port 34052 via docker-compose. Migrations auto-run on startup. A MinIO instance on 34050 (bucket `picotera-artifacts`, bootstrapped by `minio-init`) backs the artifact sink (`pkg/artifacts/`).
 - **`request` is a TimescaleDB hypertable** (migration 017): partitioned by `created_at` with composite primary key `(id, created_at)`. `created_at` no longer has a default — every insert/update/delete must supply it (see the `id_created_at` / `created_at` args in `db/queries/request.sql`). Cursor pagination tuples are `(created_at, id)`, not just `id`.
 
 ### Unified generation routes
@@ -112,68 +122,8 @@ These are NOT rows in the `endpoint` table — operators only configure the unde
 
 ### Database Schema
 
-Ten tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request` (hypertable), `script`, `traces`, `project`. Uses JSONB for flexible fields (provider models, annotations, project paths). Upsert pattern via `ON CONFLICT DO UPDATE`. The `request` hypertable also carries a nullable `project_id` foreign reference (no FK constraint) populated by the project extractor on insert.
+Core tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request` (hypertable), `script`, `traces`, `project`. Uses JSONB for flexible fields (provider models, annotations, project paths). Upsert pattern via `ON CONFLICT DO UPDATE`. The `request` hypertable also carries a nullable `project_id` foreign reference (no FK constraint) populated by the project extractor on insert. TimescaleDB continuous aggregates (`request_overview_hourly`, `request_speed_hourly`) power the overview dashboard metrics.
 
 ## Dashboard
 
-Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pinia + Vue Router + TypeScript + `@tanstack/vue-query` for data fetching. Located in `dashboard/`. Package manager is pnpm (workspace root at repo root). Icons via `@tabler/icons-vue`; floating/popover positioning via `@floating-ui/vue`.
-
-**Design system reference**: before building or modifying UI, read `dashboard/DESIGN_SYSTEM.md` for tokens, primitives (`src/ui/`), and conventions.
-
-### Dashboard Layout
-
-- `src/main.ts`, `src/App.vue` — app bootstrap; `AppSidebar` + router-view shell.
-- `src/router/` — Vue Router config.
-- `src/stores/` — Pinia stores (`preferences.ts` holds user-configurable UI state).
-- `src/views/` — route-level pages: `ProvidersView`, `EndpointsView`, `ModelsView`, `MappingsView`, `ScriptsView`, `ProjectsView`, plus request history. One view per management resource.
-- `src/components/` — feature-level components: forms (`ProviderForm`, `EndpointForm`, `ModelForm`, `MappingForm`, `ScriptForm`, `ProjectForm`), editors (`AnnotationsEditor`, `ModelListEditor`), side panels (`SidePanelHost`, `ProviderEndpointsPanel`), chrome (`AppSidebar`, `PreferencesMenu`).
-- `src/composables/` — `useApi` (typed fetch client), `useConfirm` (global confirm dialog), `useSidePanel` (global slide-over stack).
-- `src/api/` — `openapi-fetch` client (`plugin.ts`), shared `QueryClient` (`queryClient.ts`), typed `queryKeys` registry (`queryKeys.ts`), thin async fetcher wrappers + invalidation helpers (`client.ts`), and re-exported schema types (`index.ts`). Generated types live at `src/openapi-types.d.ts` (output of `pnpm --dir dashboard generate-openapi`).
-- `src/ui/` — **local UI primitive library. No third-party UI kit. No variant-authoring libs (cva/tv).** Style with Tailwind classes directly inside each component.
-
-### Local UI Primitives (`src/ui/`)
-
-Re-exported via `src/ui/index.ts`. Prefer these over ad-hoc markup.
-
-- **Form**: `Button`, `IconButton`, `Input`, `Select`, `Textarea`, `Field` (label + error + help wrapper), `SegmentedControl`.
-- **Data display**: `DataCard` (titled container), `DataTable` + `Th` / `Td` / `Tr` (table primitives), `Badge`, `Tag`, `TagList`, `StateText` (state-colored inline text).
-- **Overlays / navigation**: `Overlay` (backdrop layer), `SidePanel` (slide-over, driven by `useSidePanel`), `ConfirmDialog` (driven by `useConfirm`), `Tabs`.
-- **Icons**: `Icon` component with `IconName` type, fed from `src/ui/icons/paths.ts`. Use `@tabler/icons-vue` when adding new icons.
-
-When building new screens, compose these primitives — don't reach for a third-party UI library, and don't introduce a variant DSL. Tailwind v4 utility classes are the styling vocabulary.
-
-### Data layer (vue-query)
-
-`@tanstack/vue-query` is the *only* sanctioned way to read API data in views/components. The shared `QueryClient` (`src/api/queryClient.ts`) is registered in `src/main.ts` via `VueQueryPlugin`; it ships sensible defaults (`refetchOnWindowFocus: false`, `retry: 1`, mutation `retry: 0`) and exports two stale-time constants — `MANAGEMENT_STALE_TIME` (30s, the default) for config resources and `OPERATIONAL_STALE_TIME` (5s) for live data. Override per-`useQuery` only when needed.
-
-- **Fetchers in `src/api/client.ts`** — plain async functions wrapping `api.GET`/`PUT`/`POST` (the openapi-fetch client). They throw `ApiRequestError` (with localized fallback messages) on non-2xx so vue-query's `error`/`isError` flows work uniformly. Don't call `api.GET` directly from views — add a fetcher here.
-- **Keys in `src/api/queryKeys.ts`** — single hierarchical `queryKeys` object (`all` / `list(filters)` / `detail(id)` shape per resource). Always derive keys from this object; never inline `['providers', id]` literals. Filtered list keys take a `Readonly<>` filter object so the spread is deterministic. Filter / cursor types (`RequestsFilters`, `CursorFilters`) are exported here for views that pass reactive filters.
-- **Reactive queries** — when filters or cursors are reactive, pass a `computed(() => queryKeys.x.list(...))` as `queryKey` and reference the same reactive values inside `queryFn` so vue-query refires on change. `RequestsView.vue` and `TracesView.vue` are the canonical examples.
-- **Mutations** — call the corresponding `client.ts` writer (`upsertProvider`, `deleteScript`, etc.) inside `useMutation`, then on success invoke the matching `invalidate*` helper from `client.ts` (e.g. `invalidateProviderEndpoints` already fans out to providers + models). Prefer these helpers over ad-hoc `client.invalidateQueries` so cross-resource fanout stays in one place.
-- **Error rendering** — surface `ApiRequestError.message` (already localized) in the UI; `code` / `details` are available on the error for finer handling.
-
-### Views & router page metadata
-
-When you add a new route, register the route name in `src/App.vue`'s `pageMeta` map (`title` + `hint`). The shell reads it to render header chrome — without an entry the page renders untitled. The map key must match the route's `name` exactly (defined in `src/router/index.ts`). See `dashboard/src/views/CLAUDE.md`.
-
-## Design Context
-
-### Users
-ML/AI engineers configuring model providers, testing endpoints, and optimizing inference costs. They're technically fluent, time-constrained, and working in high-stakes environments where misconfiguration means downtime or overspend. They need to quickly understand routing state, diagnose failures, and iterate on provider setups without hand-holding.
-
-### Brand Personality
-**Modern, Smart, Confident** — PicoTera feels like infrastructure that knows what it's doing. It projects competence without arrogance. The interface should feel like talking to a sharp colleague: direct, precise, never wasteful. Not flashy or playful — purposefully understated because the tool speaks through its capability.
-
-### Aesthetic Direction
-Light mode primary with clean, spacious surfaces. Information-dense but not cluttered — think Grafana/Datadog: dashboard-first, data-rich, scannable at a glance. Professional polish over decorative flair. A blue primary accent against neutral light backgrounds. Typography should be crisp and hierarchical. Avoid minimal-for-minimal's-sake; density is good when it serves scanning.
-
-**References**: Grafana, Datadog — functional density, clear data hierarchy, status-driven UI
-**Anti-references**: Overly minimal landing-page aesthetics, playful micro-interactions that slow down power users, dark-mode-only developer tools
-
-### Design Principles
-
-1. **Signal over decoration** — Every pixel should earn its place. Status colors, data density, and clear hierarchy matter more than visual flourish. If it doesn't help an engineer make a decision, it doesn't belong.
-2. **Scan, don't read** — Optimize for the 3-second glance. Tables, status badges, and metrics should be immediately parseable. Reserve detailed views for drill-down, not the default.
-3. **Confidence through clarity** — The UI should never leave the user guessing about state. Active vs. inactive, healthy vs. failing, configured vs. missing — binary visual signals with no ambiguity.
-4. **Fast over fancy** — ML engineers are iterating quickly. Interactions should be direct and predictable. Prefer instant feedback to animated transitions. CRUD operations should feel like editing a spreadsheet, not navigating a wizard.
-5. **Progressive density** — Start with a clean overview, then reveal detail on demand. Summary cards → expandable rows → detail panels. Never hide critical info behind clicks, but don't overwhelm with everything at once.
+See `dashboard/CLAUDE.md` for all dashboard-specific documentation (architecture, components, composables, UI primitives, data layer, design context).
