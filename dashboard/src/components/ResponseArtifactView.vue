@@ -23,7 +23,6 @@ const headersOpen = defineModel<boolean>('headersOpen', { required: true })
 const thinkingOpen = defineModel<boolean>('thinkingOpen', { required: true })
 
 const {responseRawShowTimings: showTimings} = useRequestDetailUiState()
-console.log(showTimings.value)
 const isSSE = computed(() => isSSEContentType(props.payload.headers))
 const isBinary = computed(() => props.payload.bodyEncoding === 'base64')
 const jsonBody = computed(() => {
