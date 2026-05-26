@@ -10,20 +10,26 @@ import (
 )
 
 type Config struct {
-	DatabaseURL           string        `mapstructure:"database_url"`
-	Host                  string        `mapstructure:"host"`
-	Port                  int           `mapstructure:"port"`
-	GatewayReadTimeout    time.Duration `mapstructure:"gateway_read_timeout"`
-	S3                    S3Config      `mapstructure:"s3"`
-	KV                    KVConfig      `mapstructure:"kv"`
-	JSHookTimeout         time.Duration `mapstructure:"js_hook_timeout"`
-	JSMemoryLimit         int64         `mapstructure:"js_memory_limit"`
-	JSMaxTotalAttempts    int           `mapstructure:"js_max_total_attempts"`
-	JSMaxDelay            time.Duration `mapstructure:"js_max_delay"`
-	LLMBridgeWASMPoolSize int           `mapstructure:"llmbridge_wasm_pool_size"`
-	LLMBridgeWASMPath     string        `mapstructure:"llmbridge_wasm_path"`
-	LLMBridgeWASMCacheDir string        `mapstructure:"llmbridge_wasm_cache_dir"`
-	LLMBridgeWASMRuntime  string        `mapstructure:"llmbridge_wasm_runtime"`
+	DatabaseURL                  string        `mapstructure:"database_url"`
+	Host                         string        `mapstructure:"host"`
+	Port                         int           `mapstructure:"port"`
+	GatewayReadTimeout           time.Duration `mapstructure:"gateway_read_timeout"`
+	GatewayIdleConnTimeout       time.Duration `mapstructure:"gateway_idle_conn_timeout"`
+	GatewayTLSHandshakeTimeout   time.Duration `mapstructure:"gateway_tls_handshake_timeout"`
+	GatewayExpectContinueTimeout time.Duration `mapstructure:"gateway_expect_continue_timeout"`
+	GatewayResponseHeaderTimeout time.Duration `mapstructure:"gateway_response_header_timeout"`
+	GatewayDialTimeout           time.Duration `mapstructure:"gateway_dial_timeout"`
+	GatewayDialKeepAlive         time.Duration `mapstructure:"gateway_dial_keep_alive"`
+	S3                           S3Config      `mapstructure:"s3"`
+	KV                           KVConfig      `mapstructure:"kv"`
+	JSHookTimeout                time.Duration `mapstructure:"js_hook_timeout"`
+	JSMemoryLimit                int64         `mapstructure:"js_memory_limit"`
+	JSMaxTotalAttempts           int           `mapstructure:"js_max_total_attempts"`
+	JSMaxDelay                   time.Duration `mapstructure:"js_max_delay"`
+	LLMBridgeWASMPoolSize        int           `mapstructure:"llmbridge_wasm_pool_size"`
+	LLMBridgeWASMPath            string        `mapstructure:"llmbridge_wasm_path"`
+	LLMBridgeWASMCacheDir        string        `mapstructure:"llmbridge_wasm_cache_dir"`
+	LLMBridgeWASMRuntime         string        `mapstructure:"llmbridge_wasm_runtime"`
 }
 
 type KVConfig struct {
@@ -60,6 +66,12 @@ func Parse() (*Config, error) {
 
 	viper.SetDefault("port", 9898)
 	viper.SetDefault("gateway_read_timeout", 300*time.Second)
+	viper.SetDefault("gateway_dial_timeout", 30*time.Second)
+	viper.SetDefault("gateway_dial_keep_alive", 16*time.Second)
+	viper.SetDefault("gateway_idle_conn_timeout", 24*time.Second)
+	viper.SetDefault("gateway_tls_handshake_timeout", 16*time.Second)
+	viper.SetDefault("gateway_expect_continue_timeout", 16*time.Second)
+	viper.SetDefault("gateway_response_header_timeout", 16*time.Second)
 	viper.SetDefault("s3.region", "us-east-1")
 	viper.SetDefault("s3.use_ssl", false)
 	viper.SetDefault("js_hook_timeout", 5*time.Second)

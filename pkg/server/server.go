@@ -15,7 +15,6 @@ import (
 	"picotera/pkg/llmbridge"
 	"picotera/pkg/logx"
 	"picotera/pkg/server/static"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -81,15 +80,15 @@ func NewServer(ctx context.Context) (*Server, error) {
 	baseTransport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 15 * time.Second,
+			Timeout:   config.GatewayDialTimeout,
+			KeepAlive: config.GatewayDialKeepAlive,
 		}).DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: config.GatewayReadTimeout,
+		IdleConnTimeout:       config.GatewayIdleConnTimeout,
+		TLSHandshakeTimeout:   config.GatewayTLSHandshakeTimeout,
+		ExpectContinueTimeout: config.GatewayExpectContinueTimeout,
+		ResponseHeaderTimeout: config.GatewayResponseHeaderTimeout,
 	}
 	httpClient := &http.Client{Transport: baseTransport}
 	proxyCache := newProxyTransportCache(baseTransport)
