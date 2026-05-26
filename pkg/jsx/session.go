@@ -294,10 +294,11 @@ func (s *Session) RunRewriteHook(in RewriteInput) (PendingRequestShape, error) {
 	if jsonStr == "" || jsonStr == "null" {
 		return out, nil
 	}
-	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+	var newOut PendingRequestShape
+	if err := json.Unmarshal([]byte(jsonStr), &newOut); err != nil {
 		return out, fmt.Errorf("jsx: rewriteRequest decode: %w", err)
 	}
-	return out, nil
+	return newOut, nil
 }
 
 // RunBeforeTransformHook calls the beforeTransform waterfall with the current
