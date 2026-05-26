@@ -42,6 +42,7 @@ const filters = reactive({
 const distributionDimension = ref<OverviewDimension>('provider')
 const seriesDimension = ref<OverviewSeriesDimension>('none')
 const speedDimension = ref<OverviewSeriesDimension>('model')
+const cacheHitRateDimension = ref<OverviewSeriesDimension>('model')
 
 type SankeyVariant = 'tokenComposition' | 'tokensIn' | 'tokensOut' | 'costIn' | 'costOut'
 
@@ -178,16 +179,31 @@ const speedSeriesQuery = useQuery({
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
+const cacheHitRateSeriesQuery = useQuery({
+  queryKey: computed(() =>
+    queryKeys.overview.cacheHitRate(overviewFilters.value, cacheHitRateDimension.value),
+  ),
+  queryFn: () => getOverviewSeries(overviewFilters.value, cacheHitRateDimension.value),
+  staleTime: OPERATIONAL_STALE_TIME,
+})
+
 const overviewRefreshing = computed(
   () =>
     summaryQuery.isFetching.value ||
     distributionQuery.isFetching.value ||
     seriesQuery.isFetching.value ||
-    speedSeriesQuery.isFetching.value,
+    speedSeriesQuery.isFetching.value ||
+    cacheHitRateSeriesQuery.isFetching.value,
 )
 
 function refreshOverview() {
-  void Promise.all([summaryQuery.refetch(), distributionQuery.refetch(), seriesQuery.refetch(), speedSeriesQuery.refetch()])
+  void Promise.all([
+    summaryQuery.refetch(),
+    distributionQuery.refetch(),
+    seriesQuery.refetch(),
+    speedSeriesQuery.refetch(),
+    cacheHitRateSeriesQuery.refetch(),
+  ])
 }
 
 function dimensionLabel(dim: OverviewDimension | OverviewSeriesDimension, key: string): string {
@@ -355,12 +371,33 @@ const seriesDecodeSpeed = computed(() => {
     .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
 })
 
+const cacheHitRateSeriesData = computed(() => cacheHitRateSeriesQuery.data.value)
+const cacheHitRateGroups = computed(() => {
+  const groups = cacheHitRateSeriesData.value?.groups ?? []
+  return groups.map((g) => ({
+    key: g.key,
+    label: dimensionLabel(cacheHitRateDimension.value, g.key),
+  }))
+})
+const cacheHitRateBuckets = computed(() => cacheHitRateSeriesData.value?.buckets ?? [])
+const seriesCacheHitRate = computed(() => {
+  const points: OverviewSeriesPointView[] = cacheHitRateSeriesData.value?.points ?? []
+  return points
+    .filter((p) => p.metric === 'cacheHitRate')
+    .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
+})
+
 function formatSpeed(v: number) {
   if (!Number.isFinite(v)) return ''
   if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}k tok/s`
   if (Math.abs(v) >= 1) return `${v.toFixed(0)} tok/s`
   if (v === 0) return '0 tok/s'
   return `${v.toFixed(1)} tok/s`
+}
+
+function formatPercent(v: number) {
+  if (!Number.isFinite(v)) return ''
+  return `${(v * 100).toFixed(1)}%`
 }
 
 const summaryConvertedTotal = computed(() => {
@@ -1214,6 +1251,39 @@ function formatCurrencyCompact(v: number, code: string) {
             :buckets="speedBuckets"
             :points="seriesDecodeSpeed"
             :value-format="(v) => formatSpeed(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+    </div>
+
+    <!-- Cache Hit Rate -->
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >缓存命中率</span
+        >
+        <SegmentedControl v-model="cacheHitRateDimension" :options="seriesDimensionOptions" />
+      </div>
+    </div>
+    <div class="grid grid-cols-1 gap-3">
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >缓存命中率</span
+          >
+          <StateText v-if="cacheHitRateSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
+          <StateText v-else-if="cacheHitRateSeriesQuery.isError.value" compact :dashed="false">{{
+            (cacheHitRateSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewLineChart
+            v-else
+            :groups="cacheHitRateGroups"
+            :buckets="cacheHitRateBuckets"
+            :points="seriesCacheHitRate"
+            :value-format="(v) => formatPercent(v)"
             :bucket-format="formatBucket"
           />
         </div>

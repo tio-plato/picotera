@@ -366,6 +366,84 @@ func (q *Queries) ListOverviewBreakdownTokens(ctx context.Context, arg ListOverv
 	return items, nil
 }
 
+const listOverviewCacheHitRateSeries = `-- name: ListOverviewCacheHitRateSeries :many
+SELECT
+  bucket_at::timestamp AS bucket_at,
+  CASE $1::text
+    WHEN 'apiKey' THEN COALESCE(api_key_id::text, '')
+    WHEN 'model' THEN COALESCE(model, '')
+    WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
+    WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
+    ELSE ''
+  END AS group_key,
+  SUM(cache_read_tokens)::float8 AS cache_read_token_sum,
+  SUM(input_tokens + cache_read_tokens + cache_write_tokens + cache_write_1h_tokens)::float8 AS input_token_sum
+FROM request_overview_hourly
+WHERE bucket_at >= $2::timestamp
+  AND bucket_at < $3::timestamp
+  AND ($4::int IS NULL OR api_key_id = $4::int)
+  AND ($5::text IS NULL OR model = $5::text)
+  AND ($6::text IS NULL OR upstream_model = $6::text)
+  AND ($7::int IS NULL OR provider_id = $7::int)
+  AND ($8::int IS NULL OR project_id = $8::int)
+GROUP BY bucket_at, group_key
+HAVING SUM(input_tokens + cache_read_tokens + cache_write_tokens + cache_write_1h_tokens) > 0
+ORDER BY bucket_at ASC, group_key ASC
+`
+
+type ListOverviewCacheHitRateSeriesParams struct {
+	Dimension     string           `json:"dimension"`
+	StartAt       pgtype.Timestamp `json:"startAt"`
+	EndAt         pgtype.Timestamp `json:"endAt"`
+	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
+	Model         pgtype.Text      `json:"model"`
+	UpstreamModel pgtype.Text      `json:"upstreamModel"`
+	ProviderID    pgtype.Int4      `json:"providerId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
+}
+
+type ListOverviewCacheHitRateSeriesRow struct {
+	BucketAt          pgtype.Timestamp `json:"bucketAt"`
+	GroupKey          string           `json:"groupKey"`
+	CacheReadTokenSum float64          `json:"cacheReadTokenSum"`
+	InputTokenSum     float64          `json:"inputTokenSum"`
+}
+
+func (q *Queries) ListOverviewCacheHitRateSeries(ctx context.Context, arg ListOverviewCacheHitRateSeriesParams) ([]ListOverviewCacheHitRateSeriesRow, error) {
+	rows, err := q.db.Query(ctx, listOverviewCacheHitRateSeries,
+		arg.Dimension,
+		arg.StartAt,
+		arg.EndAt,
+		arg.ApiKeyID,
+		arg.Model,
+		arg.UpstreamModel,
+		arg.ProviderID,
+		arg.ProjectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOverviewCacheHitRateSeriesRow
+	for rows.Next() {
+		var i ListOverviewCacheHitRateSeriesRow
+		if err := rows.Scan(
+			&i.BucketAt,
+			&i.GroupKey,
+			&i.CacheReadTokenSum,
+			&i.InputTokenSum,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOverviewDistribution = `-- name: ListOverviewDistribution :many
 SELECT
   CASE $1::text

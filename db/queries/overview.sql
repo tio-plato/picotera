@@ -196,6 +196,31 @@ WHERE r.created_at >= sqlc.arg('start_at')::timestamp
 GROUP BY bucket_at, group_key
 ORDER BY bucket_at ASC, group_key ASC;
 
+-- name: ListOverviewCacheHitRateSeries :many
+SELECT
+  bucket_at::timestamp AS bucket_at,
+  CASE sqlc.arg('dimension')::text
+    WHEN 'apiKey' THEN COALESCE(api_key_id::text, '')
+    WHEN 'model' THEN COALESCE(model, '')
+    WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
+    WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
+    ELSE ''
+  END AS group_key,
+  SUM(cache_read_tokens)::float8 AS cache_read_token_sum,
+  SUM(input_tokens + cache_read_tokens + cache_write_tokens + cache_write_1h_tokens)::float8 AS input_token_sum
+FROM request_overview_hourly
+WHERE bucket_at >= sqlc.arg('start_at')::timestamp
+  AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
+  AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
+  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
+GROUP BY bucket_at, group_key
+HAVING SUM(input_tokens + cache_read_tokens + cache_write_tokens + cache_write_1h_tokens) > 0
+ORDER BY bucket_at ASC, group_key ASC;
+
 -- name: GetOverviewTokenBreakdown :one
 SELECT
   COALESCE(SUM(input_tokens), 0)::bigint           AS input_tokens,

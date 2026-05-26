@@ -63,6 +63,7 @@ type Querier interface {
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
 	ListOverviewBreakdownCosts(ctx context.Context, arg ListOverviewBreakdownCostsParams) ([]ListOverviewBreakdownCostsRow, error)
 	ListOverviewBreakdownTokens(ctx context.Context, arg ListOverviewBreakdownTokensParams) ([]ListOverviewBreakdownTokensRow, error)
+	ListOverviewCacheHitRateSeries(ctx context.Context, arg ListOverviewCacheHitRateSeriesParams) ([]ListOverviewCacheHitRateSeriesRow, error)
 	ListOverviewDistribution(ctx context.Context, arg ListOverviewDistributionParams) ([]ListOverviewDistributionRow, error)
 	ListOverviewDistributionCosts(ctx context.Context, arg ListOverviewDistributionCostsParams) ([]ListOverviewDistributionCostsRow, error)
 	ListOverviewSeriesMetrics(ctx context.Context, arg ListOverviewSeriesMetricsParams) ([]ListOverviewSeriesMetricsRow, error)
