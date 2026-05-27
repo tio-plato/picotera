@@ -132,6 +132,29 @@ function statusLabel(s: number) {
   }
 }
 
+function finishReasonLabel(reason: number | undefined | null) {
+  switch (reason) {
+    case 1:
+      return '内部错误'
+    case 2:
+      return '已取消'
+    case 3:
+      return '正常结束'
+    case 4:
+      return '请求头超时'
+    case 5:
+      return '读取超时'
+    default:
+      return reason === undefined || reason === null ? '—' : String(reason)
+  }
+}
+
+function finishReasonVariant(reason: number | undefined | null): 'ok' | 'default' | 'muted' | 'accent' {
+  if (reason === undefined || reason === null) return 'muted'
+  if (reason === 3) return 'ok' // EOF is normal
+  return 'default'
+}
+
 function selectRequest(requestId: string) {
   if (selectedId.value === requestId) return
   selectedId.value = requestId
@@ -310,6 +333,11 @@ watch(detailTabs, (tabs) => {
                   :class="statusCodeClass(selected.statusCode)"
                   >{{ selected.statusCode }}</span
                 >
+              </Field>
+              <Field label="停止原因" as="div">
+                <Tag :variant="finishReasonVariant(selected.finishReason)">
+                  {{ finishReasonLabel(selected.finishReason) }}
+                </Tag>
               </Field>
               <Field label="时间" as="div">
                 <span class="font-mono text-xs">{{ formatTime(selected.createdAt) }}</span>

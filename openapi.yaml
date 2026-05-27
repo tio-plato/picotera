@@ -1089,6 +1089,9 @@ components:
           type: string
         errorMessage:
           type: string
+        finishReason:
+          format: int32
+          type: integer
         id:
           type: string
         inputTokens:

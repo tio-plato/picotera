@@ -1169,6 +1169,8 @@ export interface components {
             createdAt?: string;
             endpointPath?: string;
             errorMessage?: string;
+            /** Format: int32 */
+            finishReason?: number;
             id: string;
             /** Format: int32 */
             inputTokens?: number;
