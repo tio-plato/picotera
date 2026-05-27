@@ -1,6 +1,6 @@
 # 执行计划：Gateway Handler 编排层重构
 
-## Step 1: 建立共享 context 与 meta 状态
+## Step 1: 建立 context 基础
 
 新增 `pkg/server/gateway_flow_context.go`：
 
@@ -8,20 +8,20 @@
 
    ```go
    type gatewayContexts struct {
-       Request context.Context
-       Persist context.Context
+       Request       context.Context
+       Persist       context.Context
        CancelPersist context.CancelFunc
    }
    ```
 
-2. 新增 `newGatewayContexts(r *http.Request, cfg *configx.Config) gatewayContexts`：
-   - `Request` 使用 `r.Context()`。
-   - `Persist` 从 `Request` 派生 timeout。
-   - timeout 使用 `cfg.GatewayReadTimeout` 与 `5*time.Second` 的较大值。
-3. handler 结束时 `defer CancelPersist()`。
-4. 将 handler 内所有 meta/upstream row 更新、trace/cost/artifact enqueue 改为使用 `Persist`。
-5. 将 endpoint match、auth、model annotation、provider lookup、JS session 使用 `Request`。
-6. 每个 attempt 使用 `context.WithCancel(Request)` 生成 `attemptCtx`。
+2. 实现 `newGatewayContexts(r *http.Request, cfg *configx.Config) gatewayContexts`：
+   - `Request = r.Context()`。
+   - `Persist` 基于 `context.WithoutCancel(r.Context())`。
+   - `Persist` 使用 bounded timeout：`max(cfg.GatewayReadTimeout, 5*time.Second) + 2*time.Second`；未配置时为 7 秒。
+3. `gatewayFlow.run` 开始时创建 contexts，并在返回前 `defer CancelPersist()`。
+4. endpoint match、auth、model annotation、provider lookup、JS session、bridge、web search、upstream request 使用 `Request` 或 attempt context。
+5. request row 更新、trace upsert、cost lookup、artifact enqueue 使用 `Persist`。
+6. 每个 attempt 使用 `context.WithCancel(ctxs.Request)` 生成 `attemptCtx`。
 
 ## Step 2: 调整 project seen context
 
@@ -29,157 +29,211 @@
 
 1. 将 `upsertProjectSeen(projectID int32, seenAt time.Time)` 改为 `upsertProjectSeen(ctx context.Context, projectID int32, seenAt time.Time)`。
 2. 函数内部使用 `context.WithTimeout(ctx, 5*time.Second)`。
-3. 两个 gateway 调用点改为 `go h.upsertProjectSeen(ctxs.Persist, projectID, metaCreatedAt)`。
+3. gateway 调用点改为 `go h.upsertProjectSeen(flow.ctxs.Persist, projectID, metaCreatedAt)`。
+4. 保留错误吞掉并 warn log 的行为。
 
-## Step 3: 抽出 meta request 生命周期
+## Step 3: 定义 flow 状态与 route config
 
 新增 `pkg/server/gateway_flow.go`：
 
-1. 定义 `gatewayFlow`、`gatewayFlowConfig`、`gatewayMetaState`。
-2. 实现 `readGatewayBody()`：读取并关闭 `r.Body`，失败时写 500。
-3. 实现 `insertMetaRequest(endpointPath string, endpointType int32)`：
-   - 生成 meta id。
-   - 复制请求 header、method、URL。
-   - 提取 parent span、project、user message preview。
-   - 调用 `insertRequest(ctxs.Persist, db.InsertRequestParams{...})`。
-   - 上传 meta request artifact。
-   - 异步 `upsertProjectSeen`。
-4. 实现 `authenticateAndBackfill(resolver int32)`：
-   - 调用 `authenticateClient(ctxs.Request, r, resolver)`。
-   - 回填 meta row `api_key_id`。
-   - 返回 `apiKeyID`、`apiKeyJS`、`apiKeyAnno`。
-5. 实现 `updateMetaModel(model string)`，集中调用 `updateRequestModel`。
+1. 定义 `gatewayRouteKind`：
+   - `gatewayRoutePath`
+   - `gatewayRouteUnified`
+2. 定义 `gatewayFlow`，包含 handler、response writer、request、startedAt、contexts、config、body、preRewriteBody、meta/auth/model/session。
+3. 定义 `gatewayFlowConfig`，包含：
+   - route kind
+   - endpoint
+   - path vars
+   - source format
+   - credentials resolver
+   - `ExtractModel`
+   - `SetBodyModel`
+   - `ResolveCandidates`
+   - `PrepareAttempt`
+   - `HandleSuccess`
+4. 定义 `gatewayMetaState`、`gatewayAuthState`、`gatewayModelState`、`gatewayModelMode`。
+5. 实现 `newGatewayFlow(h, w, r, startedAt, config)`。
+6. 实现 `(*gatewayFlow).run()`，只串联：
+   - `readBody`
+   - `insertMetaRequest`
+   - `authenticateAndBackfill`
+   - `resolveAndRewriteModel`
+   - `resolveAndSortCandidates`
+   - `runAttempts`
+   - `failAllProviders`
+7. 保证 `run` 不内联 route-specific 细节。
 
-## Step 4: 统一错误与 hook 失败处理
+## Step 4: 抽出 meta request 生命周期
+
+在 `gateway_flow.go` 实现：
+
+1. `readBody()`：
+   - `io.ReadAll(f.r.Body)`。
+   - close body。
+   - 失败时写 500；此时 meta row 尚未创建。
+2. `insertMetaRequest()`：
+   - 生成 meta id 与 created_at。
+   - clone request header。
+   - 提取 parent span。
+   - 提取 user message preview。
+   - 提取 project id。
+   - 调用 `insertRequest(f.ctxs.Persist, db.InsertRequestParams{...})`。
+   - 上传 meta request artifact。
+   - 有 project id 时异步 `upsertProjectSeen(f.ctxs.Persist, id, metaCreatedAt)`。
+3. `authenticateAndBackfill()`：
+   - 调用 `authenticateClient(f.ctxs.Request, f.r, f.config.Credentials)`。
+   - 保存 `apiKeyID`、`apiKeyJS`、`apiKeyAnno`。
+   - 回填 meta row 的 `api_key_id`。
+4. `updateMetaModel(model string)`：
+   - 使用 `f.ctxs.Persist` 调 `updateRequestModel`。
+
+## Step 5: 集中错误处理
 
 新增 `pkg/server/gateway_flow_errors.go`：
 
-1. 定义 `gatewayFailureWriter` 或在 `gatewayFlow` 上实现：
-   - `collectLogs() []artifacts.LogEntry`
-   - `failMeta(status int32, errMsg string)`
-   - `failGatewayError(err error)`
-   - `failHook(err error)`
-   - `failInternal(status int, message string, code string)`
-   - `failAllProviders(lastErr error)`
-2. 所有 helper 使用 `ctxs.Persist` 更新 request row 与上传 artifact。
-3. hook timeout 使用 503，其余 hook error 使用 502。
-4. 普通 `gatewayError` 继续走 `handleGatewayErr` 语义。
-5. 替换两个 handler 内重复的 `collectLogs`、`failMeta`、`failMetaResponse`、`failHook` closure。
+1. 实现 `collectLogs() []artifacts.LogEntry`。
+2. 实现 `failMeta(status int32, errMsg string)`。
+3. 实现 `failGatewayError(err error)`：
+   - 用 `handleGatewayErr` 写 response。
+   - 更新 meta failed row。
+   - 上传 meta response artifact。
+4. 实现 `failHook(err error)`：
+   - `errors.Is(err, jsx.ErrHookTimeout)` 返回 503。
+   - 其他 hook 错误返回 502。
+   - 更新 meta failed row。
+   - 写 JSON error。
+   - 上传 meta response artifact，包含 logs。
+5. 实现 `failInternal(status int, message string, code string)`。
+6. 实现 `failAllProviders(lastErr error)`。
+7. 实现 `failSuccessPath(input successInput, errMsg string)`。
+8. 删除两个 handler 内部重复的 `collectLogs`、`failMeta`、`failMetaResponse`、`failHook` closure。
 
-## Step 5: 标准化 candidate 与 sidecar
+## Step 6: 标准化 candidate 与 sidecar
 
 新增 `pkg/server/gateway_flow_candidates.go`：
 
 1. 定义 `gatewayCandidate`、`gatewayCandidateSidecar`、`candidateSet`。
 2. 实现 `buildPathCandidateSet(providers []providerCandidateRow, apiKeyAnno map[string]string, modelAnno map[string]string, endpoint db.Endpoint) (candidateSet, error)`。
 3. 实现 `buildUnifiedCandidateSet(providers []db.GetProvidersByEndpointTypesAndModelRow, apiKeyAnno map[string]string, modelAnno map[string]string, virtualEndpoint db.Endpoint) (candidateSet, error)`。
-4. 抽出共同的 annotations decode 与 `jsx.Candidate` 构造。
-5. 实现 `candidateSidecarMap(kind gatewayRouteKind, set candidateSet) map[string]gatewayCandidateSidecar`。
-6. 实现 `lookupCandidateSidecar(kind gatewayRouteKind, sidecars map[string]gatewayCandidateSidecar, cand jsx.Candidate) (gatewayCandidateSidecar, bool)`。
-7. path key 使用 provider id；unified key 使用 `providerID|endpointPath`。
-8. 保持 unknown JS-injected candidate 的行为：跳过，不报错。
+4. 抽出 `buildJSProviderSummary` 与 `buildJSMPE`，减少 path/unified 重复。
+5. 实现 `candidateSidecarMap(set candidateSet) map[string]gatewayCandidateSidecar`。
+6. 实现 `candidateKey(kind gatewayRouteKind, cand jsx.Candidate) string`：
+   - path：provider id。
+   - unified：`providerID|endpointPath`。
+7. 实现 `lookupCandidateSidecar(kind gatewayRouteKind, sidecars map[string]gatewayCandidateSidecar, cand jsx.Candidate) (gatewayCandidateSidecar, bool)`。
+8. unknown JS-injected candidate 保持 skip 行为，不写失败 row。
+9. 保持 annotation merge 顺序 `model < provider < entry < apiKey`。
 
-## Step 6: 抽出 model 解析与 rewriteModel 流程
+## Step 7: 抽出 model 解析与 rewriteModel
 
-在 `gateway_flow.go` 实现 `resolveAndRewriteModel`：
+在 `gateway_flow.go` 实现 `resolveAndRewriteModel()`：
 
-1. route config 提供 `ExtractModelAndMode`：
-   - path gateway：endpoint.ModelPath 为空时返回空 model 和 `streaming=false`；否则调用 `extractModel`。
-   - unified gateway：调用 `extractUnifiedModelAndStream`。
-2. 插入/更新 meta model。
-3. 创建 JSX session：`h.jsxEngine.NewSession(ctxs.Request, meta.ID)`。
-4. 构造 initial `serializeClientRequest`。
-5. 获取 model annotations。
-6. 在调用 `RunRewriteModelHook` 前，保存 `preRewriteBody = body`（slice header 拷贝，零拷贝）。
-7. 执行 `RunRewriteModelHook`。
-8. route config 提供 `SetBodyModel`：
-   - path gateway：使用 `sjson.SetBytes(body, "model", newModel)`；no-model endpoint 禁止 hook 返回非空 model。
-   - unified gateway：使用 `setUnifiedModel(srcFormat, body, newModel)`。
-9. 当 body 被修改时，`preRewriteBody` 自然指向旧 slice；未修改时两者相同。
-10. rewrite 后刷新 model annotations 并更新 meta model。
-11. 将 `preRewriteBody` 存入 `gatewayFlow.preRewriteBody` 字段。
-12. 返回 `originalModel`、`routedModel`、`streaming`、`modelAnno` 和 updated body。
+1. 调用 route config `ExtractModel(f.r, f.body, f.config.PathVars)`。
+2. 保存 `originalModel`、`routedModel`、`streaming`。
+3. 调 `updateMetaModel` 写入初始 model。
+4. 创建 JSX session：`h.jsxEngine.NewSession(f.ctxs.Request, f.meta.ID)`。
+5. 构造 initial `serializeClientRequest`。
+6. 获取 model annotations。
+7. 在 `RunRewriteModelHook` 前保存 `f.preRewriteBody = f.body`。
+8. 调用 `RunRewriteModelHook`。
+9. path no-model endpoint 若 hook 返回非空 model，调用 `failHook` 并停止 flow。
+10. model 变化时调用 route config `SetBodyModel`。
+11. `SetBodyModel` 失败时写 500 internal error 并上传 meta artifact。
+12. rewrite 成功后刷新 model annotations，并调用 `updateMetaModel`。
+13. 更新 `f.body`、`f.model`。
 
-## Step 7: 抽出 sortProviders 流程
+## Step 8: 抽出 sortProviders 流程
 
-在 `gateway_flow.go` 实现 `resolveAndSortCandidates`：
+在 `gateway_flow.go` 实现 `resolveAndSortCandidates()`：
 
-1. route config 提供 `ResolveCandidates(ctx, routedModel, streaming)`：
-   - path gateway 调用 `resolveProviders(ctx, endpoint.Path, routedModel)` 并 `buildPathCandidateSet`。
-   - unified gateway 计算 `typeSet := candidateEndpointTypes(srcFormat, streaming)`，调用 `resolveProvidersByTypes` 并 `buildUnifiedCandidateSet`。
-2. 如果 SQL 结果携带 model annotations，以 route SQL 结果刷新 request-scoped model annotations。
-3. 构造 `modelJS`、`endpointJS`、`jsClientRequest`。
+1. 调 route config `ResolveCandidates(f.ctxs.Request, f.model.Mode, f.auth)`。
+2. 若 candidate set 携带 model annotations，用它覆盖 `f.model.Annotations`。
+3. 构造 `gatewayJSContext`：
+   - endpoint summary
+   - model summary
+   - client request
+   - API key summary
+   - merged model/apiKey annotations
 4. 调用 `session.RunSortHook`。
-5. 返回 sorted candidates、sidecar map 和 JS context bundle。
+5. 返回 sorted candidates、sidecar map 和 JS context。
+6. hook 错误走 `failHook`。
 
-## Step 8: 抽出 attempt loop
+## Step 9: 抽出 attempt loop
 
 新增 `pkg/server/gateway_flow_attempts.go`：
 
-1. 定义：
+1. 定义 `gatewayJSContext`、`attemptInput`、`attemptState`、`attemptPrepared`、`successInput`、`attemptResult`。
+2. 实现 `runAttempts(sorted []jsx.Candidate, sidecars map[string]gatewayCandidateSidecar, js gatewayJSContext) attemptResult`。
+3. `runAttempts` 只保留 retry skeleton，具体步骤拆成小函数：
+   - `nextCandidateAttempt`
+   - `runBeforeRequest`
+   - `waitHookDelay`
+   - `insertUpstreamAttempt`
+   - `buildRewrittenUpstreamRequest`
+   - `handleUpstreamResponse`
+   - `recordAttemptFailure`
+4. `waitHookDelay` 使用 `time.NewTimer` 和 `select` 监听 `f.ctxs.Request.Done()`。
+5. attempt context 在每个 continue 或 return 前 cancel。
+6. `recordAttemptFailure` 完成 upstream failed row，并返回新的 `lastErr` 与 `jsx.LastError`。
+7. non-200 response 统一在 `handleUpstreamNonOK` 读取 decoded body、关闭 body、上传 upstream response artifact、完成 upstream failed row。
+8. 200 response 调 route config `HandleSuccess(successInput)` 并返回 handled。
+9. attempt cap 使用 `h.config.JSMaxTotalAttempts`，行为保持不变。
 
-   ```go
-   type attemptInput struct { ... }
-   type attemptPrepared struct { ... }
-   type successInput struct { ... }
-   ```
-
-2. 实现 `runAttempts(sorted []jsx.Candidate, sidecars map[string]gatewayCandidateSidecar, js gatewayJSContext) bool`：
-   - 维护 `i`、`currentRetryCount`、`totalAttemptCount`、`lastErr`、`lastJSErr`。
-   - 执行 `beforeRequest`。
-   - delay 用 `time.NewTimer` 和 `select { case <-timer.C; case <-ctxs.Request.Done(): ... }`，不使用不可取消的 `time.Sleep`。
-   - `dec.Next` 跳到下一个 candidate。
-   - 生成 attempt context。
-   - 插入 upstream request row。
-   - 构建 upstream request。
-   - 执行 `rewriteRequest`。
-   - 调用 route-specific `PrepareAttempt`。
-   - 上传 upstream request artifact。
-   - 调用 `forwardRequest`。
-   - 200 时调用 route-specific `HandleSuccess` 并返回 true。
-   - 非 200 时读取 decoded body、上传 response artifact、完成 upstream failed row、更新 last error。
-3. 将重复的 “attempt 失败并更新 lastJSErr” 抽成 `recordAttemptFailure`。
-4. 确保每个 continue 前调用 attempt cancel。
-5. 确保 response body 在所有非成功路径关闭。
-
-## Step 9: 实现 path route 配置
+## Step 10: 实现 path route config
 
 重写 `pkg/server/handle_gateway.go`：
 
-1. `ServeHTTP` 保留：
-   - `gatewayStart := time.Now()`。
-   - `resolveEndpoint(ctx, path)`。
-   - route not found 的 dashboard fallback。
+1. `ServeHTTP` 保留以下逻辑并控制在 100 行以内：
+   - 记录 start。
+   - `resolveEndpoint(r.Context(), r.URL.Path)`。
+   - route miss 且 browser nav 时调用 static handler。
+   - gateway error 时写 structured error。
    - model-list endpoint 调 `handleModelList`。
-   - 构造 `gatewayFlowConfig` 并调用 `flow.run()`。
-2. path config：
-   - `Kind: gatewayRoutePath`
-   - `Endpoint: endpoint`
-   - `PathVars: pathVars`
-   - `ExtractModelAndMode` 使用 endpoint.ModelPath。
-   - `SetBodyModel` 使用 `sjson.SetBytes`。
-   - `ResolveCandidates` 使用 `resolveProviders`。
-   - `PrepareAttempt` 直接返回 rewritten pending request。
-   - `HandleSuccess` 调用 path success handler。
-3. 将 path success handler 改为结构体参数，例如 `pathStreamSuccessArgs`。
-4. 删除 `ServeHTTP` 内部大块 closure 与 retry loop。
+   - 构造 path flow config。
+   - 调 `newGatewayFlow(...).run()`。
+2. 新增 `newPathGatewayFlowConfig(endpoint, pathVars)`。
+3. path `ExtractModel`：
+   - endpoint `ModelPath == ""` 返回空 model 和 `streaming=false`。
+   - 其他情况调用 `extractModel`。
+4. path `SetBodyModel` 使用 `sjson.SetBytes(body, "model", newModel)`。
+5. path `ResolveCandidates`：
+   - 调 `resolveProviders(ctx, endpoint.Path, routedModel)`。
+   - 调 `buildPathCandidateSet`。
+6. path `PrepareAttempt` 直接返回 rewritten request/body。
+7. path `HandleSuccess` 调 `pathStreamSuccess`。
+8. 删除原 `ServeHTTP` 内 retry loop 和 failure closure。
 
-## Step 10: 实现 unified route 配置
+## Step 11: 实现 unified route config
 
 重写 `pkg/server/handle_unified_gateway.go` 的 handler 主体：
 
-1. `handleUnifiedGenerate(srcFormat)` 只构造 `virtualEndpoint` 和 `gatewayFlowConfig`。
-2. unified config：
-   - `Kind: gatewayRouteUnified`
-   - `Endpoint: virtualEndpoint`
-   - `PathVars: chiURLParams(r)`
-   - `SourceFormat: srcFormat`
-   - `ExtractModelAndMode` 使用 `extractUnifiedModelAndStream`。
-   - `SetBodyModel` 使用 `setUnifiedModel`。
-   - `ResolveCandidates` 使用 `candidateEndpointTypes` + `resolveProvidersByTypes`。
-   - `PrepareAttempt` 执行 source body model rewrite、web search emulation、beforeTransform、llmbridge request bridge。
-   - `HandleSuccess` 调用 unified success handler。
-3. 保留 helper 函数：
+1. `handleUnifiedGenerate(srcFormat)` 返回的 handler 控制在 100 行以内。
+2. 新增 `newUnifiedGatewayFlowConfig(srcFormat, r)`。
+3. virtual endpoint 固定为：
+
+   ```go
+   db.Endpoint{
+       Name:                "(unified)",
+       Path:                r.URL.Path,
+       ModelPath:           "",
+       CredentialsResolver: contract.CredentialsResolver_Unknown,
+       EndpointType:        sourceEndpointType(srcFormat),
+   }
+   ```
+
+4. unified `ExtractModel` 使用 `extractUnifiedModelAndStream`。
+5. unified `SetBodyModel` 使用 `setUnifiedModel`。
+6. unified `ResolveCandidates`：
+   - 计算 `typeSet := candidateEndpointTypes(srcFormat, streaming)`。
+   - 调 `resolveProvidersByTypes(ctx, model, typeSet, sourceEndpointType(srcFormat))`。
+   - 调 `buildUnifiedCandidateSet`。
+7. unified `PrepareAttempt` 拆成小函数：
+   - `prepareUnifiedSourceBody`
+   - `prepareUnifiedWebSearch`
+   - `prepareUnifiedOutboundProfile`
+   - `bridgeUnifiedRequest`
+8. unified `HandleSuccess` 调 `unifiedStreamSuccess`。
+9. 保留并复用 helper：
    - `sourceEndpointType`
    - `upstreamFormatFor`
    - `candidateEndpointTypes`
@@ -190,47 +244,55 @@
    - `dedupeUnifiedRows`
    - `betterRow`
    - `clientStreamContentType`
-4. 将 `unifiedStreamArgs` 精简为组合共享 `successInput` 与 unified transform state。
+10. 删除 anonymous handler 内重复的 meta/auth/model/candidate/attempt 编排。
 
-## Step 11: 收敛 success completion 逻辑
+## Step 12: 拆分 success path
 
-新增共享 helper：
+新增 `pkg/server/gateway_flow_success.go`，并调整现有 success 函数：
 
-1. `markHeadersReceived(successInput, metaEndpointPath, upstreamEndpointPath)`：
-   - 更新 meta row header received。
-   - 更新 upstream row header received。
-2. `completeSuccessfulRequests(successInput, metrics, statusCode)`：
-   - 计算 cost。
-   - 完成 upstream row。
-   - 完成 meta row。
-3. `failSuccessPath(flow, attemptState, errMsg)`：处理 200 响应在读取/解码/bridge 过程中失败的场景：
-   - 完成 upstream row（failed，携带实际 upstream status code）。
-   - 写 502 gateway error response 到客户端。
-   - 完成 meta row（failed，502）。
-   - 上传 meta response artifact（含 JSX console logs）。
-   - 关闭 upstream response body。
-4. path `streamSuccess` 与 unified `unifiedStreamSuccess` 使用 `markHeadersReceived` 和 `completeSuccessfulRequests`。
-5. path `streamSuccess` 与 unified `unifiedStreamSuccess` 的解码/bridge 失败路径改为调用 `failSuccessPath`，替代各自内联的失败处理（path: `handle_gateway.go:676-687`，unified: `failUnifiedSuccess`）。
-6. 保持 path response aggregation 只在 `responseAggregationFormat(endpointType)` 支持时执行。
-7. 保持 unified upstream artifact 使用 upstream format aggregation，meta artifact 使用 source format aggregation。
+1. 定义 `successInput`，包含 flow、attempt state、response、provider id、routed model、upstream model、endpoint paths、upstream start time、API key id、route-specific prepared state。
+2. 实现共享 helper：
+   - `markHeadersReceived`
+   - `completeGatewaySuccess`
+   - `copyResponseHeaders`
+   - `pipeReaderToClient`
+3. path success 拆成：
+   - `pathStreamSuccess`
+   - `copyPathSuccessHeaders`
+   - `openPathInternalReader`
+   - `pipePathResponse`
+   - `aggregatePathResponse`
+4. unified success 拆成：
+   - `unifiedStreamSuccess`
+   - `copyUnifiedSuccessHeaders`
+   - `openUnifiedInternalReader`
+   - `buildUnifiedClientReader`
+   - `applyWebSearchResponseTransform`
+   - `pipeUnifiedResponse`
+   - `aggregateUnifiedResponses`
+5. path 和 unified 的 decode/bridge/transform 失败统一调用 `failSuccessPath`。
+6. path aggregation 只在 `responseAggregationFormat(endpointType)` 支持时执行。
+7. unified upstream artifact 使用 upstream format aggregation；meta artifact 使用 source format aggregation。
+8. 每个 production 函数保持在 100 行以内。
 
-## Step 12: 清理 background context 使用
+## Step 13: 清理 context.Background
 
-搜索并处理：
+执行：
 
 ```bash
 rg -n "context\\.Background\\(" pkg/server
 ```
 
-要求：
+处理要求：
 
-- `handle_gateway.go` 和 `handle_unified_gateway.go` 不再出现 `context.Background()`。
-- `gateway_helpers.go` 的 `upsertProjectSeen` 不再直接从 background 派生。
-- tests 中的 `context.Background()` 保留。
-- `artifacts` worker 内部 timeout 保留。
-- `cmd/picotera/main.go` 启动 context 不在本次范围内。
+1. `pkg/server/handle_gateway.go` 不出现 `context.Background()`。
+2. `pkg/server/handle_unified_gateway.go` 不出现 `context.Background()`。
+3. `pkg/server/gateway_helpers.go` 的 `upsertProjectSeen` 不从 background 派生。
+4. tests 中的 `context.Background()` 保留。
+5. `pkg/artifacts/sink.go` worker 内部 timeout 保留。
+6. `cmd/picotera/main.go` 启动 context 不在本次范围。
 
-## Step 13: 添加测试
+## Step 14: 添加测试
 
 新增或扩展 `pkg/server/gateway_flow_test.go`：
 
@@ -242,14 +304,41 @@ rg -n "context\\.Background\\(" pkg/server
 6. `TestBuildPathCandidateSetAnnotations`。
 7. `TestBuildUnifiedCandidateSetAnnotationsAndFormat`。
 8. `TestRecordAttemptFailureLastError`。
+9. `TestPersistContextSurvivesRequestCancelUntilTimeout`。
+10. `TestPersistContextKeepsRequestValues`。
 
 扩展 `pkg/server/handle_unified_gateway_test.go`：
 
 1. 保留现有 format/type helper 测试。
 2. 增加 identity unified attempt 在 bridge disabled 状态下保持直通的纯 helper 测试。
-3. 增加 cross-format disabled bridge 返回清晰错误的 attempt preparation 测试。
+3. 增加 cross-format disabled bridge 返回清晰 attempt failure 的 helper 测试。
 
-## Step 14: 运行格式化与测试
+## Step 15: 函数尺寸检查
+
+新增本地检查命令并在实现后执行：
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+files = [
+    pathlib.Path("pkg/server/handle_gateway.go"),
+    pathlib.Path("pkg/server/handle_unified_gateway.go"),
+    *pathlib.Path("pkg/server").glob("gateway_flow*.go"),
+]
+for p in files:
+    text = p.read_text()
+    starts = [(m.start(), m.group(0)) for m in re.finditer(r"^func\b|^func \(", text, re.M)]
+    for i, (start, _) in enumerate(starts):
+        end = starts[i + 1][0] if i + 1 < len(starts) else len(text)
+        lines = text[start:end].count("\n") + 1
+        if lines > 100:
+            raise SystemExit(f"{p}:{text[:start].count(chr(10))+1}: function has {lines} lines")
+PY
+```
+
+检查失败时继续拆分函数，直到通过。
+
+## Step 16: 运行格式化与测试
 
 执行：
 
@@ -261,11 +350,11 @@ go test ./...
 go build ./cmd/picotera
 ```
 
-如果 `go test ./...` 因 TinyGo/WASM 产物、外部服务或本地环境失败，记录具体失败命令和错误。
+如果 `go test ./...` 或 `go build` 因 TinyGo/WASM 产物、外部服务或本地环境失败，记录具体失败命令和错误。
 
-## Step 15: 人工回归检查
+## Step 17: 人工回归检查
 
-用本地配置手动覆盖：
+用本地配置覆盖：
 
 1. path gateway identity 请求成功。
 2. path gateway upstream 非 200 后 retry。
