@@ -5,6 +5,7 @@ package llmbridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -72,6 +73,42 @@ func TestDefaultCacheDir(t *testing.T) {
 	}
 	if got := DefaultCacheDir(""); got != "" {
 		t.Fatalf("DefaultCacheDir empty = %q", got)
+	}
+}
+
+func TestWASMStdioBuffer(t *testing.T) {
+	buf := &wasmStdioBuffer{}
+	if _, err := buf.Write([]byte("panic: bad\n")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if got := buf.Snapshot(); got != "panic: bad" {
+		t.Fatalf("Snapshot = %q", got)
+	}
+	buf.Reset()
+	if got := buf.Snapshot(); got != "" {
+		t.Fatalf("Snapshot after reset = %q", got)
+	}
+	if _, err := buf.Write([]byte(strings.Repeat("x", wasmStdioLimit+7))); err != nil {
+		t.Fatalf("Write large: %v", err)
+	}
+	got := buf.Snapshot()
+	if !strings.Contains(got, "truncated 7 bytes") {
+		t.Fatalf("Snapshot missing truncation marker: %q", got)
+	}
+}
+
+func TestWASMDiagnosticsIncludesCapturedOutput(t *testing.T) {
+	slot := &moduleSlot{stdio: &wasmStdioBuffer{}}
+	if _, err := slot.stdio.Write([]byte("panic: runtime error: out of memory\n")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	err := slot.withDiagnostics(errors.New("llmbridge: call llmbridge_bridge_request: wasm error: unreachable"))
+	if err == nil {
+		t.Fatalf("withDiagnostics returned nil")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "wasm stdout/stderr:") || !strings.Contains(got, "panic: runtime error: out of memory") {
+		t.Fatalf("diagnostic error missing wasm stdio: %s", got)
 	}
 }
 

@@ -32,6 +32,8 @@ const (
 	streamStatusError
 )
 
+const wasmStdioLimit = 64 * 1024
+
 type wasmBridge struct {
 	wasmBytes []byte
 	runtime   wazero.RuntimeConfig
@@ -44,6 +46,7 @@ type moduleSlot struct {
 	compiled wazero.CompiledModule
 	module   api.Module
 	mu       sync.Mutex
+	stdio    *wasmStdioBuffer
 
 	upstream io.ReadCloser
 	writer   *io.PipeWriter
@@ -93,7 +96,7 @@ func newWASMBridge(ctx context.Context, cfg Config) (Bridge, error) {
 
 func (b *wasmBridge) instantiateSlot(ctx context.Context) (*moduleSlot, error) {
 	rt := wazero.NewRuntimeWithConfig(ctx, b.runtime)
-	slot := &moduleSlot{runtime: rt}
+	slot := &moduleSlot{runtime: rt, stdio: &wasmStdioBuffer{}}
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
 		_ = rt.Close(ctx)
 		return nil, fmt.Errorf("llmbridge: instantiate wasi: %w", err)
@@ -124,7 +127,10 @@ func (b *wasmBridge) instantiateSlot(ctx context.Context) (*moduleSlot, error) {
 			_ = hostModule.Close(ctx)
 		}
 	}()
-	mod, err := rt.InstantiateModule(ctx, compiled, wazero.NewModuleConfig())
+	mod, err := rt.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
+		WithName("llmbridge").
+		WithStdout(slot.stdio).
+		WithStderr(slot.stdio))
 	if err != nil {
 		return nil, fmt.Errorf("llmbridge: instantiate wasm module: %w", err)
 	}
@@ -159,13 +165,15 @@ func (b *wasmBridge) instantiateSlot(ctx context.Context) (*moduleSlot, error) {
 func wasmRuntimeConfig(mode string, cacheDir ...string) (wazero.RuntimeConfig, wazero.CompilationCache, error) {
 	switch mode {
 	case wasmRuntimeInterpreter:
-		return wazero.NewRuntimeConfigInterpreter(), nil, nil
+		return wazero.NewRuntimeConfigInterpreter().WithDebugInfoEnabled(true), nil, nil
 	case "", wasmRuntimeCompiler:
 		cache, err := newWASMCompilationCache(cacheDir...)
 		if err != nil {
 			return nil, nil, err
 		}
-		return wazero.NewRuntimeConfigCompiler().WithCompilationCache(cache), cache, nil
+		return wazero.NewRuntimeConfigCompiler().
+			WithDebugInfoEnabled(true).
+			WithCompilationCache(cache), cache, nil
 	default:
 		return nil, nil, fmt.Errorf("llmbridge: unsupported wasm runtime %q", mode)
 	}
@@ -352,6 +360,9 @@ func (b *wasmBridge) release(slot *moduleSlot) {
 }
 
 func (s *moduleSlot) call(ctx context.Context, export string, input any, output *operationResponse, params ...uint64) error {
+	if s.stdio != nil {
+		s.stdio.Reset()
+	}
 	fn := s.module.ExportedFunction(export)
 	if fn == nil {
 		return fmt.Errorf("llmbridge: wasm module missing %s", export)
@@ -365,53 +376,53 @@ func (s *moduleSlot) call(ctx context.Context, export string, input any, output 
 		if len(raw) > math.MaxUint32 {
 			return fmt.Errorf("llmbridge: wasm input exceeds uint32 length")
 		}
-		ptr, err = s.writeInput(ctx, raw)
+		ptr, err = s.writeInput(ctx, export, raw)
 		if err != nil {
-			return err
+			return s.withDiagnostics(err)
 		}
 		defer s.free(ctx, ptr)
 		params = []uint64{uint64(ptr), uint64(len(raw))}
 	}
 	result, err := fn.Call(ctx, params...)
 	if err != nil {
-		return fmt.Errorf("llmbridge: call %s: %w", export, err)
+		return s.withDiagnostics(fmt.Errorf("llmbridge: call %s: %w", export, err))
 	}
 	if len(result) != 1 {
-		return fmt.Errorf("llmbridge: call %s returned %d values", export, len(result))
+		return s.withDiagnostics(fmt.Errorf("llmbridge: call %s returned %d values", export, len(result)))
 	}
-	raw, err := s.readOutput(ctx, result[0])
+	raw, err := s.readOutput(ctx, export, result[0])
 	if err != nil {
-		return err
+		return s.withDiagnostics(err)
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(output); err != nil {
-		return fmt.Errorf("llmbridge: decode wasm output: %w", err)
+		return s.withDiagnostics(fmt.Errorf("llmbridge: decode wasm output from %s: %w", export, err))
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
 		if err == nil {
-			return fmt.Errorf("llmbridge: decode wasm output: multiple JSON values")
+			return s.withDiagnostics(fmt.Errorf("llmbridge: decode wasm output from %s: multiple JSON values", export))
 		}
-		return fmt.Errorf("llmbridge: decode wasm output: %w", err)
+		return s.withDiagnostics(fmt.Errorf("llmbridge: decode wasm output from %s: %w", export, err))
 	}
 	if !output.OK {
 		if output.Error == "" {
 			output.Error = "llmbridge: wasm operation failed"
 		}
-		return fmt.Errorf("%s", output.Error)
+		return s.withDiagnostics(fmt.Errorf("%s", output.Error))
 	}
 	return nil
 }
 
-func (s *moduleSlot) writeInput(ctx context.Context, raw []byte) (uint32, error) {
+func (s *moduleSlot) writeInput(ctx context.Context, export string, raw []byte) (uint32, error) {
 	alloc := s.module.ExportedFunction("llmbridge_alloc")
 	if alloc == nil {
 		return 0, fmt.Errorf("llmbridge: wasm module missing llmbridge_alloc")
 	}
 	result, err := alloc.Call(ctx, uint64(len(raw)))
 	if err != nil {
-		return 0, fmt.Errorf("llmbridge: allocate guest memory: %w", err)
+		return 0, fmt.Errorf("llmbridge: allocate guest memory for %s input (%d bytes, memory=%d bytes): %w", export, len(raw), wasmMemorySize(s.module), err)
 	}
 	if len(result) != 1 {
 		return 0, fmt.Errorf("llmbridge: allocate guest memory returned %d values", len(result))
@@ -419,22 +430,36 @@ func (s *moduleSlot) writeInput(ctx context.Context, raw []byte) (uint32, error)
 	ptr := uint32(result[0])
 	if !s.module.Memory().Write(ptr, raw) {
 		_ = s.free(ctx, ptr)
-		return 0, fmt.Errorf("llmbridge: write guest memory out of range")
+		return 0, fmt.Errorf("llmbridge: write %s input to guest memory out of range (ptr=%d len=%d memory=%d bytes)", export, ptr, len(raw), wasmMemorySize(s.module))
 	}
 	return ptr, nil
 }
 
-func (s *moduleSlot) readOutput(ctx context.Context, packed uint64) ([]byte, error) {
+func (s *moduleSlot) readOutput(ctx context.Context, export string, packed uint64) ([]byte, error) {
 	ptr := uint32(packed >> 32)
 	n := uint32(packed)
 	defer s.free(ctx, ptr)
 	raw, ok := s.module.Memory().Read(ptr, n)
 	if !ok {
-		return nil, fmt.Errorf("llmbridge: read guest memory out of range")
+		return nil, fmt.Errorf("llmbridge: read %s output from guest memory out of range (ptr=%d len=%d memory=%d bytes)", export, ptr, n, wasmMemorySize(s.module))
 	}
 	out := make([]byte, len(raw))
 	copy(out, raw)
 	return out, nil
+}
+
+func (s *moduleSlot) withDiagnostics(err error) error {
+	if err == nil {
+		return nil
+	}
+	if s.stdio == nil {
+		return err
+	}
+	diagnostics := s.stdio.Snapshot()
+	if diagnostics == "" {
+		return err
+	}
+	return fmt.Errorf("%w\nwasm stdout/stderr:\n%s", err, diagnostics)
 }
 
 func (s *moduleSlot) free(ctx context.Context, ptr uint32) error {
@@ -499,6 +524,60 @@ func normalizedProfile(profile OutboundProfile) OutboundProfile {
 		profile.Config = map[string]any{}
 	}
 	return profile
+}
+
+func wasmMemorySize(mod api.Module) uint32 {
+	mem := mod.Memory()
+	if mem == nil {
+		return 0
+	}
+	return mem.Size()
+}
+
+type wasmStdioBuffer struct {
+	mu        sync.Mutex
+	data      []byte
+	truncated int
+}
+
+func (b *wasmStdioBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	available := wasmStdioLimit - len(b.data)
+	if available > 0 {
+		n := len(p)
+		if n > available {
+			n = available
+		}
+		b.data = append(b.data, p[:n]...)
+		b.truncated += len(p) - n
+	} else {
+		b.truncated += len(p)
+	}
+	return len(p), nil
+}
+
+func (b *wasmStdioBuffer) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.data = b.data[:0]
+	b.truncated = 0
+}
+
+func (b *wasmStdioBuffer) Snapshot() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.data) == 0 && b.truncated == 0 {
+		return ""
+	}
+	out := string(bytes.TrimRight(b.data, "\n"))
+	if b.truncated > 0 {
+		if out != "" {
+			out += "\n"
+		}
+		out += fmt.Sprintf("... truncated %d bytes", b.truncated)
+	}
+	return out
 }
 
 type bridgeRequestEnvelope struct {

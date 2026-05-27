@@ -26,7 +26,7 @@ dir = "dashboard"
 run = "go run ./cmd/picotera/main.go openapi > openapi.yaml"
 
 [tasks.wasm]
-run = "mkdir -p dist && tinygo build -tags tinygo -target=wasi -scheduler=none -panic=trap -no-debug -opt=z -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm"
+run = "mkdir -p dist && tinygo build -tags tinygo -target=wasi -scheduler=none -panic=print -opt=z -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm"
 sources = [ "cmd/llmbridge-wasm", "pkg/llmbridge", "pkg/llmbridgeimpl", "third_party/axonhub/llm" ]
 outputs = [ "dist/llmbridge.wasm" ]
 

@@ -18,7 +18,7 @@ USER root:root
 COPY . /app
 WORKDIR /app
 RUN mkdir -p dist && \
-    tinygo build -tags tinygo -target=wasi -scheduler=none -panic=trap -no-debug -opt=z -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm && \
+    tinygo build -tags tinygo -target=wasi -scheduler=none -panic=print -opt=z -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm && \
     go build -o dist/picotera ./cmd/picotera && \
     PICOTERA_LLMBRIDGE_WASM_PATH=/app/dist/llmbridge.wasm /app/dist/picotera precompile-llmbridge-wasm
 

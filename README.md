@@ -88,13 +88,21 @@ PICOTERA_S3_PUBLIC_URL=http://localhost:34050
 ### 请求转换组件
 
 请求转换组件使用 AxonHub 的 LGPL 代码，因而需要单独编译，通过 wasm 模块链接使用。
-默认构建使用 TinyGo 生成较小的 WASI reactor：
+默认构建使用 TinyGo 生成 size 优化的 WASI reactor，同时保留 DWARF/name 调试信息：
 
 ```bash
 mise run wasm
 ```
 
 生成的 `dist/llmbridge.wasm` 需要通过 `PICOTERA_LLMBRIDGE_WASM_PATH` 提供给主程序。
+
+如果遇到 `llmbridge: allocate guest memory`、`wasm error: out of bounds memory access` 之类的错误，需要排查 wasm 内部堆栈时，可以切到 interpreter runtime 复现，堆栈通常更稳定：
+
+```bash
+PICOTERA_LLMBRIDGE_WASM_RUNTIME=interpreter mise run server
+```
+
+宿主侧会把 wasm stdout/stderr 一并附在 `llmbridge` 错误里。
 
 ### 优化 Timescaledb 参数
 
