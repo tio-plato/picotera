@@ -12,32 +12,33 @@ import (
 )
 
 type RequestView struct {
-	ID                   string   `json:"id"`
-	SpanID               string   `json:"spanId,omitempty"`
-	ParentSpanID         string   `json:"parentSpanId,omitempty"`
-	Type                 int32    `json:"type"`
-	Status               int32    `json:"status"`
-	ProviderID           *int32   `json:"providerId,omitempty"`
-	EndpointPath         string   `json:"endpointPath,omitempty"`
-	ApiKeyID             *int32   `json:"apiKeyId,omitempty"`
-	Model                string   `json:"model,omitempty"`
-	UpstreamModel        string   `json:"upstreamModel,omitempty"`
-	InputTokens          *int32   `json:"inputTokens,omitempty"`
-	CacheReadTokens      *int32   `json:"cacheReadTokens,omitempty"`
-	OutputTokens         *int32   `json:"outputTokens,omitempty"`
-	CacheWriteTokens     *int32   `json:"cacheWriteTokens,omitempty"`
-	CacheWrite1HTokens   *int32   `json:"cacheWrite1hTokens,omitempty"`
-	StatusCode           *int32   `json:"statusCode,omitempty"`
-	ErrorMessage         string   `json:"errorMessage,omitempty"`
-	TtftMs               *int32   `json:"ttftMs,omitempty"`
-	TimeSpentMs          *int32   `json:"timeSpentMs,omitempty"`
-	CreatedAt            string   `json:"createdAt,omitempty"`
-	RequestArtifactUrl   string   `json:"requestArtifactUrl,omitempty"`
-	ResponseArtifactUrl  string   `json:"responseArtifactUrl,omitempty"`
-	UserMessagePreview   string   `json:"userMessagePreview,omitempty"`
-	ModelCost            *float64 `json:"modelCost,omitempty"`
-	ModelCostCurrency    string   `json:"modelCostCurrency,omitempty"`
-	ProjectID            *int32   `json:"projectId,omitempty"`
+	ID                  string   `json:"id"`
+	SpanID              string   `json:"spanId,omitempty"`
+	ParentSpanID        string   `json:"parentSpanId,omitempty"`
+	Type                int32    `json:"type"`
+	Status              int32    `json:"status"`
+	FinishReason        *int32   `json:"finishReason,omitempty"`
+	ProviderID          *int32   `json:"providerId,omitempty"`
+	EndpointPath        string   `json:"endpointPath,omitempty"`
+	ApiKeyID            *int32   `json:"apiKeyId,omitempty"`
+	Model               string   `json:"model,omitempty"`
+	UpstreamModel       string   `json:"upstreamModel,omitempty"`
+	InputTokens         *int32   `json:"inputTokens,omitempty"`
+	CacheReadTokens     *int32   `json:"cacheReadTokens,omitempty"`
+	OutputTokens        *int32   `json:"outputTokens,omitempty"`
+	CacheWriteTokens    *int32   `json:"cacheWriteTokens,omitempty"`
+	CacheWrite1HTokens  *int32   `json:"cacheWrite1hTokens,omitempty"`
+	StatusCode          *int32   `json:"statusCode,omitempty"`
+	ErrorMessage        string   `json:"errorMessage,omitempty"`
+	TtftMs              *int32   `json:"ttftMs,omitempty"`
+	TimeSpentMs         *int32   `json:"timeSpentMs,omitempty"`
+	CreatedAt           string   `json:"createdAt,omitempty"`
+	RequestArtifactUrl  string   `json:"requestArtifactUrl,omitempty"`
+	ResponseArtifactUrl string   `json:"responseArtifactUrl,omitempty"`
+	UserMessagePreview  string   `json:"userMessagePreview,omitempty"`
+	ModelCost           *float64 `json:"modelCost,omitempty"`
+	ModelCostCurrency   string   `json:"modelCostCurrency,omitempty"`
+	ProjectID           *int32   `json:"projectId,omitempty"`
 }
 
 type TraceCostView struct {
@@ -64,30 +65,31 @@ type RequestTraceView struct {
 }
 
 type requestLike struct {
-	ID                   string
-	SpanID               pgtype.Text
-	ParentSpanID         pgtype.Text
-	Type                 int32
-	Status               int32
-	ProviderID           pgtype.Int4
-	EndpointPath         pgtype.Text
-	ApiKeyID             pgtype.Int4
-	Model                pgtype.Text
-	UpstreamModel        pgtype.Text
-	InputTokens          pgtype.Int4
-	CacheReadTokens      pgtype.Int4
-	OutputTokens         pgtype.Int4
-	CacheWriteTokens     pgtype.Int4
-	CacheWrite1HTokens   pgtype.Int4
-	StatusCode           pgtype.Int4
-	ErrorMessage         pgtype.Text
-	TtftMs               pgtype.Int4
-	TimeSpentMs          pgtype.Int4
-	CreatedAt            pgtype.Timestamp
-	ModelCost            pgtype.Numeric
-	ModelCostCurrency    pgtype.Text
-	UserMessagePreview   pgtype.Text
-	ProjectID            pgtype.Int4
+	ID                 string
+	SpanID             pgtype.Text
+	ParentSpanID       pgtype.Text
+	Type               int32
+	Status             int32
+	FinishReason       pgtype.Int4
+	ProviderID         pgtype.Int4
+	EndpointPath       pgtype.Text
+	ApiKeyID           pgtype.Int4
+	Model              pgtype.Text
+	UpstreamModel      pgtype.Text
+	InputTokens        pgtype.Int4
+	CacheReadTokens    pgtype.Int4
+	OutputTokens       pgtype.Int4
+	CacheWriteTokens   pgtype.Int4
+	CacheWrite1HTokens pgtype.Int4
+	StatusCode         pgtype.Int4
+	ErrorMessage       pgtype.Text
+	TtftMs             pgtype.Int4
+	TimeSpentMs        pgtype.Int4
+	CreatedAt          pgtype.Timestamp
+	ModelCost          pgtype.Numeric
+	ModelCostCurrency  pgtype.Text
+	UserMessagePreview pgtype.Text
+	ProjectID          pgtype.Int4
 }
 
 func toRequestView(r requestLike) *RequestView {
@@ -101,6 +103,10 @@ func toRequestView(r requestLike) *RequestView {
 	}
 	if r.ParentSpanID.Valid {
 		view.ParentSpanID = r.ParentSpanID.String
+	}
+	if r.FinishReason.Valid {
+		v := r.FinishReason.Int32
+		view.FinishReason = &v
 	}
 	if r.ProviderID.Valid {
 		v := r.ProviderID.Int32
@@ -177,88 +183,91 @@ func toRequestView(r requestLike) *RequestView {
 
 func ToRequestView(r *db.Request) *RequestView {
 	return toRequestView(requestLike{
-		ID:                   r.ID,
-		SpanID:               r.SpanID,
-		ParentSpanID:         r.ParentSpanID,
-		Type:                 r.Type,
-		Status:               r.Status,
-		ProviderID:           r.ProviderID,
-		EndpointPath:         r.EndpointPath,
-		ApiKeyID:             r.ApiKeyID,
-		Model:                r.Model,
-		UpstreamModel:        r.UpstreamModel,
-		InputTokens:          r.InputTokens,
-		CacheReadTokens:      r.CacheReadTokens,
-		OutputTokens:         r.OutputTokens,
-		CacheWriteTokens:     r.CacheWriteTokens,
-		CacheWrite1HTokens:   r.CacheWrite1hTokens,
-		StatusCode:           r.StatusCode,
-		ErrorMessage:         r.ErrorMessage,
-		TtftMs:               r.TtftMs,
-		TimeSpentMs:          r.TimeSpentMs,
-		CreatedAt:            r.CreatedAt,
-		ModelCost:            r.ModelCost,
-		ModelCostCurrency:    r.ModelCostCurrency,
-		UserMessagePreview:   r.UserMessagePreview,
-		ProjectID:            r.ProjectID,
+		ID:                 r.ID,
+		SpanID:             r.SpanID,
+		ParentSpanID:       r.ParentSpanID,
+		Type:               r.Type,
+		Status:             r.Status,
+		FinishReason:       r.FinishReason,
+		ProviderID:         r.ProviderID,
+		EndpointPath:       r.EndpointPath,
+		ApiKeyID:           r.ApiKeyID,
+		Model:              r.Model,
+		UpstreamModel:      r.UpstreamModel,
+		InputTokens:        r.InputTokens,
+		CacheReadTokens:    r.CacheReadTokens,
+		OutputTokens:       r.OutputTokens,
+		CacheWriteTokens:   r.CacheWriteTokens,
+		CacheWrite1HTokens: r.CacheWrite1hTokens,
+		StatusCode:         r.StatusCode,
+		ErrorMessage:       r.ErrorMessage,
+		TtftMs:             r.TtftMs,
+		TimeSpentMs:        r.TimeSpentMs,
+		CreatedAt:          r.CreatedAt,
+		ModelCost:          r.ModelCost,
+		ModelCostCurrency:  r.ModelCostCurrency,
+		UserMessagePreview: r.UserMessagePreview,
+		ProjectID:          r.ProjectID,
 	})
 }
 
 func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 	return toRequestView(requestLike{
-		ID:                   r.ID,
-		SpanID:               r.SpanID,
-		ParentSpanID:         r.ParentSpanID,
-		Type:                 r.Type,
-		Status:               r.Status,
-		ProviderID:           r.ProviderID,
-		EndpointPath:         r.EndpointPath,
-		ApiKeyID:             r.ApiKeyID,
-		Model:                r.Model,
-		UpstreamModel:        r.UpstreamModel,
-		InputTokens:          r.InputTokens,
-		CacheReadTokens:      r.CacheReadTokens,
-		OutputTokens:         r.OutputTokens,
-		CacheWriteTokens:     r.CacheWriteTokens,
-		CacheWrite1HTokens:   r.CacheWrite1hTokens,
-		StatusCode:           r.StatusCode,
-		ErrorMessage:         r.ErrorMessage,
-		TtftMs:               r.TtftMs,
-		TimeSpentMs:          r.TimeSpentMs,
-		CreatedAt:            r.CreatedAt,
-		ModelCost:            r.ModelCost,
-		ModelCostCurrency:    r.ModelCostCurrency,
-		UserMessagePreview:   r.UserMessagePreview,
-		ProjectID:            r.ProjectID,
+		ID:                 r.ID,
+		SpanID:             r.SpanID,
+		ParentSpanID:       r.ParentSpanID,
+		Type:               r.Type,
+		Status:             r.Status,
+		FinishReason:       r.FinishReason,
+		ProviderID:         r.ProviderID,
+		EndpointPath:       r.EndpointPath,
+		ApiKeyID:           r.ApiKeyID,
+		Model:              r.Model,
+		UpstreamModel:      r.UpstreamModel,
+		InputTokens:        r.InputTokens,
+		CacheReadTokens:    r.CacheReadTokens,
+		OutputTokens:       r.OutputTokens,
+		CacheWriteTokens:   r.CacheWriteTokens,
+		CacheWrite1HTokens: r.CacheWrite1hTokens,
+		StatusCode:         r.StatusCode,
+		ErrorMessage:       r.ErrorMessage,
+		TtftMs:             r.TtftMs,
+		TimeSpentMs:        r.TimeSpentMs,
+		CreatedAt:          r.CreatedAt,
+		ModelCost:          r.ModelCost,
+		ModelCostCurrency:  r.ModelCostCurrency,
+		UserMessagePreview: r.UserMessagePreview,
+		ProjectID:          r.ProjectID,
 	})
 }
 
 func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 	return toRequestView(requestLike{
-		ID:                   r.ID,
-		SpanID:               r.SpanID,
-		ParentSpanID:         r.ParentSpanID,
-		Type:                 r.Type,
-		Status:               r.Status,
-		ProviderID:           r.ProviderID,
-		EndpointPath:         r.EndpointPath,
-		ApiKeyID:             r.ApiKeyID,
-		Model:                r.Model,
-		UpstreamModel:        r.UpstreamModel,
-		InputTokens:          r.InputTokens,
-		CacheReadTokens:      r.CacheReadTokens,
-		OutputTokens:         r.OutputTokens,
-		CacheWriteTokens:     r.CacheWriteTokens,
-		CacheWrite1HTokens:   r.CacheWrite1hTokens,
-		StatusCode:           r.StatusCode,
-		ErrorMessage:         r.ErrorMessage,
-		TtftMs:               r.TtftMs,
-		TimeSpentMs:          r.TimeSpentMs,
-		CreatedAt:            r.CreatedAt,
-		ModelCost:            r.ModelCost,
-		ModelCostCurrency:    r.ModelCostCurrency,
-		UserMessagePreview:   r.UserMessagePreview,
-		ProjectID:            r.ProjectID,
+		ID:                 r.ID,
+		SpanID:             r.SpanID,
+		ParentSpanID:       r.ParentSpanID,
+		Type:               r.Type,
+		Status:             r.Status,
+		FinishReason:       r.FinishReason,
+		ProviderID:         r.ProviderID,
+		EndpointPath:       r.EndpointPath,
+		ApiKeyID:           r.ApiKeyID,
+		Model:              r.Model,
+		UpstreamModel:      r.UpstreamModel,
+		InputTokens:        r.InputTokens,
+		CacheReadTokens:    r.CacheReadTokens,
+		OutputTokens:       r.OutputTokens,
+		CacheWriteTokens:   r.CacheWriteTokens,
+		CacheWrite1HTokens: r.CacheWrite1hTokens,
+		StatusCode:         r.StatusCode,
+		ErrorMessage:       r.ErrorMessage,
+		TtftMs:             r.TtftMs,
+		TimeSpentMs:        r.TimeSpentMs,
+		CreatedAt:          r.CreatedAt,
+		ModelCost:          r.ModelCost,
+		ModelCostCurrency:  r.ModelCostCurrency,
+		UserMessagePreview: r.UserMessagePreview,
+		ProjectID:          r.ProjectID,
 	})
 }
 

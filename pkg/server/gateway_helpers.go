@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -799,18 +800,35 @@ func buildRequestFromPending(ctx context.Context, p jsx.PendingRequestShape, fal
 	return req, outBody, nil
 }
 
-// completeFailedAttempt is a small wrapper around updateRequestOnComplete for the
-// retry loop's error path.
-func (s *Server) completeFailedAttempt(ctx context.Context, upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time, statusCode int32, errMsg string) {
+// completeFailedAttemptWithReason closes out an upstream attempt in the retry
+// loop's error path.
+func (s *Server) completeFailedAttemptWithReason(ctx context.Context, upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time, statusCode int32, errMsg string, finishReason int32) {
 	s.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
 		ID:           upstreamID,
 		StatusCode:   pgtype.Int4{Int32: statusCode, Valid: true},
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true},
 		Status:       db.RequestStatusFailed,
+		FinishReason: pgtype.Int4{Int32: finishReason, Valid: true},
 		CreatedAt:    pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
 	})
 }
+
+func classifyForwardError(err error, reqCtx context.Context) int32 {
+	if errors.Is(err, context.Canceled) && reqCtx.Err() != nil {
+		return db.FinishReasonCancelled
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return db.FinishReasonHeadersTimeout
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return db.FinishReasonHeadersTimeout
+	}
+	return db.FinishReasonInternal
+}
+
+var errReadIdleTimeout = errors.New("gateway: read idle timeout")
 
 // idleTimeoutReader wraps an io.Reader and enforces a per-read idle timeout.
 // If no data is received within the timeout period, the read is cancelled
@@ -845,6 +863,6 @@ func (r *idleTimeoutReader) Read(p []byte) (int, error) {
 	case <-timer.C:
 		r.cancel()
 		res := <-ch
-		return res.n, fmt.Errorf("gateway: read idle timeout after %v: %w", r.timeout, res.err)
+		return res.n, fmt.Errorf("%w after %v: %w", errReadIdleTimeout, r.timeout, res.err)
 	}
 }

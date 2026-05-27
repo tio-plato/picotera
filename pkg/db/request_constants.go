@@ -13,3 +13,11 @@ const (
 	RequestStatusCompleted      = 2
 	RequestStatusFailed         = 3
 )
+
+const (
+	FinishReasonInternal       = 1
+	FinishReasonCancelled      = 2
+	FinishReasonEOF            = 3
+	FinishReasonHeadersTimeout = 4
+	FinishReasonReadTimeout    = 5
+)

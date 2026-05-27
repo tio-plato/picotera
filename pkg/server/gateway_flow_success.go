@@ -3,6 +3,8 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -90,9 +92,9 @@ func (h *gatewayHandler) streamSuccess(input successInput) {
 	if !ok {
 		return
 	}
-	extractor, timingRecorder, respBytes := h.pipePathResponse(input, responseWriter, internalReader)
+	extractor, timingRecorder, respBytes, finishReason := h.pipePathResponse(input, responseWriter, internalReader)
 	h.aggregatePathResponse(input, metaRespHeader, respBytes, timingRecorder.Timings)
-	h.completeGatewaySuccess(input, extractor.Metrics(), input.Response.StatusCode)
+	h.completeGatewaySuccess(input, extractor.Metrics(), input.Response.StatusCode, finishReason)
 	_ = input.Flow.r
 }
 
@@ -142,7 +144,7 @@ func (h *gatewayHandler) openPathInternalReader(input successInput) (*lockedResp
 		input.Cancel()
 		bgCtx := input.Flow.ctxs.Persist
 		metaID, metaCreatedAt := input.Flow.meta.ID, input.Flow.meta.CreatedAt
-		h.completeFailedAttempt(bgCtx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, int32(resp.StatusCode), "decode upstream response: "+derr.Error())
+		h.completeFailedAttemptWithReason(bgCtx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, int32(resp.StatusCode), "decode upstream response: "+derr.Error(), db.FinishReasonInternal)
 		respBody := writeGatewayError(w, http.StatusBadGateway, "decode upstream response: "+derr.Error(), errorx.UpstreamError.Error())
 		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 			ID:           metaID,
@@ -150,6 +152,7 @@ func (h *gatewayHandler) openPathInternalReader(input successInput) (*lockedResp
 			ErrorMessage: pgtype.Text{String: "decode upstream response: " + derr.Error(), Valid: true},
 			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(input.Flow.startedAt).Milliseconds()), Valid: true},
 			Status:       db.RequestStatusFailed,
+			FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
 			CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 		})
 		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, input.Flow.collectLogs(), nil)
@@ -166,7 +169,7 @@ func (h *gatewayHandler) openPathInternalReader(input successInput) (*lockedResp
 	return responseWriter, internalReader, true
 }
 
-func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lockedResponseWriter, internalReader *internalResponseReader) (*ResponseExtractor, *LineTimingRecorder, []byte) {
+func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lockedResponseWriter, internalReader *internalResponseReader) (*ResponseExtractor, *LineTimingRecorder, []byte, int32) {
 	w, resp := input.Flow.w, input.Response
 	internalBody := internalReader.Body
 	extractor := NewResponseExtractor(internalBody, resp.Header.Get("Content-Type"), input.UpstreamStartTime)
@@ -174,6 +177,7 @@ func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lo
 	reader := newIdleTimeoutReader(timingRecorder, h.config.GatewayReadTimeout, input.Cancel)
 	buf := make([]byte, 32*1024)
 	var captureBuf bytes.Buffer
+	var finalReadErr error
 	flusher, canFlush := w.(http.Flusher)
 	for {
 		n, readErr := reader.Read(buf)
@@ -191,12 +195,13 @@ func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lo
 			}
 		}
 		if readErr != nil {
+			finalReadErr = readErr
 			break
 		}
 	}
 	input.Cancel()
 	closeDecodedInternalResponseReader(internalBody, resp)
-	return extractor, timingRecorder, captureBuf.Bytes()
+	return extractor, timingRecorder, captureBuf.Bytes(), classifyStreamFinishReason(finalReadErr, input.Flow.ctxs.Request)
 }
 
 func (h *gatewayHandler) aggregatePathResponse(input successInput, metaRespHeader http.Header, respBytes []byte, timings []float64) {
@@ -210,7 +215,7 @@ func (h *gatewayHandler) aggregatePathResponse(input successInput, metaRespHeade
 	h.uploadMetaResponseArtifactWithAggregation(input.Flow.ctxs.Persist, input.Flow.meta.ID, input.Flow.meta.CreatedAt, http.StatusOK, metaRespHeader, respBytes, input.Flow.collectLogs(), aggregated, timings)
 }
 
-func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMetrics, statusCode int) {
+func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMetrics, statusCode int, finishReason int32) {
 	bgCtx := input.Flow.ctxs.Persist
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
 	modelCost, modelCcy := h.costsFor(bgCtx, input.RoutedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
@@ -229,6 +234,7 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
+		FinishReason:       pgtype.Int4{Int32: finishReason, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(input.Flow.startedAt).Milliseconds())
@@ -246,6 +252,20 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
+		FinishReason:       pgtype.Int4{Int32: finishReason, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: input.Flow.meta.CreatedAt, Valid: true},
 	})
+}
+
+func classifyStreamFinishReason(readErr error, reqCtx context.Context) int32 {
+	if errors.Is(readErr, io.EOF) {
+		return db.FinishReasonEOF
+	}
+	if errors.Is(readErr, errReadIdleTimeout) {
+		return db.FinishReasonReadTimeout
+	}
+	if reqCtx.Err() != nil {
+		return db.FinishReasonCancelled
+	}
+	return db.FinishReasonEOF
 }

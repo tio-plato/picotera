@@ -118,7 +118,7 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidate
 	}
 	input, cancel, err := f.insertUpstreamAttempt(cand, side, candAnno, dec, js, state)
 	if err != nil {
-		f.recordAttemptFailure(state, input, side.ProviderID, 0, err)
+		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, db.FinishReasonInternal)
 		cancel()
 		return false, false
 	}
@@ -130,7 +130,7 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidate
 			cancel()
 			return false, true
 		}
-		f.recordAttemptFailure(state, input, side.ProviderID, 0, err)
+		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, db.FinishReasonInternal)
 		cancel()
 		return false, false
 	}
@@ -138,7 +138,7 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidate
 	upstreamStart := time.Now()
 	resp, err := f.h.forwardRequest(prepared.Request, side.ProxyURL)
 	if err != nil {
-		f.recordAttemptFailure(state, input, side.ProviderID, 0, err)
+		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, classifyForwardError(err, f.ctxs.Request))
 		cancel()
 		return false, false
 	}
@@ -260,13 +260,13 @@ func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInpu
 	decoded, err := decodedBody(resp)
 	if err != nil {
 		_ = resp.Body.Close()
-		f.recordAttemptFailure(state, input, providerID, int32(resp.StatusCode), fmt.Errorf("decode upstream response: %w", err))
+		f.recordAttemptFailure(state, input, providerID, int32(resp.StatusCode), fmt.Errorf("decode upstream response: %w", err), db.FinishReasonInternal)
 		return
 	}
 	respBody, err := io.ReadAll(decoded.Body)
 	_ = decoded.Body.Close()
 	if err != nil {
-		f.recordAttemptFailure(state, input, providerID, int32(resp.StatusCode), fmt.Errorf("decode upstream response: %w", err))
+		f.recordAttemptFailure(state, input, providerID, int32(resp.StatusCode), fmt.Errorf("decode upstream response: %w", err), db.FinishReasonInternal)
 		return
 	}
 	f.h.uploadResponseArtifact(f.ctxs.Persist, input.UpstreamID, input.UpstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody, nil)
@@ -277,13 +277,14 @@ func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInpu
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(input.AttemptStart).Milliseconds()), Valid: true},
 		Status:       db.RequestStatusFailed,
+		FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
 		CreatedAt:    pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
 	})
 	updateAttemptState(state, providerID, resp.StatusCode, errMsg, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg))
 }
 
-func (f *gatewayFlow) recordAttemptFailure(state *attemptState, input attemptInput, providerID int32, statusCode int32, err error) {
-	f.h.completeFailedAttempt(f.ctxs.Persist, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, statusCode, err.Error())
+func (f *gatewayFlow) recordAttemptFailure(state *attemptState, input attemptInput, providerID int32, statusCode int32, err error, finishReason int32) {
+	f.h.completeFailedAttemptWithReason(f.ctxs.Persist, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, statusCode, err.Error(), finishReason)
 	updateAttemptState(state, providerID, int(statusCode), err.Error(), err)
 }
 

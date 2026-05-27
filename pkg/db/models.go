@@ -96,6 +96,7 @@ type Request struct {
 	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
 	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
 	ProjectID          pgtype.Int4      `json:"projectId"`
+	FinishReason       pgtype.Int4      `json:"finishReason"`
 }
 
 type RequestOverviewHourly struct {

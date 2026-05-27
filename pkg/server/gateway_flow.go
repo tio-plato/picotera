@@ -169,9 +169,9 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
-			f.failMeta(int32(gwErr.status), gwErr.message)
+			f.failMeta(int32(gwErr.status), gwErr.message, db.FinishReasonInternal)
 		} else {
-			f.failMeta(http.StatusInternalServerError, "auth validation failed")
+			f.failMeta(http.StatusInternalServerError, "auth validation failed", db.FinishReasonInternal)
 		}
 		f.failGatewayError(err)
 		return false

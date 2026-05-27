@@ -470,6 +470,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	flusher, canFlush := w.(http.Flusher)
 	buf := make([]byte, 32*1024)
 	var clientCapture bytes.Buffer
+	var finalReadErr error
 	for {
 		n, readErr := idleReader.Read(buf)
 		if n > 0 {
@@ -486,6 +487,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			}
 		}
 		if readErr != nil {
+			finalReadErr = readErr
 			break
 		}
 	}
@@ -514,6 +516,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		metaTimings = timingRecorder.Timings
 	}
 	h.uploadMetaResponseArtifactWithAggregation(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated, metaTimings)
+	finishReason := classifyStreamFinishReason(finalReadErr, r.Context())
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
@@ -534,6 +537,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
+		FinishReason:       pgtype.Int4{Int32: finishReason, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(a.gatewayStart).Milliseconds())
@@ -551,6 +555,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
+		FinishReason:       pgtype.Int4{Int32: finishReason, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	_ = r
@@ -567,6 +572,7 @@ func (h *gatewayHandler) failUnifiedSuccess(a unifiedStreamArgs, errMsg string) 
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(a.attemptStart).Milliseconds()), Valid: true},
 		Status:       db.RequestStatusFailed,
+		FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
 		CreatedAt:    pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	respBody := writeGatewayError(a.w, http.StatusBadGateway, "bridge failed: "+errMsg, errorx.UpstreamError.Error())
@@ -576,6 +582,7 @@ func (h *gatewayHandler) failUnifiedSuccess(a unifiedStreamArgs, errMsg string) 
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
 		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(a.gatewayStart).Milliseconds()), Valid: true},
 		Status:       db.RequestStatusFailed,
+		FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
 		CreatedAt:    pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	h.uploadMetaResponseArtifact(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), respBody, a.metaLogs, nil)
