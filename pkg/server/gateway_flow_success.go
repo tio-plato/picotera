@@ -1,0 +1,251 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"net/http"
+	"strings"
+	"time"
+
+	"picotera/pkg/artifacts"
+	"picotera/pkg/db"
+	"picotera/pkg/errorx"
+	"picotera/pkg/logx"
+
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+// uploadRequestArtifact builds and asynchronously uploads a request artifact for the given id+ts.
+func (h *gatewayHandler) uploadRequestArtifact(ctx context.Context, id string, ts time.Time, method, url string, header http.Header, body []byte) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildRequest(method, url, header, body)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build request failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.RequestKey(id, ts), payload)
+}
+
+// uploadResponseArtifact builds and asynchronously uploads a response artifact for the given id+ts.
+func (h *gatewayHandler) uploadResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, timings []float64) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildResponse(statusCode, header, body, timings)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build response failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
+}
+
+func (h *gatewayHandler) uploadResponseArtifactWithAggregation(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, aggregated *artifacts.AggregatedResponse, timings []float64) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildResponseWithAggregated(statusCode, header, body, aggregated, timings)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build response failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
+}
+
+// uploadMetaResponseArtifact is uploadResponseArtifact for the meta request,
+// embedding any captured JSX console output. Only meta artifacts carry logs.
+func (h *gatewayHandler) uploadMetaResponseArtifact(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry, timings []float64) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildResponseWithLogs(statusCode, header, body, logs, timings)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build meta response failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
+}
+
+func (h *gatewayHandler) uploadMetaResponseArtifactWithAggregation(ctx context.Context, id string, ts time.Time, statusCode int, header http.Header, body []byte, logs []artifacts.LogEntry, aggregated *artifacts.AggregatedResponse, timings []float64) {
+	if !h.artifacts.Enabled() {
+		return
+	}
+	payload, err := artifacts.BuildResponseWithLogsAndAggregated(statusCode, header, body, logs, aggregated, timings)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).WithField("id", id).Warn("artifact: build meta response failed")
+		return
+	}
+	h.artifacts.Put(ctx, artifacts.ResponseKey(id, ts), payload)
+}
+
+// streamSuccess writes the upstream 200 response back to the client and
+// completes both the upstream and meta request rows. Pulled out of the main
+// handler so the retry loop body stays scannable.
+func (h *gatewayHandler) streamSuccess(input successInput) {
+	h.markPathHeadersReceived(input)
+	copyPathSuccessHeaders(input.Flow.w, input.Response)
+	metaRespHeader := input.Flow.w.Header().Clone()
+	responseWriter, internalReader, ok := h.openPathInternalReader(input)
+	if !ok {
+		return
+	}
+	extractor, timingRecorder, respBytes := h.pipePathResponse(input, responseWriter, internalReader)
+	h.aggregatePathResponse(input, metaRespHeader, respBytes, timingRecorder.Timings)
+	h.completeGatewaySuccess(input, extractor.Metrics(), input.Response.StatusCode)
+	_ = input.Flow.r
+}
+
+func (h *gatewayHandler) markPathHeadersReceived(input successInput) {
+	metaID, metaCreatedAt := input.Flow.meta.ID, input.Flow.meta.CreatedAt
+	endpointPath := input.Flow.config.Endpoint.Path
+	bgCtx := input.Flow.ctxs.Persist
+	apiKeyID := input.Flow.auth.APIKeyID
+	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
+		ID:            metaID,
+		ProviderID:    pgtype.Int4{Int32: input.ProviderID, Valid: true},
+		Model:         pgtype.Text{String: input.RoutedModel, Valid: input.RoutedModel != ""},
+		UpstreamModel: pgtype.Text{String: input.UpstreamModel, Valid: input.UpstreamModel != ""},
+		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
+		ApiKeyID:      apiKeyID,
+		Status:        db.RequestStatusHeaderReceived,
+		CreatedAt:     pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
+	})
+	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
+		ID:            input.UpstreamID,
+		ProviderID:    pgtype.Int4{Int32: input.ProviderID, Valid: true},
+		Model:         pgtype.Text{String: input.RoutedModel, Valid: input.RoutedModel != ""},
+		UpstreamModel: pgtype.Text{String: input.UpstreamModel, Valid: input.UpstreamModel != ""},
+		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
+		ApiKeyID:      apiKeyID,
+		Status:        db.RequestStatusHeaderReceived,
+		CreatedAt:     pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
+	})
+}
+
+func copyPathSuccessHeaders(w http.ResponseWriter, resp *http.Response) {
+	for key, values := range resp.Header {
+		if strings.ToLower(key) == "content-length" {
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+}
+
+func (h *gatewayHandler) openPathInternalReader(input successInput) (*lockedResponseWriter, *internalResponseReader, bool) {
+	w, resp := input.Flow.w, input.Response
+	responseWriter := newLockedResponseWriter(w)
+	internalReader, derr := decodedInternalResponseReader(resp, responseWriter)
+	if derr != nil {
+		input.Cancel()
+		bgCtx := input.Flow.ctxs.Persist
+		metaID, metaCreatedAt := input.Flow.meta.ID, input.Flow.meta.CreatedAt
+		h.completeFailedAttempt(bgCtx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, int32(resp.StatusCode), "decode upstream response: "+derr.Error())
+		respBody := writeGatewayError(w, http.StatusBadGateway, "decode upstream response: "+derr.Error(), errorx.UpstreamError.Error())
+		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+			ID:           metaID,
+			StatusCode:   pgtype.Int4{Int32: http.StatusBadGateway, Valid: true},
+			ErrorMessage: pgtype.Text{String: "decode upstream response: " + derr.Error(), Valid: true},
+			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(input.Flow.startedAt).Milliseconds()), Valid: true},
+			Status:       db.RequestStatusFailed,
+			CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
+		})
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, input.Flow.collectLogs(), nil)
+		_ = resp.Body.Close()
+		return nil, nil, false
+	}
+	internalBody := internalReader.Body
+	w.WriteHeader(http.StatusOK)
+	if err := internalReader.StartClientWrite(); err != nil {
+		input.Cancel()
+		closeDecodedInternalResponseReader(internalBody, resp)
+		return nil, nil, false
+	}
+	return responseWriter, internalReader, true
+}
+
+func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lockedResponseWriter, internalReader *internalResponseReader) (*ResponseExtractor, *LineTimingRecorder, []byte) {
+	w, resp := input.Flow.w, input.Response
+	internalBody := internalReader.Body
+	extractor := NewResponseExtractor(internalBody, resp.Header.Get("Content-Type"), input.UpstreamStartTime)
+	timingRecorder := NewLineTimingRecorder(extractor, input.UpstreamStartTime)
+	reader := newIdleTimeoutReader(timingRecorder, h.config.GatewayReadTimeout, input.Cancel)
+	buf := make([]byte, 32*1024)
+	var captureBuf bytes.Buffer
+	flusher, canFlush := w.(http.Flusher)
+	for {
+		n, readErr := reader.Read(buf)
+		if n > 0 {
+			if internalBody == resp.Body {
+				w.Write(buf[:n])
+			}
+			captureBuf.Write(buf[:n])
+			if canFlush {
+				if internalBody != resp.Body {
+					responseWriter.Flush()
+				} else {
+					flusher.Flush()
+				}
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	input.Cancel()
+	closeDecodedInternalResponseReader(internalBody, resp)
+	return extractor, timingRecorder, captureBuf.Bytes()
+}
+
+func (h *gatewayHandler) aggregatePathResponse(input successInput, metaRespHeader http.Header, respBytes []byte, timings []float64) {
+	var aggregated *artifacts.AggregatedResponse
+	if format, ok := responseAggregationFormat(input.Flow.config.Endpoint.EndpointType); ok {
+		if profile, ok := defaultAggregationProfile(format); ok {
+			aggregated = buildAggregatedArtifact(input.Flow.ctxs.Persist, h.llmBridge, format, input.Response.Header.Get("Content-Type"), respBytes, profile)
+		}
+	}
+	h.uploadResponseArtifactWithAggregation(input.Flow.ctxs.Persist, input.UpstreamID, input.UpstreamCreatedAt, input.Response.StatusCode, input.Response.Header.Clone(), respBytes, aggregated, timings)
+	h.uploadMetaResponseArtifactWithAggregation(input.Flow.ctxs.Persist, input.Flow.meta.ID, input.Flow.meta.CreatedAt, http.StatusOK, metaRespHeader, respBytes, input.Flow.collectLogs(), aggregated, timings)
+}
+
+func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMetrics, statusCode int) {
+	bgCtx := input.Flow.ctxs.Persist
+	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
+	modelCost, modelCcy := h.costsFor(bgCtx, input.RoutedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
+	upstreamTimeSpent := int32(time.Since(input.AttemptStart).Milliseconds())
+	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+		ID:                 input.UpstreamID,
+		StatusCode:         pgtype.Int4{Int32: int32(statusCode), Valid: true},
+		ErrorMessage:       pgtype.Text{Valid: false},
+		TimeSpentMs:        pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
+		Status:             db.RequestStatusCompleted,
+		TtftMs:             ttftMs,
+		InputTokens:        inputTokens,
+		OutputTokens:       outputTokens,
+		CacheReadTokens:    cacheReadTokens,
+		CacheWriteTokens:   cacheWriteTokens,
+		CacheWrite1hTokens: cacheWrite1hTokens,
+		ModelCost:          modelCost,
+		ModelCostCurrency:  modelCcy,
+		CreatedAt:          pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
+	})
+	metaTimeSpent := int32(time.Since(input.Flow.startedAt).Milliseconds())
+	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
+		ID:                 input.Flow.meta.ID,
+		StatusCode:         pgtype.Int4{Int32: int32(statusCode), Valid: true},
+		ErrorMessage:       pgtype.Text{Valid: false},
+		TimeSpentMs:        pgtype.Int4{Int32: metaTimeSpent, Valid: true},
+		Status:             db.RequestStatusCompleted,
+		TtftMs:             ttftMs,
+		InputTokens:        inputTokens,
+		OutputTokens:       outputTokens,
+		CacheReadTokens:    cacheReadTokens,
+		CacheWriteTokens:   cacheWriteTokens,
+		CacheWrite1hTokens: cacheWrite1hTokens,
+		ModelCost:          modelCost,
+		ModelCostCurrency:  modelCcy,
+		CreatedAt:          pgtype.Timestamp{Time: input.Flow.meta.CreatedAt, Valid: true},
+	})
+}

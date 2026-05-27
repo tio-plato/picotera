@@ -432,7 +432,7 @@ func fromNoModelRow(r db.GetProvidersByEndpointRow) providerCandidateRow {
 
 // resolveProviders gets providers for the given endpoint and model, filters out
 // those without upstream URLs, and sorts by combined priority (descending).
-// When model == "" the endpoint is a no-model endpoint (endpoint.model_path = '')
+// When model == "" the endpoint is a no-model endpoint (endpoint.model_path = "")
 // and every non-disabled provider bound to the path is considered, independent
 // of model / model_provider_endpoint configuration.
 func (s *Server) resolveProviders(ctx context.Context, endpointPath, model string) ([]providerCandidateRow, error) {
@@ -600,8 +600,8 @@ func (s *Server) extractProjectID(ctx context.Context, body []byte) pgtype.Int4 
 // upsertProjectSeen updates project.first_seen_at / last_seen_at for the
 // matched project id. Errors are logged at warn and swallowed — they must not
 // affect request handling.
-func (s *Server) upsertProjectSeen(projectID int32, seenAt time.Time) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func (s *Server) upsertProjectSeen(ctx context.Context, projectID int32, seenAt time.Time) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	err := s.queries.UpsertProjectSeen(ctx, db.UpsertProjectSeenParams{
 		ID:     projectID,

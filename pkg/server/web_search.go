@@ -33,6 +33,7 @@ type webSearchContext struct {
 	parentSpanID        string
 	metaCreatedAt       time.Time
 	originalRequestBody []byte // pre-rewrite client body for sub-call construction
+	rewrittenBody       []byte
 }
 
 // hasWebSearchTool reports whether the Anthropic Messages body declares an

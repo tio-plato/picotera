@@ -1,0 +1,284 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"time"
+
+	"picotera/pkg/annotations"
+	"picotera/pkg/db"
+	"picotera/pkg/errorx"
+	"picotera/pkg/jsx"
+	"picotera/pkg/llmbridge"
+
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type gatewayRouteKind int
+
+const (
+	gatewayRoutePath gatewayRouteKind = iota
+	gatewayRouteUnified
+)
+
+type gatewayFlow struct {
+	h              *gatewayHandler
+	w              http.ResponseWriter
+	r              *http.Request
+	startedAt      time.Time
+	ctxs           gatewayContexts
+	config         gatewayFlowConfig
+	body           []byte
+	preRewriteBody []byte
+	meta           gatewayMetaState
+	auth           gatewayAuthState
+	model          gatewayModelState
+	session        *jsx.Session
+}
+
+type gatewayFlowConfig struct {
+	Kind              gatewayRouteKind
+	Endpoint          db.Endpoint
+	PathVars          map[string]string
+	SourceFormat      llmbridge.Format
+	Credentials       int32
+	ExtractModel      func(*http.Request, []byte, map[string]string) (gatewayModelMode, error)
+	SetBodyModel      func([]byte, string) ([]byte, error)
+	ResolveCandidates func(context.Context, gatewayModelMode, gatewayAuthState) (candidateSet, error)
+	PrepareAttempt    func(context.Context, *gatewayFlow, attemptInput) (attemptPrepared, error)
+	HandleSuccess     func(successInput)
+}
+
+type gatewayMetaState struct {
+	ID             string
+	CreatedAt      time.Time
+	ParentSpanID   string
+	ParentSpanIDPg pgtype.Text
+	ProjectID      pgtype.Int4
+	RequestHeader  http.Header
+	RequestMethod  string
+	RequestURL     string
+}
+
+type gatewayAuthState struct {
+	APIKey     *db.ApiKey
+	APIKeyID   pgtype.Int4
+	APIKeyJS   *jsx.ApiKeySummary
+	APIKeyAnno map[string]string
+}
+
+type gatewayModelState struct {
+	Mode        gatewayModelMode
+	Original    string
+	Routed      string
+	Streaming   bool
+	Annotations map[string]string
+}
+
+type gatewayModelMode struct {
+	OriginalModel string
+	RoutedModel   string
+	Streaming     bool
+	HasModel      bool
+}
+
+func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, startedAt time.Time, cfg gatewayFlowConfig) *gatewayFlow {
+	if cfg.Credentials == 0 {
+		cfg.Credentials = cfg.Endpoint.CredentialsResolver
+	}
+	return &gatewayFlow{h: h, w: w, r: r, startedAt: startedAt, config: cfg}
+}
+
+func (f *gatewayFlow) run() {
+	f.ctxs = newGatewayContexts(f.r, f.h.config)
+	defer f.ctxs.CancelPersist()
+	if !f.readBody() || !f.insertMetaRequest() || !f.authenticateAndBackfill() {
+		return
+	}
+	if !f.resolveAndRewriteModel() {
+		return
+	}
+	defer f.session.Close()
+	sorted, sidecars, js, ok := f.resolveAndSortCandidates()
+	if !ok {
+		return
+	}
+	result := f.runAttempts(sorted, sidecars, js)
+	if result.Handled {
+		return
+	}
+	f.failAllProviders(result.LastErr)
+}
+
+func (f *gatewayFlow) readBody() bool {
+	body, err := io.ReadAll(f.r.Body)
+	_ = f.r.Body.Close()
+	if err != nil {
+		writeGatewayError(f.w, http.StatusInternalServerError, "failed to read request body", errorx.InternalError.Error())
+		return false
+	}
+	f.body = body
+	return true
+}
+
+func (f *gatewayFlow) insertMetaRequest() bool {
+	metaID, metaIDCreatedAt := newRequestID()
+	header := f.r.Header.Clone()
+	parentSpanID := extractParentSpanID(header)
+	parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
+	projectIDPg := f.h.extractProjectID(f.ctxs.Request, f.body)
+	createdAt := f.h.insertRequest(f.ctxs.Persist, db.InsertRequestParams{
+		ID:                 metaID,
+		SpanID:             pgtype.Text{String: metaID, Valid: true},
+		ParentSpanID:       parentSpanIDPg,
+		Type:               db.RequestTypeMeta,
+		Status:             db.RequestStatusPending,
+		ProviderID:         pgtype.Int4{Valid: false},
+		EndpointPath:       pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
+		ApiKeyID:           pgtype.Int4{Valid: false},
+		Model:              pgtype.Text{Valid: false},
+		UpstreamModel:      pgtype.Text{Valid: false},
+		StatusCode:         pgtype.Int4{Valid: false},
+		ErrorMessage:       pgtype.Text{Valid: false},
+		TimeSpentMs:        pgtype.Int4{Valid: false},
+		UserMessagePreview: extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType),
+		ProjectID:          projectIDPg,
+		CreatedAt:          pgtype.Timestamp{Time: metaIDCreatedAt, Valid: true},
+	})
+	f.meta = gatewayMetaState{
+		ID:             metaID,
+		CreatedAt:      createdAt,
+		ParentSpanID:   parentSpanID,
+		ParentSpanIDPg: parentSpanIDPg,
+		ProjectID:      projectIDPg,
+		RequestHeader:  header,
+		RequestMethod:  f.r.Method,
+		RequestURL:     f.r.URL.String(),
+	}
+	f.h.uploadRequestArtifact(f.ctxs.Persist, metaID, createdAt, f.r.Method, f.r.URL.String(), header, f.body)
+	if projectIDPg.Valid {
+		go f.h.upsertProjectSeen(f.ctxs.Persist, projectIDPg.Int32, createdAt)
+	}
+	return true
+}
+
+func (f *gatewayFlow) authenticateAndBackfill() bool {
+	apiKey, err := f.h.authenticateClient(f.ctxs.Request, f.r, f.config.Credentials)
+	if err != nil {
+		var gwErr *gatewayError
+		if errors.As(err, &gwErr) {
+			f.failMeta(int32(gwErr.status), gwErr.message)
+		} else {
+			f.failMeta(http.StatusInternalServerError, "auth validation failed")
+		}
+		f.failGatewayError(err)
+		return false
+	}
+	apiKeyJS := apiKeySummaryFromRow(apiKey)
+	f.auth = gatewayAuthState{
+		APIKey:     apiKey,
+		APIKeyID:   pgtype.Int4{Int32: apiKey.ID, Valid: true},
+		APIKeyJS:   apiKeyJS,
+		APIKeyAnno: apiKeyJS.Annotations,
+	}
+	f.h.updateRequestOnHeader(f.ctxs.Persist, db.UpdateRequestOnHeaderParams{
+		ID:           f.meta.ID,
+		EndpointPath: pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
+		ApiKeyID:     f.auth.APIKeyID,
+		Status:       db.RequestStatusPending,
+		CreatedAt:    pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
+	})
+	return true
+}
+
+func (f *gatewayFlow) resolveAndRewriteModel() bool {
+	mode, err := f.config.ExtractModel(f.r, f.body, f.config.PathVars)
+	if err != nil {
+		f.failGatewayErrorWithFallback(err, http.StatusBadRequest, "model extraction failed")
+		return false
+	}
+	mode.RoutedModel = mode.OriginalModel
+	f.model = gatewayModelState{Mode: mode, Original: mode.OriginalModel, Routed: mode.RoutedModel, Streaming: mode.Streaming}
+	f.updateMetaModel(mode.RoutedModel)
+	session, err := f.h.jsxEngine.NewSession(f.ctxs.Request, f.meta.ID)
+	if err != nil {
+		f.failInternal(http.StatusBadGateway, "failed to load js hooks: "+err.Error(), errorx.UpstreamError.Error())
+		return false
+	}
+	f.session = session
+	f.model.Annotations = f.h.fetchModelAnnotations(f.ctxs.Request, mode.RoutedModel)
+	f.preRewriteBody = append([]byte(nil), f.body...)
+	newModel, err := f.session.RunRewriteModelHook(jsx.RewriteModelInput{
+		Request:     serializeClientRequest(f.r, f.body, mode.RoutedModel, f.config.PathVars),
+		Model:       mode.OriginalModel,
+		ApiKey:      f.auth.APIKeyJS,
+		Annotations: annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno),
+	}, mode.RoutedModel)
+	if err != nil {
+		f.failHook(err)
+		return false
+	}
+	if !mode.HasModel && newModel != "" {
+		f.failHook(errors.New("rewriteModel returned non-empty model on no-model endpoint"))
+		return false
+	}
+	if newModel != mode.RoutedModel {
+		updated, serr := f.config.SetBodyModel(f.body, newModel)
+		if serr != nil {
+			f.failInternal(http.StatusInternalServerError, "failed to set model in body: "+serr.Error(), errorx.InternalError.Error())
+			return false
+		}
+		f.body = updated
+		mode.RoutedModel = newModel
+		f.model.Routed = newModel
+		f.model.Mode = mode
+		f.model.Annotations = f.h.fetchModelAnnotations(f.ctxs.Request, newModel)
+		f.updateMetaModel(newModel)
+	}
+	return true
+}
+
+func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.Candidate, map[string]gatewayCandidateSidecar, gatewayJSContext, bool) {
+	set, err := f.config.ResolveCandidates(f.ctxs.Request, f.model.Mode, f.auth)
+	if err != nil {
+		f.failGatewayErrorWithFallback(err, http.StatusInternalServerError, "failed to query providers")
+		return nil, nil, gatewayJSContext{}, false
+	}
+	if set.ModelAnno != nil {
+		f.model.Annotations = set.ModelAnno
+	}
+	candidates := make([]jsx.Candidate, 0, len(set.Items))
+	for _, item := range set.Items {
+		candidates = append(candidates, item.Candidate)
+	}
+	js := gatewayJSContext{
+		Endpoint:      endpointSummaryFromRow(f.config.Endpoint),
+		Model:         &jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations},
+		ClientRequest: serializeClientRequest(f.r, f.body, f.model.Routed, f.config.PathVars),
+		APIKey:        f.auth.APIKeyJS,
+		Annotations:   annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno),
+	}
+	sorted, err := f.session.RunSortHook(jsx.SortInput{
+		Endpoint:    js.Endpoint,
+		Model:       js.Model,
+		Request:     js.ClientRequest,
+		Providers:   candidates,
+		ApiKey:      js.APIKey,
+		Annotations: js.Annotations,
+	})
+	if err != nil {
+		f.failHook(err)
+		return nil, nil, gatewayJSContext{}, false
+	}
+	return sorted, candidateSidecarMap(set), js, true
+}
+
+func (f *gatewayFlow) updateMetaModel(model string) {
+	f.h.updateRequestModel(f.ctxs.Persist, db.UpdateRequestModelParams{
+		ID:        f.meta.ID,
+		Model:     pgtype.Text{String: model, Valid: model != ""},
+		CreatedAt: pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
+	})
+}
