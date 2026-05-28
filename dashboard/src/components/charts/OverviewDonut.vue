@@ -126,7 +126,6 @@ const option = computed<EChartsOption>(() => {
         type: 'pie',
         radius: ['60%', '75%'],
         label: { show: true },
-        emphasis: { disabled: true },
         itemStyle: { borderRadius: 2 },
         padAngle: 0.6,
         data: visibleData.map((d) => ({

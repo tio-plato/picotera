@@ -29,6 +29,7 @@
     "@tanstack/vue-query": "^5.100.9",
     "@tanstack/vue-virtual": "^3.13.24",
     "codemirror": "^6.0.2",
+    "colorjs.io": "^0.6.1",
     "dompurify": "^3.4.1",
     "echarts": "^6.1.0",
     "marked": "^18.0.2",

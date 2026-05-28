@@ -69,7 +69,7 @@ watch(() => prefs.theme, () => { themeVersion.value++ })
 const option = computed<EChartsOption>(() => {
   void themeVersion.value
   const axis = getThemeAxisStyle()
-  const fmtValue = props.valueFormat ?? ((v: number) => `${v.toFixed(0)} tok/s`)
+  const fmtValue = props.valueFormat ?? ((v: number, skipUnit = false) => `${v.toFixed(0)}${skipUnit ? '' : ' tok/s'}`)
   const reversed = [...groupStats.value].reverse()
   const labels = reversed.map((s) => s.label)
 
@@ -105,7 +105,7 @@ const option = computed<EChartsOption>(() => {
           <div class="text-2xs text-ink-muted mb-1">${escape(stat.label)}</div>
           <div class="flex items-center gap-1 text-2xs">
             <span style="background:${color};display:inline-block;width:8px;height:8px;border-radius:2px"></span>
-            <span class="mono tabular">${escape(fmtValue(stat.min))} — ${escape(fmtValue(stat.max))}</span>
+            <span class="mono tabular">${escape(fmtValue(stat.min, true))} ~ ${escape(fmtValue(stat.max))}</span>
           </div>
         </div>`
       },
@@ -114,7 +114,10 @@ const option = computed<EChartsOption>(() => {
       {
         type: 'boxplot',
         itemStyle: { borderWidth: 0 },
-        emphasis: { disabled: true },
+        emphasis: { focus: 'self' },
+        blur: {
+          itemStyle: { opacity: 0.4 },
+        },
         data: reversed.map((s) => {
           const median = s.hasData ? (s.min + s.max) / 2 : 0
           return {
@@ -135,6 +138,6 @@ const option = computed<EChartsOption>(() => {
 <template>
   <div class="flex flex-col gap-2">
     <div v-if="noData" class="text-2xs text-ink-muted">暂无数据</div>
-    <VChart v-else :option="option" :style="{ height: (height ?? 200) + 'px' }" autoresize />
+    <VChart v-else :option="option" :style="{ height: `${height ?? (groupStats.length * 15) + 50}px` }" :autoresize="true" />
   </div>
 </template>

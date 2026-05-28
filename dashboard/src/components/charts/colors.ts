@@ -1,3 +1,5 @@
+import Color from 'colorjs.io'
+
 const CHART_COLOR_COUNT = 10
 
 const FALLBACK_COLORS = [
@@ -13,39 +15,43 @@ const FALLBACK_COLORS = [
   'oklch(0.60 0.15 55)',
 ]
 
+function toHex(color: string): string {
+  return new Color(color).to('srgb').toString({ format: 'hex' })
+}
+
 function readCSSVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
 export function groupColor(index: number): string {
   if (index < CHART_COLOR_COUNT) {
-    return readCSSVar(`--color-chart-${index}`) || FALLBACK_COLORS[index]!
+    return toHex(readCSSVar(`--color-chart-${index}`) || FALLBACK_COLORS[index]!)
   }
   const base = readCSSVar(`--color-chart-${index % CHART_COLOR_COUNT}`) || FALLBACK_COLORS[index % CHART_COLOR_COUNT]!
   const hueMatch = base.match(/oklch\(([^ ]+) ([^ ]+) ([^ )]+)\)/)
-  if (!hueMatch) return base
+  if (!hueMatch) return toHex(base)
   const [, l, c, h] = hueMatch
   const rotation = 23 * Math.floor(index / CHART_COLOR_COUNT)
   const hue = (parseFloat(h!) + rotation) % 360
-  return `oklch(${l} ${c} ${hue})`
+  return toHex(`oklch(${l} ${c} ${hue})`)
 }
 
 export function getChartColors(): string[] {
   const colors: string[] = []
   for (let i = 0; i < CHART_COLOR_COUNT; i++) {
-    colors.push(readCSSVar(`--color-chart-${i}`) || FALLBACK_COLORS[i]!)
+    colors.push(toHex(readCSSVar(`--color-chart-${i}`) || FALLBACK_COLORS[i]!))
   }
   return colors
 }
 
 export function getThemeAxisStyle() {
   return {
-    axisLine: readCSSVar('--color-line') || '#e5e5e5',
-    axisTick: readCSSVar('--color-line') || '#e5e5e5',
-    axisLabel: readCSSVar('--color-ink-muted') || '#737373',
-    splitLine: readCSSVar('--color-line-soft') || '#f0f0f0',
-    tooltipBg: readCSSVar('--color-surface-0') || '#ffffff',
-    tooltipBorder: readCSSVar('--color-line') || '#e5e5e5',
-    tooltipText: readCSSVar('--color-ink') || '#1a1a1a',
+    axisLine: toHex(readCSSVar('--color-line') || '#e5e5e5'),
+    axisTick: toHex(readCSSVar('--color-line') || '#e5e5e5'),
+    axisLabel: toHex(readCSSVar('--color-ink-muted') || '#737373'),
+    splitLine: toHex(readCSSVar('--color-line-soft') || '#f0f0f0'),
+    tooltipBg: toHex(readCSSVar('--color-surface-0') || '#ffffff'),
+    tooltipBorder: toHex(readCSSVar('--color-line') || '#e5e5e5'),
+    tooltipText: toHex(readCSSVar('--color-ink') || '#1a1a1a'),
   }
 }

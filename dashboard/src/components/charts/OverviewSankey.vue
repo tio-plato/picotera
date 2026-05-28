@@ -95,8 +95,11 @@ const option = computed<EChartsOption>(() => {
           color: axis.axisLabel,
           fontSize: 10,
           fontFamily: 'Geist, Geist Fallback, ui-sans-serif, system-ui, sans-serif',
+          formatter: (params) => {
+            return nodeMap.get(params.name)?.label ?? params.name
+          }
         },
-        // lineStyle: { color: 'gradient', opacity: 0.3 },
+        lineStyle: { color: 'gradient', opacity: 0.2 },
         data: props.nodes.map((n) => ({
           name: n.id,
           itemStyle: {
@@ -108,7 +111,12 @@ const option = computed<EChartsOption>(() => {
           target: l.target,
           value: l.value,
         })),
-        emphasis: { disabled: true },
+        emphasis: { focus: 'trajectory' },
+        blur: {
+          label: { opacity: 0.4 },
+          itemStyle: { opacity: 0.4 },
+          lineStyle: { opacity: 0.08 }
+        },
       },
     ],
   }

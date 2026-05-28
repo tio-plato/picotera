@@ -173,7 +173,10 @@ const option = computed<EChartsOption>(() => {
         symbol: 'none',
         lineStyle: { width: 1 },
         itemStyle: { color: chartColors[originalIdx] },
-        emphasis: { disabled: true },
+        emphasis: { focus: 'series' },
+        blur: {
+          areaStyle: { opacity: 0.25 }
+        },
       }
     }),
   }

@@ -70,8 +70,8 @@ const dataset = computed<Datum[]>(() => {
     if (idx === undefined) continue
     const row = rows[idx]
     if (!row) continue
-    const prev = row.values[point.groupKey]
-    row.values[point.groupKey] = (prev ?? 0) + (point.value ?? 0)
+    if (point.value == null || point.value == 0) continue
+    row.values[point.groupKey] = point.value
   }
   return rows
 })
@@ -173,7 +173,10 @@ const option = computed<EChartsOption>(() => {
         symbol: 'none',
         lineStyle: { width: 1.5 },
         itemStyle: { color: chartColors[originalIdx] },
-        emphasis: { disabled: true },
+        emphasis: { focus: 'series' },
+        blur: {
+          lineStyle: { opacity: 0.3 },
+        }
       }
     }),
   }

@@ -394,12 +394,13 @@ const seriesCacheHitRate = computed(() => {
     .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
 })
 
-function formatSpeed(v: number) {
+function formatSpeed(v: number, skipUnit = false) {
+  const unit = skipUnit ? '' : ' tok/s'
   if (!Number.isFinite(v)) return ''
-  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}k tok/s`
-  if (Math.abs(v) >= 1) return `${v.toFixed(0)} tok/s`
-  if (v === 0) return '0 tok/s'
-  return `${v.toFixed(1)} tok/s`
+  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}k${unit}`
+  if (Math.abs(v) >= 1) return `${v.toFixed(0)}${unit}`
+  if (v === 0) return `0${unit}`
+  return `${v.toFixed(1)}${unit}`
 }
 
 function formatTtft(v: number) {
@@ -1244,7 +1245,7 @@ function formatCurrencyCompact(v: number, code: string) {
             :groups="speedGroups"
             :buckets="speedBuckets"
             :points="seriesPrefillSpeed"
-            :value-format="(v) => formatSpeed(v)"
+            :value-format="(v, s = false) => formatSpeed(v, s)"
             :bucket-format="formatBucket"
           />
         </div>
