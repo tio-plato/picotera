@@ -25,6 +25,7 @@ var projectExtractRegexps = []*regexp.Regexp{
 	regexp.MustCompile(`Primary working directory: (.*?)(?:\\n|\n|$|")`),
 	regexp.MustCompile(`Current working directory: (.*?)(?:\\n|\n|$|")`),
 	regexp.MustCompile(`<cwd>(.*?)</cwd>`),
+	regexp.MustCompile(`<env>\nWorking directory: (.*?)(?:\\n|\n|$|")`),
 }
 
 type projectExtractor struct {
