@@ -25,6 +25,7 @@ import { usePreferencesStore } from '@/stores/preferences'
 import OverviewDonut from '@/components/charts/OverviewDonut.vue'
 import OverviewAreaStack from '@/components/charts/OverviewAreaStack.vue'
 import OverviewLineChart from '@/components/charts/OverviewLineChart.vue'
+import OverviewSpeedTimeline from '@/components/charts/OverviewSpeedTimeline.vue'
 import OverviewSankey, {
   type SankeyLink,
   type SankeyNode,
@@ -370,6 +371,12 @@ const seriesDecodeSpeed = computed(() => {
     .filter((p) => p.metric === 'decodeSpeed')
     .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
 })
+const seriesAvgTtft = computed(() => {
+  const points: OverviewSeriesPointView[] = speedSeriesData.value?.points ?? []
+  return points
+    .filter((p) => p.metric === 'avgTtft')
+    .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
+})
 
 const cacheHitRateSeriesData = computed(() => cacheHitRateSeriesQuery.data.value)
 const cacheHitRateGroups = computed(() => {
@@ -393,6 +400,12 @@ function formatSpeed(v: number) {
   if (Math.abs(v) >= 1) return `${v.toFixed(0)} tok/s`
   if (v === 0) return '0 tok/s'
   return `${v.toFixed(1)} tok/s`
+}
+
+function formatTtft(v: number) {
+  if (!Number.isFinite(v)) return ''
+  if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)} s`
+  return `${v.toFixed(0)} ms`
 }
 
 function formatPercent(v: number) {
@@ -1220,7 +1233,7 @@ function formatCurrencyCompact(v: number, code: string) {
       <DataCard class="min-h-[17rem]">
         <div class="p-4 min-h-[17rem] flex flex-col gap-3">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
-            >Prefill 速度</span
+            >输入速度</span
           >
           <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
@@ -1239,7 +1252,7 @@ function formatCurrencyCompact(v: number, code: string) {
       <DataCard class="min-h-[17rem]">
         <div class="p-4 min-h-[17rem] flex flex-col gap-3">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
-            >Decode 速度</span
+            >输出速度</span
           >
           <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
           <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
@@ -1252,6 +1265,42 @@ function formatCurrencyCompact(v: number, code: string) {
             :points="seriesDecodeSpeed"
             :value-format="(v) => formatSpeed(v)"
             :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >TTFT 平均时间</span
+          >
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
+            (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewLineChart
+            v-else
+            :groups="speedGroups"
+            :buckets="speedBuckets"
+            :points="seriesAvgTtft"
+            :value-format="(v) => formatTtft(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard class="min-h-[12rem]">
+        <div class="p-4 min-h-[12rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >输出速度</span
+          >
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
+            (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewSpeedTimeline
+            v-else
+            :groups="speedGroups"
+            :points="seriesDecodeSpeed"
+            :value-format="(v) => formatSpeed(v)"
           />
         </div>
       </DataCard>

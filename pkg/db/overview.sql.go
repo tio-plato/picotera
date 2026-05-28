@@ -756,7 +756,8 @@ SELECT
     ELSE ''
   END AS group_key,
   COALESCE((SUM(prefill_token_sum) / (SUM(prefill_time_sum) / 1000.0))::float8, 0)::float8 AS prefill_speed,
-  COALESCE((SUM(decode_token_sum) / (SUM(decode_time_sum) / 1000.0))::float8, 0)::float8 AS decode_speed
+  COALESCE((SUM(decode_token_sum) / (SUM(decode_time_sum) / 1000.0))::float8, 0)::float8 AS decode_speed,
+  COALESCE((SUM(prefill_time_sum) / NULLIF(SUM(prefill_request_count), 0))::float8, 0)::float8 AS avg_ttft
 FROM request_speed_hourly
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
@@ -786,6 +787,7 @@ type ListOverviewSpeedSeriesRow struct {
 	GroupKey     string           `json:"groupKey"`
 	PrefillSpeed float64          `json:"prefillSpeed"`
 	DecodeSpeed  float64          `json:"decodeSpeed"`
+	AvgTtft      float64          `json:"avgTtft"`
 }
 
 func (q *Queries) ListOverviewSpeedSeries(ctx context.Context, arg ListOverviewSpeedSeriesParams) ([]ListOverviewSpeedSeriesRow, error) {
@@ -811,6 +813,7 @@ func (q *Queries) ListOverviewSpeedSeries(ctx context.Context, arg ListOverviewS
 			&i.GroupKey,
 			&i.PrefillSpeed,
 			&i.DecodeSpeed,
+			&i.AvgTtft,
 		); err != nil {
 			return nil, err
 		}

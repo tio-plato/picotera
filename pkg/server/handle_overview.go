@@ -428,6 +428,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 
 	prefillSpeedByBG := make(map[tokensReqsKey]float64)
 	decodeSpeedByBG := make(map[tokensReqsKey]float64)
+	avgTtftByBG := make(map[tokensReqsKey]float64)
 	for _, s := range speedRows {
 		if !s.BucketAt.Valid {
 			continue
@@ -441,6 +442,9 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		}
 		if s.DecodeSpeed != 0 {
 			decodeSpeedByBG[bg] = s.DecodeSpeed
+		}
+		if s.AvgTtft != 0 {
+			avgTtftByBG[bg] = s.AvgTtft
 		}
 	}
 
@@ -511,6 +515,15 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 			if v, ok := decodeSpeedByBG[bg]; ok {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "decodeSpeed",
+					BucketAt: bucket,
+					GroupKey: group,
+					Value:    v,
+					Currency: "",
+				})
+			}
+			if v, ok := avgTtftByBG[bg]; ok {
+				points = append(points, contract.OverviewSeriesPointView{
+					Metric:   "avgTtft",
 					BucketAt: bucket,
 					GroupKey: group,
 					Value:    v,

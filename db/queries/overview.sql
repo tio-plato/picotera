@@ -293,7 +293,8 @@ SELECT
     ELSE ''
   END AS group_key,
   COALESCE((SUM(prefill_token_sum) / (SUM(prefill_time_sum) / 1000.0))::float8, 0)::float8 AS prefill_speed,
-  COALESCE((SUM(decode_token_sum) / (SUM(decode_time_sum) / 1000.0))::float8, 0)::float8 AS decode_speed
+  COALESCE((SUM(decode_token_sum) / (SUM(decode_time_sum) / 1000.0))::float8, 0)::float8 AS decode_speed,
+  COALESCE((SUM(prefill_time_sum) / NULLIF(SUM(prefill_request_count), 0))::float8, 0)::float8 AS avg_ttft
 FROM request_speed_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
