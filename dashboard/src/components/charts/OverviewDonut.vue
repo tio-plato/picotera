@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { VisSingleContainer, VisDonut, VisTooltip, VisDonutSelectors } from '@unovis/vue'
+import { computed, ref, watch } from 'vue'
+import VChart from 'vue-echarts'
 import { Tag } from '@/ui'
-import { groupColor } from './colors'
+import { usePreferencesStore } from '@/stores/preferences'
+import { groupColor, getThemeAxisStyle } from './colors'
+import type { CallbackDataParams } from 'echarts/types/dist/shared'
+import type { EChartsOption } from './echarts'
+import './echarts'
 
 interface DonutDatum {
   key: string
   label: string
   value: number
-}
-
-interface DonutArcDatum {
-  data?: DonutDatum & { _color: string }
-  value?: number
 }
 
 const props = defineProps<{
@@ -49,47 +48,102 @@ const total = computed(() => props.data.reduce((acc, d) => acc + (d.value ?? 0),
 
 const colored = computed(() => props.data.map((d, i) => ({ ...d, _color: groupColor(i) })))
 
-const visibleData = computed(() => colored.value.filter((d) => !hiddenKeys.value.has(d.key)))
-
-const value = (d: DonutDatum) => d.value
-const colorFn = (d: DonutDatum & { _color: string }) => d._color
-
-const tooltipTriggers = computed(() => ({
-  [VisDonutSelectors.segment]: (d: unknown) => {
-    const arc = d as DonutArcDatum | null
-    const datum = arc?.data
-    if (!datum) return ''
-    const value = datum.value ?? arc?.value ?? 0
-    const formatted = props.valueFormat ? props.valueFormat(value, datum) : String(value)
-    const pct = total.value === 0 ? '0' : ((value / total.value) * 100).toFixed(1)
-    return `<div class="text-xs"><div class="font-medium">${escape(datum.label)}</div><div class="mono tabular text-ink-muted">${formatted} · ${pct}%</div></div>`
-  },
-}))
-
 function escape(s: string) {
   return s.replace(/[&<>"']/g, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   )
 }
+
+const prefs = usePreferencesStore()
+const themeVersion = ref(0)
+watch(() => prefs.theme, () => { themeVersion.value++ })
+
+const option = computed<EChartsOption>(() => {
+  void themeVersion.value
+  const axis = getThemeAxisStyle()
+  const visibleData = props.data
+    .map((d, i) => ({ ...d, originalIndex: i }))
+    .filter((d) => !hiddenKeys.value.has(d.key))
+
+  const graphic: Record<string, unknown>[] = []
+  if (props.centralLabel || props.centralSubLabel) {
+    const inkColor = axis.tooltipText
+    const mutedColor = axis.axisLabel
+    if (props.centralLabel) {
+      graphic.push({
+        type: 'text',
+        left: 'center',
+        top: '43%',
+        style: {
+          text: props.centralLabel,
+          fill: inkColor,
+          fontSize: 16,
+          fontWeight: 600,
+          textAlign: 'center',
+          fontFamily: 'Geist, Geist Fallback, ui-sans-serif, system-ui, sans-serif',
+        },
+      })
+    }
+    if (props.centralSubLabel) {
+      graphic.push({
+        type: 'text',
+        left: 'center',
+        top: '53%',
+        style: {
+          text: props.centralSubLabel,
+          fill: mutedColor,
+          fontSize: 10,
+          textAlign: 'center',
+          fontFamily: 'Geist, Geist Fallback, ui-sans-serif, system-ui, sans-serif',
+        },
+      })
+    }
+  }
+
+  return {
+    animation: false,
+    graphic,
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: axis.tooltipBg,
+      borderColor: axis.tooltipBorder,
+      textStyle: { color: axis.tooltipText, fontSize: 10 },
+      formatter: (params: CallbackDataParams | CallbackDataParams[]) => {
+        const p = Array.isArray(params) ? params[0]! : params
+        const d = p.data as Record<string, unknown> | undefined
+        if (!d) return ''
+        const value = (d.value as number) ?? 0
+        const datum = d._datum as DonutDatum
+        const formatted = props.valueFormat
+          ? props.valueFormat(value, datum)
+          : String(value)
+        const pct = total.value === 0 ? '0' : ((value / total.value) * 100).toFixed(1)
+        return `<div class="text-xs"><div class="font-medium">${escape(d.name as string)}</div><div class="mono tabular text-ink-muted">${formatted} · ${pct}%</div></div>`
+      },
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['60%', '75%'],
+        label: { show: true },
+        emphasis: { disabled: true },
+        itemStyle: { borderRadius: 2 },
+        padAngle: 0.6,
+        data: visibleData.map((d) => ({
+          name: d.label,
+          value: d.value,
+          _datum: d,
+          itemStyle: { color: groupColor(d.originalIndex) },
+        })),
+      },
+    ],
+  }
+})
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="relative h-[180px]">
-      <VisSingleContainer :data="visibleData" :height="180">
-        <VisDonut
-          :value="value"
-          :color="colorFn"
-          :arc-width="14"
-          :corner-radius="2"
-          :pad-angle="0.01"
-          :show-background="false"
-          :central-label="centralLabel"
-          :central-sub-label="centralSubLabel"
-        />
-        <VisTooltip :triggers="tooltipTriggers" />
-      </VisSingleContainer>
-    </div>
+    <VChart :option="option" style="height: 180px" autoresize />
     <ul class="flex flex-wrap gap-1">
       <li
         v-for="d in colored"

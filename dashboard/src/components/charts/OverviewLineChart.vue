@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { VisXYContainer, VisLine, VisAxis, VisCrosshair, VisTooltip } from '@unovis/vue'
+import { computed, ref, watch } from 'vue'
+import VChart from 'vue-echarts'
 import { Tag } from '@/ui'
-import { groupColor } from './colors'
+import { usePreferencesStore } from '@/stores/preferences'
+import { groupColor, getChartColors, getThemeAxisStyle } from './colors'
+import type { CallbackDataParams } from 'echarts/types/dist/shared'
+import type { EChartsOption } from './echarts'
+import './echarts'
 
 interface SeriesGroup {
   key: string
@@ -23,12 +27,6 @@ const props = defineProps<{
   valueFormat?: (value: number) => string
   bucketFormat?: (iso: string) => string
 }>()
-
-interface Datum {
-  bucket: string
-  bucketIndex: number
-  values: Record<string, number | undefined>
-}
 
 const hiddenKeys = ref<Set<string>>(new Set())
 
@@ -55,12 +53,16 @@ function isolateSeries(key: string) {
 
 const visibleGroups = computed(() => props.groups.filter((g) => !hiddenKeys.value.has(g.key)))
 
+interface Datum {
+  bucket: string
+  values: Record<string, number | undefined>
+}
+
 const dataset = computed<Datum[]>(() => {
   const indexByBucket = new Map<string, number>()
   props.buckets.forEach((b, i) => indexByBucket.set(b, i))
-  const rows: Datum[] = props.buckets.map((b, i) => ({
+  const rows: Datum[] = props.buckets.map((b) => ({
     bucket: b,
-    bucketIndex: i,
     values: Object.fromEntries(props.groups.map((g) => [g.key, undefined])),
   }))
   for (const point of props.points) {
@@ -75,26 +77,6 @@ const dataset = computed<Datum[]>(() => {
 })
 
 const colors = computed(() => props.groups.map((_, i) => groupColor(i)))
-
-const visibleColors = computed(() => {
-  const idxMap = new Map(props.groups.map((g, i) => [g.key, i]))
-  return visibleGroups.value.map((g) => {
-    const i = idxMap.get(g.key)
-    return i !== undefined ? colors.value[i] : colors.value[0]
-  })
-})
-
-const accessorsX = (d: Datum) => d.bucketIndex
-const accessorsY = computed(() => visibleGroups.value.map((g) => (d: Datum) => d.values[g.key]))
-
-const xTickFormat = (i: number | { valueOf(): number }) => {
-  const idx = typeof i === 'number' ? i : Number(i)
-  const iso = props.buckets[idx]
-  if (!iso) return ''
-  return props.bucketFormat ? props.bucketFormat(iso) : defaultBucketFormat(iso)
-}
-
-const yTickFormat = (v: number) => (props.valueFormat ? props.valueFormat(v) : compactNumber(v))
 
 function defaultBucketFormat(iso: string) {
   const d = new Date(iso)
@@ -116,57 +98,91 @@ function compactNumber(v: number) {
   return v.toFixed(2)
 }
 
-function tooltipTemplate(datum: Datum | undefined) {
-  if (!datum) return ''
-  const lines = visibleGroups.value
-    .map((g) => {
-      const originalIdx = props.groups.findIndex((pg) => pg.key === g.key)
-      const color = originalIdx >= 0 ? colors.value[originalIdx] : colors.value[0]
-      const v = datum.values[g.key] ?? 0
-      const formatted = props.valueFormat ? props.valueFormat(v) : compactNumber(v)
-      return {
-        ...g,
-        html: `<div class="flex items-center gap-1 text-2xs"><span style="background:${color};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(g.label || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`,
-      }
-    })
-    .filter((g) => datum.values[g.key] != null && datum.values[g.key] !== 0)
-    .map((g) => g.html)
-    .join('')
-  const bucket = props.bucketFormat
-    ? props.bucketFormat(datum.bucket)
-    : defaultBucketFormat(datum.bucket)
-  const head = `<div class="text-2xs text-ink-muted mb-1">${escape(bucket)}</div>`
-  return `<div class="min-w-32">${head}${lines}</div>`
-}
-
 function escape(s: string) {
   return s.replace(/[&<>"']/g, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   )
 }
+
+const prefs = usePreferencesStore()
+const themeVersion = ref(0)
+watch(() => prefs.theme, () => { themeVersion.value++ })
+
+const option = computed<EChartsOption>(() => {
+  void themeVersion.value
+  const axis = getThemeAxisStyle()
+  const chartColors = getChartColors()
+  const idxMap = new Map(props.groups.map((g, i) => [g.key, i]))
+  const bucketLabels = props.buckets.map((b) =>
+    props.bucketFormat ? props.bucketFormat(b) : defaultBucketFormat(b),
+  )
+  const fmtValue = (v: number) => (props.valueFormat ? props.valueFormat(v) : compactNumber(v))
+
+  return {
+    animation: false,
+    grid: { left: 32, right: 8, top: 8, bottom: 24, containLabel: false },
+    xAxis: {
+      type: 'category',
+      data: bucketLabels,
+      axisLine: { lineStyle: { color: axis.axisLine } },
+      axisTick: { lineStyle: { color: axis.axisTick } },
+      axisLabel: { color: axis.axisLabel, fontSize: 10 },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: axis.axisLabel, fontSize: 10, formatter: (v: number) => fmtValue(v) },
+      splitLine: { lineStyle: { color: axis.splitLine } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: axis.tooltipBg,
+      borderColor: axis.tooltipBorder,
+      textStyle: { color: axis.tooltipText, fontSize: 10 },
+      formatter: (params: CallbackDataParams | CallbackDataParams[]) => {
+        const arr = Array.isArray(params) ? params : [params]
+        if (arr.length === 0) return ''
+        const bucketIdx = arr[0]!.dataIndex
+        const bucket = props.buckets[bucketIdx]
+        if (!bucket) return ''
+        const bucketLabel = props.bucketFormat
+          ? props.bucketFormat(bucket)
+          : defaultBucketFormat(bucket)
+        const head = `<div class="text-2xs text-ink-muted mb-1">${escape(bucketLabel)}</div>`
+        const lines = arr
+          .filter((p) => p.value != null && p.value !== 0)
+          .map((p) => {
+            const formatted = fmtValue(p.value as number)
+            return `<div class="flex items-center gap-1 text-2xs"><span style="background:${p.color};display:inline-block;width:8px;height:8px;border-radius:2px"></span><span class="text-ink-muted">${escape(p.seriesName || '-')}</span><span class="ml-auto mono tabular">${formatted}</span></div>`
+          })
+          .join('')
+        return `<div class="min-w-32">${head}${lines}</div>`
+      },
+    },
+    color: chartColors,
+    series: visibleGroups.value.map((g) => {
+      const originalIdx = idxMap.get(g.key) ?? 0
+      return {
+        type: 'line' as const,
+        name: g.label || '-',
+        data: dataset.value.map((d) => d.values[g.key] ?? null),
+        connectNulls: true,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { width: 1.5 },
+        itemStyle: { color: chartColors[originalIdx] },
+        emphasis: { disabled: true },
+      }
+    }),
+  }
+})
 </script>
 
 <template>
   <div class="flex flex-col gap-2">
-    <div :style="{ height: (height ?? 180) + 'px' }">
-      <VisXYContainer
-        :data="dataset"
-        :height="height ?? 180"
-        :margin="{ left: 32, right: 8, top: 8, bottom: 24 }"
-      >
-        <VisLine
-          :x="accessorsX"
-          :y="accessorsY"
-                    :color="visibleColors"
-          :curve-type="'monotoneX'"
-          :interpolateMissingData="true"
-        />
-        <VisAxis type="x" :tick-format="xTickFormat" :grid-line="false" :num-ticks="6" />
-        <VisAxis type="y" :tick-format="yTickFormat" :num-ticks="4" />
-        <VisCrosshair :template="tooltipTemplate" />
-        <VisTooltip />
-      </VisXYContainer>
-    </div>
+    <VChart :option="option" :style="{ height: (height ?? 180) + 'px' }" autoresize />
     <ul class="flex flex-wrap gap-1">
       <li
         v-for="(g, i) in groups"

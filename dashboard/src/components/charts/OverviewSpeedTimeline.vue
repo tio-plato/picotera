@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { VisXYContainer, VisTimeline, VisAxis, VisCrosshair, VisTooltip, VisXYLabels } from '@unovis/vue'
-import { groupColor } from './colors'
+import { computed, watch, ref } from 'vue'
+import VChart from 'vue-echarts'
+import { usePreferencesStore } from '@/stores/preferences'
+import { groupColor, getThemeAxisStyle } from './colors'
+import type { CallbackDataParams } from 'echarts/types/dist/shared'
+import type { EChartsOption } from './echarts'
+import './echarts'
 
 interface SeriesGroup {
   key: string
@@ -21,18 +25,15 @@ const props = defineProps<{
   valueFormat?: (value: number) => string
 }>()
 
-interface TimelineDatum {
-  row: string
-  x: number
-  length: number
-  color: string
+interface GroupStats {
+  label: string
   min: number
   max: number
+  hasData: boolean
+  colorIndex: number
 }
 
-const colors = computed(() => props.groups.map((_, i) => groupColor(i) ?? 'var(--color-accent)'))
-
-const dataset = computed<TimelineDatum[]>(() => {
+const groupStats = computed<GroupStats[]>(() => {
   const groupPoints = new Map<string, number[]>()
   for (const p of props.points) {
     if (!groupPoints.has(p.groupKey)) groupPoints.set(p.groupKey, [])
@@ -40,38 +41,20 @@ const dataset = computed<TimelineDatum[]>(() => {
   }
   return props.groups.map((g, i) => {
     const values = groupPoints.get(g.key) ?? []
-    const color = colors.value[i] ?? 'var(--color-accent)'
     if (values.length === 0) {
-      return {
-        row: g.label || '-',
-        x: 0,
-        length: 0,
-        color,
-        min: 0,
-        max: 0,
-      }
+      return { label: g.label || '-', min: 0, max: 0, hasData: false, colorIndex: i }
     }
-    const min = Math.min(...values)
-    const max = Math.max(...values)
     return {
-      row: g.label || '-',
-      x: min,
-      length: max - min,
-      color,
-      min,
-      max,
+      label: g.label || '-',
+      min: Math.min(...values),
+      max: Math.max(...values),
+      hasData: true,
+      colorIndex: i,
     }
   })
 })
 
-const noData = computed(() => dataset.value.every((d) => d.length === 0))
-
-const lineRow = (d: TimelineDatum) => d.row
-const lineX = (d: TimelineDatum) => d.x
-const lineDuration = (d: TimelineDatum) => d.length
-const lineColor = (d: TimelineDatum) => d.color
-
-const xTickFormat = (v: number) => (props.valueFormat ? props.valueFormat(v) : `${v.toFixed(0)} tok/s`)
+const noData = computed(() => groupStats.value.every((s) => !s.hasData))
 
 function escape(s: string) {
   return s.replace(/[&<>"']/g, (c) =>
@@ -79,45 +62,79 @@ function escape(s: string) {
   )
 }
 
-function tooltipTemplate(d: TimelineDatum | undefined) {
-  if (!d) return ''
-  const fmt = props.valueFormat ?? ((v: number) => `${v.toFixed(0)} tok/s`)
-  return `<div class="min-w-32">
-    <div class="text-2xs text-ink-muted mb-1">${escape(d.row)}</div>
-    <div class="flex items-center gap-1 text-2xs">
-      <span style="background:${d.color};display:inline-block;width:8px;height:8px;border-radius:2px"></span>
-      <span class="mono tabular">${escape(fmt(d.min))} — ${escape(fmt(d.max))}</span>
-    </div>
-  </div>`
-}
+const prefs = usePreferencesStore()
+const themeVersion = ref(0)
+watch(() => prefs.theme, () => { themeVersion.value++ })
 
-function formatLabel(key: string, items: any[], i: number) {
-  return `${items?.[0]?.row ?? i}`
-}
+const option = computed<EChartsOption>(() => {
+  void themeVersion.value
+  const axis = getThemeAxisStyle()
+  const fmtValue = props.valueFormat ?? ((v: number) => `${v.toFixed(0)} tok/s`)
+  const reversed = [...groupStats.value].reverse()
+  const labels = reversed.map((s) => s.label)
+
+  return {
+    animation: false,
+    grid: { left: 8, right: 16, top: 8, bottom: 24, containLabel: true },
+    yAxis: {
+      type: 'category',
+      data: labels,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: axis.axisLabel, fontSize: 10 },
+    },
+    xAxis: {
+      type: 'value',
+      axisLabel: { color: axis.axisLabel, fontSize: 10, formatter: (v: number) => fmtValue(v) },
+      splitLine: { lineStyle: { color: axis.splitLine } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: axis.tooltipBg,
+      borderColor: axis.tooltipBorder,
+      textStyle: { color: axis.tooltipText, fontSize: 10 },
+      formatter: (params: CallbackDataParams | CallbackDataParams[]) => {
+        const p = Array.isArray(params) ? params[0]! : params
+        const d = p.data as Record<string, unknown> | undefined
+        if (!d) return ''
+        const stat = d._stat as GroupStats
+        const color = groupColor(stat.colorIndex)
+        return `<div class="min-w-32">
+          <div class="text-2xs text-ink-muted mb-1">${escape(stat.label)}</div>
+          <div class="flex items-center gap-1 text-2xs">
+            <span style="background:${color};display:inline-block;width:8px;height:8px;border-radius:2px"></span>
+            <span class="mono tabular">${escape(fmtValue(stat.min))} — ${escape(fmtValue(stat.max))}</span>
+          </div>
+        </div>`
+      },
+    },
+    series: [
+      {
+        type: 'boxplot',
+        itemStyle: { borderWidth: 0 },
+        emphasis: { disabled: true },
+        data: reversed.map((s) => {
+          const median = s.hasData ? (s.min + s.max) / 2 : 0
+          return {
+            value: [s.min, s.min, median, s.max, s.max],
+            _stat: s,
+            itemStyle: {
+              color: groupColor(s.colorIndex),
+              borderColor: groupColor(s.colorIndex),
+            },
+          }
+        }),
+      },
+    ],
+  }
+})
 </script>
 
 <template>
   <div class="flex flex-col gap-2">
     <div v-if="noData" class="text-2xs text-ink-muted">暂无数据</div>
-    <div v-else>
-      <VisXYContainer
-        :data="dataset"
-        :height="height ?? 200"
-      >
-        <VisTimeline
-          :x="lineX"
-          :line-row="lineRow"
-          :line-duration="lineDuration"
-          :color="lineColor"
-          :showLabels="false"
-          :rowHeight="20"
-          :lineWidth="12"
-          :rowLabelFormatter="formatLabel"
-        />
-        <VisAxis type="x" :tick-format="xTickFormat" :grid-line="true" :num-ticks="6" />
-        <VisCrosshair :template="tooltipTemplate" />
-        <VisTooltip />
-      </VisXYContainer>
-    </div>
+    <VChart v-else :option="option" :style="{ height: (height ?? 200) + 'px' }" autoresize />
   </div>
 </template>

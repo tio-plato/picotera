@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Stack
 
-Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pinia + Vue Router + TypeScript + `@tanstack/vue-query` for data fetching. Charts via `@unovis/vue`. Virtualized lists via `@tanstack/vue-virtual`. Icons via `@tabler/icons-vue`; floating/popover positioning via `@floating-ui/vue`. Package manager is pnpm (workspace root at repo root).
+Vue 3 (beta, pinned in `pnpm-workspace.yaml` overrides) + Tailwind CSS v4 + Pinia + Vue Router + TypeScript + `@tanstack/vue-query` for data fetching. Charts via `vue-echarts` (Apache ECharts). Virtualized lists via `@tanstack/vue-virtual`. Icons via `@tabler/icons-vue`; floating/popover positioning via `@floating-ui/vue`. Package manager is pnpm (workspace root at repo root).
 
 **Design system reference**: before building or modifying UI, read `DESIGN_SYSTEM.md` for tokens, primitives (`src/ui/`), and conventions.
 
@@ -62,14 +62,15 @@ Routes: `/overview` (default), `/providers`, `/models`, `/endpoints`, `/requests
 
 ## Charts
 
-Chart components live in `src/components/charts/` and use `@unovis/vue`:
+Chart components live in `src/components/charts/` and use `vue-echarts` (Apache ECharts v6 with modular imports via `echarts.ts`):
 
 - `OverviewAreaStack` — stacked area chart for request volume over time.
 - `OverviewDonut` — donut chart for distribution breakdowns.
 - `OverviewLineChart` — multi-series line chart with per-series toggle/isolate, used for speed metrics (prefill/decode tokens/sec).
 - `OverviewSankey` — Sankey diagram for model → provider routing flow.
+- `OverviewSpeedTimeline` — horizontal boxplot chart for min-max speed ranges.
 
-Shared color palette in `charts/colors.ts`.
+Shared color palette in `charts/colors.ts` (reads `--color-chart-0` through `--color-chart-9` CSS variables). ECharts module registration in `charts/echarts.ts`.
 
 ## Design Context
 

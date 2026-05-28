@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { VisSingleContainer, VisSankey, VisTooltip, VisSankeySelectors } from '@unovis/vue'
-import type { SankeyNode as UnovisSankeyNode, SankeyLink as UnovisSankeyLink } from '@unovis/ts'
-import { groupColor } from './colors'
+import { computed, watch, ref } from 'vue'
+import VChart from 'vue-echarts'
+import { usePreferencesStore } from '@/stores/preferences'
+import { groupColor, getThemeAxisStyle } from './colors'
+import type { CallbackDataParams } from 'echarts/types/dist/shared'
+import type { EChartsOption } from './echarts'
+import './echarts'
 
 export interface SankeyNode {
   id: string
@@ -22,11 +25,6 @@ const props = defineProps<{
   valueFormat?: (value: number) => string
 }>()
 
-const graphData = computed(() => ({
-  nodes: props.nodes,
-  links: props.links,
-}))
-
 const nodeTotals = computed(() => {
   const incoming = new Map<string, number>()
   const outgoing = new Map<string, number>()
@@ -37,13 +35,6 @@ const nodeTotals = computed(() => {
   return { incoming, outgoing }
 })
 
-const nodeColor = (n: UnovisSankeyNode<SankeyNode, SankeyLink>) => {
-  if (n.id.startsWith('__other__')) return 'var(--color-ink-faint)'
-  return groupColor(n.layer)
-}
-
-const nodeLabel = (n: UnovisSankeyNode<SankeyNode, SankeyLink>) => n.label
-
 const fmt = (v: number) => (props.valueFormat ? props.valueFormat(v) : String(v))
 
 function escape(s: string) {
@@ -52,31 +43,80 @@ function escape(s: string) {
   )
 }
 
-const tooltipTriggers = computed(() => ({
-  [VisSankeySelectors.link]: (d: unknown) => {
-    const link = d as UnovisSankeyLink<SankeyNode, SankeyLink> | null
-    if (!link) return ''
-    const sourceName = (link.source as UnovisSankeyNode<SankeyNode, SankeyLink>).label
-    const targetName = (link.target as UnovisSankeyNode<SankeyNode, SankeyLink>).label
-    return `<div class="text-xs"><div class="font-medium">${escape(sourceName)} → ${escape(targetName)}</div><div class="mono tabular text-ink-muted">${fmt(link.value)}</div></div>`
-  },
-  [VisSankeySelectors.node]: (d: unknown) => {
-    const node = d as UnovisSankeyNode<SankeyNode, SankeyLink> | null
-    if (!node) return ''
-    const total = Math.max(
-      nodeTotals.value.incoming.get(node.id) ?? 0,
-      nodeTotals.value.outgoing.get(node.id) ?? 0,
-    )
-    return `<div class="text-xs"><div class="font-medium">${escape(node.label)}</div><div class="mono tabular text-ink-muted">${fmt(total)}</div></div>`
-  },
-}))
+const prefs = usePreferencesStore()
+const themeVersion = ref(0)
+watch(() => prefs.theme, () => { themeVersion.value++ })
+
+const option = computed<EChartsOption>(() => {
+  void themeVersion.value
+  const axis = getThemeAxisStyle()
+  const faintColor = getComputedStyle(document.documentElement).getPropertyValue('--color-ink-faint').trim()
+
+  const nodeMap = new Map(props.nodes.map((n) => [n.id, n]))
+
+  return {
+    animation: false,
+    tooltip: {
+      trigger: 'item',
+      triggerOn: 'mousemove',
+      backgroundColor: axis.tooltipBg,
+      borderColor: axis.tooltipBorder,
+      textStyle: { color: axis.tooltipText, fontSize: 10 },
+      formatter: (params: CallbackDataParams | CallbackDataParams[]) => {
+        const p = Array.isArray(params) ? params[0]! : params
+        const d = p.data as Record<string, unknown>
+        if (p.dataType === 'edge') {
+          const sourceName = d.source as string
+          const targetName = d.target as string
+          const sourceNode = nodeMap.get(sourceName)
+          const targetNode = nodeMap.get(targetName)
+          return `<div class="text-xs"><div class="font-medium">${escape(sourceNode?.label ?? sourceName)} → ${escape(targetNode?.label ?? targetName)}</div><div class="mono tabular text-ink-muted">${fmt(d.value as number)}</div></div>`
+        }
+        if (p.dataType === 'node') {
+          const nodeId = p.name as string
+          const node = nodeMap.get(nodeId)
+          const total = Math.max(
+            nodeTotals.value.incoming.get(nodeId) ?? 0,
+            nodeTotals.value.outgoing.get(nodeId) ?? 0,
+          )
+          return `<div class="text-xs"><div class="font-medium">${escape(node?.label ?? nodeId)}</div><div class="mono tabular text-ink-muted">${fmt(total)}</div></div>`
+        }
+        return ''
+      },
+    },
+    series: [
+      {
+        type: 'sankey',
+        nodeGap: 14,
+        nodeWidth: 14,
+        layoutIterations: 32,
+        label: {
+          show: true,
+          color: axis.axisLabel,
+          fontSize: 10,
+          fontFamily: 'Geist, Geist Fallback, ui-sans-serif, system-ui, sans-serif',
+        },
+        // lineStyle: { color: 'gradient', opacity: 0.3 },
+        data: props.nodes.map((n) => ({
+          name: n.id,
+          itemStyle: {
+            color: n.id.startsWith('__other__') ? faintColor : groupColor(n.layer),
+          },
+        })),
+        links: props.links.map((l) => ({
+          source: l.source,
+          target: l.target,
+          value: l.value,
+        })),
+        emphasis: { disabled: true },
+      },
+    ],
+  }
+})
 </script>
 
 <template>
   <div>
-    <VisSingleContainer :data="graphData" :height="288">
-      <VisSankey :node-color="nodeColor" :label="nodeLabel" :node-padding="14" :node-width="14" />
-      <VisTooltip :triggers="tooltipTriggers" />
-    </VisSingleContainer>
+    <VChart :option="option" style="height: 288px" autoresize />
   </div>
 </template>
