@@ -471,3 +471,66 @@ func TestResponseExtractor_SSE_MultiLineData(t *testing.T) {
 		t.Errorf("InputTokens should be nil, got %v", m.InputTokens)
 	}
 }
+
+func TestResponseExtractor_SSE_StreamError_Anthropic(t *testing.T) {
+	events := []string{
+		"data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":5}}}\n\n",
+		"data: {\"type\":\"error\",\"error\":{\"type\":\"server_error\",\"code\":null,\"message\":\"upstream connect error or disconnect/reset before headers. reset reason: connection termination\",\"param\":null},\"sequence_number\":3}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	want := "upstream connect error or disconnect/reset before headers. reset reason: connection termination"
+	if got := extractor.StreamError(); got != want {
+		t.Errorf("StreamError() = %q, want %q", got, want)
+	}
+	// Metrics still extracted alongside the error.
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 5 {
+		t.Errorf("InputTokens = %v, want 5", m.InputTokens)
+	}
+}
+
+func TestResponseExtractor_SSE_StreamError_None(t *testing.T) {
+	events := []string{
+		"data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n",
+		"data: [DONE]\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	if got := extractor.StreamError(); got != "" {
+		t.Errorf("StreamError() = %q, want empty", got)
+	}
+}
+
+func TestResponseExtractor_SSE_StreamError_OpenAI(t *testing.T) {
+	events := "data: {\"error\":{\"message\":\"rate limit exceeded\",\"type\":\"rate_limit_error\"}}\n\n"
+	inner := strings.NewReader(events)
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	if got := extractor.StreamError(); got != "rate limit exceeded" {
+		t.Errorf("StreamError() = %q, want %q", got, "rate limit exceeded")
+	}
+}
+
+func TestResponseExtractor_SSE_StreamError_FirstWins(t *testing.T) {
+	events := []string{
+		"data: {\"type\":\"error\",\"error\":{\"message\":\"first error\"}}\n\n",
+		"data: {\"type\":\"error\",\"error\":{\"message\":\"second error\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	if got := extractor.StreamError(); got != "first error" {
+		t.Errorf("StreamError() = %q, want %q", got, "first error")
+	}
+}

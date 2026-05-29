@@ -522,13 +522,27 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
 	modelCost, modelCcy := h.costsFor(a.bgCtx, a.routedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 
+	// An in-stream error event (HTTP 200 with an error.message payload) marks
+	// both rows failed while keeping the real upstream status code and metrics.
+	// The extractor wraps the upstream's native bytes, so the error is detected
+	// in the upstream format (the true source of the failure).
+	streamErr := extractor.StreamError()
+	status := int32(db.RequestStatusCompleted)
+	errMsg := pgtype.Text{Valid: false}
+	fr := finishReason
+	if streamErr != "" {
+		status = int32(db.RequestStatusFailed)
+		errMsg = pgtype.Text{String: streamErr, Valid: true}
+		fr = int32(db.FinishReasonStreamError)
+	}
+
 	upstreamTimeSpent := int32(time.Since(a.attemptStart).Milliseconds())
 	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
 		ID:                 a.upstreamID,
 		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage:       pgtype.Text{Valid: false},
+		ErrorMessage:       errMsg,
 		TimeSpentMs:        pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
-		Status:             db.RequestStatusCompleted,
+		Status:             status,
 		TtftMs:             ttftMs,
 		InputTokens:        inputTokens,
 		OutputTokens:       outputTokens,
@@ -537,16 +551,16 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: finishReason, Valid: true},
+		FinishReason:       pgtype.Int4{Int32: fr, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(a.gatewayStart).Milliseconds())
 	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
 		ID:                 a.metaID,
 		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage:       pgtype.Text{Valid: false},
+		ErrorMessage:       errMsg,
 		TimeSpentMs:        pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-		Status:             db.RequestStatusCompleted,
+		Status:             status,
 		TtftMs:             ttftMs,
 		InputTokens:        inputTokens,
 		OutputTokens:       outputTokens,
@@ -555,7 +569,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: finishReason, Valid: true},
+		FinishReason:       pgtype.Int4{Int32: fr, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	_ = r

@@ -32,6 +32,10 @@ type ResponseExtractor struct {
 
 	// JSON: accumulate full body for post-stream parsing
 	jsonBuf []byte
+
+	// streamError holds the first in-stream error.message seen in an SSE data
+	// payload (empty means no error). Detected independently of metrics.
+	streamError string
 }
 
 // NewResponseExtractor creates a new extractor. contentType is the upstream
@@ -51,6 +55,12 @@ func NewResponseExtractor(inner io.Reader, contentType string, startTime time.Ti
 // Metrics returns the extracted metrics. Call after the Read loop finishes.
 func (e *ResponseExtractor) Metrics() ResponseMetrics {
 	return e.metrics
+}
+
+// StreamError returns the first error.message detected in an SSE data payload,
+// or "" if the stream carried no in-stream error. Call after the Read loop.
+func (e *ResponseExtractor) StreamError() string {
+	return e.streamError
 }
 
 // Read implements io.Reader. Bytes are forwarded to the caller unchanged.
@@ -110,12 +120,28 @@ func (e *ResponseExtractor) processSSEEvent(eventBytes []byte) {
 		return
 	}
 
+	// Detect in-stream errors (HTTP 200 with an error event). Independent of
+	// metric extraction — metrics already pulled from the stream still count.
+	e.detectStreamError(payload)
+
 	// Try OpenAI Chat Completions format
 	e.extractOpenAISSE(payload)
 	// Try OpenAI Responses format
 	e.extractOpenAIResponsesSSE(payload)
 	// Try Anthropic format
 	e.extractAnthropicSSE(payload)
+}
+
+// detectStreamError records the first non-empty error.message found in an SSE
+// data payload. The error.message path is consistent across Anthropic
+// Messages, OpenAI Chat Completions, and Gemini native error shapes.
+func (e *ResponseExtractor) detectStreamError(payload string) {
+	if e.streamError != "" {
+		return
+	}
+	if v := gjson.Get(payload, "error.message"); v.Exists() && v.Type == gjson.String && v.String() != "" {
+		e.streamError = v.String()
+	}
 }
 
 func (e *ResponseExtractor) extractOpenAISSE(payload string) {

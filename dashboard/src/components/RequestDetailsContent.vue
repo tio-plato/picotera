@@ -144,6 +144,8 @@ function finishReasonLabel(reason: number | undefined | null) {
       return '请求头超时'
     case 5:
       return '读取超时'
+    case 6:
+      return '流式错误'
     default:
       return reason === undefined || reason === null ? '—' : String(reason)
   }

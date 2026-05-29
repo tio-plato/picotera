@@ -94,7 +94,7 @@ func (h *gatewayHandler) streamSuccess(input successInput) {
 	}
 	extractor, timingRecorder, respBytes, finishReason := h.pipePathResponse(input, responseWriter, internalReader)
 	h.aggregatePathResponse(input, metaRespHeader, respBytes, timingRecorder.Timings)
-	h.completeGatewaySuccess(input, extractor.Metrics(), input.Response.StatusCode, finishReason)
+	h.completeGatewaySuccess(input, extractor.Metrics(), input.Response.StatusCode, finishReason, extractor.StreamError())
 	_ = input.Flow.r
 }
 
@@ -215,17 +215,29 @@ func (h *gatewayHandler) aggregatePathResponse(input successInput, metaRespHeade
 	h.uploadMetaResponseArtifactWithAggregation(input.Flow.ctxs.Persist, input.Flow.meta.ID, input.Flow.meta.CreatedAt, http.StatusOK, metaRespHeader, respBytes, input.Flow.collectLogs(), aggregated, timings)
 }
 
-func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMetrics, statusCode int, finishReason int32) {
+func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMetrics, statusCode int, finishReason int32, streamErr string) {
 	bgCtx := input.Flow.ctxs.Persist
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
 	modelCost, modelCcy := h.costsFor(bgCtx, input.RoutedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
+
+	// An in-stream error event (HTTP 200 with an error.message payload) marks
+	// both rows failed while keeping the real upstream status code and metrics.
+	status := int32(db.RequestStatusCompleted)
+	errMsg := pgtype.Text{Valid: false}
+	fr := finishReason
+	if streamErr != "" {
+		status = int32(db.RequestStatusFailed)
+		errMsg = pgtype.Text{String: streamErr, Valid: true}
+		fr = int32(db.FinishReasonStreamError)
+	}
+
 	upstreamTimeSpent := int32(time.Since(input.AttemptStart).Milliseconds())
 	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 		ID:                 input.UpstreamID,
 		StatusCode:         pgtype.Int4{Int32: int32(statusCode), Valid: true},
-		ErrorMessage:       pgtype.Text{Valid: false},
+		ErrorMessage:       errMsg,
 		TimeSpentMs:        pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
-		Status:             db.RequestStatusCompleted,
+		Status:             status,
 		TtftMs:             ttftMs,
 		InputTokens:        inputTokens,
 		OutputTokens:       outputTokens,
@@ -234,16 +246,16 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: finishReason, Valid: true},
+		FinishReason:       pgtype.Int4{Int32: fr, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(input.Flow.startedAt).Milliseconds())
 	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 		ID:                 input.Flow.meta.ID,
 		StatusCode:         pgtype.Int4{Int32: int32(statusCode), Valid: true},
-		ErrorMessage:       pgtype.Text{Valid: false},
+		ErrorMessage:       errMsg,
 		TimeSpentMs:        pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-		Status:             db.RequestStatusCompleted,
+		Status:             status,
 		TtftMs:             ttftMs,
 		InputTokens:        inputTokens,
 		OutputTokens:       outputTokens,
@@ -252,7 +264,7 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: finishReason, Valid: true},
+		FinishReason:       pgtype.Int4{Int32: fr, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: input.Flow.meta.CreatedAt, Valid: true},
 	})
 }

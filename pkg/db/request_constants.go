@@ -20,4 +20,5 @@ const (
 	FinishReasonEOF            = 3
 	FinishReasonHeadersTimeout = 4
 	FinishReasonReadTimeout    = 5
+	FinishReasonStreamError    = 6
 )
