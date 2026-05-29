@@ -43,7 +43,7 @@ function confirmDelete(_event: Event, r: ExchangeRateView) {
       <span class="text-xs text-ink-faint tabular-nums">{{ count }} 种货币</span>
       <Button @click="openCreate">
         <Icon name="plus" :size="14" :stroke-width="2.2" />
-        <span>新增汇率</span>
+        <span>新增货币</span>
       </Button>
     </div>
     <StateText v-if="loading && !loaded">加载中…</StateText>

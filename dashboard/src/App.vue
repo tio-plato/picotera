@@ -16,19 +16,19 @@ provideCurrencyContext(computed(() => prefs.displayCurrency ?? null))
 const pageMeta = computed(() => {
   const map: Record<string, { title: string; hint: string }> = {
     overview: { title: '概览', hint: '今天蹬了多少刀' },
-    providers: { title: '渠道', hint: '今天上哪去蹬' },
-    models: { title: '模型', hint: '今天都蹬些什么' },
-    endpoints: { title: '端点', hint: '今天都用什么格式蹬' },
-    requests: { title: '请求', hint: '今天都怎么蹬的' },
-    requestDetail: { title: '请求', hint: '今天都怎么蹬的' },
-    traces: { title: '追踪', hint: '今天都蹬了哪些事' },
-    apiKeys: { title: '密钥', hint: '今天用什么蹬' },
-    projects: { title: '项目', hint: '今天蹬到哪里去了' },
-    scripts: { title: '脚本', hint: '今天蹬点什么科技' },
-    simulate: { title: '模拟', hint: '不蹬也知道蹬到哪' },
-    kv: { title: 'KV 存储', hint: '今天存了些什么' },
-    rates: { title: '汇率', hint: '今天都蹬什么钱' },
-    settings: { title: '设置', hint: '今天调点什么' },
+    providers: { title: '渠道', hint: '词元从四面八方来' },
+    models: { title: '模型', hint: '统统流口水' },
+    endpoints: { title: '端点', hint: '跪求秦始皇统一接口格式' },
+    requests: { title: '请求', hint: '到底哪里搞错了' },
+    requestDetail: { title: '请求', hint: '到底哪里搞错了' },
+    traces: { title: '追踪', hint: '今天都干啥了' },
+    apiKeys: { title: '密钥', hint: '上网不涉密，涉密不上网' },
+    projects: { title: '项目', hint: '开坑不填天理难容' },
+    scripts: { title: '脚本', hint: '这是图灵完备的' },
+    simulate: { title: '模拟', hint: '不知道配错啥了' },
+    kv: { title: '缓存', hint: '研究状态科学' },
+    rates: { title: '汇率', hint: '掌控国际形势' },
+    settings: { title: '设置', hint: '总得有个设置吧' },
   }
   return map[route.name as string] ?? { title: '', hint: '' }
 })

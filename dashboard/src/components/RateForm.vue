@@ -43,7 +43,7 @@ async function submit() {
 
 <template>
   <SidePanel
-    :title="isEdit ? form.code : '新增汇率'"
+    :title="isEdit ? form.code : '新增货币'"
     :kicker="isEdit ? '编辑汇率' : '汇率'"
     @close="emit('close')"
   >
