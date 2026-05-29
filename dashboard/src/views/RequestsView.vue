@@ -23,6 +23,7 @@ import {
   type AutoDataTableColumn,
   type ColumnFilterOption,
 } from '@/ui'
+import { finishReasonLabel } from '@/utils/requestLabels'
 
 const panel = useSidePanel()
 const route = useRoute()
@@ -415,18 +416,12 @@ function formatTimeParts(iso: string | undefined): { time: string; date: string 
   return { time, date }
 }
 
-function statusVariant(code: number | undefined): 'ok' | 'warn' | 'err' {
-  if (code === undefined) return 'err'
-  if (code >= 200 && code < 300) return 'ok'
-  if (code >= 400 && code < 500) return 'warn'
-  return 'err'
-}
-
-type RequestState = 'pending' | 'ok' | 'warn' | 'err'
+type RequestState = 'pending' | 'ok' | 'err'
 function requestState(r: RequestView): RequestState {
   // status: 0=Pending 1=HeaderReceived 2=Completed 3=Failed
   if (r.status === 0 || r.status === 1) return 'pending'
-  return statusVariant(r.statusCode)
+  if (r.status === 2) return 'ok'
+  return 'err'
 }
 
 function formatTimeSpent(ms: number | undefined): string {
@@ -616,14 +611,14 @@ function resetCursorAndReload() {
               >...</span
             >
             <span
+              v-else-if="requestState(row) === 'ok'"
+              class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] text-2xs leading-[1.2] bg-ok-faint text-ok-ink border border-transparent"
+              >成功</span
+            >
+            <span
               v-else
-              class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] font-mono text-2xs leading-[1.2] border border-transparent"
-              :class="{
-                'bg-ok-faint text-ok-ink': requestState(row) === 'ok',
-                'bg-warn-faint text-warn-ink': requestState(row) === 'warn',
-                'bg-err-faint text-err-ink': requestState(row) === 'err',
-              }"
-              >{{ row.statusCode }}</span
+              class="inline-flex items-center px-1.5 py-0.5 rounded-[5px] text-2xs leading-[1.2] bg-err-faint text-err-ink border border-transparent"
+              >{{ finishReasonLabel(row.finishReason) }}</span
             >
           </div>
         </template>

@@ -132,24 +132,7 @@ function statusLabel(s: number) {
   }
 }
 
-function finishReasonLabel(reason: number | undefined | null) {
-  switch (reason) {
-    case 1:
-      return '内部错误'
-    case 2:
-      return '已取消'
-    case 3:
-      return '正常结束'
-    case 4:
-      return '请求头超时'
-    case 5:
-      return '读取超时'
-    case 6:
-      return '流式错误'
-    default:
-      return reason === undefined || reason === null ? '—' : String(reason)
-  }
-}
+import { finishReasonLabel } from '@/utils/requestLabels'
 
 function finishReasonVariant(reason: number | undefined | null): 'ok' | 'default' | 'muted' | 'accent' {
   if (reason === undefined || reason === null) return 'muted'
