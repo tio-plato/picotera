@@ -82,6 +82,23 @@ type OverviewSeriesView struct {
 	Points    []OverviewSeriesPointView `json:"points"`
 }
 
+type OverviewSpeedBoxplotItemView struct {
+	Key    string  `json:"key"`
+	Label  string  `json:"label"`
+	Min    float64 `json:"min"`
+	P25    float64 `json:"p25"`
+	Median float64 `json:"median"`
+	P95    float64 `json:"p95"`
+	Max    float64 `json:"max"`
+	Count  int64   `json:"count"`
+}
+
+type OverviewSpeedBoxplotView struct {
+	Window    OverviewWindowView             `json:"window"`
+	Dimension string                         `json:"dimension"`
+	Items     []OverviewSpeedBoxplotItemView `json:"items"`
+}
+
 type OverviewCommonRequest struct {
 	Range         string `query:"range" enum:"1d,7d,1m" required:"true"`
 	ApiKeyID      int32  `query:"apiKeyId,omitempty" minimum:"1"`
@@ -117,6 +134,15 @@ type GetOverviewSeriesResponse struct {
 	Body OverviewSeriesView
 }
 
+type GetOverviewSpeedBoxplotRequest struct {
+	OverviewCommonRequest
+	Dimension string `query:"dimension" enum:"none,apiKey,model,upstreamModel,provider,project" required:"true"`
+}
+
+type GetOverviewSpeedBoxplotResponse struct {
+	Body OverviewSpeedBoxplotView
+}
+
 var OperationGetOverviewSummary = huma.Operation{
 	OperationID: "getOverviewSummary",
 	Method:      http.MethodGet,
@@ -136,4 +162,11 @@ var OperationGetOverviewSeries = huma.Operation{
 	Method:      http.MethodGet,
 	Path:        "/overview/series",
 	Summary:     "Get hourly overview series for a dimension",
+}
+
+var OperationGetOverviewSpeedBoxplot = huma.Operation{
+	OperationID: "getOverviewSpeedBoxplot",
+	Method:      http.MethodGet,
+	Path:        "/overview/speed-boxplot",
+	Summary:     "Get decode speed box plot statistics for a dimension",
 }

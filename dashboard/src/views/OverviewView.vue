@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/vue-query'
 import {
   getOverviewDistribution,
   getOverviewSeries,
+  getOverviewSpeedBoxplot,
   getOverviewSummary,
   listApiKeys,
   listModels,
@@ -16,6 +17,7 @@ import type {
   OverviewBreakdownRowView,
   OverviewDimension,
   OverviewRange,
+  OverviewSpeedBoxplotItemView,
   OverviewSeriesDimension,
   OverviewSeriesPointView,
 } from '@/api'
@@ -180,6 +182,14 @@ const speedSeriesQuery = useQuery({
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
+const speedBoxplotQuery = useQuery({
+  queryKey: computed(() =>
+    queryKeys.overview.speedBoxplot(overviewFilters.value, speedDimension.value),
+  ),
+  queryFn: () => getOverviewSpeedBoxplot(overviewFilters.value, speedDimension.value),
+  staleTime: OPERATIONAL_STALE_TIME,
+})
+
 const cacheHitRateSeriesQuery = useQuery({
   queryKey: computed(() =>
     queryKeys.overview.cacheHitRate(overviewFilters.value, cacheHitRateDimension.value),
@@ -194,6 +204,7 @@ const overviewRefreshing = computed(
     distributionQuery.isFetching.value ||
     seriesQuery.isFetching.value ||
     speedSeriesQuery.isFetching.value ||
+    speedBoxplotQuery.isFetching.value ||
     cacheHitRateSeriesQuery.isFetching.value,
 )
 
@@ -203,6 +214,7 @@ function refreshOverview() {
     distributionQuery.refetch(),
     seriesQuery.refetch(),
     speedSeriesQuery.refetch(),
+    speedBoxplotQuery.refetch(),
     cacheHitRateSeriesQuery.refetch(),
   ])
 }
@@ -376,6 +388,13 @@ const seriesAvgTtft = computed(() => {
   return points
     .filter((p) => p.metric === 'avgTtft')
     .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
+})
+const speedBoxplotItems = computed(() => {
+  const items: OverviewSpeedBoxplotItemView[] = speedBoxplotQuery.data.value?.items ?? []
+  return items.map((item) => ({
+    ...item,
+    label: dimensionLabel(speedDimension.value, item.key),
+  }))
 })
 
 const cacheHitRateSeriesData = computed(() => cacheHitRateSeriesQuery.data.value)
@@ -1293,14 +1312,13 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >输出速度</span
           >
-          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
-          <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
-            (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          <StateText v-if="speedBoxplotQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="speedBoxplotQuery.isError.value" compact :dashed="false">{{
+            (speedBoxplotQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>
           <OverviewSpeedTimeline
             v-else
-            :groups="speedGroups"
-            :points="seriesDecodeSpeed"
+            :items="speedBoxplotItems"
             :value-format="(v) => formatSpeed(v)"
           />
         </div>

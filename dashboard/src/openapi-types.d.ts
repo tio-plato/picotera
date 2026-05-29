@@ -282,6 +282,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/overview/speed-boxplot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get decode speed box plot statistics for a dimension */
+        get: operations["getOverviewSpeedBoxplot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/overview/summary": {
         parameters: {
             query?: never;
@@ -941,6 +958,33 @@ export interface components {
             dimension: string;
             groups: components["schemas"]["OverviewSeriesGroupView"][] | null;
             points: components["schemas"]["OverviewSeriesPointView"][] | null;
+            window: components["schemas"]["OverviewWindowView"];
+        };
+        OverviewSpeedBoxplotItemView: {
+            /** Format: int64 */
+            count: number;
+            key: string;
+            label: string;
+            /** Format: double */
+            max: number;
+            /** Format: double */
+            median: number;
+            /** Format: double */
+            min: number;
+            /** Format: double */
+            p25: number;
+            /** Format: double */
+            p95: number;
+        };
+        OverviewSpeedBoxplotView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/OverviewSpeedBoxplotView.json
+             */
+            readonly $schema?: string;
+            dimension: string;
+            items: components["schemas"]["OverviewSpeedBoxplotItemView"][] | null;
             window: components["schemas"]["OverviewWindowView"];
         };
         OverviewSummaryView: {
@@ -2065,6 +2109,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverviewSeriesView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getOverviewSpeedBoxplot: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m";
+                apiKeyId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+                projectId?: number;
+                dimension: "none" | "apiKey" | "model" | "upstreamModel" | "provider" | "project";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewSpeedBoxplotView"];
                 };
             };
             /** @description Error */

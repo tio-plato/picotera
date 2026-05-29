@@ -12,6 +12,7 @@ import type {
   ModelView,
   OverviewDimension,
   OverviewDistributionView,
+  OverviewSpeedBoxplotView,
   OverviewSeriesDimension,
   OverviewSeriesView,
   OverviewSummaryView,
@@ -410,6 +411,17 @@ export async function getOverviewSeries(
     params: { query: { ...overviewQuery(filters), dimension } as never },
   })
   if (error) fail(error, '加载趋势失败')
+  return data
+}
+
+export async function getOverviewSpeedBoxplot(
+  filters: OverviewFilters,
+  dimension: OverviewSeriesDimension,
+): Promise<OverviewSpeedBoxplotView> {
+  const { data, error } = await api.GET('/api/picotera/overview/speed-boxplot', {
+    params: { query: { ...overviewQuery(filters), dimension } as never },
+  })
+  if (error) fail(error, '加载速度分布失败')
   return data
 }
 

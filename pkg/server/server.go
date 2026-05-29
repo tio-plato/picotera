@@ -202,6 +202,7 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationGetOverviewSummary, s.handleGetOverviewSummary)
 	huma.Register(mgmt, contract.OperationGetOverviewDistribution, s.handleGetOverviewDistribution)
 	huma.Register(mgmt, contract.OperationGetOverviewSeries, s.handleGetOverviewSeries)
+	huma.Register(mgmt, contract.OperationGetOverviewSpeedBoxplot, s.handleGetOverviewSpeedBoxplot)
 	huma.Register(mgmt, contract.OperationListProjects, s.handleListProjects)
 	huma.Register(mgmt, contract.OperationGetProject, s.handleGetProject)
 	huma.Register(mgmt, contract.OperationUpsertProject, s.handleUpsertProject)

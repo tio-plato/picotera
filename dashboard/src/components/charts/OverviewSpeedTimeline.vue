@@ -7,20 +7,19 @@ import type { CallbackDataParams } from 'echarts/types/dist/shared'
 import type { EChartsOption } from './echarts'
 import './echarts'
 
-interface SeriesGroup {
+interface BoxplotItem {
   key: string
   label: string
-}
-
-interface SeriesPoint {
-  groupKey: string
-  bucketAt: string
-  value: number
+  min: number
+  p25: number
+  median: number
+  p95: number
+  max: number
+  count: number
 }
 
 const props = defineProps<{
-  groups: SeriesGroup[]
-  points: SeriesPoint[]
+  items: BoxplotItem[]
   height?: number
   valueFormat?: (value: number) => string
 }>()
@@ -28,26 +27,40 @@ const props = defineProps<{
 interface GroupStats {
   label: string
   min: number
+  p25: number
+  median: number
+  p95: number
   max: number
+  count: number
   hasData: boolean
   colorIndex: number
 }
 
 const groupStats = computed<GroupStats[]>(() => {
-  const groupPoints = new Map<string, number[]>()
-  for (const p of props.points) {
-    if (!groupPoints.has(p.groupKey)) groupPoints.set(p.groupKey, [])
-    groupPoints.get(p.groupKey)!.push(p.value)
-  }
-  return props.groups.map((g, i) => {
-    const values = groupPoints.get(g.key) ?? []
-    if (values.length === 0) {
-      return { label: g.label || '-', min: 0, max: 0, hasData: false, colorIndex: i }
+  return props.items.map((item, i) => {
+    const values = [item.min, item.p25, item.median, item.p95, item.max]
+    const hasData = item.count > 0 && values.every(Number.isFinite)
+    if (!hasData) {
+      return {
+        label: item.label || '-',
+        min: 0,
+        p25: 0,
+        median: 0,
+        p95: 0,
+        max: 0,
+        count: item.count,
+        hasData: false,
+        colorIndex: i,
+      }
     }
     return {
-      label: g.label || '-',
-      min: Math.min(...values),
-      max: Math.max(...values),
+      label: item.label || '-',
+      min: item.min,
+      p25: item.p25,
+      median: item.median,
+      p95: item.p95,
+      max: item.max,
+      count: item.count,
       hasData: true,
       colorIndex: i,
     }
@@ -105,30 +118,27 @@ const option = computed<EChartsOption>(() => {
           <div class="text-2xs text-ink-muted mb-1">${escape(stat.label)}</div>
           <div class="flex items-center gap-1 text-2xs">
             <span style="background:${color};display:inline-block;width:8px;height:8px;border-radius:2px"></span>
-            <span class="mono tabular">${escape(fmtValue(stat.min, true))} ~ ${escape(fmtValue(stat.max))}</span>
+            <span class="mono tabular">min ${escape(fmtValue(stat.min, true))} · med ${escape(fmtValue(stat.median, true))} · p99 ${escape(fmtValue(stat.max))}</span>
           </div>
+          <div class="text-2xs text-ink-muted mt-1">n=${stat.count}</div>
         </div>`
       },
     },
     series: [
       {
         type: 'boxplot',
-        itemStyle: { borderWidth: 0 },
         emphasis: { focus: 'self' },
         blur: {
           itemStyle: { opacity: 0.4 },
         },
-        data: reversed.map((s) => {
-          const median = s.hasData ? (s.min + s.max) / 2 : 0
-          return {
-            value: [s.min, s.min, median, s.max, s.max],
-            _stat: s,
-            itemStyle: {
-              color: groupColor(s.colorIndex),
-              borderColor: groupColor(s.colorIndex),
-            },
-          }
-        }),
+        data: reversed.map((s) => ({
+          value: [s.min, s.p25, s.median, s.p95, s.max],
+          _stat: s,
+          itemStyle: {
+            color: groupColor(s.colorIndex),
+            borderColor: groupColor(s.colorIndex),
+          },
+        })),
       },
     ],
   }

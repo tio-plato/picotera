@@ -306,3 +306,45 @@ WHERE bucket_at >= sqlc.arg('start_at')::timestamp
 GROUP BY bucket_at, group_key
 HAVING SUM(prefill_time_sum) > 0 OR SUM(decode_time_sum) > 0
 ORDER BY bucket_at ASC, group_key ASC;
+
+-- name: GetOverviewSpeedBoxplot :many
+WITH speeds AS (
+  SELECT
+    CASE sqlc.arg('dimension')::text
+      WHEN 'model' THEN COALESCE(model, '')
+      WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
+      WHEN 'provider' THEN COALESCE(provider_id::text, '')
+      WHEN 'apiKey' THEN COALESCE(api_key_id::text, '')
+      WHEN 'project' THEN COALESCE(project_id::text, '')
+      ELSE ''
+    END AS group_key,
+    output_tokens::float8 / ((time_spent_ms - ttft_ms)::float8 / 1000.0) AS decode_speed
+  FROM request
+  WHERE type = 1
+    AND status = 2
+    AND created_at >= sqlc.arg('start_at')::timestamp
+    AND created_at < sqlc.arg('end_at')::timestamp
+    AND output_tokens >= 50
+    AND ttft_ms IS NOT NULL
+    AND time_spent_ms IS NOT NULL
+    AND (time_spent_ms - ttft_ms) >= 500
+    AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
+    AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
+    AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
+    AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+    AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
+)
+SELECT
+  group_key,
+  MIN(decode_speed)::float8 AS min_speed,
+  percentile_cont(0.25) WITHIN GROUP (ORDER BY decode_speed)::float8 AS p25_speed,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY decode_speed)::float8 AS median_speed,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY decode_speed)::float8 AS p95_speed,
+  GREATEST(
+    percentile_cont(0.99) WITHIN GROUP (ORDER BY decode_speed),
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY decode_speed) * 3
+  )::float8 AS max_speed,
+  COUNT(*)::bigint AS request_count
+FROM speeds
+GROUP BY group_key
+ORDER BY median_speed DESC, max_speed DESC, group_key ASC;

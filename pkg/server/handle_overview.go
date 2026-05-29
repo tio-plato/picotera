@@ -561,3 +561,48 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		},
 	}, nil
 }
+
+func (s *Server) handleGetOverviewSpeedBoxplot(ctx context.Context, in *contract.GetOverviewSpeedBoxplotRequest) (*contract.GetOverviewSpeedBoxplotResponse, error) {
+	start, end, err := overviewWindow(in.Range, time.Now())
+	if err != nil {
+		return nil, huma.Error400BadRequest(err.Error())
+	}
+	startTS := pgtype.Timestamp{Time: start, Valid: true}
+	endTS := pgtype.Timestamp{Time: end, Valid: true}
+
+	rows, err := s.queries.GetOverviewSpeedBoxplot(ctx, db.GetOverviewSpeedBoxplotParams{
+		Dimension:     in.Dimension,
+		StartAt:       startTS,
+		EndAt:         endTS,
+		ApiKeyID:      toPgInt4(in.ApiKeyID),
+		Model:         toPgText(in.Model),
+		UpstreamModel: toPgText(in.UpstreamModel),
+		ProviderID:    toPgInt4(in.ProviderID),
+		ProjectID:     toPgInt4(in.ProjectID),
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to query speed boxplot", err)
+	}
+
+	items := make([]contract.OverviewSpeedBoxplotItemView, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, contract.OverviewSpeedBoxplotItemView{
+			Key:    r.GroupKey,
+			Label:  r.GroupKey,
+			Min:    r.MinSpeed,
+			P25:    r.P25Speed,
+			Median: r.MedianSpeed,
+			P95:    r.P95Speed,
+			Max:    r.MaxSpeed,
+			Count:  r.RequestCount,
+		})
+	}
+
+	return &contract.GetOverviewSpeedBoxplotResponse{
+		Body: contract.OverviewSpeedBoxplotView{
+			Window:    windowView(in.Range, start, end),
+			Dimension: in.Dimension,
+			Items:     items,
+		},
+	}, nil
+}

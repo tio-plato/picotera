@@ -32,6 +32,7 @@ type Querier interface {
 	GetFirstEndpointByType(ctx context.Context, endpointType int32) (Endpoint, error)
 	GetModelByName(ctx context.Context, name string) (Model, error)
 	GetModels(ctx context.Context) ([]Model, error)
+	GetOverviewSpeedBoxplot(ctx context.Context, arg GetOverviewSpeedBoxplotParams) ([]GetOverviewSpeedBoxplotRow, error)
 	GetOverviewTokenBreakdown(ctx context.Context, arg GetOverviewTokenBreakdownParams) (GetOverviewTokenBreakdownRow, error)
 	GetOverviewTotals(ctx context.Context, arg GetOverviewTotalsParams) (GetOverviewTotalsRow, error)
 	GetProject(ctx context.Context, id int32) (Project, error)

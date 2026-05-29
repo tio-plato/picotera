@@ -609,6 +609,64 @@ components:
         - buckets
         - points
       type: object
+    OverviewSpeedBoxplotItemView:
+      additionalProperties: false
+      properties:
+        count:
+          format: int64
+          type: integer
+        key:
+          type: string
+        label:
+          type: string
+        max:
+          format: double
+          type: number
+        median:
+          format: double
+          type: number
+        min:
+          format: double
+          type: number
+        p25:
+          format: double
+          type: number
+        p95:
+          format: double
+          type: number
+      required:
+        - key
+        - label
+        - min
+        - p25
+        - median
+        - p95
+        - max
+        - count
+      type: object
+    OverviewSpeedBoxplotView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/OverviewSpeedBoxplotView.json
+          format: uri
+          readOnly: true
+          type: string
+        dimension:
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/OverviewSpeedBoxplotItemView"
+          nullable: true
+          type: array
+        window:
+          $ref: "#/components/schemas/OverviewWindowView"
+      required:
+        - window
+        - dimension
+        - items
+      type: object
     OverviewSummaryView:
       additionalProperties: false
       properties:
@@ -2090,6 +2148,80 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Get hourly overview series for a dimension
+  /api/picotera/overview/speed-boxplot:
+    get:
+      operationId: getOverviewSpeedBoxplot
+      parameters:
+        - explode: false
+          in: query
+          name: range
+          required: true
+          schema:
+            enum:
+              - 1d
+              - 7d
+              - 1m
+            type: string
+        - explode: false
+          in: query
+          name: apiKeyId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: model
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: projectId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: dimension
+          required: true
+          schema:
+            enum:
+              - none
+              - apiKey
+              - model
+              - upstreamModel
+              - provider
+              - project
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewSpeedBoxplotView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get decode speed box plot statistics for a dimension
   /api/picotera/overview/summary:
     get:
       operationId: getOverviewSummary
