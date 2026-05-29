@@ -351,6 +351,22 @@ components:
         - providerModels
         - removedModels
       type: object
+    GlobalSettingView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/GlobalSettingView.json
+          format: uri
+          readOnly: true
+          type: string
+        key:
+          type: string
+        value: {}
+      required:
+        - key
+        - value
+      type: object
     KvEntryView:
       additionalProperties: false
       properties:
@@ -1472,6 +1488,22 @@ components:
           type: array
       required:
         - providerModels
+      type: object
+    UpsertGlobalSettingRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/UpsertGlobalSettingRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        key:
+          type: string
+        value: {}
+      required:
+        - key
+        - value
       type: object
     UpsertProjectRequestBody:
       additionalProperties: false
@@ -2889,6 +2921,89 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Update a script
+  /api/picotera/settings:
+    get:
+      operationId: listGlobalSettings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/GlobalSettingView"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List all global settings
+    put:
+      operationId: upsertGlobalSetting
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertGlobalSettingRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalSettingView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Create or update a global setting
+  /api/picotera/settings/{key}:
+    delete:
+      operationId: deleteGlobalSetting
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Delete a global setting
+    get:
+      operationId: getGlobalSetting
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalSettingView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get a global setting by key
   /api/picotera/simulate/dispatch:
     post:
       operationId: simulateDispatch

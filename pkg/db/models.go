@@ -33,6 +33,12 @@ type ExchangeRate struct {
 	UnitsPerUsd pgtype.Numeric `json:"unitsPerUsd"`
 }
 
+type GlobalSetting struct {
+	Key       string             `json:"key"`
+	Value     []byte             `json:"value"`
+	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type Model struct {
 	Name        string `json:"name"`
 	Disabled    bool   `json:"disabled"`

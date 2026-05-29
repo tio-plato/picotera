@@ -18,6 +18,7 @@ type Querier interface {
 	DeleteApiKey(ctx context.Context, id int32) error
 	DeleteEndpoint(ctx context.Context, path string) error
 	DeleteExchangeRate(ctx context.Context, code string) error
+	DeleteGlobalSetting(ctx context.Context, key string) (int64, error)
 	DeleteModel(ctx context.Context, name string) error
 	DeleteProject(ctx context.Context, id int32) error
 	DeleteProvider(ctx context.Context, id int32) error
@@ -30,6 +31,7 @@ type Querier interface {
 	GetExchangeRateByCode(ctx context.Context, code string) (ExchangeRate, error)
 	GetExchangeRates(ctx context.Context) ([]ExchangeRate, error)
 	GetFirstEndpointByType(ctx context.Context, endpointType int32) (Endpoint, error)
+	GetGlobalSetting(ctx context.Context, key string) (GlobalSetting, error)
 	GetModelByName(ctx context.Context, name string) (Model, error)
 	GetModels(ctx context.Context) ([]Model, error)
 	GetOverviewSpeedBoxplot(ctx context.Context, arg GetOverviewSpeedBoxplotParams) ([]GetOverviewSpeedBoxplotRow, error)
@@ -62,6 +64,7 @@ type Querier interface {
 	ListApiKeys(ctx context.Context) ([]ApiKey, error)
 	ListAvailableModelNames(ctx context.Context) ([]string, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
+	ListGlobalSettings(ctx context.Context) ([]GlobalSetting, error)
 	ListOverviewBreakdownCosts(ctx context.Context, arg ListOverviewBreakdownCostsParams) ([]ListOverviewBreakdownCostsRow, error)
 	ListOverviewBreakdownTokens(ctx context.Context, arg ListOverviewBreakdownTokensParams) ([]ListOverviewBreakdownTokensRow, error)
 	ListOverviewCacheHitRateSeries(ctx context.Context, arg ListOverviewCacheHitRateSeriesParams) ([]ListOverviewCacheHitRateSeriesRow, error)
@@ -89,6 +92,7 @@ type Querier interface {
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertExchangeRate(ctx context.Context, arg UpsertExchangeRateParams) (ExchangeRate, error)
+	UpsertGlobalSetting(ctx context.Context, arg UpsertGlobalSettingParams) (GlobalSetting, error)
 	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
 	UpsertProjectSeen(ctx context.Context, arg UpsertProjectSeenParams) error
 	UpsertProviderEndpoint(ctx context.Context, arg UpsertProviderEndpointParams) (ProviderEndpoint, error)

@@ -217,6 +217,10 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationGetKvEntry, s.handleGetKvEntry)
 	huma.Register(mgmt, contract.OperationUpsertKvEntry, s.handleUpsertKvEntry)
 	huma.Register(mgmt, contract.OperationDeleteKvEntry, s.handleDeleteKvEntry)
+	huma.Register(mgmt, contract.OperationListGlobalSettings, s.handleListGlobalSettings)
+	huma.Register(mgmt, contract.OperationGetGlobalSetting, s.handleGetGlobalSetting)
+	huma.Register(mgmt, contract.OperationUpsertGlobalSetting, s.handleUpsertGlobalSetting)
+	huma.Register(mgmt, contract.OperationDeleteGlobalSetting, s.handleDeleteGlobalSetting)
 }
 
 func (s *Server) registerEndpoints() {

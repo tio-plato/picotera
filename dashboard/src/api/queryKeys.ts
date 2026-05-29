@@ -88,6 +88,10 @@ export const queryKeys = {
     all: ['artifacts'] as const,
     detail: (url: string) => ['artifacts', url] as const,
   },
+  globalSettings: {
+    all: ['globalSettings'] as const,
+    detail: (key: string) => ['globalSettings', key] as const,
+  },
   overview: {
     all: ['overview'] as const,
     summary: (f: OverviewFilters) => ['overview', 'summary', { ...f }] as const,

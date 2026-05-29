@@ -2,10 +2,12 @@
 import { computed } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import PreferencesMenu from '@/components/PreferencesMenu.vue'
+import { useAppTitle } from '@/composables/useAppTitle'
 import Icon from '@/ui/icons/Icon.vue'
 import type { IconName } from '@/ui/icons/paths'
 
 const route = useRoute()
+const { appTitle } = useAppTitle()
 const activeRouteName = computed(() => {
   if (route.name === 'requestDetail') return 'requests'
   return route.name
@@ -24,6 +26,7 @@ const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'simulate', label: '模拟', icon: 'geometry' },
   { name: 'kv', label: '缓存', icon: 'db' },
   { name: 'rates', label: '汇率', icon: 'currency-dollar' },
+  { name: 'settings', label: '设置', icon: 'settings' },
 ]
 </script>
 
@@ -51,7 +54,7 @@ const nav: { name: string; label: string; icon: IconName }[] = [
         </svg>
       </span>
       <div class="flex flex-col leading-[1.15]">
-        <span class="font-semibold text-[0.9375rem] tracking-[-0.01em] text-ink">PicoTera</span>
+        <span class="font-semibold text-[0.9375rem] tracking-[-0.01em] text-ink">{{ appTitle }}</span>
         <span class="font-mono text-2xs text-ink-faint">LLM gateway</span>
       </div>
     </div>

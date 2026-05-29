@@ -7,6 +7,7 @@ import type {
   ExchangeRateView,
   FetchModelsRequestBody,
   FetchModelsResponseBody,
+  GlobalSettingView,
   KvEntryView,
   KvMutateBody,
   ModelView,
@@ -24,6 +25,7 @@ import type {
   ScriptView,
   SimulateDispatchRequestBody,
   SimulateDispatchResponseBody,
+  UpsertGlobalSettingRequestBody,
   UpsertProjectRequestBody,
 } from '@/api'
 import type { components } from '@/openapi-types'
@@ -372,6 +374,39 @@ export function invalidateProjects(client: QueryClient) {
 
 export function invalidateExchangeRates(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.exchangeRates.all })
+}
+
+export async function listGlobalSettings(): Promise<GlobalSettingView[]> {
+  const { data, error } = await api.GET('/api/picotera/settings')
+  if (error) fail(error, '加载设置失败')
+  return data ?? []
+}
+
+export async function getGlobalSetting(key: string): Promise<GlobalSettingView> {
+  const { data, error } = await api.GET('/api/picotera/settings/{key}', {
+    params: { path: { key } },
+  })
+  if (error) fail(error, '加载设置失败')
+  return data
+}
+
+export async function upsertGlobalSetting(
+  body: UpsertGlobalSettingRequestBody,
+): Promise<GlobalSettingView> {
+  const { data, error } = await api.PUT('/api/picotera/settings', { body })
+  if (error) fail(error, '保存设置失败')
+  return data
+}
+
+export async function deleteGlobalSetting(key: string): Promise<void> {
+  const { error } = await api.DELETE('/api/picotera/settings/{key}', {
+    params: { path: { key } },
+  })
+  if (error) fail(error, '删除设置失败')
+}
+
+export function invalidateGlobalSettings(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.globalSettings.all })
 }
 
 function overviewQuery(filters: OverviewFilters) {

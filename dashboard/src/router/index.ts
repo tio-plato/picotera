@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/simulate', name: 'simulate', component: () => import('@/views/SimulateView.vue') },
     { path: '/kv', name: 'kv', component: () => import('@/views/KvView.vue') },
     { path: '/rates', name: 'rates', component: () => import('@/views/RatesView.vue') },
+    { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
   ],
 })
 

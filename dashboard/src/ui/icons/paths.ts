@@ -5,6 +5,7 @@ import {
   IconArrowLeft,
   IconBolt,
   IconBraces,
+  IconBrush,
   IconChartPie,
   IconCheck,
   IconChevronDown,
@@ -41,6 +42,7 @@ import {
 export type IconName =
   | 'plus'
   | 'arrow-left'
+  | 'brush'
   | 'edit'
   | 'trash'
   | 'close'
@@ -80,6 +82,7 @@ export type IconName =
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
   'arrow-left': IconArrowLeft,
+  brush: IconBrush,
   edit: IconEdit,
   trash: IconTrash,
   close: IconX,

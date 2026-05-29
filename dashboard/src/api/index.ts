@@ -37,6 +37,8 @@ export type SimulateDispatchRequestBody = components['schemas']['SimulateDispatc
 export type SimulateDispatchResponseBody = components['schemas']['SimulateDispatchResponseBody']
 export type SimulateCandidate = components['schemas']['SimulateCandidate']
 export type SimulateLogEntry = components['schemas']['SimulateLogEntry']
+export type GlobalSettingView = components['schemas']['GlobalSettingView']
+export type UpsertGlobalSettingRequestBody = components['schemas']['UpsertGlobalSettingRequestBody']
 
 export type OverviewRange = '1d' | '7d' | '1m'
 export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider' | 'project'
