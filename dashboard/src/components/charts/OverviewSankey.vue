@@ -57,6 +57,17 @@ const prefs = usePreferencesStore()
 const themeVersion = ref(0)
 watch(() => prefs.theme, () => { themeVersion.value++ })
 
+const layerDepthMap = computed(() => {
+  const presentLayers = new Set<number>()
+  for (const node of props.nodes) {
+    presentLayers.add(node.layer)
+  }
+  const sorted = [...presentLayers].sort((a, b) => a - b)
+  const map = new Map<number, number>()
+  sorted.forEach((layer, idx) => map.set(layer, idx))
+  return map
+})
+
 const option = computed<EChartsOption>(() => {
   void themeVersion.value
   const axis = getThemeAxisStyle()
@@ -112,6 +123,7 @@ const option = computed<EChartsOption>(() => {
         lineStyle: { color: 'gradient', opacity: 0.2 },
         data: props.nodes.map((n) => ({
           name: n.id,
+          depth: layerDepthMap.value.get(n.layer) ?? n.layer,
           itemStyle: {
             color: n.id.startsWith('__other__') ? faintColor : groupColor(n.layer),
           },
