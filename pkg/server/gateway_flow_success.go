@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -92,8 +91,9 @@ func (h *gatewayHandler) streamSuccess(input successInput) {
 	if !ok {
 		return
 	}
-	extractor, timingRecorder, respBytes, finishReason := h.pipePathResponse(input, responseWriter, internalReader)
-	h.aggregatePathResponse(input, metaRespHeader, respBytes, timingRecorder.Timings)
+	extractor, progress, finishReason := h.pipePathResponse(input, responseWriter, internalReader)
+	respBytes, timings := progress.artifactRecord()
+	h.aggregatePathResponse(input, metaRespHeader, respBytes, timings)
 	h.completeGatewaySuccess(input, extractor.Metrics(), input.Response.StatusCode, finishReason, extractor.StreamError())
 	_ = input.Flow.r
 }
@@ -102,7 +102,7 @@ func (h *gatewayHandler) markPathHeadersReceived(input successInput) {
 	metaID, metaCreatedAt := input.Flow.meta.ID, input.Flow.meta.CreatedAt
 	endpointPath := input.Flow.config.Endpoint.Path
 	if input.Entry != nil && input.Entry.progress != nil {
-		input.Entry.progress.markHeaders(input.Response.StatusCode)
+		input.Entry.progress.markHeaders(input.Response.StatusCode, input.UpstreamStartTime)
 		if metaEntry, ok := h.liveRequests.get(metaID); ok {
 			metaEntry.active.Store(input.Entry.progress)
 		}
@@ -177,18 +177,26 @@ func (h *gatewayHandler) openPathInternalReader(input successInput) (*lockedResp
 	return responseWriter, internalReader, true
 }
 
-func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lockedResponseWriter, internalReader *internalResponseReader) (*ResponseExtractor, *LineTimingRecorder, []byte, int32) {
+// pipePathResponse streams the upstream body to the client while recording it
+// into the upstream row's liveProgress, which is the single source for both the
+// live view and the persisted artifact (path routes are always identity, so the
+// same bytes/timings feed the meta artifact too). Returns the progress so the
+// caller can take the final artifact snapshot.
+func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lockedResponseWriter, internalReader *internalResponseReader) (*ResponseExtractor, *liveProgress, int32) {
 	w, resp := input.Flow.w, input.Response
 	internalBody := internalReader.Body
 	extractor := NewResponseExtractor(internalBody, resp.Header.Get("Content-Type"), input.UpstreamStartTime)
-	timingRecorder := NewLineTimingRecorder(extractor, input.UpstreamStartTime)
-	reader := newIdleTimeoutReader(timingRecorder, h.config.GatewayReadTimeout, input.Cancel)
+	reader := newIdleTimeoutReader(extractor, h.config.GatewayReadTimeout, input.Cancel)
 	buf := make([]byte, 32*1024)
-	var captureBuf bytes.Buffer
 	var finalReadErr error
+	// progress is guaranteed by RegisterUpstream on the success path; the
+	// fallback keeps artifact capture working if it is ever absent.
 	var progress *liveProgress
 	if input.Entry != nil {
 		progress = input.Entry.progress
+	}
+	if progress == nil {
+		progress = newLiveProgressWithOrigin(input.UpstreamStartTime)
 	}
 	flusher, canFlush := w.(http.Flusher)
 	for {
@@ -197,10 +205,7 @@ func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lo
 			if internalBody == resp.Body {
 				w.Write(buf[:n])
 			}
-			captureBuf.Write(buf[:n])
-			if progress != nil {
-				progress.recordChunk(buf[:n])
-			}
+			progress.recordChunk(buf[:n])
 			if canFlush {
 				if internalBody != resp.Body {
 					responseWriter.Flush()
@@ -216,7 +221,7 @@ func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lo
 	}
 	input.Cancel()
 	closeDecodedInternalResponseReader(internalBody, resp)
-	return extractor, timingRecorder, captureBuf.Bytes(), classifyStreamFinishReason(finalReadErr, input.Flow.ctxs.Request)
+	return extractor, progress, classifyStreamFinishReason(finalReadErr, input.Flow.ctxs.Request)
 }
 
 func (h *gatewayHandler) aggregatePathResponse(input successInput, metaRespHeader http.Header, respBytes []byte, timings []float64) {

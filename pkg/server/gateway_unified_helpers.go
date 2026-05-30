@@ -295,7 +295,7 @@ func unifiedStreamArgsFromSuccess(input successInput) unifiedStreamArgs {
 		routedModel: input.RoutedModel, upstreamModel: input.UpstreamModel,
 		metaEndpointPath: input.Flow.config.Endpoint.Path, upstreamPath: input.Sidecar.EndpointPath,
 		upstreamStartTime: input.UpstreamStartTime,
-		metaLogs: input.Flow.collectLogs(), apiKeyID: input.Flow.auth.APIKeyID,
+		metaLogs:          input.Flow.collectLogs(), apiKeyID: input.Flow.auth.APIKeyID,
 		wsCtx: input.Prepared.WebSearch,
 	}
 }
@@ -311,6 +311,14 @@ func unifiedStreamArgsFromSuccess(input successInput) unifiedStreamArgs {
 func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	a := unifiedStreamArgsFromSuccess(input)
 	w, r, ctx, cancel, resp := a.w, a.r, a.ctx, a.cancel, a.resp
+
+	// bridging => upstream format differs from source format; wsActive => web
+	// search emulation rewrites the body. Either way the client sees a
+	// different byte stream than the upstream, so the meta and upstream rows
+	// record separately below.
+	bridging := a.srcFormat != a.upFormat
+	wsActive := a.wsCtx != nil && a.wsCtx.active
+	transforming := bridging || wsActive
 
 	hdrCtx, hdrCancel := input.Flow.ctxs.Persist()
 	defer hdrCancel()
@@ -336,11 +344,30 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CreatedAt:     pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 
-	if input.Entry != nil && input.Entry.progress != nil {
-		input.Entry.progress.markHeaders(resp.StatusCode)
-		if metaEntry, ok := h.liveRequests.get(a.metaID); ok {
-			metaEntry.active.Store(input.Entry.progress)
-		}
+	// Live records, one per row and each the single source for that row's live
+	// view and persisted artifact. The upstream row records the upstream-format
+	// stream (fed by the tee below). On transforming routes the meta row gets
+	// its own source-format record; otherwise it mirrors the upstream record.
+	var upstreamProgress *liveProgress
+	if input.Entry != nil {
+		upstreamProgress = input.Entry.progress
+	}
+	if upstreamProgress == nil {
+		upstreamProgress = newLiveProgressWithOrigin(a.upstreamStartTime)
+	}
+	upstreamProgress.markHeaders(resp.StatusCode, a.upstreamStartTime)
+
+	var metaProgress *liveProgress
+	if transforming {
+		metaProgress = newLiveProgressWithOrigin(a.upstreamStartTime)
+		metaProgress.markHeaders(resp.StatusCode, a.upstreamStartTime)
+	}
+	metaLive := upstreamProgress
+	if metaProgress != nil {
+		metaLive = metaProgress
+	}
+	if metaEntry, ok := h.liveRequests.get(a.metaID); ok {
+		metaEntry.active.Store(metaLive)
 	}
 
 	// Forward upstream headers as-is when there's no bridge. When bridging,
@@ -349,9 +376,6 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	// emulation also rewrites the body, so the same content-encoding stripping
 	// applies — otherwise the client receives gzip headers but plaintext
 	// bytes.
-	bridging := a.srcFormat != a.upFormat
-	wsActive := a.wsCtx != nil && a.wsCtx.active
-	transforming := bridging || wsActive
 	for key, values := range resp.Header {
 		lower := strings.ToLower(key)
 		if lower == "content-length" {
@@ -392,7 +416,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	internalReader, derr := decodedInternalResponseReader(resp, clientWriter)
 	if derr != nil {
 		cancel()
-		h.failUnifiedSuccess(hdrCtx, a,"decode upstream response: "+derr.Error())
+		h.failUnifiedSuccess(hdrCtx, a, "decode upstream response: "+derr.Error())
 		_ = resp.Body.Close()
 		return
 	}
@@ -406,12 +430,11 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	metaRespHeader := w.Header().Clone()
 
 	// Extractor reads decoded upstream bytes and forwards them; metrics come
-	// from the upstream's native response format regardless of bridging.
+	// from the upstream's native response format regardless of bridging. The
+	// tee mirrors those bytes into the upstream row's progress, which records
+	// the body and per-line timings for both the live view and the artifact.
 	extractor := NewResponseExtractor(internalBody, upstreamCT, a.upstreamStartTime)
-	timingRecorder := NewLineTimingRecorder(extractor, a.upstreamStartTime)
-
-	var upstreamCapture bytes.Buffer
-	teedUpstream := llmbridge.NewUpstreamTee(asReadCloser(timingRecorder, internalBody), &upstreamCapture)
+	teedUpstream := llmbridge.NewUpstreamTee(asReadCloser(extractor, internalBody), liveProgressWriter{upstreamProgress})
 
 	// clientReader produces the bytes we will actually write to the client
 	// (and into the meta-artifact buffer). When bridging it's the bridge
@@ -422,7 +445,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			br, err := h.llmBridge.BridgeStream(ctx, a.srcFormat, a.upFormat, teedUpstream, upstreamCT, a.outboundProfile)
 			if err != nil {
 				cancel()
-				h.failUnifiedSuccess(hdrCtx, a,err.Error())
+				h.failUnifiedSuccess(hdrCtx, a, err.Error())
 				return
 			}
 			clientReader = br
@@ -432,14 +455,14 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			upstreamBody, err := io.ReadAll(teedUpstream)
 			if err != nil {
 				cancel()
-				h.failUnifiedSuccess(hdrCtx, a,err.Error())
+				h.failUnifiedSuccess(hdrCtx, a, err.Error())
 				return
 			}
 			_ = teedUpstream.Close()
 			bridged, _, berr := h.llmBridge.BridgeNonStream(ctx, a.srcFormat, a.upFormat, upstreamBody, resp.Header, a.outboundProfile)
 			if berr != nil {
 				cancel()
-				h.failUnifiedSuccess(hdrCtx, a,berr.Error())
+				h.failUnifiedSuccess(hdrCtx, a, berr.Error())
 				return
 			}
 			clientReader = io.NopCloser(bytes.NewReader(bridged))
@@ -461,13 +484,13 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			_ = clientReader.Close()
 			if rerr != nil {
 				cancel()
-				h.failUnifiedSuccess(hdrCtx, a,"read bridge output: "+rerr.Error())
+				h.failUnifiedSuccess(hdrCtx, a, "read bridge output: "+rerr.Error())
 				return
 			}
 			transformed, terr := h.transformWebSearchResponse(ctx, allBytes, a.wsCtx)
 			if terr != nil {
 				cancel()
-				h.failUnifiedSuccess(hdrCtx, a,"web search transform: "+terr.Error())
+				h.failUnifiedSuccess(hdrCtx, a, "web search transform: "+terr.Error())
 				return
 			}
 			transformed = h.loopWebSearchNonStream(ctx, transformed, a.wsCtx, buildForwardedHeaders(r))
@@ -478,21 +501,18 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	idleReader := newIdleTimeoutReader(clientReader, h.config.GatewayReadTimeout, cancel)
 	flusher, canFlush := w.(http.Flusher)
 	buf := make([]byte, 32*1024)
-	var clientCapture bytes.Buffer
 	var finalReadErr error
-	var progress *liveProgress
-	if input.Entry != nil {
-		progress = input.Entry.progress
-	}
 	for {
 		n, readErr := idleReader.Read(buf)
 		if n > 0 {
 			if transforming || internalBody == resp.Body {
 				w.Write(buf[:n])
 			}
-			clientCapture.Write(buf[:n])
-			if progress != nil {
-				progress.recordChunk(buf[:n])
+			// On transforming routes the client stream (source format) is the
+			// meta row's record; on identity routes the upstream tee already
+			// fed both rows, so there is nothing extra to record here.
+			if metaProgress != nil {
+				metaProgress.recordChunk(buf[:n])
 			}
 			if canFlush {
 				if !transforming && internalBody != resp.Body {
@@ -511,15 +531,15 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	_ = clientReader.Close()
 	closeDecodedInternalResponseReader(internalBody, resp)
 
-	upstreamBytes := upstreamCapture.Bytes()
-	clientBytes := clientCapture.Bytes()
-	if !transforming {
-		// 1:1 path — the upstream tee may have a few bytes the client write
-		// loop hasn't accumulated by the time it hits EOF; in that case
-		// upstreamCapture is already authoritative for both views, so we
-		// align them.
-		clientBytes = upstreamBytes
+	// Each row's artifact comes from its own live record. Identity routes share
+	// the upstream record (byte-identical); transforming routes use the meta
+	// record for the source-format meta artifact.
+	upstreamBytes, upstreamTimings := upstreamProgress.artifactRecord()
+	metaSource := upstreamProgress
+	if metaProgress != nil {
+		metaSource = metaProgress
 	}
+	clientBytes, metaTimings := metaSource.artifactRecord()
 
 	pctx, pcancel := input.Flow.ctxs.Persist()
 	defer pcancel()
@@ -529,11 +549,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
 		metaAggregated = buildAggregatedArtifact(pctx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
 	}
-	h.uploadResponseArtifactWithAggregation(pctx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated, timingRecorder.Timings)
-	var metaTimings []float64
-	if !transforming {
-		metaTimings = timingRecorder.Timings
-	}
+	h.uploadResponseArtifactWithAggregation(pctx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated, upstreamTimings)
 	h.uploadMetaResponseArtifactWithAggregation(pctx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated, metaTimings)
 	finishReason := classifyStreamFinishReason(finalReadErr, r.Context())
 

@@ -1,21 +1,20 @@
 package llmbridge
 
 import (
-	"bytes"
 	"io"
 	"sync"
 )
 
 type teeReadCloser struct {
 	src  io.ReadCloser
-	tee  *bytes.Buffer
+	tee  io.Writer
 	mu   sync.Mutex
 	done bool
 }
 
 // NewUpstreamTee returns a ReadCloser that mirrors src into tee on every
 // successful Read. Closing the returned reader closes src.
-func NewUpstreamTee(src io.ReadCloser, tee *bytes.Buffer) io.ReadCloser {
+func NewUpstreamTee(src io.ReadCloser, tee io.Writer) io.ReadCloser {
 	return &teeReadCloser{src: src, tee: tee}
 }
 

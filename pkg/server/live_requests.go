@@ -64,11 +64,16 @@ type liveProgress struct {
 	statusCode      int
 	bytes           int64
 	body            bytes.Buffer
-	// timings holds the elapsed-since-start milliseconds at which each newline
-	// arrived, mirroring LineTimingRecorder so the live view can show per-line
-	// arrival times exactly like a persisted artifact.
-	timings     []float64
+	// timings holds the elapsed-since-timingStart milliseconds at which each
+	// newline arrived. This is the single source for both the live view and the
+	// persisted artifact's per-line arrival times, so it mirrors what
+	// LineTimingRecorder used to compute on the artifact stream.
+	timings []float64
+	// startedAt is registration time, used for the live "started" display.
+	// timingStart is the per-line timing origin (the upstream start time),
+	// set when the stream's headers arrive so timings align with the artifact.
 	startedAt   time.Time
+	timingStart time.Time
 	lastChunkAt time.Time
 }
 
@@ -76,11 +81,19 @@ func newLiveProgress() *liveProgress {
 	return &liveProgress{startedAt: time.Now()}
 }
 
-func (p *liveProgress) markHeaders(statusCode int) {
+// newLiveProgressWithOrigin builds a progress whose per-line timing origin is
+// already known (used for the meta-row record on cross-format/transforming
+// streams, which is created at stream-start rather than at registration).
+func newLiveProgressWithOrigin(origin time.Time) *liveProgress {
+	return &liveProgress{startedAt: time.Now(), timingStart: origin}
+}
+
+func (p *liveProgress) markHeaders(statusCode int, timingStart time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.headersReceived = true
 	p.statusCode = statusCode
+	p.timingStart = timingStart
 }
 
 func (p *liveProgress) recordChunk(b []byte) {
@@ -89,13 +102,38 @@ func (p *liveProgress) recordChunk(b []byte) {
 	p.body.Write(b)
 	p.bytes += int64(len(b))
 	now := time.Now()
-	ms := float64(now.Sub(p.startedAt).Microseconds()) / 1000.0
+	origin := p.timingStart
+	if origin.IsZero() {
+		origin = p.startedAt
+	}
+	ms := float64(now.Sub(origin).Microseconds()) / 1000.0
 	for _, c := range b {
 		if c == '\n' {
 			p.timings = append(p.timings, ms)
 		}
 	}
 	p.lastChunkAt = now
+}
+
+// artifactRecord returns a snapshot of the accumulated body and per-line
+// timings for persisting as an artifact. Both are copies so the streaming
+// goroutine can keep recording (or the buffer be reused) without aliasing.
+func (p *liveProgress) artifactRecord() (body []byte, timings []float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	body = append([]byte(nil), p.body.Bytes()...)
+	timings = append([]float64(nil), p.timings...)
+	return body, timings
+}
+
+// liveProgressWriter adapts a liveProgress to an io.Writer so it can be the
+// mirror target of an upstream tee: every write records a chunk (body bytes +
+// per-line timings) into the progress.
+type liveProgressWriter struct{ p *liveProgress }
+
+func (w liveProgressWriter) Write(b []byte) (int, error) {
+	w.p.recordChunk(b)
+	return len(b), nil
 }
 
 // RegisterMeta registers the meta row keyed by id with its flow cancel func.
