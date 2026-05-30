@@ -279,7 +279,6 @@ type unifiedStreamArgs struct {
 	metaEndpointPath  string
 	upstreamPath      string
 	upstreamStartTime time.Time
-	bgCtx             context.Context
 	metaLogs          []artifacts.LogEntry
 	apiKeyID          pgtype.Int4
 	wsCtx             *webSearchContext
@@ -295,7 +294,7 @@ func unifiedStreamArgsFromSuccess(input successInput) unifiedStreamArgs {
 		gatewayStart: input.Flow.startedAt, providerID: input.ProviderID,
 		routedModel: input.RoutedModel, upstreamModel: input.UpstreamModel,
 		metaEndpointPath: input.Flow.config.Endpoint.Path, upstreamPath: input.Sidecar.EndpointPath,
-		upstreamStartTime: input.UpstreamStartTime, bgCtx: input.Flow.ctxs.Persist,
+		upstreamStartTime: input.UpstreamStartTime,
 		metaLogs: input.Flow.collectLogs(), apiKeyID: input.Flow.auth.APIKeyID,
 		wsCtx: input.Prepared.WebSearch,
 	}
@@ -313,7 +312,10 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	a := unifiedStreamArgsFromSuccess(input)
 	w, r, ctx, cancel, resp := a.w, a.r, a.ctx, a.cancel, a.resp
 
-	h.updateRequestOnHeader(a.bgCtx, db.UpdateRequestOnHeaderParams{
+	hdrCtx, hdrCancel := input.Flow.ctxs.Persist()
+	defer hdrCancel()
+
+	h.updateRequestOnHeader(hdrCtx, db.UpdateRequestOnHeaderParams{
 		ID:            a.metaID,
 		ProviderID:    pgtype.Int4{Int32: a.providerID, Valid: true},
 		Model:         pgtype.Text{String: a.routedModel, Valid: a.routedModel != ""},
@@ -323,7 +325,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		Status:        db.RequestStatusHeaderReceived,
 		CreatedAt:     pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
-	h.updateRequestOnHeader(a.bgCtx, db.UpdateRequestOnHeaderParams{
+	h.updateRequestOnHeader(hdrCtx, db.UpdateRequestOnHeaderParams{
 		ID:            a.upstreamID,
 		ProviderID:    pgtype.Int4{Int32: a.providerID, Valid: true},
 		Model:         pgtype.Text{String: a.routedModel, Valid: a.routedModel != ""},
@@ -383,7 +385,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	internalReader, derr := decodedInternalResponseReader(resp, clientWriter)
 	if derr != nil {
 		cancel()
-		h.failUnifiedSuccess(a, "decode upstream response: "+derr.Error())
+		h.failUnifiedSuccess(hdrCtx, a,"decode upstream response: "+derr.Error())
 		_ = resp.Body.Close()
 		return
 	}
@@ -413,7 +415,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			br, err := h.llmBridge.BridgeStream(ctx, a.srcFormat, a.upFormat, teedUpstream, upstreamCT, a.outboundProfile)
 			if err != nil {
 				cancel()
-				h.failUnifiedSuccess(a, err.Error())
+				h.failUnifiedSuccess(hdrCtx, a,err.Error())
 				return
 			}
 			clientReader = br
@@ -423,14 +425,14 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			upstreamBody, err := io.ReadAll(teedUpstream)
 			if err != nil {
 				cancel()
-				h.failUnifiedSuccess(a, err.Error())
+				h.failUnifiedSuccess(hdrCtx, a,err.Error())
 				return
 			}
 			_ = teedUpstream.Close()
 			bridged, _, berr := h.llmBridge.BridgeNonStream(ctx, a.srcFormat, a.upFormat, upstreamBody, resp.Header, a.outboundProfile)
 			if berr != nil {
 				cancel()
-				h.failUnifiedSuccess(a, berr.Error())
+				h.failUnifiedSuccess(hdrCtx, a,berr.Error())
 				return
 			}
 			clientReader = io.NopCloser(bytes.NewReader(bridged))
@@ -452,13 +454,13 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			_ = clientReader.Close()
 			if rerr != nil {
 				cancel()
-				h.failUnifiedSuccess(a, "read bridge output: "+rerr.Error())
+				h.failUnifiedSuccess(hdrCtx, a,"read bridge output: "+rerr.Error())
 				return
 			}
 			transformed, terr := h.transformWebSearchResponse(ctx, allBytes, a.wsCtx)
 			if terr != nil {
 				cancel()
-				h.failUnifiedSuccess(a, "web search transform: "+terr.Error())
+				h.failUnifiedSuccess(hdrCtx, a,"web search transform: "+terr.Error())
 				return
 			}
 			transformed = h.loopWebSearchNonStream(ctx, transformed, a.wsCtx, buildForwardedHeaders(r))
@@ -505,22 +507,25 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		clientBytes = upstreamBytes
 	}
 
-	upstreamAggregated := buildAggregatedArtifact(a.bgCtx, h.llmBridge, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
+	pctx, pcancel := input.Flow.ctxs.Persist()
+	defer pcancel()
+
+	upstreamAggregated := buildAggregatedArtifact(pctx, h.llmBridge, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
 	var metaAggregated *artifacts.AggregatedResponse
 	if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
-		metaAggregated = buildAggregatedArtifact(a.bgCtx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
+		metaAggregated = buildAggregatedArtifact(pctx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
 	}
-	h.uploadResponseArtifactWithAggregation(a.bgCtx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated, timingRecorder.Timings)
+	h.uploadResponseArtifactWithAggregation(pctx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated, timingRecorder.Timings)
 	var metaTimings []float64
 	if !transforming {
 		metaTimings = timingRecorder.Timings
 	}
-	h.uploadMetaResponseArtifactWithAggregation(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated, metaTimings)
+	h.uploadMetaResponseArtifactWithAggregation(pctx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated, metaTimings)
 	finishReason := classifyStreamFinishReason(finalReadErr, r.Context())
 
 	m := extractor.Metrics()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
-	modelCost, modelCcy := h.costsFor(a.bgCtx, a.routedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
+	modelCost, modelCcy := h.costsFor(pctx, a.routedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 
 	// An in-stream error event (HTTP 200 with an error.message payload) marks
 	// both rows failed while keeping the real upstream status code and metrics.
@@ -537,7 +542,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	}
 
 	upstreamTimeSpent := int32(time.Since(a.attemptStart).Milliseconds())
-	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
+	h.updateRequestOnComplete(pctx, db.UpdateRequestOnCompleteParams{
 		ID:                 a.upstreamID,
 		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
 		ErrorMessage:       errMsg,
@@ -555,7 +560,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CreatedAt:          pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(a.gatewayStart).Milliseconds())
-	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
+	h.updateRequestOnComplete(pctx, db.UpdateRequestOnCompleteParams{
 		ID:                 a.metaID,
 		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
 		ErrorMessage:       errMsg,
@@ -579,8 +584,8 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 // errored after the gateway already started writing or committed to a
 // candidate. We can't recover by retrying because part of the upstream may
 // have been read; surface the bridge failure as 502 and complete the rows.
-func (h *gatewayHandler) failUnifiedSuccess(a unifiedStreamArgs, errMsg string) {
-	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
+func (h *gatewayHandler) failUnifiedSuccess(ctx context.Context, a unifiedStreamArgs, errMsg string) {
+	h.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
 		ID:           a.upstreamID,
 		StatusCode:   pgtype.Int4{Int32: int32(a.resp.StatusCode), Valid: true},
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
@@ -590,7 +595,7 @@ func (h *gatewayHandler) failUnifiedSuccess(a unifiedStreamArgs, errMsg string) 
 		CreatedAt:    pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	respBody := writeGatewayError(a.w, http.StatusBadGateway, "bridge failed: "+errMsg, errorx.UpstreamError.Error())
-	h.updateRequestOnComplete(a.bgCtx, db.UpdateRequestOnCompleteParams{
+	h.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
 		ID:           a.metaID,
 		StatusCode:   pgtype.Int4{Int32: http.StatusBadGateway, Valid: true},
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
@@ -599,7 +604,7 @@ func (h *gatewayHandler) failUnifiedSuccess(a unifiedStreamArgs, errMsg string) 
 		FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
 		CreatedAt:    pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
-	h.uploadMetaResponseArtifact(a.bgCtx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), respBody, a.metaLogs, nil)
+	h.uploadMetaResponseArtifact(ctx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), respBody, a.metaLogs, nil)
 	_ = a.resp.Body.Close()
 }
 

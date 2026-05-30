@@ -92,8 +92,8 @@ func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, s
 }
 
 func (f *gatewayFlow) run() {
-	f.ctxs = newGatewayContexts(f.r, f.h.config)
-	defer f.ctxs.CancelPersist()
+	f.ctxs = newGatewayContexts(f.r)
+	defer f.ctxs.cancelBase()
 	if !f.readBody() || !f.insertMetaRequest() || !f.authenticateAndBackfill() {
 		return
 	}
@@ -129,7 +129,9 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 	parentSpanID := extractParentSpanID(header)
 	parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
 	projectIDPg := f.h.extractProjectID(f.ctxs.Request, f.body)
-	createdAt := f.h.insertRequest(f.ctxs.Persist, db.InsertRequestParams{
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	createdAt := f.h.insertRequest(pctx, db.InsertRequestParams{
 		ID:                 metaID,
 		SpanID:             pgtype.Text{String: metaID, Valid: true},
 		ParentSpanID:       parentSpanIDPg,
@@ -157,9 +159,13 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		RequestMethod:  f.r.Method,
 		RequestURL:     f.r.URL.String(),
 	}
-	f.h.uploadRequestArtifact(f.ctxs.Persist, metaID, createdAt, f.r.Method, f.r.URL.String(), header, f.body)
+	f.h.uploadRequestArtifact(pctx, metaID, createdAt, f.r.Method, f.r.URL.String(), header, f.body)
 	if projectIDPg.Valid {
-		go f.h.upsertProjectSeen(f.ctxs.Persist, projectIDPg.Int32, createdAt)
+		seenCtx, seenCancel := f.ctxs.Persist()
+		go func() {
+			defer seenCancel()
+			f.h.upsertProjectSeen(seenCtx, projectIDPg.Int32, createdAt)
+		}()
 	}
 	return true
 }
@@ -183,7 +189,9 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 		APIKeyJS:   apiKeyJS,
 		APIKeyAnno: apiKeyJS.Annotations,
 	}
-	f.h.updateRequestOnHeader(f.ctxs.Persist, db.UpdateRequestOnHeaderParams{
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.updateRequestOnHeader(pctx, db.UpdateRequestOnHeaderParams{
 		ID:           f.meta.ID,
 		EndpointPath: pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
 		ApiKeyID:     f.auth.APIKeyID,
@@ -276,7 +284,9 @@ func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.Candidate, map[string]ga
 }
 
 func (f *gatewayFlow) updateMetaModel(model string) {
-	f.h.updateRequestModel(f.ctxs.Persist, db.UpdateRequestModelParams{
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.updateRequestModel(pctx, db.UpdateRequestModelParams{
 		ID:        f.meta.ID,
 		Model:     pgtype.Text{String: model, Valid: model != ""},
 		CreatedAt: pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},

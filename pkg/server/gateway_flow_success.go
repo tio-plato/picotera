@@ -101,7 +101,8 @@ func (h *gatewayHandler) streamSuccess(input successInput) {
 func (h *gatewayHandler) markPathHeadersReceived(input successInput) {
 	metaID, metaCreatedAt := input.Flow.meta.ID, input.Flow.meta.CreatedAt
 	endpointPath := input.Flow.config.Endpoint.Path
-	bgCtx := input.Flow.ctxs.Persist
+	bgCtx, cancel := input.Flow.ctxs.Persist()
+	defer cancel()
 	apiKeyID := input.Flow.auth.APIKeyID
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            metaID,
@@ -142,7 +143,8 @@ func (h *gatewayHandler) openPathInternalReader(input successInput) (*lockedResp
 	internalReader, derr := decodedInternalResponseReader(resp, responseWriter)
 	if derr != nil {
 		input.Cancel()
-		bgCtx := input.Flow.ctxs.Persist
+		bgCtx, cancel := input.Flow.ctxs.Persist()
+		defer cancel()
 		metaID, metaCreatedAt := input.Flow.meta.ID, input.Flow.meta.CreatedAt
 		h.completeFailedAttemptWithReason(bgCtx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, int32(resp.StatusCode), "decode upstream response: "+derr.Error(), db.FinishReasonInternal)
 		respBody := writeGatewayError(w, http.StatusBadGateway, "decode upstream response: "+derr.Error(), errorx.UpstreamError.Error())
@@ -205,18 +207,21 @@ func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lo
 }
 
 func (h *gatewayHandler) aggregatePathResponse(input successInput, metaRespHeader http.Header, respBytes []byte, timings []float64) {
+	pctx, pcancel := input.Flow.ctxs.Persist()
+	defer pcancel()
 	var aggregated *artifacts.AggregatedResponse
 	if format, ok := responseAggregationFormat(input.Flow.config.Endpoint.EndpointType); ok {
 		if profile, ok := defaultAggregationProfile(format); ok {
-			aggregated = buildAggregatedArtifact(input.Flow.ctxs.Persist, h.llmBridge, format, input.Response.Header.Get("Content-Type"), respBytes, profile)
+			aggregated = buildAggregatedArtifact(pctx, h.llmBridge, format, input.Response.Header.Get("Content-Type"), respBytes, profile)
 		}
 	}
-	h.uploadResponseArtifactWithAggregation(input.Flow.ctxs.Persist, input.UpstreamID, input.UpstreamCreatedAt, input.Response.StatusCode, input.Response.Header.Clone(), respBytes, aggregated, timings)
-	h.uploadMetaResponseArtifactWithAggregation(input.Flow.ctxs.Persist, input.Flow.meta.ID, input.Flow.meta.CreatedAt, http.StatusOK, metaRespHeader, respBytes, input.Flow.collectLogs(), aggregated, timings)
+	h.uploadResponseArtifactWithAggregation(pctx, input.UpstreamID, input.UpstreamCreatedAt, input.Response.StatusCode, input.Response.Header.Clone(), respBytes, aggregated, timings)
+	h.uploadMetaResponseArtifactWithAggregation(pctx, input.Flow.meta.ID, input.Flow.meta.CreatedAt, http.StatusOK, metaRespHeader, respBytes, input.Flow.collectLogs(), aggregated, timings)
 }
 
 func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMetrics, statusCode int, finishReason int32, streamErr string) {
-	bgCtx := input.Flow.ctxs.Persist
+	bgCtx, cancel := input.Flow.ctxs.Persist()
+	defer cancel()
 	ttftMs, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens := metricsToPG(m)
 	modelCost, modelCcy := h.costsFor(bgCtx, input.RoutedModel, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cacheWrite1hTokens)
 

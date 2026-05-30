@@ -145,11 +145,13 @@ func TestRecordAttemptFailureLastError(t *testing.T) {
 func TestPersistContextSurvivesRequestCancelUntilTimeout(t *testing.T) {
 	reqCtx, cancel := context.WithCancel(context.Background())
 	r := httptest.NewRequest("POST", "/v1/messages", nil).WithContext(reqCtx)
-	ctxs := newGatewayContexts(r, &configx.Config{GatewayReadTimeout: time.Hour})
-	defer ctxs.CancelPersist()
+	ctxs := newGatewayContexts(r)
+	defer ctxs.cancelBase()
+	pctx, pcancel := ctxs.Persist()
+	defer pcancel()
 	cancel()
 	select {
-	case <-ctxs.Persist.Done():
+	case <-pctx.Done():
 		t.Fatal("persist context should not be canceled by request cancellation")
 	default:
 	}
@@ -159,9 +161,11 @@ func TestPersistContextKeepsRequestValues(t *testing.T) {
 	type key string
 	reqCtx := context.WithValue(context.Background(), key("trace"), "value")
 	r := httptest.NewRequest("POST", "/v1/messages", nil).WithContext(reqCtx)
-	ctxs := newGatewayContexts(r, &configx.Config{})
-	defer ctxs.CancelPersist()
-	if got := ctxs.Persist.Value(key("trace")); got != "value" {
+	ctxs := newGatewayContexts(r)
+	defer ctxs.cancelBase()
+	pctx, pcancel := ctxs.Persist()
+	defer pcancel()
+	if got := pctx.Value(key("trace")); got != "value" {
 		t.Fatalf("persist context value = %v, want value", got)
 	}
 }

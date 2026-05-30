@@ -51,7 +51,9 @@ func (f *gatewayFlow) failMeta(status int32, errMsg string, finishReason int32) 
 	if f.meta.ID == "" {
 		return
 	}
-	f.h.updateRequestOnComplete(f.ctxs.Persist, db.UpdateRequestOnCompleteParams{
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.updateRequestOnComplete(pctx, db.UpdateRequestOnCompleteParams{
 		ID:           f.meta.ID,
 		StatusCode:   pgtype.Int4{Int32: status, Valid: true},
 		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
@@ -64,7 +66,9 @@ func (f *gatewayFlow) failMeta(status int32, errMsg string, finishReason int32) 
 
 func (f *gatewayFlow) failGatewayError(err error) {
 	status, body := handleGatewayErr(f.w, err)
-	f.h.uploadMetaResponseArtifact(f.ctxs.Persist, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), body, f.collectLogs(), nil)
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), body, f.collectLogs(), nil)
 }
 
 func (f *gatewayFlow) failGatewayErrorWithFallback(err error, fallbackStatus int32, fallbackMsg string) {
@@ -82,13 +86,17 @@ func (f *gatewayFlow) failHook(err error) {
 	errMsg := err.Error()
 	f.failMeta(int32(status), errMsg, db.FinishReasonInternal)
 	body := writeGatewayError(f.w, status, errMsg, errorx.UpstreamError.Error())
-	f.h.uploadMetaResponseArtifact(f.ctxs.Persist, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), body, f.collectLogs(), nil)
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), body, f.collectLogs(), nil)
 }
 
 func (f *gatewayFlow) failInternal(status int, message string, code string) {
 	f.failMeta(int32(status), message, db.FinishReasonInternal)
 	body := writeGatewayError(f.w, status, message, code)
-	f.h.uploadMetaResponseArtifact(f.ctxs.Persist, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), body, f.collectLogs(), nil)
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), body, f.collectLogs(), nil)
 }
 
 func (f *gatewayFlow) failAllProviders(lastErr error) {
@@ -102,14 +110,18 @@ func (f *gatewayFlow) failAllProviders(lastErr error) {
 	}
 	f.failMeta(http.StatusBadGateway, errMsg, finishReason)
 	body := writeGatewayError(f.w, http.StatusBadGateway, errMsg, errorx.UpstreamError.Error())
-	f.h.uploadMetaResponseArtifact(f.ctxs.Persist, f.meta.ID, f.meta.CreatedAt, http.StatusBadGateway, f.w.Header().Clone(), body, f.collectLogs(), nil)
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, http.StatusBadGateway, f.w.Header().Clone(), body, f.collectLogs(), nil)
 }
 
 func (f *gatewayFlow) failSuccessPath(input successInput, errMsg string) {
 	input.Cancel()
-	f.h.completeFailedAttemptWithReason(f.ctxs.Persist, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, int32(input.Response.StatusCode), errMsg, db.FinishReasonInternal)
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.completeFailedAttemptWithReason(pctx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, int32(input.Response.StatusCode), errMsg, db.FinishReasonInternal)
 	body := writeGatewayError(f.w, http.StatusBadGateway, "bridge failed: "+errMsg, errorx.UpstreamError.Error())
 	f.failMeta(http.StatusBadGateway, errMsg, db.FinishReasonInternal)
-	f.h.uploadMetaResponseArtifact(f.ctxs.Persist, f.meta.ID, f.meta.CreatedAt, http.StatusBadGateway, f.w.Header().Clone(), body, f.collectLogs(), nil)
+	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, http.StatusBadGateway, f.w.Header().Clone(), body, f.collectLogs(), nil)
 	_ = input.Response.Body.Close()
 }
