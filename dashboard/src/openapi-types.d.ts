@@ -1276,6 +1276,7 @@ export interface components {
             startedAt?: string;
             /** Format: int64 */
             statusCode?: number;
+            timings?: number[] | null;
         };
         RequestTraceView: {
             /** Format: int64 */

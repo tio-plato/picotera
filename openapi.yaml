@@ -1121,6 +1121,12 @@ components:
         statusCode:
           format: int64
           type: integer
+        timings:
+          items:
+            format: double
+            type: number
+          nullable: true
+          type: array
       required:
         - inFlight
         - headersReceived

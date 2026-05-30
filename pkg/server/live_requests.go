@@ -64,8 +64,12 @@ type liveProgress struct {
 	statusCode      int
 	bytes           int64
 	body            bytes.Buffer
-	startedAt       time.Time
-	lastChunkAt     time.Time
+	// timings holds the elapsed-since-start milliseconds at which each newline
+	// arrived, mirroring LineTimingRecorder so the live view can show per-line
+	// arrival times exactly like a persisted artifact.
+	timings     []float64
+	startedAt   time.Time
+	lastChunkAt time.Time
 }
 
 func newLiveProgress() *liveProgress {
@@ -84,7 +88,14 @@ func (p *liveProgress) recordChunk(b []byte) {
 	defer p.mu.Unlock()
 	p.body.Write(b)
 	p.bytes += int64(len(b))
-	p.lastChunkAt = time.Now()
+	now := time.Now()
+	ms := float64(now.Sub(p.startedAt).Microseconds()) / 1000.0
+	for _, c := range b {
+		if c == '\n' {
+			p.timings = append(p.timings, ms)
+		}
+	}
+	p.lastChunkAt = now
 }
 
 // RegisterMeta registers the meta row keyed by id with its flow cancel func.
@@ -140,6 +151,7 @@ type liveSnapshot struct {
 	StatusCode      int
 	Bytes           int64
 	Body            string
+	Timings         []float64
 	StartedAt       time.Time
 	LastChunkAt     time.Time
 }
@@ -166,6 +178,7 @@ func (r *liveRequestRegistry) Snapshot(id string) (liveSnapshot, bool) {
 	snap.StatusCode = prog.statusCode
 	snap.Bytes = prog.bytes
 	snap.Body = prog.body.String()
+	snap.Timings = append([]float64(nil), prog.timings...)
 	snap.StartedAt = prog.startedAt
 	snap.LastChunkAt = prog.lastChunkAt
 	prog.mu.Unlock()

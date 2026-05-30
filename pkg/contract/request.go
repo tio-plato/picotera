@@ -394,15 +394,16 @@ type GetRequestLiveRequest struct {
 }
 
 type RequestLiveView struct {
-	InFlight        bool   `json:"inFlight"`
-	Kind            string `json:"kind,omitempty"`
-	Phase           string `json:"phase,omitempty"`
-	HeadersReceived bool   `json:"headersReceived"`
-	StatusCode      int    `json:"statusCode,omitempty"`
-	BytesReceived   int64  `json:"bytesReceived"`
-	Body            string `json:"body,omitempty"`
-	StartedAt       string `json:"startedAt,omitempty"`
-	LastChunkAt     string `json:"lastChunkAt,omitempty"`
+	InFlight        bool      `json:"inFlight"`
+	Kind            string    `json:"kind,omitempty"`
+	Phase           string    `json:"phase,omitempty"`
+	HeadersReceived bool      `json:"headersReceived"`
+	StatusCode      int       `json:"statusCode,omitempty"`
+	BytesReceived   int64     `json:"bytesReceived"`
+	Body            string    `json:"body,omitempty"`
+	Timings         []float64 `json:"timings,omitempty"`
+	StartedAt       string    `json:"startedAt,omitempty"`
+	LastChunkAt     string    `json:"lastChunkAt,omitempty"`
 }
 
 type GetRequestLiveResponse struct {

@@ -7,6 +7,7 @@ import { queryKeys } from '@/api/queryKeys'
 import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay, Button } from '@/ui'
 import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
+import TimedRawView from './TimedRawView.vue'
 import {
   useRequestDetailUiState,
   type DetailTab,
@@ -206,6 +207,7 @@ const {
   responseSubView,
   responseHeadersOpen,
   responseThinkingOpen,
+  liveShowTimings,
 } = useRequestDetailUiState()
 const isMeta = computed(() => !!selected.value && selected.value.id === selected.value.spanId)
 const detailTabs = computed(() => {
@@ -342,7 +344,20 @@ watch(detailTabs, (tabs) => {
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
               >响应体（至今）</span
             >
+            <label
+              v-if="live?.timings?.length"
+              class="flex items-center gap-1.5 text-2xs text-ink-muted select-none"
+            >
+              <input type="checkbox" v-model="liveShowTimings" class="accent-accent-ink" />
+              显示到达时间
+            </label>
+            <TimedRawView
+              v-if="liveShowTimings && live?.timings?.length"
+              :body="live.body"
+              :timings="live.timings!"
+            />
             <pre
+              v-else
               class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-0 border border-line-soft rounded-md p-3 m-0 text-ink max-h-80 overflow-auto"
               >{{ live.body }}</pre
             >

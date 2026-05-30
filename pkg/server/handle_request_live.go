@@ -43,6 +43,7 @@ func (s *Server) handleGetRequestLive(ctx context.Context, input *contract.GetRe
 	view.StatusCode = snap.StatusCode
 	view.BytesReceived = snap.Bytes
 	view.Body = snap.Body
+	view.Timings = snap.Timings
 	switch {
 	case !snap.HeadersReceived:
 		view.Phase = "pending"
