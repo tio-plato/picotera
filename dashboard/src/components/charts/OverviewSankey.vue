@@ -21,6 +21,7 @@ export interface SankeyLink {
 
 export interface SankeyLayer {
   label: string
+  index: number
 }
 
 const props = defineProps<{
@@ -150,21 +151,21 @@ const option = computed<EChartsOption>(() => {
     <VChart :option="option" style="height: 288px" autoresize />
     <div v-if="layers && layers.length > 0" class="flex flex-wrap items-center justify-center gap-3 mt-2">
       <button
-        v-for="(layer, i) in layers"
-        :key="i"
+        v-for="layer in layers"
+        :key="layer.index"
         class="flex items-center gap-1.5 text-xs transition-opacity"
         :class="[
-          i === 0 ? 'cursor-default' : 'cursor-pointer',
-          (hiddenLayerIndices ?? []).includes(i)
+          layer.index === 0 ? 'cursor-default' : 'cursor-pointer',
+          (hiddenLayerIndices ?? []).includes(layer.index)
             ? 'opacity-40 line-through'
             : 'opacity-100',
         ]"
-        :disabled="i === 0"
-        @click="i > 0 && emit('toggleLayer', i)"
+        :disabled="layer.index === 0"
+        @click="layer.index > 0 && emit('toggleLayer', layer.index)"
       >
         <span
           class="w-3 h-3 rounded-full shrink-0"
-          :style="{ backgroundColor: groupColor(i) }"
+          :style="{ backgroundColor: groupColor(layer.index) }"
         />
         <span>{{ layer.label }}</span>
       </button>
