@@ -58,6 +58,42 @@ const sankeyVariantOptions: { value: SankeyVariant; label: string }[] = [
   { value: 'costOut', label: '费用请求' },
 ]
 
+const sankeyHiddenLayers = ref<Record<SankeyVariant, number[]>>({
+  tokenComposition: [],
+  tokensIn: [],
+  tokensOut: [],
+  costIn: [],
+  costOut: [],
+})
+
+const sankeyLayerLabels: Record<SankeyVariant, string[]> = {
+  tokenComposition: ['总 Token', '输入/输出', '细分'],
+  tokensIn: ['总 Token', '渠道', '上游模型', '请求模型', '密钥', '项目'],
+  tokensOut: ['总 Token', '项目', '密钥', '请求模型', '上游模型', '渠道'],
+  costIn: ['总费用', '渠道', '上游模型', '请求模型', '密钥', '项目'],
+  costOut: ['总费用', '项目', '密钥', '请求模型', '上游模型', '渠道'],
+}
+
+function getSankeyHiddenForBuild(variant: SankeyVariant): number[] {
+  return sankeyHiddenLayers.value[variant]
+    .filter((i) => i > 0)
+    .map((i) => i - 1)
+}
+
+function toggleSankeyLayer(index: number) {
+  const variant = sankeyVariant.value
+  const current = new Set(sankeyHiddenLayers.value[variant])
+  if (current.has(index)) {
+    current.delete(index)
+  } else {
+    current.add(index)
+  }
+  sankeyHiddenLayers.value = {
+    ...sankeyHiddenLayers.value,
+    [variant]: [...current],
+  }
+}
+
 const parentCurrency = useCurrencyContext()
 const overviewCurrencyValue = computed({
   get: () => prefs.overviewCurrencyOverride ?? '',
@@ -449,6 +485,10 @@ const tokenCompositionSankey = computed<{ nodes: SankeyNode[]; links: SankeyLink
   const outputTotal = tb.output
   if (inputTotal === 0 && outputTotal === 0) return { nodes: [], links: [] }
 
+  const hidden = new Set(sankeyHiddenLayers.value.tokenComposition)
+  const showLayer1 = !hidden.has(1)
+  const showLayer2 = !hidden.has(2)
+
   const allNodes: SankeyNode[] = [
     { id: 'root', label: '总 Token', layer: 0 },
     { id: 'output', label: '输出', layer: 1 },
@@ -459,15 +499,20 @@ const tokenCompositionSankey = computed<{ nodes: SankeyNode[]; links: SankeyLink
     { id: 'in_cache_write_1h', label: '长期缓存写入', layer: 2 },
   ]
   const links: SankeyLink[] = []
-  if (outputTotal > 0) links.push({ source: 'root', target: 'output', value: outputTotal })
-  if (inputTotal > 0) links.push({ source: 'root', target: 'input', value: inputTotal })
-  if (tb.input > 0) links.push({ source: 'input', target: 'in_uncached', value: tb.input })
-  if (tb.cacheRead > 0)
-    links.push({ source: 'input', target: 'in_cache_read', value: tb.cacheRead })
-  if (tb.cacheWrite > 0)
-    links.push({ source: 'input', target: 'in_cache_write', value: tb.cacheWrite })
-  if (tb.cacheWrite1h > 0)
-    links.push({ source: 'input', target: 'in_cache_write_1h', value: tb.cacheWrite1h })
+  if (showLayer1) {
+    if (outputTotal > 0) links.push({ source: 'root', target: 'output', value: outputTotal })
+    if (inputTotal > 0) links.push({ source: 'root', target: 'input', value: inputTotal })
+  }
+  if (showLayer2) {
+    const sourceForDetail = showLayer1 ? 'input' : 'root'
+    if (tb.input > 0) links.push({ source: sourceForDetail, target: 'in_uncached', value: tb.input })
+    if (tb.cacheRead > 0)
+      links.push({ source: sourceForDetail, target: 'in_cache_read', value: tb.cacheRead })
+    if (tb.cacheWrite > 0)
+      links.push({ source: sourceForDetail, target: 'in_cache_write', value: tb.cacheWrite })
+    if (tb.cacheWrite1h > 0)
+      links.push({ source: sourceForDetail, target: 'in_cache_write_1h', value: tb.cacheWrite1h })
+  }
 
   const used = new Set<string>(['root'])
   for (const l of links) {
@@ -523,13 +568,16 @@ function buildDimensionSankey(
   rootLabel: string,
   valueOf: (row: OverviewBreakdownRowView) => number,
   skipLayer?: (row: OverviewBreakdownRowView, layerIdx: number) => boolean,
+  hiddenLayerIndices?: number[],
 ): { nodes: SankeyNode[]; links: SankeyLink[] } {
+  const hiddenSet = new Set(hiddenLayerIndices ?? [])
   // Per-layer aggregate value per raw key, used to pick top N per layer.
   const totalsByLayer: Map<string, number>[] = layers.map(() => new Map())
   for (const row of rows) {
     const v = valueOf(row)
     if (v <= 0) continue
     layers.forEach((dim, i) => {
+      if (hiddenSet.has(i)) return
       if (skipLayer?.(row, i)) return
       const k = rowDimKey(row, dim)
       totalsByLayer[i]!.set(k, (totalsByLayer[i]!.get(k) ?? 0) + v)
@@ -555,15 +603,22 @@ function buildDimensionSankey(
   for (const row of rows) {
     const v = valueOf(row)
     if (v <= 0) continue
-    const fold0 = folded(0, rowDimKey(row, layers[0]!))
-    addLink(rootId, fold0, v)
-    let prevIdx = 0
-    for (let i = 1; i < layers.length; i++) {
+    const rowVisible: number[] = []
+    for (let i = 0; i < layers.length; i++) {
+      if (hiddenSet.has(i)) continue
       if (skipLayer?.(row, i)) continue
-      const a = folded(prevIdx, rowDimKey(row, layers[prevIdx]!))
-      const b = folded(i, rowDimKey(row, layers[i]!))
+      rowVisible.push(i)
+    }
+    if (rowVisible.length === 0) continue
+    const firstIdx = rowVisible[0]!
+    const firstFold = folded(firstIdx, rowDimKey(row, layers[firstIdx]!))
+    addLink(rootId, firstFold, v)
+    for (let k = 1; k < rowVisible.length; k++) {
+      const prev = rowVisible[k - 1]!
+      const curr = rowVisible[k]!
+      const a = folded(prev, rowDimKey(row, layers[prev]!))
+      const b = folded(curr, rowDimKey(row, layers[curr]!))
       addLink(a, b, v)
-      prevIdx = i
     }
   }
 
@@ -614,6 +669,7 @@ const tokensInSankey = computed(() =>
     '总 Token',
     (row) => row.totalTokens,
     collapseUpstreamModel(tokensInLayers),
+    getSankeyHiddenForBuild('tokensIn'),
   ),
 )
 
@@ -625,6 +681,7 @@ const tokensOutSankey = computed(() =>
     '总 Token',
     (row) => row.totalTokens,
     collapseUpstreamModel(tokensOutLayers),
+    getSankeyHiddenForBuild('tokensOut'),
   ),
 )
 
@@ -660,6 +717,7 @@ const costInSankeyConverted = computed(() => {
     '总费用',
     rowCostConverted,
     collapseUpstreamModel(costInLayers),
+    getSankeyHiddenForBuild('costIn'),
   )
 })
 
@@ -673,6 +731,7 @@ const costOutSankeyConverted = computed(() => {
     '总费用',
     rowCostConverted,
     collapseUpstreamModel(costOutLayers),
+    getSankeyHiddenForBuild('costOut'),
   )
 })
 
@@ -684,6 +743,7 @@ function buildCostInSankeyForCurrency(currency: string) {
     `总费用 · ${currency}`,
     (row) => rowCostInCurrency(row, currency),
     collapseUpstreamModel(costInLayers),
+    getSankeyHiddenForBuild('costIn'),
   )
 }
 function buildCostOutSankeyForCurrency(currency: string) {
@@ -694,6 +754,7 @@ function buildCostOutSankeyForCurrency(currency: string) {
     `总费用 · ${currency}`,
     (row) => rowCostInCurrency(row, currency),
     collapseUpstreamModel(costOutLayers),
+    getSankeyHiddenForBuild('costOut'),
   )
 }
 
@@ -917,6 +978,9 @@ function formatCurrencyCompact(v: number, code: string) {
               :nodes="tokenCompositionSankey.nodes"
               :links="tokenCompositionSankey.links"
               :value-format="(v) => compactNumber(v)"
+              :layers="sankeyLayerLabels.tokenComposition.map((l) => ({ label: l }))"
+              :hidden-layer-indices="sankeyHiddenLayers.tokenComposition"
+              @toggle-layer="toggleSankeyLayer"
             />
           </template>
 
@@ -927,6 +991,9 @@ function formatCurrencyCompact(v: number, code: string) {
               :nodes="tokensInSankey.nodes"
               :links="tokensInSankey.links"
               :value-format="(v) => compactNumber(v)"
+              :layers="sankeyLayerLabels.tokensIn.map((l) => ({ label: l }))"
+              :hidden-layer-indices="sankeyHiddenLayers.tokensIn"
+              @toggle-layer="toggleSankeyLayer"
             />
           </template>
           <template v-else-if="sankeyVariant === 'tokensOut'">
@@ -936,6 +1003,9 @@ function formatCurrencyCompact(v: number, code: string) {
               :nodes="tokensOutSankey.nodes"
               :links="tokensOutSankey.links"
               :value-format="(v) => compactNumber(v)"
+              :layers="sankeyLayerLabels.tokensOut.map((l) => ({ label: l }))"
+              :hidden-layer-indices="sankeyHiddenLayers.tokensOut"
+              @toggle-layer="toggleSankeyLayer"
             />
           </template>
 
@@ -946,6 +1016,9 @@ function formatCurrencyCompact(v: number, code: string) {
               :nodes="costInSankeyConverted.nodes"
               :links="costInSankeyConverted.links"
               :value-format="(v) => formatCurrencyCompact(v, ccy.targetCurrency.value ?? '')"
+              :layers="sankeyLayerLabels.costIn.map((l) => ({ label: l }))"
+              :hidden-layer-indices="sankeyHiddenLayers.costIn"
+              @toggle-layer="toggleSankeyLayer"
             />
           </template>
           <template v-else-if="sankeyVariant === 'costOut' && !isOriginalMode">
@@ -955,6 +1028,9 @@ function formatCurrencyCompact(v: number, code: string) {
               :nodes="costOutSankeyConverted.nodes"
               :links="costOutSankeyConverted.links"
               :value-format="(v) => formatCurrencyCompact(v, ccy.targetCurrency.value ?? '')"
+              :layers="sankeyLayerLabels.costOut.map((l) => ({ label: l }))"
+              :hidden-layer-indices="sankeyHiddenLayers.costOut"
+              @toggle-layer="toggleSankeyLayer"
             />
           </template>
 
@@ -1010,6 +1086,9 @@ function formatCurrencyCompact(v: number, code: string) {
                 ).links
               "
               :value-format="(v) => formatCurrencyCompact(v, currency)"
+              :layers="sankeyLayerLabels[sankeyVariant].map((l) => ({ label: l }))"
+              :hidden-layer-indices="sankeyHiddenLayers[sankeyVariant]"
+              @toggle-layer="toggleSankeyLayer"
             />
           </div>
         </DataCard>

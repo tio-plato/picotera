@@ -19,10 +19,20 @@ export interface SankeyLink {
   value: number
 }
 
+export interface SankeyLayer {
+  label: string
+}
+
 const props = defineProps<{
   nodes: SankeyNode[]
   links: SankeyLink[]
   valueFormat?: (value: number) => string
+  layers?: SankeyLayer[]
+  hiddenLayerIndices?: number[]
+}>()
+
+const emit = defineEmits<{
+  (e: 'toggleLayer', index: number): void
 }>()
 
 const nodeTotals = computed(() => {
@@ -126,5 +136,26 @@ const option = computed<EChartsOption>(() => {
 <template>
   <div>
     <VChart :option="option" style="height: 288px" autoresize />
+    <div v-if="layers && layers.length > 0" class="flex flex-wrap items-center justify-center gap-3 mt-2">
+      <button
+        v-for="(layer, i) in layers"
+        :key="i"
+        class="flex items-center gap-1.5 text-xs transition-opacity"
+        :class="[
+          i === 0 ? 'cursor-default' : 'cursor-pointer',
+          (hiddenLayerIndices ?? []).includes(i)
+            ? 'opacity-40 line-through'
+            : 'opacity-100',
+        ]"
+        :disabled="i === 0"
+        @click="i > 0 && emit('toggleLayer', i)"
+      >
+        <span
+          class="w-3 h-3 rounded-full shrink-0"
+          :style="{ backgroundColor: groupColor(i) }"
+        />
+        <span>{{ layer.label }}</span>
+      </button>
+    </div>
   </div>
 </template>
