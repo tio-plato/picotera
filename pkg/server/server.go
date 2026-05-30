@@ -40,6 +40,7 @@ type Server struct {
 	projectRouter    *projectRouter
 	projectExtractor *projectExtractor
 	llmBridge        llmbridge.Bridge
+	liveRequests     *liveRequestRegistry
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -151,6 +152,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		projectRouter:    projectRouter,
 		projectExtractor: newProjectExtractor(projectRouter),
 		llmBridge:        llmBridge,
+		liveRequests:     newLiveRequestRegistry(),
 	}
 	server.registerOperations()
 	server.registerEndpoints()
@@ -189,6 +191,8 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationListRequestTraces, s.handleListRequestTraces)
 	huma.Register(mgmt, contract.OperationGetRequest, s.handleGetRequest)
 	huma.Register(mgmt, contract.OperationListRequestSpans, s.handleListRequestSpans)
+	huma.Register(mgmt, contract.OperationInterruptRequest, s.handleInterruptRequest)
+	huma.Register(mgmt, contract.OperationGetRequestLive, s.handleGetRequestLive)
 	huma.Register(mgmt, contract.OperationListExchangeRates, s.handleListExchangeRates)
 	huma.Register(mgmt, contract.OperationGetExchangeRate, s.handleGetExchangeRate)
 	huma.Register(mgmt, contract.OperationPutExchangeRate, s.handlePutExchangeRate)

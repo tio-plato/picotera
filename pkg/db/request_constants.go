@@ -21,4 +21,8 @@ const (
 	FinishReasonHeadersTimeout = 4
 	FinishReasonReadTimeout    = 5
 	FinishReasonStreamError    = 6
+	// FinishReasonDashboardCancelled marks a request row deliberately
+	// interrupted from the dashboard, distinct from FinishReasonCancelled
+	// (client disconnect / context cancellation).
+	FinishReasonDashboardCancelled = 7
 )

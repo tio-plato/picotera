@@ -94,7 +94,15 @@ func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, s
 func (f *gatewayFlow) run() {
 	f.ctxs = newGatewayContexts(f.r)
 	defer f.ctxs.cancelBase()
-	if !f.readBody() || !f.insertMetaRequest() || !f.authenticateAndBackfill() {
+	defer f.ctxs.cancelRequest()
+	if !f.readBody() {
+		return
+	}
+	if !f.insertMetaRequest() {
+		return
+	}
+	defer f.h.liveRequests.Remove(f.meta.ID)
+	if !f.authenticateAndBackfill() {
 		return
 	}
 	if !f.resolveAndRewriteModel() {
@@ -159,6 +167,7 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		RequestMethod:  f.r.Method,
 		RequestURL:     f.r.URL.String(),
 	}
+	f.h.liveRequests.RegisterMeta(metaID, f.ctxs.cancelRequest)
 	f.h.uploadRequestArtifact(pctx, metaID, createdAt, f.r.Method, f.r.URL.String(), header, f.body)
 	if projectIDPg.Valid {
 		seenCtx, seenCancel := f.ctxs.Persist()

@@ -558,6 +558,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/requests/{id}/interrupt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Interrupt an in-flight request (meta or upstream) */
+        post: operations["interruptRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/requests/{id}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get in-memory live status of an in-flight request */
+        get: operations["getRequestLive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/requests/{id}/spans": {
         parameters: {
             query?: never;
@@ -884,6 +918,15 @@ export interface components {
             readonly $schema?: string;
             key: string;
             value: unknown;
+        };
+        InterruptRequestResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/InterruptRequestResponseBody.json
+             */
+            readonly $schema?: string;
+            interrupted: boolean;
         };
         KvEntryView: {
             /**
@@ -1214,6 +1257,25 @@ export interface components {
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
             proxyUrl?: string;
             supportsNativeWebSearch: boolean;
+        };
+        RequestLiveView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RequestLiveView.json
+             */
+            readonly $schema?: string;
+            body?: string;
+            /** Format: int64 */
+            bytesReceived: number;
+            headersReceived: boolean;
+            inFlight: boolean;
+            kind?: string;
+            lastChunkAt?: string;
+            phase?: string;
+            startedAt?: string;
+            /** Format: int64 */
+            statusCode?: number;
         };
         RequestTraceView: {
             /** Format: int64 */
@@ -2817,6 +2879,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RequestView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    interruptRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterruptRequestResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getRequestLive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestLiveView"];
                 };
             };
             /** @description Error */

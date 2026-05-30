@@ -44,7 +44,7 @@ func TestGatewayCandidateSidecarLookupUnified(t *testing.T) {
 }
 
 func TestGatewayUnknownCandidateSkipped(t *testing.T) {
-	f := &gatewayFlow{h: &gatewayHandler{Server: &Server{config: &configx.Config{JSMaxTotalAttempts: 1}}}, config: gatewayFlowConfig{Kind: gatewayRoutePath}}
+	f := &gatewayFlow{h: &gatewayHandler{Server: &Server{config: &configx.Config{JSMaxTotalAttempts: 1}}}, config: gatewayFlowConfig{Kind: gatewayRoutePath}, ctxs: gatewayContexts{Request: context.Background()}}
 	result := f.runAttempts([]jsx.Candidate{{Provider: jsx.ProviderSummary{ID: 404}}}, map[string]gatewayCandidateSidecar{}, gatewayJSContext{})
 	if result.Handled {
 		t.Fatal("unknown candidate should not be handled")

@@ -71,6 +71,10 @@ export const queryKeys = {
     all: ['requestSpans'] as const,
     detail: (requestId: string) => ['requestSpans', requestId] as const,
   },
+  requestLive: {
+    all: ['requestLive'] as const,
+    detail: (id: string) => ['requestLive', id] as const,
+  },
   pricingMatches: {
     all: ['pricingMatches'] as const,
     model: (model: string) => ['pricingMatches', model] as const,

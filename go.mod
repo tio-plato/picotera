@@ -14,6 +14,7 @@ require (
 	github.com/looplj/axonhub/llm v0.0.0-20260504030509-3a5f34936974
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/oapi-codegen/nullable v1.1.0
+	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/rs/xid v1.6.0

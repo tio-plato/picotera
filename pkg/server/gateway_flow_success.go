@@ -101,6 +101,12 @@ func (h *gatewayHandler) streamSuccess(input successInput) {
 func (h *gatewayHandler) markPathHeadersReceived(input successInput) {
 	metaID, metaCreatedAt := input.Flow.meta.ID, input.Flow.meta.CreatedAt
 	endpointPath := input.Flow.config.Endpoint.Path
+	if input.Entry != nil && input.Entry.progress != nil {
+		input.Entry.progress.markHeaders(input.Response.StatusCode)
+		if metaEntry, ok := h.liveRequests.get(metaID); ok {
+			metaEntry.active.Store(input.Entry.progress)
+		}
+	}
 	bgCtx, cancel := input.Flow.ctxs.Persist()
 	defer cancel()
 	apiKeyID := input.Flow.auth.APIKeyID
@@ -180,6 +186,10 @@ func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lo
 	buf := make([]byte, 32*1024)
 	var captureBuf bytes.Buffer
 	var finalReadErr error
+	var progress *liveProgress
+	if input.Entry != nil {
+		progress = input.Entry.progress
+	}
 	flusher, canFlush := w.(http.Flusher)
 	for {
 		n, readErr := reader.Read(buf)
@@ -188,6 +198,9 @@ func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lo
 				w.Write(buf[:n])
 			}
 			captureBuf.Write(buf[:n])
+			if progress != nil {
+				progress.recordChunk(buf[:n])
+			}
 			if canFlush {
 				if internalBody != resp.Body {
 					responseWriter.Flush()
@@ -236,6 +249,8 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		fr = int32(db.FinishReasonStreamError)
 	}
 
+	upstreamFr := input.Flow.finishReasonFor(input.UpstreamID, fr)
+	metaFr := input.Flow.finishReasonFor(input.Flow.meta.ID, fr)
 	upstreamTimeSpent := int32(time.Since(input.AttemptStart).Milliseconds())
 	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
 		ID:                 input.UpstreamID,
@@ -251,7 +266,7 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: fr, Valid: true},
+		FinishReason:       pgtype.Int4{Int32: upstreamFr, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(input.Flow.startedAt).Milliseconds())
@@ -269,7 +284,7 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: fr, Valid: true},
+		FinishReason:       pgtype.Int4{Int32: metaFr, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: input.Flow.meta.CreatedAt, Valid: true},
 	})
 }

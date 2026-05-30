@@ -378,3 +378,47 @@ var OperationListRequestSpans = huma.Operation{
 	Path:        "/requests/{id}/spans",
 	Summary:     "List spans (meta + upstream) related to a request",
 }
+
+type InterruptRequestRequest struct {
+	ID string `path:"id"`
+}
+
+type InterruptRequestResponse struct {
+	Body struct {
+		Interrupted bool `json:"interrupted"`
+	}
+}
+
+type GetRequestLiveRequest struct {
+	ID string `path:"id"`
+}
+
+type RequestLiveView struct {
+	InFlight        bool   `json:"inFlight"`
+	Kind            string `json:"kind,omitempty"`
+	Phase           string `json:"phase,omitempty"`
+	HeadersReceived bool   `json:"headersReceived"`
+	StatusCode      int    `json:"statusCode,omitempty"`
+	BytesReceived   int64  `json:"bytesReceived"`
+	Body            string `json:"body,omitempty"`
+	StartedAt       string `json:"startedAt,omitempty"`
+	LastChunkAt     string `json:"lastChunkAt,omitempty"`
+}
+
+type GetRequestLiveResponse struct {
+	Body RequestLiveView
+}
+
+var OperationInterruptRequest = huma.Operation{
+	OperationID: "interruptRequest",
+	Method:      http.MethodPost,
+	Path:        "/requests/{id}/interrupt",
+	Summary:     "Interrupt an in-flight request (meta or upstream)",
+}
+
+var OperationGetRequestLive = huma.Operation{
+	OperationID: "getRequestLive",
+	Method:      http.MethodGet,
+	Path:        "/requests/{id}/live",
+	Summary:     "Get in-memory live status of an in-flight request",
+}

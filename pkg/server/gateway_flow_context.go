@@ -9,18 +9,24 @@ import (
 const persistTimeout = 30 * time.Second
 
 type gatewayContexts struct {
-	Request     context.Context
-	persistBase context.Context
-	cancelBase  context.CancelFunc
+	Request       context.Context
+	cancelRequest context.CancelFunc
+	persistBase   context.Context
+	cancelBase    context.CancelFunc
 }
 
 func newGatewayContexts(r *http.Request) gatewayContexts {
 	requestCtx := r.Context()
+	// Request is cancellable so the dashboard can interrupt the whole flow.
+	// persistBase derives from WithoutCancel so persistence and artifact
+	// uploads still complete after an interrupt.
+	cancellableRequest, cancelRequest := context.WithCancel(requestCtx)
 	persistBase, cancelBase := context.WithCancel(context.WithoutCancel(requestCtx))
 	return gatewayContexts{
-		Request:     requestCtx,
-		persistBase: persistBase,
-		cancelBase:  cancelBase,
+		Request:       cancellableRequest,
+		cancelRequest: cancelRequest,
+		persistBase:   persistBase,
+		cancelBase:    cancelBase,
 	}
 }
 

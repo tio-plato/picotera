@@ -21,6 +21,7 @@ import type {
   ProjectView,
   ProviderEndpointView,
   ProviderView,
+  RequestLiveView,
   RequestView,
   ScriptView,
   SimulateDispatchRequestBody,
@@ -328,6 +329,22 @@ export async function listRequestSpans(id: string): Promise<RequestView[]> {
   })
   if (error) fail(error, '加载请求链路失败')
   return data ?? []
+}
+
+export async function getRequestLive(id: string): Promise<RequestLiveView> {
+  const { data, error } = await api.GET('/api/picotera/requests/{id}/live', {
+    params: { path: { id } },
+  })
+  if (error) fail(error, '加载实时状态失败')
+  return data
+}
+
+export async function interruptRequest(id: string): Promise<boolean> {
+  const { data, error } = await api.POST('/api/picotera/requests/{id}/interrupt', {
+    params: { path: { id } },
+  })
+  if (error) fail(error, '打断请求失败')
+  return data?.interrupted ?? false
 }
 
 export async function listRequestTraces(filters: { limit: number; cursor?: string }) {

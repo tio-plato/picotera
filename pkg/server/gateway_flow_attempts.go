@@ -40,6 +40,7 @@ type attemptInput struct {
 	RequestBody       []byte
 	PendingRequest    jsx.PendingRequestShape
 	JS                gatewayJSContext
+	Entry             *liveEntry
 }
 
 type attemptPrepared struct {
@@ -64,6 +65,7 @@ type successInput struct {
 	RoutedModel       string
 	UpstreamModel     string
 	Prepared          attemptPrepared
+	Entry             *liveEntry
 }
 
 type attemptResult struct {
@@ -74,6 +76,11 @@ type attemptResult struct {
 func (f *gatewayFlow) runAttempts(sorted []jsx.Candidate, sidecars map[string]gatewayCandidateSidecar, js gatewayJSContext) attemptResult {
 	state := attemptState{}
 	for state.Index < len(sorted) && state.TotalAttemptCount < f.h.config.JSMaxTotalAttempts {
+		// The flow context is cancelled when the meta row is interrupted from
+		// the dashboard; stop trying further providers.
+		if f.ctxs.Request.Err() != nil {
+			break
+		}
 		cand := sorted[state.Index]
 		side, ok := lookupCandidateSidecar(f.config.Kind, sidecars, cand)
 		if !ok {
@@ -122,6 +129,7 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidate
 		cancel()
 		return false, false
 	}
+	defer f.h.liveRequests.Remove(input.UpstreamID)
 	prepared, err := f.buildRewrittenUpstreamRequest(input)
 	if err != nil {
 		var hookErr gatewayHookError
@@ -140,12 +148,12 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidate
 	upstreamStart := time.Now()
 	resp, err := f.h.forwardRequest(prepared.Request, side.ProxyURL)
 	if err != nil {
-		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, classifyForwardError(err, f.ctxs.Request))
+		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, f.finishReasonFor(input.UpstreamID, classifyForwardError(err, f.ctxs.Request)))
 		cancel()
 		return false, false
 	}
 	if resp.StatusCode == http.StatusOK {
-		f.config.HandleSuccess(successInput{Flow: f, Candidate: cand, Sidecar: side, Response: resp, AttemptCtx: input.AttemptCtx, Cancel: cancel, UpstreamID: input.UpstreamID, UpstreamCreatedAt: input.UpstreamCreatedAt, AttemptStart: input.AttemptStart, UpstreamStartTime: upstreamStart, ProviderID: side.ProviderID, RoutedModel: f.model.Routed, UpstreamModel: input.UpstreamModel, Prepared: prepared})
+		f.config.HandleSuccess(successInput{Flow: f, Candidate: cand, Sidecar: side, Response: resp, AttemptCtx: input.AttemptCtx, Cancel: cancel, UpstreamID: input.UpstreamID, UpstreamCreatedAt: input.UpstreamCreatedAt, AttemptStart: input.AttemptStart, UpstreamStartTime: upstreamStart, ProviderID: side.ProviderID, RoutedModel: f.model.Routed, UpstreamModel: input.UpstreamModel, Prepared: prepared, Entry: input.Entry})
 		return true, false
 	}
 	f.handleUpstreamNonOK(state, input, resp, side.ProviderID)
@@ -216,7 +224,8 @@ func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.Candidate, side gatewayCand
 		ProjectID:          f.meta.ProjectID,
 		CreatedAt:          pgtype.Timestamp{Time: upstreamIDCreatedAt, Valid: true},
 	})
-	return attemptInput{Candidate: cand, Sidecar: side, Annotations: candAnno, Decision: dec, CurrentRetryCount: state.CurrentRetryCount, TotalAttemptCount: state.TotalAttemptCount, AttemptCtx: attemptCtx, UpstreamID: upstreamID, UpstreamCreatedAt: upstreamCreatedAt, AttemptStart: time.Now(), UpstreamModel: upstreamModel, JS: js}, cancel, nil
+	entry := f.h.liveRequests.RegisterUpstream(upstreamID, cancel)
+	return attemptInput{Candidate: cand, Sidecar: side, Annotations: candAnno, Decision: dec, CurrentRetryCount: state.CurrentRetryCount, TotalAttemptCount: state.TotalAttemptCount, AttemptCtx: attemptCtx, UpstreamID: upstreamID, UpstreamCreatedAt: upstreamCreatedAt, AttemptStart: time.Now(), UpstreamModel: upstreamModel, JS: js, Entry: entry}, cancel, nil
 }
 
 func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attemptPrepared, error) {
@@ -287,6 +296,20 @@ func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInpu
 		CreatedAt:    pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
 	})
 	updateAttemptState(state, providerID, resp.StatusCode, errMsg, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg))
+}
+
+// finishReasonFor resolves the finish reason for a request row, preferring a
+// dashboard-interrupt stop reason recorded for the row itself, then falling
+// back to the meta row's stop reason (so an upstream cascaded-cancelled by a
+// meta interrupt reports the same reason), then to the supplied fallback.
+func (f *gatewayFlow) finishReasonFor(rowID string, fallback int32) int32 {
+	if r := f.h.liveRequests.StopReason(rowID); r != 0 {
+		return r
+	}
+	if r := f.h.liveRequests.StopReason(f.meta.ID); r != 0 {
+		return r
+	}
+	return fallback
 }
 
 func (f *gatewayFlow) recordAttemptFailure(state *attemptState, input attemptInput, providerID int32, statusCode int32, err error, finishReason int32) {

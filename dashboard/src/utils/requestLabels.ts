@@ -12,6 +12,8 @@ export function finishReasonLabel(reason: number | undefined | null): string {
       return '读取超时'
     case 6:
       return '流式错误'
+    case 7:
+      return '控制台打断'
     default:
       return reason === undefined || reason === null ? '—' : String(reason)
   }

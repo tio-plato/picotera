@@ -336,6 +336,13 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CreatedAt:     pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 
+	if input.Entry != nil && input.Entry.progress != nil {
+		input.Entry.progress.markHeaders(resp.StatusCode)
+		if metaEntry, ok := h.liveRequests.get(a.metaID); ok {
+			metaEntry.active.Store(input.Entry.progress)
+		}
+	}
+
 	// Forward upstream headers as-is when there's no bridge. When bridging,
 	// strip Content-Type and Content-Length because the body shape changes;
 	// we restore Content-Type below from the bridged side. Web-search
@@ -473,6 +480,10 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	buf := make([]byte, 32*1024)
 	var clientCapture bytes.Buffer
 	var finalReadErr error
+	var progress *liveProgress
+	if input.Entry != nil {
+		progress = input.Entry.progress
+	}
 	for {
 		n, readErr := idleReader.Read(buf)
 		if n > 0 {
@@ -480,6 +491,9 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 				w.Write(buf[:n])
 			}
 			clientCapture.Write(buf[:n])
+			if progress != nil {
+				progress.recordChunk(buf[:n])
+			}
 			if canFlush {
 				if !transforming && internalBody != resp.Body {
 					responseWriter.Flush()
@@ -541,6 +555,8 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		fr = int32(db.FinishReasonStreamError)
 	}
 
+	upstreamFr := input.Flow.finishReasonFor(a.upstreamID, fr)
+	metaFr := input.Flow.finishReasonFor(a.metaID, fr)
 	upstreamTimeSpent := int32(time.Since(a.attemptStart).Milliseconds())
 	h.updateRequestOnComplete(pctx, db.UpdateRequestOnCompleteParams{
 		ID:                 a.upstreamID,
@@ -556,7 +572,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: fr, Valid: true},
+		FinishReason:       pgtype.Int4{Int32: upstreamFr, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(a.gatewayStart).Milliseconds())
@@ -574,7 +590,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		CacheWrite1hTokens: cacheWrite1hTokens,
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: fr, Valid: true},
+		FinishReason:       pgtype.Int4{Int32: metaFr, Valid: true},
 		CreatedAt:          pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	_ = r

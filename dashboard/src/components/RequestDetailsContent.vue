@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
-import type { RequestView, ProviderView } from '@/api'
-import { listRequestSpans } from '@/api/client'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
+import type { RequestView, ProviderView, RequestLiveView } from '@/api'
+import { listRequestSpans, getRequestLive, interruptRequest } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
-import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay } from '@/ui'
+import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay, Button } from '@/ui'
 import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
 import {
@@ -43,6 +43,59 @@ const providersMap = computed(() => {
 const meta = computed(() => spans.value.find((s) => s.id === s.spanId) ?? null)
 const upstreams = computed(() => spans.value.filter((s) => s.id !== s.spanId))
 const selected = computed(() => spans.value.find((s) => s.id === selectedId.value) ?? null)
+
+// In-flight = pending (0) or header-received (1); these rows have live status
+// in process memory and can be interrupted from the dashboard.
+function isInFlight(r: RequestView | null | undefined): boolean {
+  return !!r && (r.status === 0 || r.status === 1)
+}
+const selectedInFlight = computed(() => isInFlight(selected.value))
+
+const queryClient = useQueryClient()
+const liveQuery = useQuery({
+  queryKey: computed(() => queryKeys.requestLive.detail(selectedId.value)),
+  queryFn: () => getRequestLive(selectedId.value),
+  enabled: computed(() => !!selectedId.value && selectedInFlight.value),
+  staleTime: 0,
+})
+const live = computed<RequestLiveView | null>(() => liveQuery.data.value ?? null)
+
+const interruptMutation = useMutation({
+  mutationFn: (id: string) => interruptRequest(id),
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.requestSpans.detail(props.requestId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.requestLive.detail(selectedId.value) })
+  },
+})
+function interruptSelected() {
+  if (!selected.value) return
+  interruptMutation.mutate(selected.value.id)
+}
+
+// Manual refresh only — no automatic polling. Refetches the span list and,
+// when the selected span is in-flight, its live snapshot.
+function refreshAll() {
+  spansQuery.refetch()
+  if (selectedInFlight.value) liveQuery.refetch()
+}
+
+function livePhaseLabel(phase: string | undefined): string {
+  switch (phase) {
+    case 'pending':
+      return '等待上游响应'
+    case 'headerReceived':
+      return '已收到响应头'
+    case 'streaming':
+      return '流式接收中'
+    default:
+      return '—'
+  }
+}
+
+function formatBytes(n: number | undefined | null) {
+  if (n === undefined || n === null) return '—'
+  return `${n.toLocaleString()} B`
+}
 
 function ensureSelectedRequest(sorted = spans.value) {
   if (!selectedId.value || !sorted.find((s) => s.id === selectedId.value)) {
@@ -244,12 +297,60 @@ watch(detailTabs, (tabs) => {
             </div>
           </button>
         </div>
-        <IconButton title="刷新" aria-label="刷新" @click="spansQuery.refetch()">
+        <IconButton title="刷新" aria-label="刷新" @click="refreshAll()">
           <Icon name="refresh" :size="13" />
         </IconButton>
       </div>
 
       <template v-if="selected">
+        <section
+          v-if="selectedInFlight"
+          class="flex flex-col gap-2.5 rounded-md border border-line bg-surface-50 p-3"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >实时状态</span
+            >
+            <Button
+              variant="danger"
+              size="sm"
+              :disabled="interruptMutation.isPending.value"
+              @click="interruptSelected()"
+            >
+              {{ interruptMutation.isPending.value ? '打断中…' : '打断' }}
+            </Button>
+          </div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <Field label="阶段" as="div">
+              <Tag :variant="live?.phase === 'streaming' ? 'accent' : 'muted'">{{
+                livePhaseLabel(live?.phase)
+              }}</Tag>
+            </Field>
+            <Field label="状态码" as="div">
+              <span class="font-mono tabular-nums text-sm">{{ live?.statusCode || '—' }}</span>
+            </Field>
+            <Field label="已收到字节" as="div">
+              <span class="font-mono tabular-nums text-sm">{{
+                formatBytes(live?.bytesReceived)
+              }}</span>
+            </Field>
+            <Field label="最近更新" as="div">
+              <span class="font-mono tabular-nums text-xs">{{ formatTime(live?.lastChunkAt) }}</span>
+            </Field>
+          </div>
+          <div v-if="live?.body" class="flex flex-col gap-1.5">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >响应体（至今）</span
+            >
+            <pre
+              class="font-mono text-xs whitespace-pre-wrap break-all bg-surface-0 border border-line-soft rounded-md p-3 m-0 text-ink max-h-80 overflow-auto"
+              >{{ live.body }}</pre
+            >
+          </div>
+          <StateText v-else-if="liveQuery.isFetching.value" :dashed="false" compact
+            >加载实时状态…</StateText
+          >
+        </section>
         <Tabs
           :model-value="detailTab"
           :tabs="detailTabs"
