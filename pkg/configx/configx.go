@@ -26,10 +26,8 @@ type Config struct {
 	JSMemoryLimit                int64         `mapstructure:"js_memory_limit"`
 	JSMaxTotalAttempts           int           `mapstructure:"js_max_total_attempts"`
 	JSMaxDelay                   time.Duration `mapstructure:"js_max_delay"`
-	LLMBridgeWASMPoolSize        int           `mapstructure:"llmbridge_wasm_pool_size"`
-	LLMBridgeWASMPath            string        `mapstructure:"llmbridge_wasm_path"`
-	LLMBridgeWASMCacheDir        string        `mapstructure:"llmbridge_wasm_cache_dir"`
-	LLMBridgeWASMRuntime         string        `mapstructure:"llmbridge_wasm_runtime"`
+	LLMBridgePluginPath          string        `mapstructure:"llmbridge_plugin_path"`
+	LLMBridgePluginStartTimeout  time.Duration `mapstructure:"llmbridge_plugin_start_timeout"`
 }
 
 type KVConfig struct {
@@ -80,8 +78,7 @@ func Parse() (*Config, error) {
 	viper.SetDefault("js_max_delay", 60*time.Second)
 	viper.SetDefault("kv.driver", "memory")
 	viper.SetDefault("kv.redis_url", "localhost:6379")
-	viper.SetDefault("llmbridge_wasm_pool_size", 1)
-	viper.SetDefault("llmbridge_wasm_runtime", "compiler")
+	viper.SetDefault("llmbridge_plugin_start_timeout", 10*time.Second)
 
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 

@@ -1,5 +1,3 @@
-//go:build !wasip1
-
 package llmbridge
 
 import (
@@ -7,13 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type Config struct {
-	PoolSize    int
-	WASMPath    string
-	CacheDir    string
-	RuntimeMode string
+	PluginPath         string
+	PluginStartTimeout time.Duration
 }
 
 type Bridge interface {
@@ -25,12 +22,15 @@ type Bridge interface {
 	AggregateStream(ctx context.Context, format Format, contentType string, body []byte, profile OutboundProfile) ([]byte, error)
 }
 
-var errDisabled = fmt.Errorf("llmbridge: wasm module is not configured")
+var errDisabled = fmt.Errorf("llmbridge: plugin is not configured")
 
 type disabledBridge struct{}
 
 func New(ctx context.Context, cfg Config) (Bridge, error) {
-	return newWASMBridge(ctx, cfg)
+	if cfg.PluginPath == "" {
+		return disabledBridge{}, nil
+	}
+	return newPluginBridge(ctx, cfg)
 }
 
 func (disabledBridge) Enabled() bool {

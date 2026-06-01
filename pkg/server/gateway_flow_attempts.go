@@ -401,7 +401,7 @@ func bridgeUnifiedRequest(ctx context.Context, f *gatewayFlow, input attemptInpu
 		return req, reqBody, nil
 	}
 	if !f.h.llmBridge.Enabled() {
-		return nil, nil, fmt.Errorf("llmbridge: wasm module is not configured")
+		return nil, nil, fmt.Errorf("llmbridge: plugin is not configured")
 	}
 	bridgeURL := req.URL.String()
 	if f.config.SourceFormat == llmbridge.FormatGeminiGenerateContent || f.config.SourceFormat == llmbridge.FormatGeminiStreamGenerateContent {

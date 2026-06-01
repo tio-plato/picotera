@@ -5,18 +5,17 @@ node = "latest"
 oapi-codegen = "latest"
 pnpm = "latest"
 sqlc = "latest"
-tinygo = "0.41.1"
 
 [env]
 _.file = [".env.default", { path = ".env", optional = true }]
-PICOTERA_LLMBRIDGE_WASM_PATH = "{{ config_root }}/dist/llmbridge.wasm"
+PICOTERA_LLMBRIDGE_PLUGIN_PATH = "{{ config_root }}/dist/picotera-llmbridge-plugin"
 GOOSE_MIGRATION_DIR = "{{ config_root }}/db/migrations"
 GOOSE_DRIVER = "postgres"
 GOOSE_DBSTRING = "{{ env.PICOTERA_DATABASE_URL }}"
 
 [tasks.server]
 run = "go run ./cmd/picotera/main.go"
-depends = "wasm"
+depends = "llmbridge-plugin"
 
 [tasks.web]
 run = "pnpm dev"
@@ -25,11 +24,7 @@ dir = "dashboard"
 [tasks.openapi]
 run = "go run ./cmd/picotera/main.go openapi > openapi.yaml"
 
-[tasks.wasm]
-run = "mkdir -p dist && tinygo build -tags tinygo -target=wasi -scheduler=none -panic=print -opt=z -buildmode=c-shared -o dist/llmbridge.wasm ./cmd/llmbridge-wasm"
-sources = [ "cmd/llmbridge-wasm", "pkg/llmbridge", "pkg/llmbridgeimpl", "third_party/axonhub/llm" ]
-outputs = [ "dist/llmbridge.wasm" ]
-
-[tasks.precompile-wasm]
-run = "go run ./cmd/picotera/main.go precompile-llmbridge-wasm"
-depends = "wasm"
+[tasks.llmbridge-plugin]
+run = "mkdir -p dist && go build -o dist/picotera-llmbridge-plugin ./cmd/picotera-llmbridge-plugin"
+sources = [ "cmd/picotera-llmbridge-plugin", "pkg/llmbridge", "pkg/llmbridgeimpl", "third_party/axonhub/llm" ]
+outputs = [ "dist/picotera-llmbridge-plugin" ]

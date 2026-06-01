@@ -7,15 +7,15 @@ import (
 )
 
 func TestMatchExactIDFirst(t *testing.T) {
-	got, err := Match("claude-haiku-3", 8)
+	got, err := Match("claude-haiku-4-5", 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) == 0 {
 		t.Fatal("expected candidates")
 	}
-	if got[0].ModelID != "claude-haiku-3" || got[0].Score != 0 {
-		t.Fatalf("first candidate = %s score %d, want exact claude-haiku-3", got[0].ModelID, got[0].Score)
+	if got[0].ModelID != "claude-haiku-4-5" || got[0].Score != 0 {
+		t.Fatalf("first candidate = %s score %d, want exact claude-haiku-4-5", got[0].ModelID, got[0].Score)
 	}
 }
 

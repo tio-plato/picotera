@@ -9,16 +9,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run Commands
 
-Toolchain is pinned via `mise.toml` (go, node, pnpm, sqlc, tinygo). The `[tasks]` block in `mise.toml` defines shortcuts; direct commands also work.
+Toolchain is pinned via `mise.toml` (go, node, pnpm, sqlc). The `[tasks]` block in `mise.toml` defines shortcuts; direct commands also work.
 
 ```bash
 # Backend
-mise run server                         # go run ./cmd/picotera/main.go (auto-builds WASM first)
-go build -o picotera ./cmd/picotera     # build binary (needs dist/llmbridge.wasm)
+mise run server                         # go run ./cmd/picotera/main.go (auto-builds llmbridge plugin first)
+go build -o picotera ./cmd/picotera     # build binary
 
-# WASM (llmbridge cross-format converter, built with tinygo)
-mise run wasm                           # tinygo build → dist/llmbridge.wasm
-mise run precompile-wasm                # ahead-of-time compile the WASM module
+# llmbridge cross-format converter plugin
+mise run llmbridge-plugin               # go build → dist/picotera-llmbridge-plugin
 
 # Infra (Postgres on :34052, KeyDB/Redis on :34051, MinIO on :34050)
 docker compose up -d
@@ -77,8 +76,8 @@ PicoTera is an API gateway that routes LLM inference requests across multiple pr
 - `pkg/errorx/` — Custom error types with structured codes.
 - `pkg/logx/` — logrus wrapper.
 - `pkg/jsx/` — embedded JavaScript runtime (built on `github.com/fastschema/qjs`) that runs user-supplied scripts as request-lifecycle hooks. See "Scripts" below.
-- `pkg/llmbridge/` — adapter types and interfaces for cross-format LLM payload conversion (Anthropic Messages, OpenAI Chat Completions, OpenAI Responses, Gemini GenerateContent). Built as a WASM module via tinygo for runtime use.
-- `pkg/llmbridgeimpl/` — concrete implementations of `llmbridge` converters, compiled into the WASM target (`cmd/llmbridge-wasm`). Depends on `github.com/looplj/axonhub/llm` (LGPL-3.0; attribution in `THIRD_PARTY_NOTICES.md`).
+- `pkg/llmbridge/` — adapter types and interfaces for cross-format LLM payload conversion (Anthropic Messages, OpenAI Chat Completions, OpenAI Responses, Gemini GenerateContent). The host talks to the converter through a HashiCorp go-plugin gRPC process.
+- `pkg/llmbridgeimpl/` — concrete implementations of `llmbridge` converters, compiled into the plugin target (`cmd/picotera-llmbridge-plugin`). Depends on `github.com/looplj/axonhub/llm` (LGPL-3.0; attribution in `THIRD_PARTY_NOTICES.md`).
 - `pkg/kv/` — key-value store abstraction with memory and Redis (KeyDB) backends. Used by user-supplied scripts. CRUD exposed at `/api/picotera/kv`.
 - `pkg/artifacts/` — request/response payload serialization. Stores bodies as zstd-compressed JSON with optional line-by-line SSE timings. MinIO-backed via the `picotera-artifacts` bucket.
 - `pkg/pricing/` — model pricing calculation and matching logic.

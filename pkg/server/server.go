@@ -116,23 +116,15 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}, queries, kvStore)
 
 	projectRouter := newProjectRouter(queries)
-	if config.LLMBridgeWASMPath != "" {
-		cacheDir := config.LLMBridgeWASMCacheDir
-		if cacheDir == "" {
-			cacheDir = llmbridge.DefaultCacheDir(config.LLMBridgeWASMPath)
-		}
+	if config.LLMBridgePluginPath != "" {
 		logx.WithContext(ctx).WithFields(logrus.Fields{
-			"path":      config.LLMBridgeWASMPath,
-			"cache_dir": cacheDir,
-			"runtime":   config.LLMBridgeWASMRuntime,
-			"pool":      config.LLMBridgeWASMPoolSize,
-		}).Info("prewarming llmbridge wasm")
+			"path":          config.LLMBridgePluginPath,
+			"start_timeout": config.LLMBridgePluginStartTimeout,
+		}).Info("starting llmbridge plugin")
 	}
 	llmBridge, err := llmbridge.New(ctx, llmbridge.Config{
-		PoolSize:    config.LLMBridgeWASMPoolSize,
-		WASMPath:    config.LLMBridgeWASMPath,
-		CacheDir:    config.LLMBridgeWASMCacheDir,
-		RuntimeMode: config.LLMBridgeWASMRuntime,
+		PluginPath:         config.LLMBridgePluginPath,
+		PluginStartTimeout: config.LLMBridgePluginStartTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize llmbridge: %w", err)

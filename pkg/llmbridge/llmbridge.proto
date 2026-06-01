@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package picotera.llmbridge.v1;
+
+option go_package = "picotera/pkg/llmbridge;llmbridge";
+
+service LLMBridge {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc BridgeRequest(BridgeRequestRequest) returns (BridgeBodyResponse);
+  rpc BridgeNonStream(BridgeNonStreamRequest) returns (BridgeBodyResponse);
+  rpc BridgeStream(stream BridgeStreamChunk) returns (stream BridgeStreamChunk);
+  rpc AggregateStream(AggregateStreamRequest) returns (AggregateStreamResponse);
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  uint32 abi_version = 1;
+}
+
+message HeaderValues {
+  repeated string values = 1;
+}
+
+message OutboundProfileMessage {
+  string type = 1;
+  bytes config_json = 2;
+}
+
+message BridgeRequestRequest {
+  int32 src = 1;
+  int32 dst = 2;
+  bytes body = 3;
+  map<string, HeaderValues> headers = 4;
+  string pending_url = 5;
+  OutboundProfileMessage profile = 6;
+}
+
+message BridgeNonStreamRequest {
+  int32 src = 1;
+  int32 upstream = 2;
+  bytes body = 3;
+  map<string, HeaderValues> headers = 4;
+  OutboundProfileMessage profile = 5;
+}
+
+message BridgeBodyResponse {
+  bytes body = 1;
+  string content_type = 2;
+}
+
+message AggregateStreamRequest {
+  int32 format = 1;
+  string content_type = 2;
+  bytes body = 3;
+  OutboundProfileMessage profile = 4;
+}
+
+message AggregateStreamResponse {
+  bytes body = 1;
+}
+
+message BridgeStreamStart {
+  int32 src = 1;
+  int32 upstream = 2;
+  string content_type = 3;
+  OutboundProfileMessage profile = 4;
+}
+
+message BridgeStreamEnd {}
+
+message BridgeStreamError {
+  string message = 1;
+}
+
+message BridgeStreamChunk {
+  oneof payload {
+    BridgeStreamStart start = 1;
+    bytes data = 2;
+    BridgeStreamEnd end = 3;
+    BridgeStreamError error = 4;
+  }
+}

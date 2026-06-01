@@ -55,7 +55,7 @@
 ghcr.io/oott123/picotera:master
 ```
 
-该镜像包含 LGPL 的 wasm 组件，位于 `/app/llmbridge.wasm` 。
+该镜像包含 LGPL 的请求转换插件，位于 `/app/picotera-llmbridge-plugin` 。
 
 根据 LGPL 许可证的授权，你可以自由地通过挂载文件以替换该组件。
 
@@ -87,22 +87,13 @@ PICOTERA_S3_PUBLIC_URL=http://localhost:34050
 
 ### 请求转换组件
 
-请求转换组件使用 AxonHub 的 LGPL 代码，因而需要单独编译，通过 wasm 模块链接使用。
-默认构建使用 TinyGo 生成 size 优化的 WASI reactor，同时保留 DWARF/name 调试信息：
+请求转换组件使用 AxonHub 的 LGPL 代码，因而需要单独编译，通过 go-plugin 作为独立进程使用：
 
 ```bash
-mise run wasm
+mise run llmbridge-plugin
 ```
 
-生成的 `dist/llmbridge.wasm` 需要通过 `PICOTERA_LLMBRIDGE_WASM_PATH` 提供给主程序。
-
-如果遇到 `llmbridge: allocate guest memory`、`wasm error: out of bounds memory access` 之类的错误，需要排查 wasm 内部堆栈时，可以切到 interpreter runtime 复现，堆栈通常更稳定：
-
-```bash
-PICOTERA_LLMBRIDGE_WASM_RUNTIME=interpreter mise run server
-```
-
-宿主侧会把 wasm stdout/stderr 一并附在 `llmbridge` 错误里。
+生成的 `dist/picotera-llmbridge-plugin` 需要通过 `PICOTERA_LLMBRIDGE_PLUGIN_PATH` 提供给主程序。该路径会按原样执行；为空时跨格式转换被禁用，同格式请求仍保持透传。
 
 ### 优化 Timescaledb 参数
 
@@ -112,5 +103,5 @@ docker compose exec -it postgres timescaledb-tune --yes -cpus 1 -memory 512MB
 
 ## 协议
 
-* `cmd/llmbridge-wasm`, `pkg/llmbridgeimpl`, `third_party/axonhub`: LGPLv3
+* `cmd/picotera-llmbridge-plugin`, `pkg/llmbridgeimpl`, `third_party/axonhub`: LGPLv3
 * 其它： BSD 3-Clause

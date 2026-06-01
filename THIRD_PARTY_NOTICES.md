@@ -3,16 +3,18 @@
 PicoTera links against the following third-party Go modules whose licenses
 require attribution.
 
-## llmbridge.wasm / github.com/looplj/axonhub/llm
+## picotera-llmbridge-plugin / github.com/looplj/axonhub/llm
 
-PicoTera can load an optional `llmbridge.wasm` component to convert LLM
+PicoTera can load an optional `picotera-llmbridge-plugin` component to convert LLM
 request and response payloads between Anthropic Messages, OpenAI Chat
 Completions, OpenAI Responses, and Gemini GenerateContent formats. The
-component is built from `cmd/llmbridge-wasm/` and `pkg/llmbridgeimpl/`.
-The main `picotera` binary does not embed this module; operators enable it
-by setting `PICOTERA_LLMBRIDGE_WASM_PATH` to an external WASM file.
+component is built from `cmd/picotera-llmbridge-plugin/` and
+`pkg/llmbridgeimpl/`. The main `picotera` binary does not embed this
+component; operators enable it by setting `PICOTERA_LLMBRIDGE_PLUGIN_PATH`
+to an external executable path.
 
-The `llmbridge.wasm` component imports a local copy of the `llm/` sub-tree of
+The `picotera-llmbridge-plugin` component imports a local copy of the `llm/`
+sub-tree of
 <https://github.com/looplj/axonhub> (the `transformer`, `streams`,
 `httpclient`, and core packages).
 
@@ -26,21 +28,18 @@ The pinned module version is:
 
   `github.com/looplj/axonhub/llm v0.0.0-20260504030509-3a5f34936974`
 
-PicoTera carries that sub-tree under `third_party/axonhub/llm` so the TinyGo
-WASI build can exclude network-only helpers that are not used by the
-conversion module. The TinyGo-specific replacements fail if invoked.
+PicoTera carries that sub-tree under `third_party/axonhub/llm`.
 
 Rebuild the component after changing `pkg/llmbridgeimpl/`,
-`cmd/llmbridge-wasm/`, or the pinned axonhub module copy:
+`cmd/picotera-llmbridge-plugin/`, or the pinned axonhub module copy:
 
-  `mise run wasm`
+  `mise run llmbridge-plugin`
 
-The default Docker runtime target contains only `/app/picotera`. The
-`runtime-lgpl` target reuses that same binary layer, adds
-`/app/llmbridge.wasm`, and sets
-`PICOTERA_LLMBRIDGE_WASM_PATH=/app/llmbridge.wasm`. Operators can mount a
-replacement module into either image and point `PICOTERA_LLMBRIDGE_WASM_PATH`
-at that exact file.
+The Docker runtime image contains `/app/picotera` and
+`/app/picotera-llmbridge-plugin`, and sets
+`PICOTERA_LLMBRIDGE_PLUGIN_PATH=/app/picotera-llmbridge-plugin`. Operators can
+mount a replacement executable into the image and point
+`PICOTERA_LLMBRIDGE_PLUGIN_PATH` at that exact file.
 
-The main `picotera` binary only imports the host-side WASM client. AxonHub
-transformer code is used by the separately built WASM component.
+The main `picotera` binary only imports the host-side plugin client. AxonHub
+transformer code is used by the separately built plugin component.
