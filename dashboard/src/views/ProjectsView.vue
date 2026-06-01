@@ -78,6 +78,7 @@ function fmtTimestamp(ts?: string): string {
           <Tr v-for="p in projects" :key="p.id" :selected="panel.isActive(`project:${p.id}`)">
             <Td>
               <span class="font-medium">{{ p.name }}</span>
+              <Tag v-if="p.autoCreated" variant="muted" class="ml-1.5">自动</Tag>
               <Tag v-if="!(p.paths?.length ?? 0)" variant="muted" class="ml-1.5">无路径</Tag>
             </Td>
             <Td>
