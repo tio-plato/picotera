@@ -8,9 +8,38 @@ import (
 
 	"picotera/pkg/llmbridge"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+func TestRecoverUnaryConvertsPanicToInternal(t *testing.T) {
+	resp, err := recoverUnary(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/llmbridge.LLMBridge/BridgeRequest"},
+		func(context.Context, any) (any, error) { panic("boom") })
+	if resp != nil {
+		t.Fatalf("resp = %v, want nil", resp)
+	}
+	if status.Code(err) != codes.Internal || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("err = %v, want Internal containing panic value", err)
+	}
+}
+
+func TestRecoverStreamConvertsPanicToInternal(t *testing.T) {
+	err := recoverStream(nil, &fakeBridgeStream{ctx: context.Background()}, &grpc.StreamServerInfo{FullMethod: "/llmbridge.LLMBridge/BridgeStream"},
+		func(any, grpc.ServerStream) error { panic("kaboom") })
+	if status.Code(err) != codes.Internal || !strings.Contains(err.Error(), "kaboom") {
+		t.Fatalf("err = %v, want Internal containing panic value", err)
+	}
+}
+
+func TestRecoverUnaryPassesThroughNormalError(t *testing.T) {
+	want := status.Error(codes.InvalidArgument, "nope")
+	resp, err := recoverUnary(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: "/llmbridge.LLMBridge/BridgeRequest"},
+		func(context.Context, any) (any, error) { return nil, want })
+	if resp != nil || err != want {
+		t.Fatalf("resp=%v err=%v, want nil and the original error", resp, err)
+	}
+}
 
 func TestBridgeStreamFirstFrameMustBeStart(t *testing.T) {
 	stream := &fakeBridgeStream{

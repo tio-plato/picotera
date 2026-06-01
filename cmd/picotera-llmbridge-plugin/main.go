@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"runtime/debug"
 
 	"picotera/pkg/llmbridge"
 	"picotera/pkg/llmbridgeimpl"
 
 	plugin "github.com/hashicorp/go-plugin"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -18,8 +21,40 @@ func main() {
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: llmbridge.PluginHandshake(),
 		Plugins:         llmbridge.PluginMap(&server{}),
-		GRPCServer:      plugin.DefaultGRPCServer,
+		GRPCServer: func(opts []grpc.ServerOption) *grpc.Server {
+			opts = append(opts,
+				grpc.ChainUnaryInterceptor(recoverUnary),
+				grpc.ChainStreamInterceptor(recoverStream),
+			)
+			return grpc.NewServer(opts...)
+		},
 	})
+}
+
+// recoverUnary turns a panic in a conversion handler into an Internal error for
+// that single request instead of letting it crash the whole plugin process.
+func recoverUnary(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = recoveredError(info.FullMethod, r)
+		}
+	}()
+	return handler(ctx, req)
+}
+
+// recoverStream is the streaming counterpart to recoverUnary.
+func recoverStream(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = recoveredError(info.FullMethod, r)
+		}
+	}()
+	return handler(srv, ss)
+}
+
+func recoveredError(method string, r any) error {
+	fmt.Fprintf(os.Stderr, "llmbridge: panic in %s: %v\n%s\n", method, r, debug.Stack())
+	return status.Errorf(codes.Internal, "llmbridge: panic: %v", r)
 }
 
 type server struct {

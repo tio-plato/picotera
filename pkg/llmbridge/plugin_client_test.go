@@ -130,6 +130,59 @@ func TestPluginBridgeIdentityStreamPassthrough(t *testing.T) {
 	}
 }
 
+func TestPluginBridgeSelfHealsAfterCrash(t *testing.T) {
+	bridge := newTestPluginBridge(t)
+	pb, ok := bridge.(*pluginBridge)
+	if !ok {
+		t.Fatalf("bridge is %T, want *pluginBridge", bridge)
+	}
+
+	// Simulate the subprocess dying: kill it out from under the bridge.
+	old := pb.client
+	old.Kill()
+	if !old.Exited() {
+		t.Fatalf("killed client should report Exited")
+	}
+
+	body := []byte(`{"model":"claude-3-5-sonnet","messages":[{"role":"user","content":"ping"}],"max_tokens":16}`)
+	got, _, err := bridge.BridgeRequest(t.Context(), FormatAnthropicMessages, FormatOpenAIChatCompletions, body, http.Header{"Content-Type": []string{"application/json"}}, "/v1/messages", OutboundProfile{Type: "openai"})
+	if err != nil {
+		t.Fatalf("BridgeRequest after crash should self-heal: %v", err)
+	}
+	if model := gjson.GetBytes(got, "model").Str; model != "claude-3-5-sonnet" {
+		t.Fatalf("model = %q body=%s", model, got)
+	}
+	if pb.client == old {
+		t.Fatalf("bridge should have restarted with a fresh client")
+	}
+}
+
+func TestPluginBridgeStreamSelfHealsAfterCrash(t *testing.T) {
+	bridge := newTestPluginBridge(t)
+	pb, ok := bridge.(*pluginBridge)
+	if !ok {
+		t.Fatalf("bridge is %T, want *pluginBridge", bridge)
+	}
+
+	old := pb.client
+	old.Kill()
+
+	upstream := io.NopCloser(bytes.NewBufferString("data: [DONE]\n\n"))
+	stream, err := bridge.BridgeStream(t.Context(), FormatAnthropicMessages, FormatOpenAIChatCompletions, upstream, "text/event-stream", OutboundProfile{Type: "openai"})
+	if err != nil {
+		t.Fatalf("BridgeStream after crash should self-heal: %v", err)
+	}
+	if _, err := io.ReadAll(stream); err != nil {
+		t.Fatalf("ReadAll bridged stream: %v", err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatalf("Close bridged stream: %v", err)
+	}
+	if pb.client == old {
+		t.Fatalf("bridge should have restarted with a fresh client")
+	}
+}
+
 func TestProfileConfigJSONValidation(t *testing.T) {
 	_, err := profileToProto(OutboundProfile{Type: "openai", Config: map[string]any{"bad": func() {}}})
 	if err == nil || !strings.Contains(err.Error(), "encode outbound profile config") {

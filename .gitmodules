@@ -2,3 +2,6 @@
 	path = third_party/axonhub
 	url = https://github.com/33forks/picotera-axonhub
 	branch = unstable
+[submodule "third_party/go-sse"]
+	path = third_party/go-sse
+	url = git@github.com:33forks/picotera-go-sse.git

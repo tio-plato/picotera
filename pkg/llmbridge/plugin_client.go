@@ -1,25 +1,39 @@
 package llmbridge
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
+	"picotera/pkg/logx"
+
 	plugin "github.com/hashicorp/go-plugin"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const defaultPluginStartTimeout = 10 * time.Second
 
 type pluginBridge struct {
+	cfg    Config
+	stderr io.Writer
+
+	mu     sync.Mutex
 	client *plugin.Client
 	grpc   LLMBridgeClient
 }
 
-func newPluginBridge(ctx context.Context, cfg Config) (Bridge, error) {
+// startPlugin spawns the plugin subprocess and performs the handshake. It is
+// used both for the initial start and for transparent restarts after a crash,
+// so the handshake is anchored to context.Background() rather than any single
+// request's (possibly cancelled) context.
+func startPlugin(cfg Config, stderr io.Writer) (*plugin.Client, LLMBridgeClient, error) {
 	timeout := cfg.PluginStartTimeout
 	if timeout == 0 {
 		timeout = defaultPluginStartTimeout
@@ -30,34 +44,101 @@ func newPluginBridge(ctx context.Context, cfg Config) (Bridge, error) {
 		Cmd:              exec.Command(cfg.PluginPath),
 		StartTimeout:     timeout,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		Stderr:           stderr,
 	})
 	rpcClient, err := client.Client()
 	if err != nil {
 		client.Kill()
-		return nil, fmt.Errorf("llmbridge: start plugin: %w", err)
+		return nil, nil, fmt.Errorf("llmbridge: start plugin: %w", err)
 	}
 	raw, err := rpcClient.Dispense(pluginName)
 	if err != nil {
 		client.Kill()
-		return nil, fmt.Errorf("llmbridge: dispense plugin: %w", err)
+		return nil, nil, fmt.Errorf("llmbridge: dispense plugin: %w", err)
 	}
 	grpcClient, ok := raw.(LLMBridgeClient)
 	if !ok {
 		client.Kill()
-		return nil, fmt.Errorf("llmbridge: plugin returned unexpected client %T", raw)
+		return nil, nil, fmt.Errorf("llmbridge: plugin returned unexpected client %T", raw)
 	}
-	infoCtx, cancel := context.WithTimeout(ctx, timeout)
+	infoCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	info, err := grpcClient.GetInfo(infoCtx, &GetInfoRequest{})
 	if err != nil {
 		client.Kill()
-		return nil, fmt.Errorf("llmbridge: validate plugin: %w", err)
+		return nil, nil, fmt.Errorf("llmbridge: validate plugin: %w", err)
 	}
 	if err := validatePluginABI(info.GetAbiVersion()); err != nil {
 		client.Kill()
+		return nil, nil, err
+	}
+	return client, grpcClient, nil
+}
+
+func newPluginBridge(_ context.Context, cfg Config) (Bridge, error) {
+	stderr := newPluginLogWriter()
+	client, grpcClient, err := startPlugin(cfg, stderr)
+	if err != nil {
 		return nil, err
 	}
-	return &pluginBridge{client: client, grpc: grpcClient}, nil
+	return &pluginBridge{cfg: cfg, stderr: stderr, client: client, grpc: grpcClient}, nil
+}
+
+// acquire returns a live gRPC client, restarting the subprocess if it has
+// exited since the last call.
+func (b *pluginBridge) acquire() (*plugin.Client, LLMBridgeClient, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.client != nil && b.grpc != nil && !b.client.Exited() {
+		return b.client, b.grpc, nil
+	}
+	return b.restartLocked()
+}
+
+// reacquire is called after a call failed with codes.Unavailable. It restarts
+// the subprocess only if the failed client (stale) is still the current one;
+// if another goroutine already restarted, the fresh client is returned. This
+// dedupes concurrent restarts so N simultaneous failures spawn one process.
+func (b *pluginBridge) reacquire(stale *plugin.Client) (*plugin.Client, LLMBridgeClient, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.client != stale && b.client != nil && b.grpc != nil && !b.client.Exited() {
+		return b.client, b.grpc, nil
+	}
+	return b.restartLocked()
+}
+
+func (b *pluginBridge) restartLocked() (*plugin.Client, LLMBridgeClient, error) {
+	if b.client != nil {
+		b.client.Kill()
+	}
+	client, grpcClient, err := startPlugin(b.cfg, b.stderr)
+	if err != nil {
+		b.client = nil
+		b.grpc = nil
+		return nil, nil, err
+	}
+	b.client = client
+	b.grpc = grpcClient
+	return client, grpcClient, nil
+}
+
+// callUnary runs a unary gRPC call against a live plugin, restarting and
+// retrying exactly once if the plugin turns out to be dead.
+func (b *pluginBridge) callUnary(do func(LLMBridgeClient) error) error {
+	client, grpcClient, err := b.acquire()
+	if err != nil {
+		return err
+	}
+	err = do(grpcClient)
+	if err == nil || status.Code(err) != codes.Unavailable {
+		return err
+	}
+	_, grpcClient, rerr := b.reacquire(client)
+	if rerr != nil {
+		return err
+	}
+	return do(grpcClient)
 }
 
 func (b *pluginBridge) Enabled() bool {
@@ -65,7 +146,11 @@ func (b *pluginBridge) Enabled() bool {
 }
 
 func (b *pluginBridge) Close(context.Context) error {
-	b.client.Kill()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.client != nil {
+		b.client.Kill()
+	}
 	return nil
 }
 
@@ -80,13 +165,18 @@ func (b *pluginBridge) BridgeRequest(ctx context.Context, src, dst Format, body 
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := b.grpc.BridgeRequest(ctx, &BridgeRequestRequest{
-		Src:        formatToProto(src),
-		Dst:        formatToProto(dst),
-		Body:       body,
-		Headers:    headerToProto(headers),
-		PendingUrl: pendingURL,
-		Profile:    profileMsg,
+	var resp *BridgeBodyResponse
+	err = b.callUnary(func(c LLMBridgeClient) error {
+		var callErr error
+		resp, callErr = c.BridgeRequest(ctx, &BridgeRequestRequest{
+			Src:        formatToProto(src),
+			Dst:        formatToProto(dst),
+			Body:       body,
+			Headers:    headerToProto(headers),
+			PendingUrl: pendingURL,
+			Profile:    profileMsg,
+		})
+		return callErr
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("llmbridge: bridge request plugin call: %w", err)
@@ -105,12 +195,17 @@ func (b *pluginBridge) BridgeNonStream(ctx context.Context, src, upstream Format
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := b.grpc.BridgeNonStream(ctx, &BridgeNonStreamRequest{
-		Src:      formatToProto(src),
-		Upstream: formatToProto(upstream),
-		Body:     upstreamBody,
-		Headers:  headerToProto(upstreamHeaders),
-		Profile:  profileMsg,
+	var resp *BridgeBodyResponse
+	err = b.callUnary(func(c LLMBridgeClient) error {
+		var callErr error
+		resp, callErr = c.BridgeNonStream(ctx, &BridgeNonStreamRequest{
+			Src:      formatToProto(src),
+			Upstream: formatToProto(upstream),
+			Body:     upstreamBody,
+			Headers:  headerToProto(upstreamHeaders),
+			Profile:  profileMsg,
+		})
+		return callErr
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("llmbridge: bridge non-stream plugin call: %w", err)
@@ -126,11 +221,16 @@ func (b *pluginBridge) AggregateStream(ctx context.Context, format Format, conte
 	if err != nil {
 		return nil, err
 	}
-	resp, err := b.grpc.AggregateStream(ctx, &AggregateStreamRequest{
-		Format:      formatToProto(format),
-		ContentType: contentType,
-		Body:        body,
-		Profile:     profileMsg,
+	var resp *AggregateStreamResponse
+	err = b.callUnary(func(c LLMBridgeClient) error {
+		var callErr error
+		resp, callErr = c.AggregateStream(ctx, &AggregateStreamRequest{
+			Format:      formatToProto(format),
+			ContentType: contentType,
+			Body:        body,
+			Profile:     profileMsg,
+		})
+		return callErr
 	})
 	if err != nil {
 		return nil, fmt.Errorf("llmbridge: aggregate stream plugin call: %w", err)
@@ -151,20 +251,43 @@ func (b *pluginBridge) BridgeStream(ctx context.Context, src, upstream Format, u
 		_ = upstreamBody.Close()
 		return nil, err
 	}
-	stream, err := b.grpc.BridgeStream(ctx)
-	if err != nil {
-		_ = upstreamBody.Close()
-		return nil, fmt.Errorf("llmbridge: open bridge stream plugin call: %w", err)
-	}
-	if err := stream.Send(&BridgeStreamChunk{Payload: &BridgeStreamChunk_Start{Start: &BridgeStreamStart{
+	// openStream opens the bidi stream and sends the start frame. Restarting
+	// after the pump goroutines begin is not possible (bytes may already have
+	// reached the client), so a dead plugin is only recovered before the first
+	// frame here; a mid-stream death surfaces as a stream error and the next
+	// request recovers via acquire().
+	startFrame := &BridgeStreamChunk{Payload: &BridgeStreamChunk_Start{Start: &BridgeStreamStart{
 		Src:         formatToProto(src),
 		Upstream:    formatToProto(upstream),
 		ContentType: upstreamCT,
 		Profile:     profileMsg,
-	}}}); err != nil {
+	}}}
+	openStream := func(c LLMBridgeClient) (LLMBridge_BridgeStreamClient, error) {
+		s, err := c.BridgeStream(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.Send(startFrame); err != nil {
+			_ = s.CloseSend()
+			return nil, err
+		}
+		return s, nil
+	}
+
+	client, grpcClient, err := b.acquire()
+	if err != nil {
 		_ = upstreamBody.Close()
-		_ = stream.CloseSend()
-		return nil, fmt.Errorf("llmbridge: send bridge stream start: %w", err)
+		return nil, fmt.Errorf("llmbridge: open bridge stream plugin call: %w", err)
+	}
+	stream, err := openStream(grpcClient)
+	if err != nil && status.Code(err) == codes.Unavailable {
+		if _, grpcClient, rerr := b.reacquire(client); rerr == nil {
+			stream, err = openStream(grpcClient)
+		}
+	}
+	if err != nil {
+		_ = upstreamBody.Close()
+		return nil, fmt.Errorf("llmbridge: open bridge stream plugin call: %w", err)
 	}
 
 	pr, pw := io.Pipe()
@@ -238,6 +361,38 @@ func (b *pluginBridge) BridgeStream(ctx context.Context, src, upstream Format, u
 	}()
 
 	return &pluginStreamReadCloser{ReadCloser: pr, close: closeAll, done: done}, nil
+}
+
+// pluginLogWriter forwards the plugin subprocess's stderr to the gateway log,
+// one line per record, so panic stack traces and exit causes are visible
+// instead of being discarded (go-plugin defaults ClientConfig.Stderr to
+// io.Discard).
+type pluginLogWriter struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func newPluginLogWriter() *pluginLogWriter {
+	return &pluginLogWriter{}
+}
+
+func (w *pluginLogWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.buf.Write(p)
+	for {
+		line, err := w.buf.ReadString('\n')
+		if err != nil {
+			// No complete line yet; put the partial back and wait for more.
+			w.buf.Reset()
+			w.buf.WriteString(line)
+			break
+		}
+		if trimmed := strings.TrimRight(line, "\r\n"); trimmed != "" {
+			logx.New().WithField("source", "llmbridge-plugin").Warn(trimmed)
+		}
+	}
+	return len(p), nil
 }
 
 type pluginStreamReadCloser struct {
