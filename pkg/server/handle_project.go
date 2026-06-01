@@ -84,8 +84,6 @@ func (s *Server) handleUpsertProject(ctx context.Context, in *contract.UpsertPro
 		return nil, huma.Error500InternalServerError("failed to upsert project", err)
 	}
 
-	s.projectRouter.Invalidate()
-
 	v, err := contract.ToProjectView(&row)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to decode project", err)
@@ -97,6 +95,5 @@ func (s *Server) handleDeleteProject(ctx context.Context, in *contract.DeletePro
 	if err := s.queries.DeleteProject(ctx, in.Body.ID); err != nil {
 		return nil, huma.Error500InternalServerError("failed to delete project", err)
 	}
-	s.projectRouter.Invalidate()
 	return &struct{}{}, nil
 }

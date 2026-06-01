@@ -14,3 +14,73 @@ func TestExtractProjectCandidatesEnvWorkingDirectoryEscapedNewlines(t *testing.T
 		t.Fatalf("expected env working directory candidate, got %#v", candidates)
 	}
 }
+
+func TestAncestorPaths(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{
+			name: "unix multi-level",
+			in:   "/path/to/foo/bar",
+			want: []string{"/path/to/foo/bar", "/path/to/foo", "/path/to", "/path", "/"},
+		},
+		{
+			name: "windows multi-level",
+			in:   `C:\Users\foo`,
+			want: []string{`C:\Users\foo`, `C:\Users`, "C:"},
+		},
+		{
+			name: "unix root",
+			in:   "/",
+			want: []string{"/"},
+		},
+		{
+			name: "trailing separator",
+			in:   "/path/to/foo/",
+			want: []string{"/path/to/foo/", "/path/to/foo", "/path/to", "/path", "/"},
+		},
+		{
+			name: "mixed separators",
+			in:   `/path\to/foo`,
+			want: []string{`/path\to/foo`, `/path\to`, "/path", "/"},
+		},
+		{
+			name: "empty",
+			in:   "",
+			want: nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ancestorPaths(tc.in)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("ancestorPaths(%q) = %#v, want %#v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLastPathComponent(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"/a/b/foo", "foo"},
+		{`C:\a\foo`, "foo"},
+		{"/a/b/foo/", "foo"},
+		{`C:\a\foo\`, "foo"},
+		{"foo", "foo"},
+		{"/", ""},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got := lastPathComponent(tc.in)
+			if got != tc.want {
+				t.Fatalf("lastPathComponent(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

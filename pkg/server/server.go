@@ -37,7 +37,6 @@ type Server struct {
 	kvStore          kv.Store
 	staticHandler    http.Handler
 	endpointRouter   *endpointRouter
-	projectRouter    *projectRouter
 	projectExtractor *projectExtractor
 	llmBridge        llmbridge.Bridge
 	liveRequests     *liveRequestRegistry
@@ -115,7 +114,6 @@ func NewServer(ctx context.Context) (*Server, error) {
 		MaxDelay:         config.JSMaxDelay,
 	}, queries, kvStore)
 
-	projectRouter := newProjectRouter(queries)
 	if config.LLMBridgePluginPath != "" {
 		logx.WithContext(ctx).WithFields(logrus.Fields{
 			"path":          config.LLMBridgePluginPath,
@@ -141,8 +139,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		kvStore:          kvStore,
 		staticHandler:    static.Handler(),
 		endpointRouter:   newEndpointRouter(queries),
-		projectRouter:    projectRouter,
-		projectExtractor: newProjectExtractor(projectRouter),
+		projectExtractor: newProjectExtractor(queries),
 		llmBridge:        llmBridge,
 		liveRequests:     newLiveRequestRegistry(),
 	}

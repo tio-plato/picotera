@@ -21,7 +21,7 @@ func (q *Queries) DeleteProject(ctx context.Context, id int32) error {
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, name, paths, first_seen_at, last_seen_at, created_at, updated_at FROM project WHERE id = $1 LIMIT 1
+SELECT id, name, paths, first_seen_at, last_seen_at, created_at, updated_at, auto_created FROM project WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id int32) (Project, error) {
@@ -35,12 +35,13 @@ func (q *Queries) GetProject(ctx context.Context, id int32) (Project, error) {
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AutoCreated,
 	)
 	return i, err
 }
 
 const getProjectByName = `-- name: GetProjectByName :one
-SELECT id, name, paths, first_seen_at, last_seen_at, created_at, updated_at FROM project WHERE name = $1 LIMIT 1
+SELECT id, name, paths, first_seen_at, last_seen_at, created_at, updated_at, auto_created FROM project WHERE name = $1 LIMIT 1
 `
 
 func (q *Queries) GetProjectByName(ctx context.Context, name string) (Project, error) {
@@ -54,12 +55,38 @@ func (q *Queries) GetProjectByName(ctx context.Context, name string) (Project, e
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AutoCreated,
+	)
+	return i, err
+}
+
+const insertAutoCreatedProject = `-- name: InsertAutoCreatedProject :one
+INSERT INTO project (name, paths, auto_created) VALUES ($1, $2, true) RETURNING id, name, paths, first_seen_at, last_seen_at, created_at, updated_at, auto_created
+`
+
+type InsertAutoCreatedProjectParams struct {
+	Name  string `json:"name"`
+	Paths []byte `json:"paths"`
+}
+
+func (q *Queries) InsertAutoCreatedProject(ctx context.Context, arg InsertAutoCreatedProjectParams) (Project, error) {
+	row := q.db.QueryRow(ctx, insertAutoCreatedProject, arg.Name, arg.Paths)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Paths,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AutoCreated,
 	)
 	return i, err
 }
 
 const insertProject = `-- name: InsertProject :one
-INSERT INTO project (name, paths) VALUES ($1, $2) RETURNING id, name, paths, first_seen_at, last_seen_at, created_at, updated_at
+INSERT INTO project (name, paths) VALUES ($1, $2) RETURNING id, name, paths, first_seen_at, last_seen_at, created_at, updated_at, auto_created
 `
 
 type InsertProjectParams struct {
@@ -78,43 +105,13 @@ func (q *Queries) InsertProject(ctx context.Context, arg InsertProjectParams) (P
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AutoCreated,
 	)
 	return i, err
 }
 
-const listProjectPaths = `-- name: ListProjectPaths :many
-SELECT id AS project_id, jsonb_array_elements_text(paths) AS path
-FROM project
-WHERE jsonb_array_length(paths) > 0
-`
-
-type ListProjectPathsRow struct {
-	ProjectID int32  `json:"projectId"`
-	Path      string `json:"path"`
-}
-
-func (q *Queries) ListProjectPaths(ctx context.Context) ([]ListProjectPathsRow, error) {
-	rows, err := q.db.Query(ctx, listProjectPaths)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListProjectPathsRow
-	for rows.Next() {
-		var i ListProjectPathsRow
-		if err := rows.Scan(&i.ProjectID, &i.Path); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listProjects = `-- name: ListProjects :many
-SELECT id, name, paths, first_seen_at, last_seen_at, created_at, updated_at FROM project ORDER BY name ASC
+SELECT id, name, paths, first_seen_at, last_seen_at, created_at, updated_at, auto_created FROM project ORDER BY name ASC
 `
 
 func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
@@ -134,6 +131,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 			&i.LastSeenAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AutoCreated,
 		); err != nil {
 			return nil, err
 		}
@@ -145,8 +143,24 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 	return items, nil
 }
 
+const matchProjectByPaths = `-- name: MatchProjectByPaths :one
+SELECT p.id
+FROM project AS p
+CROSS JOIN LATERAL jsonb_array_elements_text(p.paths) AS path
+WHERE path = ANY($1::text[])
+ORDER BY length(path) DESC, p.id ASC
+LIMIT 1
+`
+
+func (q *Queries) MatchProjectByPaths(ctx context.Context, candidatePaths []string) (int32, error) {
+	row := q.db.QueryRow(ctx, matchProjectByPaths, candidatePaths)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
 const updateProject = `-- name: UpdateProject :one
-UPDATE project SET name = $2, paths = $3, updated_at = now() WHERE id = $1 RETURNING id, name, paths, first_seen_at, last_seen_at, created_at, updated_at
+UPDATE project SET name = $2, paths = $3, updated_at = now() WHERE id = $1 RETURNING id, name, paths, first_seen_at, last_seen_at, created_at, updated_at, auto_created
 `
 
 type UpdateProjectParams struct {
@@ -166,6 +180,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AutoCreated,
 	)
 	return i, err
 }

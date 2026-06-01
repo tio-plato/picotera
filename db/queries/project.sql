@@ -10,16 +10,22 @@ SELECT * FROM project WHERE name = $1 LIMIT 1;
 -- name: InsertProject :one
 INSERT INTO project (name, paths) VALUES ($1, $2) RETURNING *;
 
+-- name: InsertAutoCreatedProject :one
+INSERT INTO project (name, paths, auto_created) VALUES ($1, $2, true) RETURNING *;
+
 -- name: UpdateProject :one
 UPDATE project SET name = $2, paths = $3, updated_at = now() WHERE id = $1 RETURNING *;
 
 -- name: DeleteProject :exec
 DELETE FROM project WHERE id = $1;
 
--- name: ListProjectPaths :many
-SELECT id AS project_id, jsonb_array_elements_text(paths) AS path
-FROM project
-WHERE jsonb_array_length(paths) > 0;
+-- name: MatchProjectByPaths :one
+SELECT p.id
+FROM project AS p
+CROSS JOIN LATERAL jsonb_array_elements_text(p.paths) AS path
+WHERE path = ANY(@candidate_paths::text[])
+ORDER BY length(path) DESC, p.id ASC
+LIMIT 1;
 
 -- name: UpsertProjectSeen :exec
 UPDATE project

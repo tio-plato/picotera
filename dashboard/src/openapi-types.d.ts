@@ -1200,6 +1200,7 @@ export interface components {
              * @example https://example.com/schemas/ProjectView.json
              */
             readonly $schema?: string;
+            autoCreated: boolean;
             createdAt: string;
             firstSeenAt?: string;
             /** Format: int32 */

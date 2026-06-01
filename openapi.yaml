@@ -958,6 +958,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        autoCreated:
+          type: boolean
         createdAt:
           type: string
         firstSeenAt:
@@ -982,6 +984,7 @@ components:
         - paths
         - createdAt
         - updatedAt
+        - autoCreated
       type: object
     ProviderEndpointView:
       additionalProperties: false

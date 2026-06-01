@@ -17,6 +17,7 @@ type ProjectView struct {
 	LastSeenAt  string   `json:"lastSeenAt,omitempty"`
 	CreatedAt   string   `json:"createdAt"`
 	UpdatedAt   string   `json:"updatedAt"`
+	AutoCreated bool     `json:"autoCreated"`
 }
 
 func ToProjectView(p *db.Project) (*ProjectView, error) {
@@ -30,9 +31,10 @@ func ToProjectView(p *db.Project) (*ProjectView, error) {
 		paths = []string{}
 	}
 	v := &ProjectView{
-		ID:    p.ID,
-		Name:  p.Name,
-		Paths: paths,
+		ID:          p.ID,
+		Name:        p.Name,
+		Paths:       paths,
+		AutoCreated: p.AutoCreated,
 	}
 	if p.FirstSeenAt.Valid {
 		v.FirstSeenAt = p.FirstSeenAt.Time.UTC().Format(time.RFC3339)

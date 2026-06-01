@@ -54,6 +54,7 @@ type Project struct {
 	LastSeenAt  pgtype.Timestamp   `json:"lastSeenAt"`
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+	AutoCreated bool               `json:"autoCreated"`
 }
 
 type Provider struct {
