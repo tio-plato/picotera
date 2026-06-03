@@ -27,6 +27,7 @@ import (
 
 type Server struct {
 	queries          *db.Queries
+	db               *pgxpool.Pool
 	router           *chi.Mux
 	api              huma.API
 	config           *configx.Config
@@ -130,6 +131,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 	server := &Server{
 		config:           config,
 		queries:          queries,
+		db:               conn,
 		router:           router,
 		api:              api,
 		httpClient:       httpClient,
@@ -200,6 +202,7 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationGetProject, s.handleGetProject)
 	huma.Register(mgmt, contract.OperationUpsertProject, s.handleUpsertProject)
 	huma.Register(mgmt, contract.OperationDeleteProject, s.handleDeleteProject)
+	huma.Register(mgmt, contract.OperationMergeProject, s.handleMergeProject)
 	huma.Register(mgmt, contract.OperationListScripts, s.handleListScripts)
 	huma.Register(mgmt, contract.OperationGetScript, s.handleGetScript)
 	huma.Register(mgmt, contract.OperationCreateScript, s.handleCreateScript)

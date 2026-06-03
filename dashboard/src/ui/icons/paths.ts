@@ -20,6 +20,7 @@ import {
   IconEyeOff,
   IconFolder,
   IconGitBranch,
+  IconGitMerge,
   IconKey,
   IconCopy,
   IconLink,
@@ -75,6 +76,7 @@ export type IconName =
   | 'key'
   | 'copy'
   | 'folder'
+  | 'git-merge'
   | 'bolt'
   | 'geometry'
   | 'cloud-fog'
@@ -115,6 +117,7 @@ export const iconComponents: Record<IconName, Component> = {
   key: IconKey,
   copy: IconCopy,
   folder: IconFolder,
+  'git-merge': IconGitMerge,
   bolt: IconBolt,
   'cloud-fog': IconCloudFog,
   geometry: IconGeometry,

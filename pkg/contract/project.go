@@ -105,3 +105,21 @@ var OperationDeleteProject = huma.Operation{
 	Path:        "/projects/delete",
 	Summary:     "Delete a project",
 }
+
+type MergeProjectRequest struct {
+	Body struct {
+		SourceID int32 `json:"sourceId"`
+		TargetID int32 `json:"targetId"`
+	}
+}
+
+type MergeProjectResponse struct {
+	Body ProjectView
+}
+
+var OperationMergeProject = huma.Operation{
+	OperationID: "mergeProject",
+	Method:      http.MethodPost,
+	Path:        "/projects/merge",
+	Summary:     "Merge one project into another",
+}

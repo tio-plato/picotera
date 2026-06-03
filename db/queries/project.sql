@@ -33,3 +33,28 @@ SET first_seen_at = LEAST(COALESCE(first_seen_at, sqlc.arg('seen_at')::timestamp
     last_seen_at  = GREATEST(COALESCE(last_seen_at,  sqlc.arg('seen_at')::timestamp), sqlc.arg('seen_at')::timestamp),
     updated_at    = now()
 WHERE id = $1;
+
+-- name: MergeProjectUpdateTarget :one
+UPDATE project AS p
+SET paths = COALESCE((
+  SELECT jsonb_agg(DISTINCT elem)
+  FROM (
+    SELECT jsonb_array_elements_text(p.paths) AS elem
+    UNION
+    SELECT jsonb_array_elements_text(src.paths) AS elem
+    FROM project AS src WHERE src.id = @source_id
+  ) all_paths
+), p.paths),
+    first_seen_at = LEAST(p.first_seen_at, (
+      SELECT first_seen_at FROM project WHERE id = @source_id
+    )),
+    last_seen_at  = GREATEST(p.last_seen_at, (
+      SELECT last_seen_at FROM project WHERE id = @source_id
+    )),
+    updated_at = now()
+WHERE p.id = @target_id
+RETURNING *;
+
+-- name: MergeProjectReassignRequests :execrows
+UPDATE request SET project_id = @target_id
+WHERE project_id = @source_id;

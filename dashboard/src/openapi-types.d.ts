@@ -368,6 +368,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/projects/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Merge one project into another */
+        post: operations["mergeProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/projects/{id}": {
         parameters: {
             query?: never;
@@ -969,6 +986,18 @@ export interface components {
              */
             readonly $schema?: string;
             candidates: components["schemas"]["PricingMatchCandidate"][] | null;
+        };
+        MergeProjectRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MergeProjectRequestBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            sourceId: number;
+            /** Format: int32 */
+            targetId: number;
         };
         ModelView: {
             /**
@@ -2429,6 +2458,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    mergeProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeProjectRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
             };
             /** @description Error */
             default: {

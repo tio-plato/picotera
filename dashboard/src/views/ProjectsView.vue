@@ -7,6 +7,7 @@ import type { ProjectView } from '@/api'
 import { deleteProject, invalidateProjects, listProjects } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import ProjectForm from '@/components/ProjectForm.vue'
+import MergeProjectForm from '@/components/MergeProjectForm.vue'
 import { Button, IconButton, DataCard, DataTable, Th, Td, Tr, StateText, Tag, Icon } from '@/ui'
 
 const panel = useSidePanel()
@@ -32,6 +33,10 @@ function openCreate() {
 
 function openEdit(p: ProjectView) {
   panel.open(ProjectForm, { project: p }, { key: `project:${p.id}` })
+}
+
+function openMerge(p: ProjectView) {
+  panel.open(MergeProjectForm, { source: p }, { key: `project:merge:${p.id}`, width: '380px' })
 }
 
 function confirmDelete(_event: Event, p: ProjectView) {
@@ -103,6 +108,14 @@ function fmtTimestamp(ts?: string): string {
                   @click="openEdit(p)"
                 >
                   <Icon name="edit" :size="13" />
+                </IconButton>
+                <IconButton
+                  :active="panel.isActive(`project:merge:${p.id}`)"
+                  title="合并"
+                  aria-label="合并"
+                  @click="openMerge(p)"
+                >
+                  <Icon name="git-merge" :size="13" />
                 </IconButton>
                 <IconButton
                   variant="danger"

@@ -159,6 +159,67 @@ func (q *Queries) MatchProjectByPaths(ctx context.Context, candidatePaths []stri
 	return id, err
 }
 
+const mergeProjectReassignRequests = `-- name: MergeProjectReassignRequests :execrows
+UPDATE request SET project_id = $1
+WHERE project_id = $2
+`
+
+type MergeProjectReassignRequestsParams struct {
+	TargetID pgtype.Int4 `json:"targetId"`
+	SourceID pgtype.Int4 `json:"sourceId"`
+}
+
+func (q *Queries) MergeProjectReassignRequests(ctx context.Context, arg MergeProjectReassignRequestsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, mergeProjectReassignRequests, arg.TargetID, arg.SourceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const mergeProjectUpdateTarget = `-- name: MergeProjectUpdateTarget :one
+UPDATE project AS p
+SET paths = COALESCE((
+  SELECT jsonb_agg(DISTINCT elem)
+  FROM (
+    SELECT jsonb_array_elements_text(p.paths) AS elem
+    UNION
+    SELECT jsonb_array_elements_text(src.paths) AS elem
+    FROM project AS src WHERE src.id = $1
+  ) all_paths
+), p.paths),
+    first_seen_at = LEAST(p.first_seen_at, (
+      SELECT first_seen_at FROM project WHERE id = $1
+    )),
+    last_seen_at  = GREATEST(p.last_seen_at, (
+      SELECT last_seen_at FROM project WHERE id = $1
+    )),
+    updated_at = now()
+WHERE p.id = $2
+RETURNING id, name, paths, first_seen_at, last_seen_at, created_at, updated_at, auto_created
+`
+
+type MergeProjectUpdateTargetParams struct {
+	SourceID int32 `json:"sourceId"`
+	TargetID int32 `json:"targetId"`
+}
+
+func (q *Queries) MergeProjectUpdateTarget(ctx context.Context, arg MergeProjectUpdateTargetParams) (Project, error) {
+	row := q.db.QueryRow(ctx, mergeProjectUpdateTarget, arg.SourceID, arg.TargetID)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Paths,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AutoCreated,
+	)
+	return i, err
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE project SET name = $2, paths = $3, updated_at = now() WHERE id = $1 RETURNING id, name, paths, first_seen_at, last_seen_at, created_at, updated_at, auto_created
 `

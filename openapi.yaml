@@ -451,6 +451,25 @@ components:
       required:
         - candidates
       type: object
+    MergeProjectRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/MergeProjectRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        sourceId:
+          format: int32
+          type: integer
+        targetId:
+          format: int32
+          type: integer
+      required:
+        - sourceId
+        - targetId
+      type: object
     ModelView:
       additionalProperties: false
       properties:
@@ -2456,6 +2475,29 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Delete a project
+  /api/picotera/projects/merge:
+    post:
+      operationId: mergeProject
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeProjectRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Merge one project into another
   /api/picotera/projects/{id}:
     get:
       operationId: getProject

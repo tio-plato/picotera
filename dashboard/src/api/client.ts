@@ -250,6 +250,14 @@ export async function deleteProject(id: number): Promise<void> {
   if (error) fail(error, '删除项目失败')
 }
 
+export async function mergeProject(sourceId: number, targetId: number): Promise<ProjectView> {
+  const { data, error } = await api.POST('/api/picotera/projects/merge', {
+    body: { sourceId, targetId },
+  })
+  if (error) fail(error, '合并项目失败')
+  return data
+}
+
 export async function listExchangeRates(): Promise<ExchangeRateView[]> {
   const { data, error } = await api.GET('/api/picotera/exchange-rates')
   if (error) fail(error, '加载汇率失败')

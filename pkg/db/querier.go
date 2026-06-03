@@ -83,6 +83,8 @@ type Querier interface {
 	ListScripts(ctx context.Context) ([]Script, error)
 	ListTraceBackfillCandidates(ctx context.Context) ([]ListTraceBackfillCandidatesRow, error)
 	MatchProjectByPaths(ctx context.Context, candidatePaths []string) (int32, error)
+	MergeProjectReassignRequests(ctx context.Context, arg MergeProjectReassignRequestsParams) (int64, error)
+	MergeProjectUpdateTarget(ctx context.Context, arg MergeProjectUpdateTargetParams) (Project, error)
 	UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (ApiKey, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
