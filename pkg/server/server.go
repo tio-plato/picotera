@@ -119,6 +119,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 	}
 
 	router := chi.NewMux()
+	router.Use(decompressRequest)
 	api := humachi.New(router, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
 
 	kvStore, err := kv.New(config.KV.Driver, kv.WithRedisURL(config.KV.RedisURL))
