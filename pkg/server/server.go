@@ -101,7 +101,16 @@ func NewServer(ctx context.Context) (*Server, error) {
 		h2.PingTimeout = config.GatewayHTTP2PingTimeout
 	}
 	httpClient := &http.Client{Transport: baseTransport}
-	proxyCache := newProxyTransportCache(baseTransport)
+	// Non-streaming requests get a more lenient header timeout: the upstream
+	// may buffer the whole response and return headers late. Clone after
+	// ConfigureTransports so the clone inherits the HTTP/2 config, then raise
+	// the header timeout to the global read timeout (a hard upper bound, not
+	// unlimited). ResponseHeaderTimeout is a connection-level transport field
+	// and cannot be overridden per request, so the cache keys on the streaming
+	// flag and keeps both bases.
+	nonStreamBase := baseTransport.Clone()
+	nonStreamBase.ResponseHeaderTimeout = config.GatewayReadTimeout
+	proxyCache := newProxyTransportCache(baseTransport, nonStreamBase)
 
 	sink, err := artifacts.NewSink(config.S3, logx.WithContext(ctx))
 	if err != nil {

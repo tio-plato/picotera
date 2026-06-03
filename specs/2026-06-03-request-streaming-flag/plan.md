@@ -12,25 +12,30 @@
   5. 否则 `false`。
 - 在 import 块补充 `strings` 与 `github.com/tidwall/gjson`。
 
-## 2. 用五规则填充 `gatewayModelState.Streaming`
+## 2. 用五规则填充单一 Streaming 来源
 
 文件：`pkg/server/gateway_flow.go`，函数 `resolveAndRewriteModel`
 
-- 将
+- 在 `mode.RoutedModel = mode.OriginalModel` 之后，用五规则覆盖 `mode.Streaming`，并让 `gatewayModelState.Streaming` 取自同一值：
   ```go
+  mode.RoutedModel = mode.OriginalModel
+  mode.Streaming = detectStreaming(f.config.SourceFormat, f.r, f.body)
   f.model = gatewayModelState{Mode: mode, Original: mode.OriginalModel, Routed: mode.RoutedModel, Streaming: mode.Streaming}
   ```
-  改为
-  ```go
-  f.model = gatewayModelState{Mode: mode, Original: mode.OriginalModel, Routed: mode.RoutedModel, Streaming: detectStreaming(f.config.SourceFormat, f.r, f.body)}
-  ```
+- 这样 `mode.Streaming`（喂 `candidateEndpointTypes`）与 `gatewayModelState.Streaming`（喂 header 超时 + `beforeTransform` hook）同源。
 
-## 3. 区分两个 Streaming 字段的注释
+简化 unified 链路的 model 提取（`gateway_unified_helpers.go` + `handle_unified_gateway.go`）：
+
+- 将 `extractUnifiedModelAndStream(src, r, body) (string, bool, error)` 改为 `extractUnifiedModel(src, r, body) (string, error)`，去掉 stream 推导（已被五规则覆盖）。
+- unified 的 `ExtractModel` 回调改为 `return gatewayModelMode{OriginalModel: model, HasModel: true}, err`（不再设 `Streaming`）。
+- 同步更新 `handle_unified_gateway_test.go` 中相关测试，并新增 `TestDetectStreaming` 覆盖五规则。
+
+## 3. 合并后两个 Streaming 字段的注释
 
 文件：`pkg/server/gateway_flow.go`
 
-- 在 `gatewayModelState.Streaming` 上加注释：五规则探测出的「客户端是否期望流式响应」，用于 `beforeTransform` hook 与 header 超时决策。
-- 在 `gatewayModelMode.Streaming` 上加注释：窄义流式标志（仅 Gemini 路由 + body `stream`），仅用于 `candidateEndpointTypes` 的上游变体选择，不受 Accept 头影响。
+- 在 `gatewayModelMode.Streaming` 上加注释：五规则探测出的「客户端是否期望流式响应」（见 `detectStreaming`），在 `resolveAndRewriteModel` 填充，驱动 `candidateEndpointTypes` 变体选择、header 超时与 `beforeTransform` hook，单一来源。
+- 在 `gatewayModelState.Streaming` 上加注释：镜像 `Mode.Streaming`。
 
 ## 4. 新增非流式 transport 与缓存
 

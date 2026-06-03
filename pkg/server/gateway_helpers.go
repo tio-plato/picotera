@@ -554,9 +554,11 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 // forwardRequest sends the request to the upstream provider using the
 // transport selected by proxyURL. Empty string uses environment proxy;
 // "direct" bypasses all proxies; a URL string uses that proxy.
-func (s *Server) forwardRequest(req *http.Request, proxyURL string) (*http.Response, error) {
-	transport := s.proxyCache.get(proxyURL)
-	return transport.RoundTrip(req)
+// Streaming requests use the default ResponseHeaderTimeout; non-streaming
+// requests use the more lenient GatewayReadTimeout as their header-timeout
+// upper bound (the cache keys transports on the streaming flag).
+func (s *Server) forwardRequest(req *http.Request, proxyURL string, streaming bool) (*http.Response, error) {
+	return s.proxyCache.get(proxyURL, streaming).RoundTrip(req)
 }
 
 // insertRequest inserts a request record and returns the inserted created_at.

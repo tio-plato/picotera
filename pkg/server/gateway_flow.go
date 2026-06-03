@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"picotera/pkg/annotations"
@@ -14,6 +15,7 @@ import (
 	"picotera/pkg/llmbridge"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tidwall/gjson"
 )
 
 type gatewayRouteKind int
@@ -73,15 +75,19 @@ type gatewayModelState struct {
 	Mode        gatewayModelMode
 	Original    string
 	Routed      string
-	Streaming   bool
 	Annotations map[string]string
 }
 
 type gatewayModelMode struct {
 	OriginalModel string
 	RoutedModel   string
-	Streaming     bool
-	HasModel      bool
+	// Streaming is the five-rule detection of whether the client expects a
+	// streaming response (see detectStreaming), filled in resolveAndRewriteModel.
+	// It drives candidateEndpointTypes' upstream-variant selection, the
+	// upstream header-timeout decision, and the beforeTransform hook's Stream
+	// input — all from this single source.
+	Streaming bool
+	HasModel  bool
 }
 
 func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, startedAt time.Time, cfg gatewayFlowConfig) *gatewayFlow {
@@ -89,6 +95,31 @@ func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, s
 		cfg.Credentials = cfg.Endpoint.CredentialsResolver
 	}
 	return &gatewayFlow{h: h, w: w, r: r, startedAt: startedAt, config: cfg}
+}
+
+// detectStreaming reports whether the client expects a streaming response,
+// applying five rules in order (any match => true):
+//  1. the source format is the Gemini stream endpoint;
+//  2. the request body has `stream: true`;
+//  3. the Accept header contains text/event-stream;
+//  4. the Accept header contains application/x-ndjson;
+//  5. otherwise false.
+//
+// Accept matching is case-insensitive across all Accept header values.
+func detectStreaming(srcFormat llmbridge.Format, r *http.Request, body []byte) bool {
+	if srcFormat == llmbridge.FormatGeminiStreamGenerateContent {
+		return true
+	}
+	if gjson.GetBytes(body, "stream").Bool() {
+		return true
+	}
+	for _, accept := range r.Header.Values("Accept") {
+		lower := strings.ToLower(accept)
+		if strings.Contains(lower, "text/event-stream") || strings.Contains(lower, "application/x-ndjson") {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *gatewayFlow) run() {
@@ -217,7 +248,8 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		return false
 	}
 	mode.RoutedModel = mode.OriginalModel
-	f.model = gatewayModelState{Mode: mode, Original: mode.OriginalModel, Routed: mode.RoutedModel, Streaming: mode.Streaming}
+	mode.Streaming = detectStreaming(f.config.SourceFormat, f.r, f.body)
+	f.model = gatewayModelState{Mode: mode, Original: mode.OriginalModel, Routed: mode.RoutedModel}
 	f.updateMetaModel(mode.RoutedModel)
 	session, err := f.h.jsxEngine.NewSession(f.ctxs.Request, f.meta.ID)
 	if err != nil {

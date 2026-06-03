@@ -161,25 +161,25 @@ func TestCandidateEndpointTypes(t *testing.T) {
 	}
 }
 
-func TestExtractUnifiedModelAndStream_BodyFormats(t *testing.T) {
+func TestExtractUnifiedModel_BodyFormats(t *testing.T) {
 	body := []byte(`{"model":"claude-3-5-sonnet","stream":true}`)
 	r := httptest.NewRequest("POST", "/api/picotera/v1/messages", nil)
-	model, stream, err := extractUnifiedModelAndStream(llmbridge.FormatAnthropicMessages, r, body)
+	model, err := extractUnifiedModel(llmbridge.FormatAnthropicMessages, r, body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if model != "claude-3-5-sonnet" || !stream {
-		t.Errorf("got model=%q stream=%v", model, stream)
+	if model != "claude-3-5-sonnet" {
+		t.Errorf("got model=%q", model)
 	}
 
 	// Missing model field: 400 MODEL_NOT_FOUND.
-	_, _, err = extractUnifiedModelAndStream(llmbridge.FormatOpenAIChatCompletions, r, []byte(`{}`))
+	_, err = extractUnifiedModel(llmbridge.FormatOpenAIChatCompletions, r, []byte(`{}`))
 	if err == nil {
 		t.Errorf("expected error for missing model, got nil")
 	}
 }
 
-func TestExtractUnifiedModelAndStream_GeminiFromPath(t *testing.T) {
+func TestExtractUnifiedModel_GeminiFromPath(t *testing.T) {
 	// Build a chi route context that simulates the chi router placing
 	// {model} into the URL params.
 	rctx := chi.NewRouteContext()
@@ -187,20 +187,55 @@ func TestExtractUnifiedModelAndStream_GeminiFromPath(t *testing.T) {
 	r := httptest.NewRequest("POST", "/api/picotera/v1beta/models/gemini-2.5-pro:streamGenerateContent", nil)
 	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 
-	model, stream, err := extractUnifiedModelAndStream(llmbridge.FormatGeminiStreamGenerateContent, r, []byte(`{"contents":[]}`))
+	model, err := extractUnifiedModel(llmbridge.FormatGeminiStreamGenerateContent, r, []byte(`{"contents":[]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if model != "gemini-2.5-pro" || !stream {
-		t.Errorf("got model=%q stream=%v", model, stream)
+	if model != "gemini-2.5-pro" {
+		t.Errorf("got model=%q", model)
 	}
 
-	model, stream, err = extractUnifiedModelAndStream(llmbridge.FormatGeminiGenerateContent, r, []byte(`{"contents":[]}`))
+	model, err = extractUnifiedModel(llmbridge.FormatGeminiGenerateContent, r, []byte(`{"contents":[]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if model != "gemini-2.5-pro" || stream {
-		t.Errorf("non-stream variant: got model=%q stream=%v", model, stream)
+	if model != "gemini-2.5-pro" {
+		t.Errorf("non-stream variant: got model=%q", model)
+	}
+}
+
+func TestDetectStreaming(t *testing.T) {
+	newReq := func(accept ...string) *http.Request {
+		r := httptest.NewRequest("POST", "/api/picotera/v1/messages", nil)
+		for _, a := range accept {
+			r.Header.Add("Accept", a)
+		}
+		return r
+	}
+
+	cases := []struct {
+		name   string
+		src    llmbridge.Format
+		req    *http.Request
+		body   []byte
+		expect bool
+	}{
+		{"gemini stream route", llmbridge.FormatGeminiStreamGenerateContent, newReq(), []byte(`{}`), true},
+		{"gemini non-stream route", llmbridge.FormatGeminiGenerateContent, newReq(), []byte(`{}`), false},
+		{"body stream true", llmbridge.FormatAnthropicMessages, newReq(), []byte(`{"stream":true}`), true},
+		{"body stream false", llmbridge.FormatAnthropicMessages, newReq(), []byte(`{"stream":false}`), false},
+		{"accept sse", llmbridge.FormatOpenAIChatCompletions, newReq("text/event-stream"), []byte(`{}`), true},
+		{"accept ndjson", llmbridge.FormatOpenAIChatCompletions, newReq("application/x-ndjson"), []byte(`{}`), true},
+		{"accept case-insensitive", llmbridge.FormatOpenAIChatCompletions, newReq("Text/Event-Stream"), []byte(`{}`), true},
+		{"accept json only", llmbridge.FormatOpenAIChatCompletions, newReq("application/json"), []byte(`{}`), false},
+		{"no signals", llmbridge.FormatAnthropicMessages, newReq(), []byte(`{}`), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := detectStreaming(tc.src, tc.req, tc.body); got != tc.expect {
+				t.Errorf("detectStreaming = %v, want %v", got, tc.expect)
+			}
+		})
 	}
 }
 

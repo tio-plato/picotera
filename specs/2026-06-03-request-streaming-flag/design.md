@@ -7,9 +7,12 @@
 - path-based gateway（`handle_gateway.go`）；
 - unified gateway（`handle_unified_gateway.go`）。
 
-`gatewayFlow.model`（`gatewayModelState`）上已经存在一个 `Streaming bool`，但它当前只被 unified 链路通过 `extractUnifiedModelAndStream` 填充，path 链路恒为 `false`。该字段目前只喂给 `beforeTransform` JS hook 的 `Stream` 入参。
+历史上存在**两个语义不同**的流式标志：
 
-此外还存在另一个**语义不同**的流式标志 `gatewayModelMode.Streaming`：它专门用于 unified 候选解析（`candidateEndpointTypes`）——在 Anthropic/OpenAI 源面对 Gemini 上游时，用它在 `geminiGenerateContent` 与 `geminiStreamGenerateContent` 两个上游变体之间选择。
+- `gatewayModelState.Streaming` —— 原本只被 unified 链路通过 `extractUnifiedModelAndStream` 填充，path 链路恒为 `false`，只喂给 `beforeTransform` JS hook 的 `Stream` 入参；
+- `gatewayModelMode.Streaming` —— 窄义标志（仅 Gemini 路由 + body `stream`），用于 unified 候选解析（`candidateEndpointTypes`）：在 Anthropic/OpenAI 源面对 Gemini 上游时，用它在 `geminiGenerateContent` 与 `geminiStreamGenerateContent` 两个上游变体之间选择。
+
+**本次决策：合并为单一来源。** 两个字段统一由五规则 `detectStreaming` 填充，`gatewayModelState.Streaming` 是 `gatewayModelMode.Streaming` 的镜像。候选解析、header 超时、`beforeTransform` hook 三者共用同一个流式判定。
 
 上游 HTTP 请求经 `Server.forwardRequest` 发出，使用按 proxy URL 缓存的 `*http.Transport`（`proxy_transport.go`）。该 transport 的 `ResponseHeaderTimeout = GatewayResponseHeaderTimeout`（默认 16s），对所有上游请求统一生效。
 
@@ -40,16 +43,17 @@ func detectStreaming(srcFormat llmbridge.Format, r *http.Request, body []byte) b
 
 在 `resolveAndRewriteModel`（`gateway_flow.go`）构造 `gatewayModelState` 时调用，对两条链路一致填充 `Streaming`。此时 `f.body` 仍是客户端原始 body（`rewriteModel` hook 只改 `model` 字段，不影响 `stream` 与 Accept），探测到的是客户端意图。
 
-### 2. 与候选解析标志的关系（不改动路由行为）
+### 2. 合并为单一流式判定（候选解析改用五规则）
 
-`gatewayModelMode.Streaming`（窄义：仅由 Gemini 路由 + body `stream` 决定）保持不变，继续驱动 `candidateEndpointTypes` 的上游变体选择。新增的 Accept-头规则**不**进入候选解析——避免出现「body `stream:false` 但 Accept 为 SSE」时错误地选中 Gemini stream 上游、进而把非流式请求转成 SSE 输出。遵循「不擅自猜测、对输入严格」的约定，候选解析以 body/路由为权威。
+`gatewayModelMode.Streaming` 与 `gatewayModelState.Streaming` 合并为单一来源：在 `resolveAndRewriteModel` 中调用一次 `detectStreaming` 写入 `mode.Streaming`，`gatewayModelState.Streaming` 取自同一值。三处消费者共用：
 
-两个字段语义不同，在结构体上各自加注释明确区分：
+- `candidateEndpointTypes` 的上游变体选择（unified）；
+- header 超时决策；
+- `beforeTransform` hook 的 `Stream` 入参。
 
-- `gatewayModelMode.Streaming`：上游变体选择用的窄义流式标志。
-- `gatewayModelState.Streaming`：五规则探测出的「客户端是否期望流式响应」，用于 `beforeTransform` hook 与 header 超时决策。
+`extractUnifiedModelAndStream` 不再自行推导 stream，简化为 `extractUnifiedModel`（只返回 model）；其原先的「Gemini 路由 + body `stream`」逻辑已被五规则完全覆盖（规则 1 覆盖 Gemini stream 路由，规则 2 覆盖 body `stream`）。
 
-`beforeTransform` hook 的 `Stream` 入参继续取 `f.model.Streaming`，因此其值从「仅 body/路由」收窄义放宽为五规则结果——更贴近「请求是否流式」的本意。
+**取舍**：候选解析现在也受 Accept 头影响。当出现「body `stream:false` 但 `Accept: text/event-stream`」这类矛盾请求时，会被判为流式，在 Anthropic/OpenAI 源面对 Gemini 上游时选中 `geminiStreamGenerateContent` 变体、输出 SSE。这是合并为单一来源后接受的代价——以五规则（含 Accept）作为统一权威，而非让候选解析单独以 body/路由为准。
 
 ### 3. 非流式使用更宽松的 header 超时
 

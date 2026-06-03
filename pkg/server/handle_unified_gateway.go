@@ -32,8 +32,8 @@ func (h *gatewayHandler) newUnifiedGatewayFlowConfig(srcFormat llmbridge.Format,
 		SourceFormat: srcFormat,
 		Credentials:  contract.CredentialsResolver_Unknown,
 		ExtractModel: func(req *http.Request, body []byte, _ map[string]string) (gatewayModelMode, error) {
-			model, stream, err := extractUnifiedModelAndStream(srcFormat, req, body)
-			return gatewayModelMode{OriginalModel: model, Streaming: stream, HasModel: true}, err
+			model, err := extractUnifiedModel(srcFormat, req, body)
+			return gatewayModelMode{OriginalModel: model, HasModel: true}, err
 		},
 		SetBodyModel: func(body []byte, model string) ([]byte, error) {
 			return setUnifiedModel(srcFormat, body, model)

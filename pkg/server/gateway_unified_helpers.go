@@ -96,33 +96,26 @@ func candidateEndpointTypes(src llmbridge.Format, streaming bool) []int32 {
 	}
 }
 
-// extractUnifiedModelAndStream picks the model name and stream flag for the
-// inbound request. For Anthropic / OpenAI the body carries both; for Gemini
-// the model lives in the chi {model} path variable and the stream flag is
-// fixed by the route variant.
-func extractUnifiedModelAndStream(src llmbridge.Format, r *http.Request, body []byte) (string, bool, error) {
+// extractUnifiedModel picks the model name for the inbound request. For
+// Anthropic / OpenAI the body carries it; for Gemini it lives in the chi
+// {model} path variable. The streaming flag is no longer derived here — it
+// comes solely from detectStreaming (five rules) in resolveAndRewriteModel.
+func extractUnifiedModel(src llmbridge.Format, r *http.Request, body []byte) (string, error) {
 	switch src {
-	case llmbridge.FormatGeminiGenerateContent:
+	case llmbridge.FormatGeminiGenerateContent, llmbridge.FormatGeminiStreamGenerateContent:
 		m := chi.URLParam(r, "model")
 		if m == "" {
-			return "", false, &gatewayError{status: http.StatusBadRequest, message: "missing {model} path variable", code: errorx.ModelNotFound.Error()}
+			return "", &gatewayError{status: http.StatusBadRequest, message: "missing {model} path variable", code: errorx.ModelNotFound.Error()}
 		}
-		return m, false, nil
-	case llmbridge.FormatGeminiStreamGenerateContent:
-		m := chi.URLParam(r, "model")
-		if m == "" {
-			return "", false, &gatewayError{status: http.StatusBadRequest, message: "missing {model} path variable", code: errorx.ModelNotFound.Error()}
-		}
-		return m, true, nil
+		return m, nil
 	case llmbridge.FormatAnthropicMessages, llmbridge.FormatOpenAIChatCompletions, llmbridge.FormatOpenAIResponses:
 		model := gjson.GetBytes(body, "model").Str
 		if model == "" {
-			return "", false, &gatewayError{status: http.StatusBadRequest, message: "model is required", code: errorx.ModelNotFound.Error()}
+			return "", &gatewayError{status: http.StatusBadRequest, message: "model is required", code: errorx.ModelNotFound.Error()}
 		}
-		stream := gjson.GetBytes(body, "stream").Bool()
-		return model, stream, nil
+		return model, nil
 	}
-	return "", false, &gatewayError{status: http.StatusBadRequest, message: "unsupported source format", code: errorx.InvalidRequest.Error()}
+	return "", &gatewayError{status: http.StatusBadRequest, message: "unsupported source format", code: errorx.InvalidRequest.Error()}
 }
 
 // setUnifiedModel rewrites the model name carried by the source body. Gemini

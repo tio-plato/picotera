@@ -146,7 +146,7 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidate
 	f.h.uploadRequestArtifact(reqArtifactCtx, input.UpstreamID, input.UpstreamCreatedAt, prepared.Request.Method, prepared.Request.URL.String(), prepared.Request.Header.Clone(), prepared.RequestBody)
 	reqArtifactCancel()
 	upstreamStart := time.Now()
-	resp, err := f.h.forwardRequest(prepared.Request, side.ProxyURL)
+	resp, err := f.h.forwardRequest(prepared.Request, side.ProxyURL, f.model.Mode.Streaming)
 	if err != nil {
 		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, f.finishReasonFor(input.UpstreamID, classifyForwardError(err, f.ctxs.Request)))
 		cancel()
@@ -384,7 +384,7 @@ func prepareUnifiedOutboundProfile(f *gatewayFlow, input attemptInput) (llmbridg
 		Annotations:       input.Annotations,
 		SourceFormat:      f.config.SourceFormat.String(),
 		UpstreamFormat:    input.Sidecar.UpstreamFormat.String(),
-		Stream:            f.model.Streaming,
+		Stream:            f.model.Mode.Streaming,
 	}, jsx.OutboundProfile{Type: base.Type, Config: map[string]any{}})
 	if err != nil {
 		return llmbridge.OutboundProfile{}, err
