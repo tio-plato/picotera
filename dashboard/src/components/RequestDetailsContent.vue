@@ -7,6 +7,7 @@ import { queryKeys } from '@/api/queryKeys'
 import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay, Button } from '@/ui'
 import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
+import ConversationArtifactView from './ConversationArtifactView.vue'
 import TimedRawView from './TimedRawView.vue'
 import {
   useRequestDetailUiState,
@@ -215,6 +216,7 @@ const detailTabs = computed(() => {
     { value: 'overview', label: '概览' },
     { value: 'request', label: '原始请求' },
     { value: 'response', label: '原始响应' },
+    { value: 'conversation', label: '对话' },
   ]
   if (isMeta.value) base.push({ value: 'logs', label: '日志' })
   return base
@@ -541,6 +543,11 @@ watch(detailTabs, (tabs) => {
           :url="selected.responseArtifactUrl"
           kind="response"
           :request-id="selected.id"
+        />
+        <ConversationArtifactView
+          v-else-if="detailTab === 'conversation'"
+          :request-url="selected.requestArtifactUrl"
+          :response-url="selected.responseArtifactUrl"
         />
         <LogsArtifactView v-else-if="detailTab === 'logs'" :url="selected.responseArtifactUrl" />
       </template>
