@@ -21,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/net/http2"
 
 	_ "github.com/danielgtaylor/huma/v2/formats/cbor"
 )
@@ -90,6 +91,14 @@ func NewServer(ctx context.Context) (*Server, error) {
 		TLSHandshakeTimeout:   config.GatewayTLSHandshakeTimeout,
 		ExpectContinueTimeout: config.GatewayExpectContinueTimeout,
 		ResponseHeaderTimeout: config.GatewayResponseHeaderTimeout,
+	}
+	// Enable HTTP/2 keepalive PINGs so dead connections — especially silently
+	// dropped CONNECT proxy tunnels — are detected and evicted instead of being
+	// reused, which otherwise surfaces as "http2: timeout awaiting response
+	// headers". Without ReadIdleTimeout the implicit h2 transport sends no PINGs.
+	if h2, err := http2.ConfigureTransports(baseTransport); err == nil {
+		h2.ReadIdleTimeout = config.GatewayHTTP2ReadIdleTimeout
+		h2.PingTimeout = config.GatewayHTTP2PingTimeout
 	}
 	httpClient := &http.Client{Transport: baseTransport}
 	proxyCache := newProxyTransportCache(baseTransport)

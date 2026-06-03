@@ -20,6 +20,8 @@ type Config struct {
 	GatewayResponseHeaderTimeout time.Duration `mapstructure:"gateway_response_header_timeout"`
 	GatewayDialTimeout           time.Duration `mapstructure:"gateway_dial_timeout"`
 	GatewayDialKeepAlive         time.Duration `mapstructure:"gateway_dial_keep_alive"`
+	GatewayHTTP2ReadIdleTimeout  time.Duration `mapstructure:"gateway_http2_read_idle_timeout"`
+	GatewayHTTP2PingTimeout      time.Duration `mapstructure:"gateway_http2_ping_timeout"`
 	S3                           S3Config      `mapstructure:"s3"`
 	KV                           KVConfig      `mapstructure:"kv"`
 	JSHookTimeout                time.Duration `mapstructure:"js_hook_timeout"`
@@ -70,6 +72,8 @@ func Parse() (*Config, error) {
 	viper.SetDefault("gateway_tls_handshake_timeout", 16*time.Second)
 	viper.SetDefault("gateway_expect_continue_timeout", 16*time.Second)
 	viper.SetDefault("gateway_response_header_timeout", 16*time.Second)
+	viper.SetDefault("gateway_http2_read_idle_timeout", 13*time.Second)
+	viper.SetDefault("gateway_http2_ping_timeout", 6*time.Second)
 	viper.SetDefault("s3.region", "us-east-1")
 	viper.SetDefault("s3.use_ssl", false)
 	viper.SetDefault("js_hook_timeout", 5*time.Second)
