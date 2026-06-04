@@ -71,7 +71,7 @@ func Parse() (*Config, error) {
 	viper.SetDefault("gateway_idle_conn_timeout", 24*time.Second)
 	viper.SetDefault("gateway_tls_handshake_timeout", 16*time.Second)
 	viper.SetDefault("gateway_expect_continue_timeout", 16*time.Second)
-	viper.SetDefault("gateway_response_header_timeout", 16*time.Second)
+	viper.SetDefault("gateway_response_header_timeout", 32*time.Second)
 	viper.SetDefault("gateway_http2_read_idle_timeout", 13*time.Second)
 	viper.SetDefault("gateway_http2_ping_timeout", 6*time.Second)
 	viper.SetDefault("s3.region", "us-east-1")
