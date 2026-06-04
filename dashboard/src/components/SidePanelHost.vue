@@ -31,11 +31,11 @@ const mode = computed<'right' | 'modal'>(() => {
 <template>
   <aside
     v-if="state"
-    class="flex min-h-0 self-stretch"
+    class="flex min-h-0"
     :class="
       mode === 'modal'
         ? 'fixed inset-0 z-[900] w-auto items-center justify-center p-4'
-        : 'flex-none pr-8 pt-3 pb-8'
+        : 'sticky top-3 self-start flex-none pr-8 pb-8 h-[calc(100dvh-0.75rem)] max-h-[calc(100dvh-0.75rem)]'
     "
     :style="mode === 'modal' ? undefined : { flexBasis: cssWidth, width: cssWidth }"
   >
