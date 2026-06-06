@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime/debug"
 
+	"picotera/pkg/heapdump"
 	"picotera/pkg/llmbridge"
 	"picotera/pkg/llmbridgeimpl"
 
@@ -18,6 +19,12 @@ import (
 )
 
 func main() {
+	dumpDir := os.Getenv("PICOTERA_HEAP_DUMP_DIR")
+	if dumpDir == "" {
+		dumpDir = os.TempDir()
+	}
+	heapdump.Install(dumpDir, "plugin", nil)
+
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: llmbridge.PluginHandshake(),
 		Plugins:         llmbridge.PluginMap(&server{}),

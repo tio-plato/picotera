@@ -2,6 +2,7 @@ package configx
 
 import (
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -30,6 +31,7 @@ type Config struct {
 	JSMaxDelay                   time.Duration `mapstructure:"js_max_delay"`
 	LLMBridgePluginPath          string        `mapstructure:"llmbridge_plugin_path"`
 	LLMBridgePluginStartTimeout  time.Duration `mapstructure:"llmbridge_plugin_start_timeout"`
+	HeapDumpDir                  string        `mapstructure:"heap_dump_dir"`
 }
 
 type KVConfig struct {
@@ -83,6 +85,7 @@ func Parse() (*Config, error) {
 	viper.SetDefault("kv.driver", "memory")
 	viper.SetDefault("kv.redis_url", "localhost:6379")
 	viper.SetDefault("llmbridge_plugin_start_timeout", 10*time.Second)
+	viper.SetDefault("heap_dump_dir", os.TempDir())
 
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 

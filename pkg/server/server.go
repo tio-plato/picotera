@@ -10,11 +10,13 @@ import (
 	"picotera/pkg/configx"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
+	"picotera/pkg/heapdump"
 	"picotera/pkg/jsx"
 	"picotera/pkg/kv"
 	"picotera/pkg/llmbridge"
 	"picotera/pkg/logx"
 	"picotera/pkg/server/static"
+	"syscall"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -143,6 +145,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 	llmBridge, err := llmbridge.New(ctx, llmbridge.Config{
 		PluginPath:         config.LLMBridgePluginPath,
 		PluginStartTimeout: config.LLMBridgePluginStartTimeout,
+		HeapDumpDir:        config.HeapDumpDir,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize llmbridge: %w", err)
@@ -252,6 +255,11 @@ func (s *Server) registerEndpoints() {
 }
 
 func (s *Server) Serve() error {
+	heapdump.Install(s.config.HeapDumpDir, "host", func() {
+		if err := s.llmBridge.SignalPlugin(syscall.SIGUSR1); err != nil {
+			logrus.WithError(err).Warn("failed to forward SIGUSR1 to llmbridge plugin")
+		}
+	})
 	logrus.WithField("host", s.config.Host).WithField("port", s.config.Port).Info("serving API")
 	return http.ListenAndServe(fmt.Sprintf("%s:%d", s.config.Host, s.config.Port), s.router)
 }
