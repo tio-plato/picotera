@@ -32,6 +32,13 @@ export const THEMES = [
     accent: 'oklch(0.72 0.15 85)',
   },
   {
+    value: 'vs-light',
+    label: 'Visual Studio Light',
+    kind: 'light',
+    surface: 'oklch(0.985 0.001 250)',
+    accent: 'oklch(0.5 0.16 250)',
+  },
+  {
     value: 'dark',
     label: 'Tera Dark',
     kind: 'dark',
@@ -44,6 +51,13 @@ export const THEMES = [
     kind: 'dark',
     surface: 'oklch(0.30 0.035 210)',
     accent: 'oklch(0.68 0.14 235)',
+  },
+  {
+    value: 'vs-dark',
+    label: 'Visual Studio Dark',
+    kind: 'dark',
+    surface: 'oklch(0.26 0.004 250)',
+    accent: 'oklch(0.62 0.15 245)',
   },
 ] as const satisfies readonly ThemeDef[]
 
