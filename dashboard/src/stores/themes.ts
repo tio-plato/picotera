@@ -39,6 +39,13 @@ export const THEMES = [
     accent: 'oklch(0.5 0.16 250)',
   },
   {
+    value: 'github-light',
+    label: 'GitHub Light',
+    kind: 'light',
+    surface: 'oklch(0.985 0.002 250)',
+    accent: 'oklch(0.55 0.18 255)',
+  },
+  {
     value: 'dark',
     label: 'Tera Dark',
     kind: 'dark',
@@ -58,6 +65,13 @@ export const THEMES = [
     kind: 'dark',
     surface: 'oklch(0.26 0.004 250)',
     accent: 'oklch(0.62 0.15 245)',
+  },
+  {
+    value: 'github-dark',
+    label: 'GitHub Dark',
+    kind: 'dark',
+    surface: 'oklch(0.2 0.015 260)',
+    accent: 'oklch(0.65 0.17 255)',
   },
 ] as const satisfies readonly ThemeDef[]
 
