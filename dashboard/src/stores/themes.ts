@@ -46,6 +46,20 @@ export const THEMES = [
     accent: 'oklch(0.55 0.18 255)',
   },
   {
+    value: 'catppuccin-latte',
+    label: 'Catppuccin Latte',
+    kind: 'light',
+    surface: 'oklch(0.97 0.005 280)',
+    accent: 'oklch(0.52 0.22 300)',
+  },
+  {
+    value: 'gruvbox-light',
+    label: 'Gruvbox Light',
+    kind: 'light',
+    surface: 'oklch(0.95 0.04 95)',
+    accent: 'oklch(0.48 0.09 220)',
+  },
+  {
     value: 'dark',
     label: 'Tera Dark',
     kind: 'dark',
@@ -107,6 +121,20 @@ export const THEMES = [
     kind: 'dark',
     surface: 'oklch(0.27 0.012 110)',
     accent: 'oklch(0.78 0.13 195)',
+  },
+  {
+    value: 'catppuccin-mocha',
+    label: 'Catppuccin Mocha',
+    kind: 'dark',
+    surface: 'oklch(0.26 0.03 285)',
+    accent: 'oklch(0.78 0.13 300)',
+  },
+  {
+    value: 'gruvbox-dark',
+    label: 'Gruvbox Dark',
+    kind: 'dark',
+    surface: 'oklch(0.28 0.008 90)',
+    accent: 'oklch(0.74 0.13 60)',
   },
 ] as const satisfies readonly ThemeDef[]
 

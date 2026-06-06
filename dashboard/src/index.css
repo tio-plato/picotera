@@ -677,6 +677,206 @@
   --color-overlay-bg: oklch(0.1 0.01 110 / 0.6);
 }
 
+:root[data-theme='catppuccin-latte'] {
+  --color-surface-0: oklch(0.97 0.005 280);
+  --color-surface-50: oklch(0.955 0.007 280);
+  --color-surface-100: oklch(0.93 0.008 280);
+  --color-surface-200: oklch(0.9 0.01 280);
+  --color-surface-300: oklch(0.86 0.011 280);
+
+  --color-ink: oklch(0.42 0.04 285);
+  --color-ink-muted: oklch(0.54 0.04 285);
+  --color-ink-faint: oklch(0.64 0.035 283);
+
+  --color-accent: oklch(0.52 0.22 300);
+  --color-accent-strong: oklch(0.46 0.24 300);
+  --color-accent-faint: oklch(0.93 0.04 300);
+  --color-accent-ink: oklch(0.46 0.22 300);
+
+  --color-ok: oklch(0.58 0.16 145);
+  --color-ok-ink: oklch(0.46 0.14 145);
+  --color-ok-faint: oklch(0.93 0.06 145);
+  --color-warn: oklch(0.68 0.13 70);
+  --color-warn-ink: oklch(0.5 0.11 65);
+  --color-warn-faint: oklch(0.95 0.06 80);
+  --color-err: oklch(0.55 0.21 15);
+  --color-err-ink: oklch(0.48 0.2 15);
+  --color-err-faint: oklch(0.94 0.05 15);
+
+  --color-chart-0: oklch(0.52 0.22 300);
+  --color-chart-1: oklch(0.58 0.16 145);
+  --color-chart-2: oklch(0.68 0.13 70);
+  --color-chart-3: oklch(0.55 0.21 15);
+  --color-chart-4: oklch(0.55 0.2 260);
+  --color-chart-5: oklch(0.6 0.11 195);
+  --color-chart-6: oklch(0.62 0.19 45);
+  --color-chart-7: oklch(0.62 0.15 230);
+  --color-chart-8: oklch(0.55 0.17 330);
+  --color-chart-9: oklch(0.58 0.16 120);
+
+  --color-line: oklch(0.9 0.008 280);
+  --color-line-soft: oklch(0.93 0.007 280);
+
+  --color-sidebar-bg: oklch(0.955 0.007 280);
+  --color-sidebar-text: oklch(0.5 0.04 285);
+  --color-sidebar-text-active: oklch(0.42 0.04 285);
+  --color-sidebar-hover: oklch(0.93 0.008 280);
+  --color-sidebar-active-bg: var(--color-accent-faint);
+  --color-sidebar-active-text: var(--color-accent-ink);
+
+  --color-overlay-bg: oklch(0.42 0.03 285 / 0.4);
+}
+
+:root[data-theme='gruvbox-light'] {
+  --color-surface-0: oklch(0.95 0.04 95);
+  --color-surface-50: oklch(0.93 0.045 92);
+  --color-surface-100: oklch(0.89 0.05 90);
+  --color-surface-200: oklch(0.83 0.05 88);
+  --color-surface-300: oklch(0.77 0.05 86);
+
+  --color-ink: oklch(0.35 0.02 80);
+  --color-ink-muted: oklch(0.5 0.03 75);
+  --color-ink-faint: oklch(0.6 0.03 72);
+
+  --color-accent: oklch(0.48 0.09 220);
+  --color-accent-strong: oklch(0.42 0.1 222);
+  --color-accent-faint: oklch(0.9 0.04 200);
+  --color-accent-ink: oklch(0.42 0.1 222);
+
+  --color-ok: oklch(0.55 0.13 130);
+  --color-ok-ink: oklch(0.45 0.12 130);
+  --color-ok-faint: oklch(0.92 0.06 125);
+  --color-warn: oklch(0.62 0.13 75);
+  --color-warn-ink: oklch(0.48 0.11 70);
+  --color-warn-faint: oklch(0.93 0.07 80);
+  --color-err: oklch(0.52 0.2 28);
+  --color-err-ink: oklch(0.45 0.19 28);
+  --color-err-faint: oklch(0.92 0.06 28);
+
+  --color-chart-0: oklch(0.48 0.09 220);
+  --color-chart-1: oklch(0.55 0.13 130);
+  --color-chart-2: oklch(0.62 0.13 75);
+  --color-chart-3: oklch(0.52 0.2 28);
+  --color-chart-4: oklch(0.52 0.09 190);
+  --color-chart-5: oklch(0.5 0.12 350);
+  --color-chart-6: oklch(0.58 0.17 45);
+  --color-chart-7: oklch(0.55 0.11 160);
+  --color-chart-8: oklch(0.48 0.13 250);
+  --color-chart-9: oklch(0.56 0.13 110);
+
+  --color-line: oklch(0.83 0.05 88);
+  --color-line-soft: oklch(0.89 0.045 90);
+
+  --color-sidebar-bg: oklch(0.93 0.045 92);
+  --color-sidebar-text: oklch(0.45 0.03 78);
+  --color-sidebar-text-active: oklch(0.35 0.02 80);
+  --color-sidebar-hover: oklch(0.89 0.05 90);
+  --color-sidebar-active-bg: var(--color-accent-faint);
+  --color-sidebar-active-text: var(--color-accent-ink);
+
+  --color-overlay-bg: oklch(0.35 0.03 80 / 0.4);
+}
+
+:root[data-theme='catppuccin-mocha'] {
+  --color-surface-0: oklch(0.26 0.03 285);
+  --color-surface-50: oklch(0.23 0.03 285);
+  --color-surface-100: oklch(0.33 0.03 283);
+  --color-surface-200: oklch(0.4 0.032 281);
+  --color-surface-300: oklch(0.48 0.032 280);
+
+  --color-ink: oklch(0.9 0.03 285);
+  --color-ink-muted: oklch(0.76 0.035 283);
+  --color-ink-faint: oklch(0.62 0.04 282);
+
+  --color-accent: oklch(0.78 0.13 300);
+  --color-accent-strong: oklch(0.83 0.12 300);
+  --color-accent-faint: oklch(0.38 0.08 300);
+  --color-accent-ink: oklch(0.86 0.1 300);
+
+  --color-ok: oklch(0.84 0.13 145);
+  --color-ok-ink: oklch(0.89 0.11 145);
+  --color-ok-faint: oklch(0.38 0.08 145);
+  --color-warn: oklch(0.85 0.1 80);
+  --color-warn-ink: oklch(0.9 0.09 80);
+  --color-warn-faint: oklch(0.4 0.07 70);
+  --color-err: oklch(0.74 0.13 10);
+  --color-err-ink: oklch(0.85 0.11 10);
+  --color-err-faint: oklch(0.4 0.09 10);
+
+  --color-chart-0: oklch(0.78 0.13 300);
+  --color-chart-1: oklch(0.84 0.13 145);
+  --color-chart-2: oklch(0.85 0.1 80);
+  --color-chart-3: oklch(0.74 0.13 10);
+  --color-chart-4: oklch(0.78 0.13 250);
+  --color-chart-5: oklch(0.82 0.11 190);
+  --color-chart-6: oklch(0.8 0.12 45);
+  --color-chart-7: oklch(0.82 0.12 220);
+  --color-chart-8: oklch(0.8 0.12 320);
+  --color-chart-9: oklch(0.82 0.13 130);
+
+  --color-line: oklch(0.4 0.03 283);
+  --color-line-soft: oklch(0.34 0.03 284);
+
+  --color-sidebar-bg: oklch(0.23 0.03 285);
+  --color-sidebar-text: oklch(0.76 0.035 283);
+  --color-sidebar-text-active: oklch(0.92 0.03 285);
+  --color-sidebar-hover: oklch(0.33 0.03 283);
+  --color-sidebar-active-bg: var(--color-accent-faint);
+  --color-sidebar-active-text: var(--color-accent-ink);
+
+  --color-overlay-bg: oklch(0.1 0.025 285 / 0.62);
+}
+
+:root[data-theme='gruvbox-dark'] {
+  --color-surface-0: oklch(0.28 0.008 90);
+  --color-surface-50: oklch(0.25 0.008 90);
+  --color-surface-100: oklch(0.34 0.009 88);
+  --color-surface-200: oklch(0.41 0.01 86);
+  --color-surface-300: oklch(0.49 0.012 84);
+
+  --color-ink: oklch(0.89 0.035 95);
+  --color-ink-muted: oklch(0.72 0.03 95);
+  --color-ink-faint: oklch(0.62 0.03 92);
+
+  --color-accent: oklch(0.74 0.13 60);
+  --color-accent-strong: oklch(0.8 0.12 65);
+  --color-accent-faint: oklch(0.38 0.07 55);
+  --color-accent-ink: oklch(0.82 0.11 62);
+
+  --color-ok: oklch(0.8 0.15 125);
+  --color-ok-ink: oklch(0.87 0.13 125);
+  --color-ok-faint: oklch(0.37 0.09 125);
+  --color-warn: oklch(0.82 0.14 85);
+  --color-warn-ink: oklch(0.88 0.12 85);
+  --color-warn-faint: oklch(0.38 0.08 80);
+  --color-err: oklch(0.64 0.2 28);
+  --color-err-ink: oklch(0.8 0.15 28);
+  --color-err-faint: oklch(0.36 0.11 28);
+
+  --color-chart-0: oklch(0.74 0.13 60);
+  --color-chart-1: oklch(0.8 0.15 125);
+  --color-chart-2: oklch(0.82 0.14 85);
+  --color-chart-3: oklch(0.64 0.2 28);
+  --color-chart-4: oklch(0.74 0.08 195);
+  --color-chart-5: oklch(0.7 0.1 350);
+  --color-chart-6: oklch(0.78 0.11 145);
+  --color-chart-7: oklch(0.72 0.09 220);
+  --color-chart-8: oklch(0.7 0.13 40);
+  --color-chart-9: oklch(0.82 0.13 110);
+
+  --color-line: oklch(0.4 0.01 88);
+  --color-line-soft: oklch(0.34 0.009 90);
+
+  --color-sidebar-bg: oklch(0.25 0.008 90);
+  --color-sidebar-text: oklch(0.72 0.03 95);
+  --color-sidebar-text-active: oklch(0.9 0.035 95);
+  --color-sidebar-hover: oklch(0.34 0.009 88);
+  --color-sidebar-active-bg: var(--color-accent-faint);
+  --color-sidebar-active-text: var(--color-accent-ink);
+
+  --color-overlay-bg: oklch(0.12 0.01 90 / 0.6);
+}
+
 /* ---------- Prose (markdown) ----------
    The @tailwindcss/typography plugin colors content through its own
    --tw-prose-* variables, which default to a fixed light gray scale and do not
