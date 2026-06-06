@@ -73,6 +73,20 @@ export const THEMES = [
     surface: 'oklch(0.2 0.015 260)',
     accent: 'oklch(0.65 0.17 255)',
   },
+  {
+    value: 'dracula',
+    label: 'Dracula',
+    kind: 'dark',
+    surface: 'oklch(0.31 0.028 285)',
+    accent: 'oklch(0.74 0.16 300)',
+  },
+  {
+    value: 'nord',
+    label: 'Nord',
+    kind: 'dark',
+    surface: 'oklch(0.33 0.022 250)',
+    accent: 'oklch(0.78 0.08 210)',
+  },
 ] as const satisfies readonly ThemeDef[]
 
 export type Theme = (typeof THEMES)[number]['value']
