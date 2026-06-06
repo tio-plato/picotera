@@ -32,6 +32,12 @@ type Config struct {
 	LLMBridgePluginPath          string        `mapstructure:"llmbridge_plugin_path"`
 	LLMBridgePluginStartTimeout  time.Duration `mapstructure:"llmbridge_plugin_start_timeout"`
 	HeapDumpDir                  string        `mapstructure:"heap_dump_dir"`
+	// PprofAddr, when non-empty (e.g. ":6060"), starts a separate HTTP server
+	// exposing net/http/pprof on that address. It is intentionally NOT mounted on
+	// the main router so profiling endpoints are never reachable through the
+	// gateway/ingress — only via an explicit debug port (port-forward in k8s).
+	// Empty (the default) disables pprof entirely.
+	PprofAddr string `mapstructure:"pprof_addr"`
 }
 
 type KVConfig struct {
