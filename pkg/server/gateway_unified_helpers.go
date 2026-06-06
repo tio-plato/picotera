@@ -447,6 +447,12 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			// then expose the bridged bytes as a reader.
 			upstreamBody, err := io.ReadAll(teedUpstream)
 			if err != nil {
+				// io.ReadAll does not close its reader, and failUnifiedSuccess only
+				// closes resp.Body — so without this the decode chain
+				// (pipeDecodedReadCloser: zstd/brotli decoder + copy goroutine) is
+				// leaked on every compressed non-stream read failure. Close walks
+				// the whole chain and is idempotent.
+				_ = teedUpstream.Close()
 				cancel()
 				h.failUnifiedSuccess(hdrCtx, a, err.Error())
 				return
