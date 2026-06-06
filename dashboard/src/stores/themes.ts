@@ -87,6 +87,27 @@ export const THEMES = [
     surface: 'oklch(0.33 0.022 250)',
     accent: 'oklch(0.78 0.08 210)',
   },
+  {
+    value: 'tokyo-night',
+    label: 'Tokyo Night',
+    kind: 'dark',
+    surface: 'oklch(0.24 0.025 270)',
+    accent: 'oklch(0.7 0.15 265)',
+  },
+  {
+    value: 'one-dark',
+    label: 'One Dark',
+    kind: 'dark',
+    surface: 'oklch(0.31 0.012 265)',
+    accent: 'oklch(0.72 0.14 245)',
+  },
+  {
+    value: 'monokai',
+    label: 'Monokai',
+    kind: 'dark',
+    surface: 'oklch(0.27 0.012 110)',
+    accent: 'oklch(0.78 0.13 195)',
+  },
 ] as const satisfies readonly ThemeDef[]
 
 export type Theme = (typeof THEMES)[number]['value']
