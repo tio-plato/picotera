@@ -227,6 +227,32 @@
   --color-overlay-bg: oklch(0.08 0.02 255 / 0.6);
 }
 
+/* ---------- Prose (markdown) ----------
+   The @tailwindcss/typography plugin colors content through its own
+   --tw-prose-* variables, which default to a fixed light gray scale and do not
+   follow our themes. Re-map them onto the semantic tokens so every .prose block
+   (conversation text, thinking, response reply, tool output) tracks the active
+   theme — fixing dark-on-dark text in dark themes. Tokens already swap per
+   [data-theme], so this single block covers all themes. */
+.prose {
+  --tw-prose-body: var(--color-ink);
+  --tw-prose-headings: var(--color-ink);
+  --tw-prose-lead: var(--color-ink-muted);
+  --tw-prose-links: var(--color-accent-ink);
+  --tw-prose-bold: var(--color-ink);
+  --tw-prose-counters: var(--color-ink-muted);
+  --tw-prose-bullets: var(--color-ink-faint);
+  --tw-prose-hr: var(--color-line);
+  --tw-prose-quotes: var(--color-ink-muted);
+  --tw-prose-quote-borders: var(--color-line);
+  --tw-prose-captions: var(--color-ink-faint);
+  --tw-prose-code: var(--color-ink);
+  --tw-prose-pre-code: var(--color-ink);
+  --tw-prose-pre-bg: var(--color-surface-100);
+  --tw-prose-th-borders: var(--color-line);
+  --tw-prose-td-borders: var(--color-line-soft);
+}
+
 html {
   /* Root font-size is set inline by the preferences store (FONT_SIZE_PX). */
   -webkit-font-smoothing: antialiased;
