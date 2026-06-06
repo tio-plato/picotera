@@ -37,7 +37,7 @@ type gatewayFlow struct {
 	meta           gatewayMetaState
 	auth           gatewayAuthState
 	model          gatewayModelState
-	session        *jsx.Session
+	session        jsx.Session
 }
 
 type gatewayFlowConfig struct {
@@ -140,11 +140,11 @@ func (f *gatewayFlow) run() {
 		return
 	}
 	defer f.session.Close()
-	sorted, sidecars, js, ok := f.resolveAndSortCandidates()
+	sorted, sidecars, ok := f.resolveAndSortCandidates()
 	if !ok {
 		return
 	}
-	result := f.runAttempts(sorted, sidecars, js)
+	result := f.runAttempts(sorted, sidecars)
 	if result.Handled {
 		return
 	}
@@ -259,12 +259,31 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 	f.session = session
 	f.model.Annotations = f.h.fetchModelAnnotations(f.ctxs.Request, mode.RoutedModel)
 	f.preRewriteBody = append([]byte(nil), f.body...)
-	newModel, err := f.session.RunRewriteModelHook(jsx.RewriteModelInput{
-		Request:     serializeClientRequest(f.r, f.body, mode.RoutedModel, f.config.PathVars),
-		Model:       mode.OriginalModel,
-		ApiKey:      f.auth.APIKeyJS,
-		Annotations: annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno),
-	}, mode.RoutedModel)
+
+	endpointType := "gateway"
+	if f.config.Kind == gatewayRouteUnified {
+		endpointType = "unified"
+	}
+	epSummary := endpointSummaryFromRow(f.config.Endpoint)
+	clientReq := serializeClientRequest(f.r, f.body, mode.RoutedModel, f.config.PathVars)
+	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	streaming := mode.Streaming
+	srcFormat := f.config.SourceFormat.String()
+	if err := f.session.PatchContext(jsx.ContextPatch{
+		EndpointType: &endpointType,
+		Endpoint:     &epSummary,
+		RequestModel: &mode.OriginalModel,
+		Request:      &clientReq,
+		ApiKey:       f.auth.APIKeyJS,
+		Annotations:  &mergedAnno,
+		Stream:       &streaming,
+		SourceFormat: &srcFormat,
+	}); err != nil {
+		f.failHook(err)
+		return false
+	}
+
+	newModel, err := f.session.RunRewriteModel(mode.RoutedModel)
 	if err != nil {
 		f.failHook(err)
 		return false
@@ -286,42 +305,53 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		f.model.Annotations = f.h.fetchModelAnnotations(f.ctxs.Request, newModel)
 		f.updateMetaModel(newModel)
 	}
+
+	// Reflect the final routed model (and, if the body/annotations changed, the
+	// updated request/annotations) onto the persistent ctx.
+	routed := jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations}
+	finalReq := serializeClientRequest(f.r, f.body, f.model.Routed, f.config.PathVars)
+	finalAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	if err := f.session.PatchContext(jsx.ContextPatch{
+		RoutedModel: &routed,
+		Request:     &finalReq,
+		Annotations: &finalAnno,
+	}); err != nil {
+		f.failHook(err)
+		return false
+	}
 	return true
 }
 
-func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.Candidate, map[string]gatewayCandidateSidecar, gatewayJSContext, bool) {
+func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.CandidateView, map[string]gatewayCandidateSidecar, bool) {
 	set, err := f.config.ResolveCandidates(f.ctxs.Request, f.model.Mode, f.auth)
 	if err != nil {
 		f.failGatewayErrorWithFallback(err, http.StatusInternalServerError, "failed to query providers")
-		return nil, nil, gatewayJSContext{}, false
+		return nil, nil, false
 	}
 	if set.ModelAnno != nil {
 		f.model.Annotations = set.ModelAnno
 	}
-	candidates := make([]jsx.Candidate, 0, len(set.Items))
+	candidates := make([]jsx.CandidateView, 0, len(set.Items))
 	for _, item := range set.Items {
 		candidates = append(candidates, item.Candidate)
 	}
-	js := gatewayJSContext{
-		Endpoint:      endpointSummaryFromRow(f.config.Endpoint),
-		Model:         &jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations},
-		ClientRequest: serializeClientRequest(f.r, f.body, f.model.Routed, f.config.PathVars),
-		APIKey:        f.auth.APIKeyJS,
-		Annotations:   annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno),
+	// Candidate resolution may have refined the model annotations; reflect the
+	// final routedModel + merged annotations onto ctx before sortProviders.
+	routed := jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations}
+	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	if err := f.session.PatchContext(jsx.ContextPatch{
+		RoutedModel: &routed,
+		Annotations: &mergedAnno,
+	}); err != nil {
+		f.failHook(err)
+		return nil, nil, false
 	}
-	sorted, err := f.session.RunSortHook(jsx.SortInput{
-		Endpoint:    js.Endpoint,
-		Model:       js.Model,
-		Request:     js.ClientRequest,
-		Providers:   candidates,
-		ApiKey:      js.APIKey,
-		Annotations: js.Annotations,
-	})
+	sorted, err := f.session.RunSortProviders(candidates)
 	if err != nil {
 		f.failHook(err)
-		return nil, nil, gatewayJSContext{}, false
+		return nil, nil, false
 	}
-	return sorted, candidateSidecarMap(set), js, true
+	return sorted, candidateSidecarMap(set), true
 }
 
 func (f *gatewayFlow) updateMetaModel(model string) {

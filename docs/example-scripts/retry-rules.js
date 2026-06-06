@@ -1,7 +1,7 @@
 // 重试规则
 picotera.hooks.beforeRequest.tap("retry", function (ctx, input) {
   return {
-    next: !(ctx.currentRetryCount < 2 && ctx.totalAttemptCount < 5),
-    delay: ctx.currentRetryCount * 500,
+    next: !(ctx.attempt.currentRetryCount < 2 && ctx.attempt.totalAttemptCount < 5),
+    delay: ctx.attempt.currentRetryCount * 500,
   };
 }, 0);

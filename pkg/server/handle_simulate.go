@@ -58,10 +58,10 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 
 	// 3. Resolve endpoint (path table or virtual unified).
 	var (
-		endpoint    db.Endpoint
-		srcFormat   llmbridge.Format
-		isUnified   bool
-		pathVars    = map[string]string{}
+		endpoint  db.Endpoint
+		srcFormat llmbridge.Format
+		isUnified bool
+		pathVars  = map[string]string{}
 	)
 	switch in.Endpoint.Kind {
 	case "path":
@@ -147,13 +147,27 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 		PathVars: pathVars,
 		Body:     jsonBodyOrNil(jsHeaders, bodyBytes),
 	}
+	endpointJS := endpointSummaryFromRow(endpoint)
 
-	newModel, err := session.RunRewriteModelHook(jsx.RewriteModelInput{
-		Request:     clientReq,
-		Model:       originalModel,
-		ApiKey:      apiKeyJS,
-		Annotations: annotations.Merge(modelAnno, apiKeyAnno),
-	}, modelName)
+	endpointType := "gateway"
+	if isUnified {
+		endpointType = "unified"
+	}
+	srcFormatStr := srcFormat.String()
+	if perr := session.PatchContext(jsx.ContextPatch{
+		EndpointType: &endpointType,
+		Endpoint:     &endpointJS,
+		RequestModel: &originalModel,
+		Request:      &clientReq,
+		ApiKey:       apiKeyJS,
+		Annotations:  ptrMap(annotations.Merge(modelAnno, apiKeyAnno)),
+		Stream:       &streaming,
+		SourceFormat: &srcFormatStr,
+	}); perr != nil {
+		return nil, hookHumaError(perr)
+	}
+
+	newModel, err := session.RunRewriteModel(modelName)
 	if err != nil {
 		return nil, hookHumaError(err)
 	}
@@ -275,7 +289,7 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 		upstreamURL string
 	}
 	sidecar := make(map[string]sidecarEntry, len(rows))
-	candidates := make([]jsx.Candidate, 0, len(rows))
+	candidates := make([]jsx.CandidateView, 0, len(rows))
 	for _, r := range rows {
 		entryAnno, _ := annotations.Decode(r.Annotations)
 		merged, providerAnno := annoBuilder.merge(r.ProviderAnnotations, entryAnno)
@@ -289,37 +303,39 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 			upFormat:    upFormat,
 			upstreamURL: r.UpstreamURL,
 		}
-		candidates = append(candidates, jsx.Candidate{
+		upstreamFormat := ""
+		if isUnified {
+			upstreamFormat = upFormat.String()
+		}
+		candidates = append(candidates, jsx.CandidateView{
 			Provider: jsx.ProviderSummary{
 				ID:          r.ProviderID,
 				Name:        r.ProviderName,
 				Priority:    r.ProviderPriority,
 				Annotations: providerAnno,
 			},
-			MPE: jsx.CandidateMPE{
-				ModelName:         r.ModelName,
-				ProviderID:        r.ProviderID,
-				EndpointPath:      r.EndpointPath,
+			ProviderModel: jsx.ProviderModel{
+				Name:              r.ModelName,
 				UpstreamModelName: r.UpstreamModelName,
+				Endpoint:          r.EndpointPath,
 				Priority:          r.Priority,
 				Annotations:       entryAnno,
+				UpstreamFormat:    upstreamFormat,
 			},
 			Annotations: merged,
 		})
 	}
 
-	modelJS := &jsx.ModelSummary{Name: modelName, Annotations: modelAnno}
-	endpointJS := endpointSummaryFromRow(endpoint)
-
-	// 9. Run sortProviders.
-	sorted, err := session.RunSortHook(jsx.SortInput{
-		Endpoint:    endpointJS,
-		Model:       modelJS,
-		Request:     clientReq,
-		Providers:   candidates,
-		ApiKey:      apiKeyJS,
-		Annotations: annotations.Merge(modelAnno, apiKeyAnno),
-	})
+	// 9. Reflect the (possibly refined) routed model + merged annotations onto
+	// ctx, then run sortProviders.
+	routed := jsx.ModelSummary{Name: modelName, Annotations: modelAnno}
+	if perr := session.PatchContext(jsx.ContextPatch{
+		RoutedModel: &routed,
+		Annotations: ptrMap(annotations.Merge(modelAnno, apiKeyAnno)),
+	}); perr != nil {
+		return nil, hookHumaError(perr)
+	}
+	sorted, err := session.RunSortProviders(candidates)
 	if err != nil {
 		return nil, hookHumaError(err)
 	}
@@ -333,7 +349,7 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 	resp.Body.Candidates = make([]contract.SimulateCandidate, 0, len(sorted))
 
 	for _, c := range sorted {
-		key := fmt.Sprintf("%d|%s", c.Provider.ID, c.MPE.EndpointPath)
+		key := fmt.Sprintf("%d|%s", c.Provider.ID, c.ProviderModel.Endpoint)
 		side, ok := sidecar[key]
 		if !ok {
 			continue
@@ -346,19 +362,7 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 
 		var profile *contract.SimulateOutboundProfile
 		if isUnified && bridged {
-			p, perr := simulateBeforeTransform(session, beforeTransformArgs{
-				endpoint:    endpointJS,
-				model:       modelJS,
-				candidate:   c,
-				annotations: merged,
-				apiKey:      apiKeyJS,
-				clientReq:   clientReq,
-				bodyBytes:   bodyBytes,
-				upstreamURL: side.upstreamURL,
-				srcFormat:   srcFormat,
-				upFormat:    side.upFormat,
-				stream:      streaming,
-			})
+			p, perr := simulateBeforeTransform(session, c, merged, side.upFormat)
 			if perr != nil {
 				return nil, hookHumaError(perr)
 			}
@@ -373,13 +377,12 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 				Annotations: c.Provider.Annotations,
 				Disabled:    c.Provider.Disabled,
 			},
-			MPE: contract.SimulateMPE{
-				ModelName:         c.MPE.ModelName,
-				ProviderID:        c.MPE.ProviderID,
-				EndpointPath:      c.MPE.EndpointPath,
-				UpstreamModelName: c.MPE.UpstreamModelName,
-				Priority:          c.MPE.Priority,
-				Annotations:       c.MPE.Annotations,
+			ProviderModel: contract.SimulateProviderModel{
+				Name:              c.ProviderModel.Name,
+				UpstreamModelName: c.ProviderModel.UpstreamModelName,
+				Endpoint:          c.ProviderModel.Endpoint,
+				Priority:          c.ProviderModel.Priority,
+				Annotations:       c.ProviderModel.Annotations,
 			},
 			MergedAnnotations: merged,
 			UpstreamFormat:    side.upFormat.String(),
@@ -403,58 +406,28 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 	return resp, nil
 }
 
-// beforeTransformArgs bundles inputs for simulateBeforeTransform so the call
-// site stays readable.
-type beforeTransformArgs struct {
-	endpoint    jsx.EndpointSummary
-	model       *jsx.ModelSummary
-	candidate   jsx.Candidate
-	annotations map[string]string
-	apiKey      *jsx.ApiKeySummary
-	clientReq   jsx.RequestShape
-	bodyBytes   []byte
-	upstreamURL string
-	srcFormat   llmbridge.Format
-	upFormat    llmbridge.Format
-	stream      bool
-}
-
-// simulateBeforeTransform runs the beforeTransform waterfall for a bridged
-// candidate and returns the resolved outbound profile. The PendingRequest
-// shape is synthesized from the simulator inputs: source-format body, the
-// configured upstream URL, and a minimal header set (Content-Type only).
-// Credentials are deliberately omitted — the simulator never touches them.
-func simulateBeforeTransform(session *jsx.Session, a beforeTransformArgs) (*contract.SimulateOutboundProfile, error) {
-	baseProfile, err := llmbridge.DefaultOutboundProfileForFormat(a.upFormat)
+// simulateBeforeTransform patches the per-candidate ctx fields (provider,
+// providerModel, annotations) and runs the beforeTransform waterfall for a
+// bridged candidate, returning the resolved outbound profile. stream /
+// sourceFormat are already on ctx; providerModel.upstreamFormat is carried by
+// the candidate. Credentials are deliberately never exposed.
+func simulateBeforeTransform(session jsx.Session, c jsx.CandidateView, merged map[string]string, upFormat llmbridge.Format) (*contract.SimulateOutboundProfile, error) {
+	baseProfile, err := llmbridge.DefaultOutboundProfileForFormat(upFormat)
 	if err != nil {
 		return nil, err
 	}
-	initial := jsx.OutboundProfile{Type: baseProfile.Type, Config: map[string]any{}}
 
-	pendHeaders := http.Header{}
-	if len(a.bodyBytes) > 0 {
-		pendHeaders.Set("Content-Type", "application/json")
-	}
-	pending := jsx.PendingRequestShape{
-		URL:     a.upstreamURL,
-		Method:  http.MethodPost,
-		Headers: mapLowerKeys(pendHeaders),
-		Body:    jsonBodyOrNil(pendHeaders, a.bodyBytes),
+	provider := c.Provider
+	providerModel := c.ProviderModel
+	if perr := session.PatchContext(jsx.ContextPatch{
+		Provider:      &provider,
+		ProviderModel: &providerModel,
+		Annotations:   ptrMap(merged),
+	}); perr != nil {
+		return nil, perr
 	}
 
-	hookProfile, err := session.RunBeforeTransformHook(jsx.BeforeTransformInput{
-		Endpoint:       a.endpoint,
-		Model:          a.model,
-		Provider:       a.candidate.Provider,
-		MPE:            a.candidate.MPE,
-		ClientRequest:  a.clientReq,
-		PendingRequest: pending,
-		ApiKey:         a.apiKey,
-		Annotations:    a.annotations,
-		SourceFormat:   a.srcFormat.String(),
-		UpstreamFormat: a.upFormat.String(),
-		Stream:         a.stream,
-	}, initial)
+	hookProfile, err := session.RunBeforeTransform(jsx.OutboundProfile{Type: baseProfile.Type, Config: map[string]any{}})
 	if err != nil {
 		return nil, err
 	}
@@ -464,6 +437,9 @@ func simulateBeforeTransform(session *jsx.Session, a beforeTransformArgs) (*cont
 	}
 	return &contract.SimulateOutboundProfile{Type: hookProfile.Type, Config: cfg}, nil
 }
+
+// ptrMap returns a pointer to m, for ContextPatch's *map fields.
+func ptrMap(m map[string]string) *map[string]string { return &m }
 
 // hookHumaError maps a JSX hook error to the appropriate huma error. Hook
 // timeouts → 503, everything else → 502.

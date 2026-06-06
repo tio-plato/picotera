@@ -1414,9 +1414,9 @@ export interface components {
             mergedAnnotations: {
                 [key: string]: string;
             };
-            mpe: components["schemas"]["SimulateMPE"];
             outboundProfile?: components["schemas"]["SimulateOutboundProfile"];
             provider: components["schemas"]["SimulateProviderSummary"];
+            providerModel: components["schemas"]["SimulateProviderModel"];
             upstreamFormat: string;
         };
         SimulateDispatchRequestBody: {
@@ -1470,23 +1470,21 @@ export interface components {
             message: string;
             ts: string;
         };
-        SimulateMPE: {
-            annotations: {
-                [key: string]: string;
-            };
-            endpointPath: string;
-            modelName: string;
-            /** Format: int32 */
-            priority: number;
-            /** Format: int32 */
-            providerId: number;
-            upstreamModelName: string;
-        };
         SimulateOutboundProfile: {
             config: {
                 [key: string]: unknown;
             };
             type: string;
+        };
+        SimulateProviderModel: {
+            annotations: {
+                [key: string]: string;
+            };
+            endpoint: string;
+            name: string;
+            /** Format: int32 */
+            priority: number;
+            upstreamModelName: string;
         };
         SimulateProviderSummary: {
             annotations: {

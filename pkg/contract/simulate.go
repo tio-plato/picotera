@@ -24,7 +24,7 @@ type SimulateDispatchRequest struct {
 	}
 }
 
-// SimulateProviderSummary mirrors jsx.ProviderSummary minus ProviderModels.
+// SimulateProviderSummary mirrors jsx.ProviderSummary.
 type SimulateProviderSummary struct {
 	ID          int32             `json:"id"`
 	Name        string            `json:"name"`
@@ -33,12 +33,12 @@ type SimulateProviderSummary struct {
 	Disabled    bool              `json:"disabled"`
 }
 
-// SimulateMPE mirrors jsx.CandidateMPE.
-type SimulateMPE struct {
-	ModelName         string            `json:"modelName"`
-	ProviderID        int32             `json:"providerId"`
-	EndpointPath      string            `json:"endpointPath"`
+// SimulateProviderModel mirrors jsx.ProviderModel (the resolved single-endpoint
+// model configuration for a candidate).
+type SimulateProviderModel struct {
+	Name              string            `json:"name"`
 	UpstreamModelName string            `json:"upstreamModelName"`
+	Endpoint          string            `json:"endpoint"`
 	Priority          int32             `json:"priority"`
 	Annotations       map[string]string `json:"annotations"`
 }
@@ -54,7 +54,7 @@ type SimulateOutboundProfile struct {
 // SimulateCandidate is one entry in the simulator's ranked candidate list.
 type SimulateCandidate struct {
 	Provider          SimulateProviderSummary  `json:"provider"`
-	MPE               SimulateMPE              `json:"mpe"`
+	ProviderModel     SimulateProviderModel    `json:"providerModel"`
 	MergedAnnotations map[string]string        `json:"mergedAnnotations"`
 	UpstreamFormat    string                   `json:"upstreamFormat"`
 	Bridged           bool                     `json:"bridged"`

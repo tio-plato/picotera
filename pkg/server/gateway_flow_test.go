@@ -18,7 +18,7 @@ import (
 
 func TestGatewayCandidateSidecarLookupPath(t *testing.T) {
 	set := candidateSet{Items: []gatewayCandidate{{
-		Candidate: jsx.Candidate{Provider: jsx.ProviderSummary{ID: 7}},
+		Candidate: jsx.CandidateView{Provider: jsx.ProviderSummary{ID: 7}},
 		Sidecar:   gatewayCandidateSidecar{Key: "7", ProviderID: 7, UpstreamURL: "https://upstream.test"},
 	}}}
 	side, ok := lookupCandidateSidecar(gatewayRoutePath, candidateSidecarMap(set), set.Items[0].Candidate)
@@ -31,13 +31,13 @@ func TestGatewayCandidateSidecarLookupPath(t *testing.T) {
 }
 
 func TestGatewayCandidateSidecarLookupUnified(t *testing.T) {
-	cand := jsx.Candidate{Provider: jsx.ProviderSummary{ID: 9}, MPE: jsx.CandidateMPE{EndpointPath: "/v1/messages"}}
+	cand := jsx.CandidateView{Provider: jsx.ProviderSummary{ID: 9}, ProviderModel: jsx.ProviderModel{Endpoint: "/v1/messages"}}
 	set := candidateSet{Items: []gatewayCandidate{{Candidate: cand, Sidecar: gatewayCandidateSidecar{Key: "9|/v1/messages", ProviderID: 9}}}}
 	if _, ok := lookupCandidateSidecar(gatewayRouteUnified, candidateSidecarMap(set), cand); !ok {
 		t.Fatal("expected unified sidecar lookup to include endpoint path")
 	}
 	wrongPath := cand
-	wrongPath.MPE.EndpointPath = "/v1/chat/completions"
+	wrongPath.ProviderModel.Endpoint = "/v1/chat/completions"
 	if _, ok := lookupCandidateSidecar(gatewayRouteUnified, candidateSidecarMap(set), wrongPath); ok {
 		t.Fatal("expected wrong provider/path pair to miss")
 	}
@@ -45,7 +45,7 @@ func TestGatewayCandidateSidecarLookupUnified(t *testing.T) {
 
 func TestGatewayUnknownCandidateSkipped(t *testing.T) {
 	f := &gatewayFlow{h: &gatewayHandler{Server: &Server{config: &configx.Config{JSMaxTotalAttempts: 1}}}, config: gatewayFlowConfig{Kind: gatewayRoutePath}, ctxs: gatewayContexts{Request: context.Background()}}
-	result := f.runAttempts([]jsx.Candidate{{Provider: jsx.ProviderSummary{ID: 404}}}, map[string]gatewayCandidateSidecar{}, gatewayJSContext{})
+	result := f.runAttempts([]jsx.CandidateView{{Provider: jsx.ProviderSummary{ID: 404}}}, map[string]gatewayCandidateSidecar{})
 	if result.Handled {
 		t.Fatal("unknown candidate should not be handled")
 	}

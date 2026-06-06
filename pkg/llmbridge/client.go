@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"syscall"
 	"time"
 )
 
 type Config struct {
 	PluginPath         string
 	PluginStartTimeout time.Duration
+	HeapDumpDir        string
 }
 
 type Bridge interface {
@@ -20,6 +22,9 @@ type Bridge interface {
 	BridgeNonStream(ctx context.Context, src, upstream Format, upstreamBody []byte, upstreamHeaders http.Header, profile OutboundProfile) ([]byte, string, error)
 	BridgeStream(ctx context.Context, src, upstream Format, upstreamBody io.ReadCloser, upstreamCT string, profile OutboundProfile) (io.ReadCloser, error)
 	AggregateStream(ctx context.Context, format Format, contentType string, body []byte, profile OutboundProfile) ([]byte, error)
+	// SignalPlugin forwards a signal to the plugin subprocess (used to trigger
+	// a heap dump in the plugin). It is a no-op when no live plugin exists.
+	SignalPlugin(sig syscall.Signal) error
 }
 
 var errDisabled = fmt.Errorf("llmbridge: plugin is not configured")
@@ -65,6 +70,10 @@ func (disabledBridge) BridgeStream(ctx context.Context, src, upstream Format, up
 
 func (disabledBridge) AggregateStream(ctx context.Context, format Format, contentType string, body []byte, profile OutboundProfile) ([]byte, error) {
 	return nil, errDisabled
+}
+
+func (disabledBridge) SignalPlugin(sig syscall.Signal) error {
+	return nil
 }
 
 func contentTypeOrDefault(h http.Header) string {

@@ -14,19 +14,20 @@ type Config struct {
 	MaxDelay         time.Duration
 }
 
-type Engine struct {
+// qjsEngine is the in-process QuickJS implementation of Engine.
+type qjsEngine struct {
 	cfg     Config
 	store   ScriptStore
 	kvStore kv.Store
 }
 
-func NewEngine(cfg Config, store ScriptStore, kvStore kv.Store) *Engine {
-	return &Engine{cfg: cfg, store: store, kvStore: kvStore}
+// NewEngine returns the in-process QuickJS Engine.
+func NewEngine(cfg Config, store ScriptStore, kvStore kv.Store) Engine {
+	return &qjsEngine{cfg: cfg, store: store, kvStore: kvStore}
 }
 
-func (e *Engine) Config() Config { return e.cfg }
+func (e *qjsEngine) Config() Config { return e.cfg }
 
-// NewSession creates a per-request JS session. The caller MUST call Close().
-func (e *Engine) NewSession(ctx context.Context, requestID string) (*Session, error) {
+func (e *qjsEngine) NewSession(ctx context.Context, requestID string) (Session, error) {
 	return newSession(ctx, e, requestID)
 }

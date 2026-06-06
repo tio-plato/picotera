@@ -7,13 +7,13 @@
   Waterfall.prototype.tap = function (name, fn, priority) {
     this._taps.push({ name: String(name || 'anonymous'), fn: fn, priority: priority ?? 0 })
     this._taps.sort(function (a, b) {
-      return b.priority - a.priority;
+      return a.priority - b.priority;
     });
   }
-  Waterfall.prototype.runWaterfall = async function (context, input) {
+  Waterfall.prototype.runWaterfall = function (context, input) {
     let value = input
     for (const tap of this._taps) {
-      const out = await tap.fn(context, value)
+      const out = tap.fn(context, value)
       if (typeof out !== 'undefined') {
         value = out
       }
@@ -32,27 +32,33 @@
     },
     kv: {
       get: function (key) {
-        var s = globalThis.__picotera_kv_get(String(key));
-        return s === '' ? null : JSON.parse(s);
+        var r = globalThis.__picotera_kv_get(String(key));
+        if (r[1]) throw new Error(r[1]);
+        return r[0] === '' ? null : JSON.parse(r[0]);
       },
       set: function (key, value) {
-        return globalThis.__picotera_kv_set(String(key), JSON.stringify(value));
+        var e = globalThis.__picotera_kv_set(String(key), JSON.stringify(value));
+        if (e) throw new Error(e);
       },
       setex: function (key, seconds, value) {
-        return globalThis.__picotera_kv_setex(String(key), Number(seconds), JSON.stringify(value));
+        var e = globalThis.__picotera_kv_setex(String(key), Number(seconds), JSON.stringify(value));
+        if (e) throw new Error(e);
       },
       ttl: function (key) {
-        return globalThis.__picotera_kv_ttl(String(key));
+        var r = globalThis.__picotera_kv_ttl(String(key));
+        if (r[1]) throw new Error(r[1]);
+        return r[0];
       },
       del: function (key) {
-        return globalThis.__picotera_kv_del(String(key));
+        var e = globalThis.__picotera_kv_del(String(key));
+        if (e) throw new Error(e);
       },
     },
     fetch: function (url, init) {
       var initJSON = init ? JSON.stringify(init) : ''
-      return globalThis.__picotera_fetch(String(url), initJSON).then(function (s) {
-        return JSON.parse(s)
-      })
+      var r = globalThis.__picotera_fetch(String(url), initJSON)
+      if (r[1]) throw new Error(r[1])
+      return JSON.parse(r[0])
     },
   }
 
