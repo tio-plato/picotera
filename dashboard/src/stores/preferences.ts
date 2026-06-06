@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { THEME_VALUES, isDarkTheme } from './themes'
+import type { Theme } from './themes'
 
-export type Theme = 'light' | 'solarized-light' | 'solarized-dark' | 'dark'
+export type { Theme }
 export type PanelMode = 'auto' | 'right' | 'modal'
 export type FontSize = 'tall' | 'grande' | 'venti' | 'trenta'
 export type OverviewCurrencyOverride = 'original' | string | null
@@ -18,7 +20,6 @@ const DEFAULTS = {
   tracesRefreshMs: 0,
 }
 
-const THEME_VALUES: Theme[] = ['light', 'solarized-light', 'solarized-dark', 'dark']
 const PANEL_MODE_VALUES: PanelMode[] = ['auto', 'right', 'modal']
 const FONT_SIZE_VALUES: FontSize[] = ['tall', 'grande', 'venti', 'trenta']
 const REFRESH_MS_VALUES: number[] = [0, 200, 5000, 10000, 30000, 60000]
@@ -80,7 +81,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     const root = document.documentElement
     root.dataset.theme = theme.value
     root.dataset.panelMode = panelMode.value
-    root.dataset.dark = String(theme.value === 'dark' || theme.value === 'solarized-dark')
+    root.dataset.dark = String(isDarkTheme(theme.value))
     root.style.fontSize = `${FONT_SIZE_PX[fontSize.value]}px`
   }
 
