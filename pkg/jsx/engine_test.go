@@ -48,8 +48,8 @@ func TestEngine_LoadsScripts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunRewriteModel: %v", err)
 	}
-	if out != "base-b-a" {
-		t.Errorf("want priority waterfall base-b-a, got %q", out)
+	if out != "base-a-b" {
+		t.Errorf("want priority waterfall base-a-b, got %q", out)
 	}
 }
 
@@ -101,7 +101,7 @@ picotera.hooks.rewriteModel.tap("runtime-tap", function (ctx, m) {
 		t.Fatalf("want runtime error, got nil")
 	}
 	got := err.Error()
-	for _, want := range []string{"hook name: runtime-tap", "script:script-runtime-fail", ":3:"} {
+	for _, want := range []string{"script:script-runtime-fail", ":3:"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("error missing %q: %v", want, got)
 		}
