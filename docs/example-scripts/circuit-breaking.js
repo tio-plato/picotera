@@ -5,7 +5,9 @@ picotera.hooks.beforeRequest.tap('fuse', function ({
     id: providerId,
     name: providerName,
   },
-  currentRetryCount
+  attempt: {
+    currentRetryCount,
+  },
 }, input) {
   let errCount = picotera.kv.get(`fail:${providerId}`) ?? 0
   if (errCount >= 10) {
