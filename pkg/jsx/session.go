@@ -35,6 +35,17 @@ const (
 	logSentinelMsg   = "[picotera] log buffer truncated"
 )
 
+func scriptFilename(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("jsx: script id must not be empty")
+	}
+	return "script:" + id, nil
+}
+
+func internalFilename(name string) string {
+	return "internal:" + name
+}
+
 // qjsSession is the in-process QuickJS implementation of Session. The
 // underlying *quickjs.VM is not concurrency-safe; a session is used
 // sequentially within a single request flow.
@@ -124,11 +135,11 @@ func newSession(ctx context.Context, eng *qjsEngine, requestID string) (*qjsSess
 	s := &qjsSession{engine: eng, vm: vm, ctx: ctx, requestID: requestID}
 	registerHelpers(s)
 
-	if _, err := vm.Eval(sdkSource, quickjs.EvalGlobal); err != nil {
+	if _, err := vm.EvalFile(sdkSource, internalFilename("sdk.js"), quickjs.EvalGlobal); err != nil {
 		s.Close()
 		return nil, fmt.Errorf("jsx: eval sdk: %w", err)
 	}
-	if _, err := vm.Eval(ctxInit, quickjs.EvalGlobal); err != nil {
+	if _, err := vm.EvalFile(ctxInit, internalFilename("ctx-init.js"), quickjs.EvalGlobal); err != nil {
 		s.Close()
 		return nil, fmt.Errorf("jsx: init ctx: %w", err)
 	}
@@ -139,7 +150,12 @@ func newSession(ctx context.Context, eng *qjsEngine, requestID string) (*qjsSess
 		return nil, fmt.Errorf("jsx: list scripts: %w", err)
 	}
 	for _, sc := range scripts {
-		if _, err := vm.Eval(sc.Source, quickjs.EvalGlobal); err != nil {
+		filename, err := scriptFilename(sc.ID)
+		if err != nil {
+			s.Close()
+			return nil, err
+		}
+		if _, err := vm.EvalFile(sc.Source, filename, quickjs.EvalGlobal); err != nil {
 			s.Close()
 			return nil, fmt.Errorf("jsx: eval script %s: %w", sc.ID, err)
 		}
@@ -181,7 +197,7 @@ func (s *qjsSession) PatchContext(patch ContextPatch) error {
 	if string(b) == "{}" {
 		return nil
 	}
-	if _, err := s.vm.Eval("Object.assign(globalThis.ctx, "+string(b)+")", quickjs.EvalGlobal); err != nil {
+	if _, err := s.vm.EvalFile("Object.assign(globalThis.ctx, "+string(b)+")", internalFilename("patch-context.js"), quickjs.EvalGlobal); err != nil {
 		return fmt.Errorf("jsx: patch context: %w", err)
 	}
 	return nil
@@ -190,14 +206,14 @@ func (s *qjsSession) PatchContext(patch ContextPatch) error {
 // evalJSON evaluates a hook IIFE and returns the result as JSON bytes.
 // isUndefined is true when the IIFE returned `undefined` (passthrough). On a
 // timeout/interrupt the session is tainted and ErrHookTimeout is returned.
-func (s *qjsSession) evalJSON(name, expr string) (data json.RawMessage, isUndefined bool, err error) {
+func (s *qjsSession) evalJSON(name, filename, expr string) (data json.RawMessage, isUndefined bool, err error) {
 	if s.tainted {
 		return nil, false, ErrHookTimeout
 	}
 	if terr := s.vm.SetEvalTimeout(s.timeout()); terr != nil {
 		return nil, false, fmt.Errorf("jsx: %s set timeout: %w", name, terr)
 	}
-	v, err := s.vm.EvalValue(expr, quickjs.EvalGlobal)
+	v, err := s.vm.EvalValueFile(expr, filename, quickjs.EvalGlobal)
 	if err != nil {
 		if isInterrupt(err) {
 			s.tainted = true
@@ -242,7 +258,7 @@ func (s *qjsSession) RunRewriteModel(initial string) (string, error) {
 		if (typeof r !== 'string') return undefined;
 		return r;
 	})()`
-	data, undef, err := s.evalJSON("rewriteModel", expr)
+	data, undef, err := s.evalJSON("rewriteModel", internalFilename("hook-rewriteModel.js"), expr)
 	if err != nil || undef {
 		return initial, err
 	}
@@ -269,7 +285,7 @@ func (s *qjsSession) RunSortProviders(initial []CandidateView) ([]CandidateView,
 		if (r && Array.isArray(r.providers)) return r.providers;
 		return undefined;
 	})()`
-	data, undef, err := s.evalJSON("sortProviders", expr)
+	data, undef, err := s.evalJSON("sortProviders", internalFilename("hook-sortProviders.js"), expr)
 	if err != nil || undef {
 		return initial, err
 	}
@@ -294,7 +310,7 @@ func (s *qjsSession) RunBeforeRequest(initial BeforeRequestDecision) (BeforeRequ
 		var um = (typeof r.upstreamModel === 'string') ? r.upstreamModel : '';
 		return { next: !!r.next, delay: r.delay || 0, upstreamModel: um };
 	})()`
-	data, undef, err := s.evalJSON("beforeRequest", expr)
+	data, undef, err := s.evalJSON("beforeRequest", internalFilename("hook-beforeRequest.js"), expr)
 	if err != nil || undef {
 		return initial, err
 	}
@@ -323,7 +339,7 @@ func (s *qjsSession) RunRewriteRequest(initial PendingRequestShape) (PendingRequ
 		}
 		return v;
 	})()`
-	data, undef, err := s.evalJSON("rewriteRequest", expr)
+	data, undef, err := s.evalJSON("rewriteRequest", internalFilename("hook-rewriteRequest.js"), expr)
 	if err != nil || undef {
 		return initial, err
 	}
@@ -365,7 +381,7 @@ func (s *qjsSession) RunBeforeTransform(initial OutboundProfile) (OutboundProfil
 			config: Object.prototype.hasOwnProperty.call(r, "config") ? r.config : {}
 		};
 	})()`
-	data, undef, err := s.evalJSON("beforeTransform", expr)
+	data, undef, err := s.evalJSON("beforeTransform", internalFilename("hook-beforeTransform.js"), expr)
 	if err != nil || undef {
 		return initial, err
 	}
@@ -392,7 +408,7 @@ func (s *qjsSession) RunRewriteProviderModels(initial []ProviderModelEntry) ([]P
 		if (typeof r === 'undefined' || r === null || !Array.isArray(r)) return undefined;
 		return r;
 	})()`
-	data, undef, err := s.evalJSON("rewriteProviderModels", expr)
+	data, undef, err := s.evalJSON("rewriteProviderModels", internalFilename("hook-rewriteProviderModels.js"), expr)
 	if err != nil || undef {
 		return initial, err
 	}

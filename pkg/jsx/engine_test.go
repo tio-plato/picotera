@@ -66,6 +66,46 @@ func TestSession_BadScript_FailsSession(t *testing.T) {
 	if err == nil {
 		t.Fatalf("want error loading invalid script, got nil")
 	}
+	got := err.Error()
+	if !strings.Contains(got, "jsx: eval script bad") || !strings.Contains(got, "script:bad") {
+		t.Fatalf("error did not include script id filename: %v", got)
+	}
+}
+
+func TestSession_LoadErrorIncludesScriptFilenameAndLine(t *testing.T) {
+	_, err := newTestEngine(t, db.Script{ID: "script-load-fail", Source: "var ok = 1;\nvar bad = ;"}).
+		NewSession(context.Background(), "")
+	if err == nil {
+		t.Fatalf("want error loading invalid script, got nil")
+	}
+	got := err.Error()
+	for _, want := range []string{"eval script script-load-fail", "script:script-load-fail", ":2:"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error missing %q: %v", want, got)
+		}
+	}
+}
+
+func TestSession_RuntimeErrorIncludesScriptStackAndTapName(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "script-runtime-fail", Source: `
+function failFromUserScript() {
+  throw new Error("runtime boom");
+}
+picotera.hooks.rewriteModel.tap("runtime-tap", function (ctx, m) {
+  failFromUserScript();
+  return m;
+});
+`})
+	_, err := s.RunRewriteModel("base")
+	if err == nil {
+		t.Fatalf("want runtime error, got nil")
+	}
+	got := err.Error()
+	for _, want := range []string{"hook name: runtime-tap", "script:script-runtime-fail", ":3:"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error missing %q: %v", want, got)
+		}
+	}
 }
 
 func TestSession_PatchContext_VisibleToHook(t *testing.T) {

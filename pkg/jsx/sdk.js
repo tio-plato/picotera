@@ -7,19 +7,15 @@
   Waterfall.prototype.tap = function (name, fn, priority) {
     this._taps.push({ name: String(name || 'anonymous'), fn: fn, priority: priority ?? 0 })
     this._taps.sort(function (a, b) {
-      return b.priority - a.priority;
+      return a.priority - b.priority;
     });
   }
   Waterfall.prototype.runWaterfall = function (context, input) {
     let value = input
     for (const tap of this._taps) {
-      try {
-        const out = tap.fn(context, value)
-        if (typeof out !== 'undefined') {
-          value = out
-        }
-      } catch (error) {
-        throw new Error(`${error.message}\nhook name: ${tap.name}\n${error.stack}`)
+      const out = tap.fn(context, value)
+      if (typeof out !== 'undefined') {
+        value = out
       }
     }
     return value
