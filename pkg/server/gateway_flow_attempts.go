@@ -127,9 +127,10 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 	if err != nil {
 		var hookErr gatewayHookError
 		if errors.As(err, &hookErr) {
+			f.recordAttemptFailure(state, input, side.ProviderID, int32(gatewayHookStatus(hookErr.err)), hookErr.err, db.FinishReasonInternal)
 			f.failHook(hookErr.err)
 			cancel()
-			return false, true
+			return true, true
 		}
 		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, db.FinishReasonInternal)
 		cancel()
