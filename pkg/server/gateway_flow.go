@@ -136,10 +136,16 @@ func (f *gatewayFlow) run() {
 	if !f.authenticateAndBackfill() {
 		return
 	}
+	// closeSession is deferred BEFORE resolveAndRewriteModel because that method
+	// creates the per-request QuickJS VM (f.session) and can then return false on
+	// a hook error/timeout. Registering the (nil-safe) close defer here guarantees
+	// the VM is released on every exit path; a defer placed after the call leaks
+	// the VM whenever model rewrite fails — and that memory is mostly off-heap
+	// (modernc.org/quickjs mmap), so it never shows up in Go heap pprof.
+	defer f.closeSession()
 	if !f.resolveAndRewriteModel() {
 		return
 	}
-	defer f.session.Close()
 	sorted, sidecars, ok := f.resolveAndSortCandidates()
 	if !ok {
 		return
@@ -149,6 +155,16 @@ func (f *gatewayFlow) run() {
 		return
 	}
 	f.failAllProviders(result.LastErr)
+}
+
+// closeSession releases the per-request JS session if one was opened. It is
+// nil-safe so it can be deferred before the session is created (e.g. when
+// resolveAndRewriteModel fails before/at NewSession), and Session.Close is
+// itself idempotent.
+func (f *gatewayFlow) closeSession() {
+	if f.session != nil {
+		f.session.Close()
+	}
 }
 
 func (f *gatewayFlow) readBody() bool {
