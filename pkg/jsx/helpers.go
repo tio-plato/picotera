@@ -10,51 +10,41 @@ import (
 	"picotera/pkg/kv"
 	"picotera/pkg/logx"
 
-	"github.com/fastschema/qjs"
+	"modernc.org/quickjs"
 )
 
 // fetchClient is the shared HTTP client used by picotera.fetch. The 5s
-// timeout matches the original spec.
+// timeout is the only backstop for a hook blocked in a host fetch call —
+// SetEvalTimeout cannot interrupt a blocking host function.
 var fetchClient = &http.Client{Timeout: 5 * time.Second}
 
-// registerHelpers wires fetch / setTimeout / console / kv into the runtime.
-func registerHelpers(s *Session) {
-	c := s.rt.Context()
-	registerFetch(c)
-	registerSetTimeout(c)
+// registerHelpers wires fetch / console / kv into the VM as synchronous host
+// functions.
+func registerHelpers(s *qjsSession) {
+	registerFetch(s.vm)
 	registerConsole(s)
 	registerKV(s)
-}
-
-// registerFetch exposes picotera.fetch via __picotera_fetch (async).
-// JS side wraps it: picotera.fetch(url, init?) → Promise<{status, headers, body}>.
-func registerFetch(c *qjs.Context) {
-	c.SetAsyncFunc("__picotera_fetch", func(this *qjs.This) {
-		args := this.Args()
-		var url, initJSON string
-		if len(args) > 0 {
-			url = args[0].String()
-		}
-		if len(args) > 1 {
-			initJSON = args[1].String()
-		}
-		go func() {
-			resp, ferr := doFetch(url, initJSON)
-			ctx := this.Context()
-			if ferr != nil {
-				this.Promise().Reject(ctx.NewString(ferr.Error()))
-				return
-			}
-			b, _ := json.Marshal(resp)
-			this.Promise().Resolve(ctx.NewString(string(b)))
-		}()
-	})
 }
 
 type fetchResponse struct {
 	Status  int                 `json:"status"`
 	Headers map[string][]string `json:"headers"`
 	Body    string              `json:"body"`
+}
+
+// registerFetch exposes a synchronous __picotera_fetch(url, initJSON) host
+// function. It returns (jsonBody, error); the multi-return surfaces in JS as
+// the array [jsonBody, errOrNull], which the SDK turns into a parsed object or
+// a thrown error.
+func registerFetch(vm *quickjs.VM) {
+	_ = vm.RegisterFunc("__picotera_fetch", func(url, initJSON string) (string, error) {
+		resp, err := doFetch(url, initJSON)
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(resp)
+		return string(b), nil
+	}, false)
 }
 
 func doFetch(url, initJSON string) (*fetchResponse, error) {
@@ -90,133 +80,60 @@ func doFetch(url, initJSON string) (*fetchResponse, error) {
 	}, nil
 }
 
-// registerSetTimeout exposes a Promise-based setTimeout via __picotera_setTimeout.
-// JS side: globalThis.setTimeout(fn, ms) calls __picotera_setTimeout(ms).then(fn).
-func registerSetTimeout(c *qjs.Context) {
-	c.SetAsyncFunc("__picotera_setTimeout", func(this *qjs.This) {
-		args := this.Args()
-		var ms int32
-		if len(args) > 0 {
-			ms = args[0].Int32()
-		}
-		go func() {
-			time.Sleep(time.Duration(ms) * time.Millisecond)
-			this.Promise().Resolve(this.Context().NewUndefined())
-		}()
-	})
-}
-
-// registerKV exposes picotera.kv via __picotera_kv_* (synchronous).
-func registerKV(s *Session) {
-	c := s.rt.Context()
+// registerKV exposes picotera.kv via __picotera_kv_* host functions. Functions
+// that can fail return (value, error) so the SDK can throw on the error
+// element; void operations return error (null on success). The session's
+// request context bounds each operation.
+func registerKV(s *qjsSession) {
+	vm := s.vm
 	store := s.engine.kvStore
 
-	c.SetFunc("__picotera_kv_get", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		var key string
-		if len(args) > 0 {
-			key = args[0].String()
-		}
-		val, err := store.Get(this.Context(), key)
+	_ = vm.RegisterFunc("__picotera_kv_get", func(key string) (string, error) {
+		val, err := store.Get(s.ctx, key)
 		if err == kv.ErrKeyNotFound {
-			return this.Context().NewNull(), nil
+			return "", nil
 		}
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		return this.Context().NewString(val), nil
-	})
+		return val, nil
+	}, false)
 
-	c.SetFunc("__picotera_kv_set", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		var key, value string
-		if len(args) > 0 {
-			key = args[0].String()
-		}
-		if len(args) > 1 {
-			value = args[1].String()
-		}
-		err := store.Set(this.Context(), key, value)
-		if err != nil {
-			return nil, err
-		}
-		return this.Context().NewUndefined(), nil
-	})
+	_ = vm.RegisterFunc("__picotera_kv_set", func(key, value string) error {
+		return store.Set(s.ctx, key, value)
+	}, false)
 
-	c.SetFunc("__picotera_kv_setex", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		var key string
-		var seconds int32
-		var value string
-		if len(args) > 0 {
-			key = args[0].String()
-		}
-		if len(args) > 1 {
-			seconds = args[1].Int32()
-		}
-		if len(args) > 2 {
-			value = args[2].String()
-		}
-		err := store.SetEx(this.Context(), key, value, time.Duration(seconds)*time.Second)
-		if err != nil {
-			return nil, err
-		}
-		return this.Context().NewUndefined(), nil
-	})
+	_ = vm.RegisterFunc("__picotera_kv_setex", func(key string, seconds int, value string) error {
+		return store.SetEx(s.ctx, key, value, time.Duration(seconds)*time.Second)
+	}, false)
 
-	c.SetFunc("__picotera_kv_ttl", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		var key string
-		if len(args) > 0 {
-			key = args[0].String()
-		}
-		ttl, err := store.TTL(this.Context(), key)
+	_ = vm.RegisterFunc("__picotera_kv_ttl", func(key string) (int, error) {
+		ttl, err := store.TTL(s.ctx, key)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-		return this.Context().NewInt32(int32(ttl)), nil
-	})
+		return int(ttl), nil
+	}, false)
 
-	c.SetFunc("__picotera_kv_del", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		var key string
-		if len(args) > 0 {
-			key = args[0].String()
-		}
-		err := store.Del(this.Context(), key)
-		if err != nil {
-			return nil, err
-		}
-		return this.Context().NewUndefined(), nil
-	})
+	_ = vm.RegisterFunc("__picotera_kv_del", func(key string) error {
+		return store.Del(s.ctx, key)
+	}, false)
 }
 
 // registerConsole wires console.{log,info,warn,error} through __picotera_console
-// to logx (tagged with the session's requestID) and appends a structured
-// entry to the session's log buffer for inclusion in the meta response artifact.
-func registerConsole(s *Session) {
-	c := s.rt.Context()
-	c.SetFunc("__picotera_console", func(this *qjs.This) (*qjs.Value, error) {
-		args := this.Args()
-		var level, msg string
-		if len(args) > 0 {
-			level = args[0].String()
-		}
-		if len(args) > 1 {
-			msg = args[1].String()
-		}
+// to logx (tagged with the session's requestID) and appends a structured entry
+// to the session's log buffer for inclusion in the meta response artifact.
+func registerConsole(s *qjsSession) {
+	_ = s.vm.RegisterFunc("__picotera_console", func(level, msg string) {
 		entry := logx.New().WithField("source", "jsx").WithField("request_id", s.requestID)
 		switch level {
 		case "error":
 			entry.Error(msg)
 		case "warn":
 			entry.Warn(msg)
-		case "info":
-			entry.Info(msg)
 		default:
 			entry.Info(msg)
 		}
 		s.appendLog(level, msg)
-		return this.Context().NewUndefined(), nil
-	})
+	}, false)
 }

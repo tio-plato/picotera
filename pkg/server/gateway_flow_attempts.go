@@ -12,20 +12,13 @@ import (
 	"picotera/pkg/db"
 	"picotera/pkg/jsx"
 	"picotera/pkg/llmbridge"
+	"picotera/pkg/logx"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type gatewayJSContext struct {
-	Endpoint      jsx.EndpointSummary
-	Model         *jsx.ModelSummary
-	ClientRequest jsx.RequestShape
-	APIKey        *jsx.ApiKeySummary
-	Annotations   map[string]string
-}
-
 type attemptInput struct {
-	Candidate         jsx.Candidate
+	Candidate         jsx.CandidateView
 	Sidecar           gatewayCandidateSidecar
 	Annotations       map[string]string
 	Decision          jsx.BeforeRequestDecision
@@ -38,8 +31,6 @@ type attemptInput struct {
 	UpstreamModel     string
 	Request           *http.Request
 	RequestBody       []byte
-	PendingRequest    jsx.PendingRequestShape
-	JS                gatewayJSContext
 	Entry             *liveEntry
 }
 
@@ -52,7 +43,7 @@ type attemptPrepared struct {
 
 type successInput struct {
 	Flow              *gatewayFlow
-	Candidate         jsx.Candidate
+	Candidate         jsx.CandidateView
 	Sidecar           gatewayCandidateSidecar
 	Response          *http.Response
 	AttemptCtx        context.Context
@@ -73,7 +64,7 @@ type attemptResult struct {
 	LastErr error
 }
 
-func (f *gatewayFlow) runAttempts(sorted []jsx.Candidate, sidecars map[string]gatewayCandidateSidecar, js gatewayJSContext) attemptResult {
+func (f *gatewayFlow) runAttempts(sorted []jsx.CandidateView, sidecars map[string]gatewayCandidateSidecar) attemptResult {
 	state := attemptState{}
 	for state.Index < len(sorted) && state.TotalAttemptCount < f.h.config.JSMaxTotalAttempts {
 		// The flow context is cancelled when the meta row is interrupted from
@@ -88,7 +79,7 @@ func (f *gatewayFlow) runAttempts(sorted []jsx.Candidate, sidecars map[string]ga
 			state.CurrentRetryCount = 0
 			continue
 		}
-		handled, stop := f.runSingleAttempt(cand, side, js, &state)
+		handled, stop := f.runSingleAttempt(cand, side, &state)
 		if handled || stop {
 			return attemptResult{Handled: handled, LastErr: state.LastErr}
 		}
@@ -104,12 +95,12 @@ type attemptState struct {
 	LastJSErr         *jsx.LastError
 }
 
-func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidateSidecar, js gatewayJSContext, state *attemptState) (handled bool, stop bool) {
+func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandidateSidecar, state *attemptState) (handled bool, stop bool) {
 	candAnno := cand.Annotations
 	if candAnno == nil {
 		candAnno = side.Annotations
 	}
-	dec, err := f.runBeforeRequest(cand, candAnno, js, state)
+	dec, err := f.runBeforeRequest(cand, candAnno, state)
 	if err != nil {
 		f.failHook(err)
 		return false, true
@@ -119,11 +110,13 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidate
 		return false, true
 	}
 	if dec.Next {
+		logx.WithContext(f.ctxs.Request).WithField("provider_id", side.ProviderID).Debug("hook not continuing, trying next upstream")
 		state.Index++
 		state.CurrentRetryCount = 0
 		return false, false
 	}
-	input, cancel, err := f.insertUpstreamAttempt(cand, side, candAnno, dec, js, state)
+	logx.WithContext(f.ctxs.Request).WithField("provider_id", side.ProviderID).Debug("starting upstream attempt")
+	input, cancel, err := f.insertUpstreamAttempt(cand, side, candAnno, dec, state)
 	if err != nil {
 		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, db.FinishReasonInternal)
 		cancel()
@@ -161,19 +154,24 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.Candidate, side gatewayCandidate
 	return false, false
 }
 
-func (f *gatewayFlow) runBeforeRequest(cand jsx.Candidate, candAnno map[string]string, js gatewayJSContext, state *attemptState) (jsx.BeforeRequestDecision, error) {
-	return f.session.RunBeforeRequestHook(jsx.BeforeRequestInput{
-		Endpoint:          js.Endpoint,
-		Model:             js.Model,
-		Request:           js.ClientRequest,
-		Provider:          cand.Provider,
-		MPE:               cand.MPE,
+// runBeforeRequest patches the per-attempt ctx fields (provider, providerModel,
+// annotations, attempt) and runs the beforeRequest waterfall. The initial
+// decision pre-seeds next=true for retries (currentRetryCount > 0).
+func (f *gatewayFlow) runBeforeRequest(cand jsx.CandidateView, candAnno map[string]string, state *attemptState) (jsx.BeforeRequestDecision, error) {
+	attempt := jsx.AttemptState{
 		CurrentRetryCount: state.CurrentRetryCount,
 		TotalAttemptCount: state.TotalAttemptCount,
 		LastError:         state.LastJSErr,
-		ApiKey:            js.APIKey,
-		Annotations:       candAnno,
-	})
+	}
+	if err := f.session.PatchContext(jsx.ContextPatch{
+		Provider:      &cand.Provider,
+		ProviderModel: &cand.ProviderModel,
+		Annotations:   &candAnno,
+		Attempt:       &attempt,
+	}); err != nil {
+		return jsx.BeforeRequestDecision{}, err
+	}
+	return f.session.RunBeforeRequest(jsx.BeforeRequestDecision{Next: state.CurrentRetryCount > 0})
 }
 
 func (f *gatewayFlow) waitHookDelay(delayMs int) bool {
@@ -194,7 +192,7 @@ func (f *gatewayFlow) waitHookDelay(delayMs int) bool {
 	}
 }
 
-func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.Candidate, side gatewayCandidateSidecar, candAnno map[string]string, dec jsx.BeforeRequestDecision, js gatewayJSContext, state *attemptState) (attemptInput, context.CancelFunc, error) {
+func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.CandidateView, side gatewayCandidateSidecar, candAnno map[string]string, dec jsx.BeforeRequestDecision, state *attemptState) (attemptInput, context.CancelFunc, error) {
 	attemptCtx, cancel := context.WithCancel(f.ctxs.Request)
 	upstreamModel := dec.UpstreamModel
 	if upstreamModel == "" {
@@ -225,7 +223,7 @@ func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.Candidate, side gatewayCand
 		CreatedAt:          pgtype.Timestamp{Time: upstreamIDCreatedAt, Valid: true},
 	})
 	entry := f.h.liveRequests.RegisterUpstream(upstreamID, cancel)
-	return attemptInput{Candidate: cand, Sidecar: side, Annotations: candAnno, Decision: dec, CurrentRetryCount: state.CurrentRetryCount, TotalAttemptCount: state.TotalAttemptCount, AttemptCtx: attemptCtx, UpstreamID: upstreamID, UpstreamCreatedAt: upstreamCreatedAt, AttemptStart: time.Now(), UpstreamModel: upstreamModel, JS: js, Entry: entry}, cancel, nil
+	return attemptInput{Candidate: cand, Sidecar: side, Annotations: candAnno, Decision: dec, CurrentRetryCount: state.CurrentRetryCount, TotalAttemptCount: state.TotalAttemptCount, AttemptCtx: attemptCtx, UpstreamID: upstreamID, UpstreamCreatedAt: upstreamCreatedAt, AttemptStart: time.Now(), UpstreamModel: upstreamModel, Entry: entry}, cancel, nil
 }
 
 func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attemptPrepared, error) {
@@ -244,18 +242,7 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 		return attemptPrepared{}, err
 	}
 	pending := serializePendingRequest(req, reqBody)
-	newPending, err := f.session.RunRewriteHook(jsx.RewriteInput{
-		Endpoint:          input.JS.Endpoint,
-		Model:             input.JS.Model,
-		Provider:          input.Candidate.Provider,
-		MPE:               input.Candidate.MPE,
-		CurrentRetryCount: input.CurrentRetryCount,
-		TotalAttemptCount: input.TotalAttemptCount,
-		ClientRequest:     input.JS.ClientRequest,
-		PendingRequest:    pending,
-		ApiKey:            input.JS.APIKey,
-		Annotations:       input.Annotations,
-	})
+	newPending, err := f.session.RunRewriteRequest(pending)
 	if err != nil {
 		return attemptPrepared{}, gatewayHookError{err: err}
 	}
@@ -265,7 +252,6 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 	}
 	input.Request = req
 	input.RequestBody = reqBody
-	input.PendingRequest = newPending
 	return f.config.PrepareAttempt(input.AttemptCtx, f, input)
 }
 
@@ -371,21 +357,9 @@ func prepareUnifiedOutboundProfile(f *gatewayFlow, input attemptInput) (llmbridg
 	if err != nil {
 		return llmbridge.OutboundProfile{}, gatewayHookError{err: err}
 	}
-	hookProfile, err := f.session.RunBeforeTransformHook(jsx.BeforeTransformInput{
-		Endpoint:          input.JS.Endpoint,
-		Model:             input.JS.Model,
-		Provider:          input.Candidate.Provider,
-		MPE:               input.Candidate.MPE,
-		CurrentRetryCount: input.CurrentRetryCount,
-		TotalAttemptCount: input.TotalAttemptCount,
-		ClientRequest:     input.JS.ClientRequest,
-		PendingRequest:    input.PendingRequest,
-		ApiKey:            input.JS.APIKey,
-		Annotations:       input.Annotations,
-		SourceFormat:      f.config.SourceFormat.String(),
-		UpstreamFormat:    input.Sidecar.UpstreamFormat.String(),
-		Stream:            f.model.Mode.Streaming,
-	}, jsx.OutboundProfile{Type: base.Type, Config: map[string]any{}})
+	// ctx already carries stream / sourceFormat / providerModel.upstreamFormat
+	// (patched before the attempt), so the waterfall value is just the profile.
+	hookProfile, err := f.session.RunBeforeTransform(jsx.OutboundProfile{Type: base.Type, Config: map[string]any{}})
 	if err != nil {
 		return llmbridge.OutboundProfile{}, err
 	}

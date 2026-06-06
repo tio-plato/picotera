@@ -1353,17 +1353,17 @@ components:
           additionalProperties:
             type: string
           type: object
-        mpe:
-          $ref: "#/components/schemas/SimulateMPE"
         outboundProfile:
           $ref: "#/components/schemas/SimulateOutboundProfile"
         provider:
           $ref: "#/components/schemas/SimulateProviderSummary"
+        providerModel:
+          $ref: "#/components/schemas/SimulateProviderModel"
         upstreamFormat:
           type: string
       required:
         - provider
-        - mpe
+        - providerModel
         - mergedAnnotations
         - upstreamFormat
         - bridged
@@ -1473,33 +1473,6 @@ components:
         - message
         - ts
       type: object
-    SimulateMPE:
-      additionalProperties: false
-      properties:
-        annotations:
-          additionalProperties:
-            type: string
-          type: object
-        endpointPath:
-          type: string
-        modelName:
-          type: string
-        priority:
-          format: int32
-          type: integer
-        providerId:
-          format: int32
-          type: integer
-        upstreamModelName:
-          type: string
-      required:
-        - modelName
-        - providerId
-        - endpointPath
-        - upstreamModelName
-        - priority
-        - annotations
-      type: object
     SimulateOutboundProfile:
       additionalProperties: false
       properties:
@@ -1511,6 +1484,29 @@ components:
       required:
         - type
         - config
+      type: object
+    SimulateProviderModel:
+      additionalProperties: false
+      properties:
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
+        endpoint:
+          type: string
+        name:
+          type: string
+        priority:
+          format: int32
+          type: integer
+        upstreamModelName:
+          type: string
+      required:
+        - name
+        - upstreamModelName
+        - endpoint
+        - priority
+        - annotations
       type: object
     SimulateProviderSummary:
       additionalProperties: false

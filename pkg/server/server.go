@@ -37,7 +37,7 @@ type Server struct {
 	httpClient       *http.Client
 	proxyCache       *proxyTransportCache
 	artifacts        artifacts.Sink
-	jsxEngine        *jsx.Engine
+	jsxEngine        jsx.Engine
 	kvStore          kv.Store
 	staticHandler    http.Handler
 	endpointRouter   *endpointRouter

@@ -3,7 +3,7 @@ package jsx
 import (
 	"fmt"
 
-	"github.com/fastschema/qjs"
+	"modernc.org/quickjs"
 )
 
 // ValidateSyntax checks JS source for parse-time errors. Runtime errors
@@ -12,12 +12,12 @@ import (
 // Implementation: Compile() returns the bytecode for the source without
 // executing it; a malformed source surfaces as a SyntaxError immediately.
 func ValidateSyntax(source string) error {
-	rt, err := qjs.New()
+	vm, err := quickjs.NewVM()
 	if err != nil {
-		return fmt.Errorf("jsx: qjs.New: %w", err)
+		return fmt.Errorf("jsx: quickjs.NewVM: %w", err)
 	}
-	defer rt.Close()
-	if _, err := rt.Context().Compile("submitted.js", qjs.Code(source)); err != nil {
+	defer vm.Close()
+	if _, err := vm.Compile(source, quickjs.EvalGlobal); err != nil {
 		return fmt.Errorf("jsx: invalid syntax: %w", err)
 	}
 	return nil
