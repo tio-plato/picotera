@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	netpprof "net/http/pprof"
 	"picotera/db/migrations"
 	"picotera/pkg/artifacts"
 	"picotera/pkg/configx"
@@ -260,6 +261,30 @@ func (s *Server) Serve() error {
 			logrus.WithError(err).Warn("failed to forward SIGUSR1 to llmbridge plugin")
 		}
 	})
+	s.servePprof()
 	logrus.WithField("host", s.config.Host).WithField("port", s.config.Port).Info("serving API")
 	return http.ListenAndServe(fmt.Sprintf("%s:%d", s.config.Host, s.config.Port), s.router)
+}
+
+// servePprof starts a dedicated debug HTTP server exposing net/http/pprof when
+// PICOTERA_PPROF_ADDR is set. It runs on its own listener (never the gateway
+// router) so live heap/goroutine/allocs profiles can be pulled for leak
+// investigation without exposing them through the public ingress.
+func (s *Server) servePprof() {
+	addr := s.config.PprofAddr
+	if addr == "" {
+		return
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", netpprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", netpprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", netpprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", netpprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", netpprof.Trace)
+	go func() {
+		logrus.WithField("addr", addr).Info("serving pprof debug endpoints")
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			logrus.WithError(err).WithField("addr", addr).Warn("pprof debug server stopped")
+		}
+	}()
 }
