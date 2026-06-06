@@ -520,6 +520,20 @@ func TestResponseExtractor_SSE_StreamError_OpenAI(t *testing.T) {
 	}
 }
 
+func TestResponseExtractor_SSE_StreamError_OpenAIResponsesFailed(t *testing.T) {
+	events := "event: response.failed\n" +
+		"data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_533aab23ed564f6a90c6ad8bca884101\",\"object\":\"response\",\"model\":\"gpt-5.5\",\"status\":\"failed\",\"output\":[],\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"Concurrency limit exceeded for account, please retry later\"}}}\n\n"
+	inner := strings.NewReader(events)
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	want := "Concurrency limit exceeded for account, please retry later"
+	if got := extractor.StreamError(); got != want {
+		t.Errorf("StreamError() = %q, want %q", got, want)
+	}
+}
+
 func TestResponseExtractor_SSE_StreamError_FirstWins(t *testing.T) {
 	events := []string{
 		"data: {\"type\":\"error\",\"error\":{\"message\":\"first error\"}}\n\n",
