@@ -5,3 +5,6 @@
 [submodule "third_party/go-sse"]
 	path = third_party/go-sse
 	url = https://github.com/33forks/picotera-go-sse.git
+[submodule "third_party/quickjs"]
+	path = third_party/quickjs
+	url = https://github.com/33forks/picotera-quickjs-go.git

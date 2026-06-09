@@ -6,7 +6,6 @@ require (
 	github.com/agnivade/levenshtein v1.2.1
 	github.com/andybalholm/brotli v1.2.1
 	github.com/danielgtaylor/huma/v2 v2.37.3
-	github.com/fastschema/qjs v0.0.6
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/hashicorp/go-plugin v1.8.0
 	github.com/jackc/pgx/v5 v5.9.2
@@ -27,6 +26,7 @@ require (
 	golang.org/x/net v0.52.0
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
+	modernc.org/quickjs v0.18.2
 )
 
 require (
@@ -67,10 +67,12 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/oklog/run v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/samber/lo v1.52.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
@@ -80,7 +82,6 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tinylib/msgp v1.6.1 // indirect
@@ -104,7 +105,10 @@ require (
 	google.golang.org/api v0.257.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.72.0 // indirect
+	modernc.org/libc v1.72.5 // indirect
+	modernc.org/libquickjs v0.12.8 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
 )
 
 // Mirror axonhub's replace: upstream tmaxmax/go-sse lacks NewStreamWithConfig,
@@ -114,3 +118,5 @@ require (
 replace github.com/tmaxmax/go-sse => ./third_party/go-sse
 
 replace github.com/looplj/axonhub/llm => ./third_party/axonhub/llm
+
+replace modernc.org/quickjs => ./third_party/quickjs

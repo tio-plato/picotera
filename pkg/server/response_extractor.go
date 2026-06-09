@@ -132,11 +132,16 @@ func (e *ResponseExtractor) processSSEEvent(eventBytes []byte) {
 	e.extractAnthropicSSE(payload)
 }
 
-// detectStreamError records the first non-empty error.message found in an SSE
-// data payload. The error.message path is consistent across Anthropic
-// Messages, OpenAI Chat Completions, and Gemini native error shapes.
+// detectStreamError records the first non-empty error message found in an SSE
+// data payload. OpenAI Responses uses response.error.message on
+// response.failed; Anthropic Messages, OpenAI Chat Completions, and Gemini
+// native error shapes use error.message.
 func (e *ResponseExtractor) detectStreamError(payload string) {
 	if e.streamError != "" {
+		return
+	}
+	if v := gjson.Get(payload, "response.error.message"); v.Exists() && v.Type == gjson.String && v.String() != "" {
+		e.streamError = v.String()
 		return
 	}
 	if v := gjson.Get(payload, "error.message"); v.Exists() && v.Type == gjson.String && v.String() != "" {

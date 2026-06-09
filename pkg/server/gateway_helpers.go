@@ -714,15 +714,15 @@ func metricsToPG(m ResponseMetrics) (ttftMs pgtype.Int4, inputTokens pgtype.Int4
 // candidateProviderID returns the provider id from a candidate. With typed
 // fields, JSON round-tripping decodes numbers straight into int32, so no
 // fallback handling is needed.
-func candidateProviderID(c jsx.Candidate) int32 {
+func candidateProviderID(c jsx.CandidateView) int32 {
 	return c.Provider.ID
 }
 
 // candidateUpstreamModel returns the upstream model name override from a
 // candidate's MPE. Empty string means "use the model name from the request
 // body verbatim", matching the existing buildUpstreamRequest contract.
-func candidateUpstreamModel(c jsx.Candidate) string {
-	return c.MPE.UpstreamModelName
+func candidateUpstreamModel(c jsx.CandidateView) string {
+	return c.ProviderModel.UpstreamModelName
 }
 
 // isJSONContentType reports whether the given Content-Type header value

@@ -1,15 +1,18 @@
 package jsx
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"picotera/pkg/logx"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/fastschema/qjs"
+	"picotera/pkg/logx"
+
+	"modernc.org/quickjs"
 )
 
 // ErrHookTimeout signals a hook ran past Engine.Config.HookTimeout. The
@@ -32,10 +35,24 @@ const (
 	logSentinelMsg   = "[picotera] log buffer truncated"
 )
 
-type Session struct {
-	engine    *Engine
-	rt        *qjs.Runtime
-	cancel    context.CancelFunc
+func scriptFilename(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("jsx: script id must not be empty")
+	}
+	return "script:" + id, nil
+}
+
+func internalFilename(name string) string {
+	return "internal:" + name
+}
+
+// qjsSession is the in-process QuickJS implementation of Session. The
+// underlying *quickjs.VM is not concurrency-safe; a session is used
+// sequentially within a single request flow.
+type qjsSession struct {
+	engine    *qjsEngine
+	vm        *quickjs.VM
+	ctx       context.Context
 	requestID string
 	closed    bool
 	tainted   bool
@@ -46,7 +63,7 @@ type Session struct {
 	logsTrunc bool
 }
 
-func (s *Session) appendLog(level, message string) {
+func (s *qjsSession) appendLog(level, message string) {
 	switch level {
 	case "info", "warn", "error":
 	default:
@@ -77,9 +94,9 @@ func (s *Session) appendLog(level, message string) {
 	s.logsBytes += len(message)
 }
 
-// Logs returns a snapshot copy of the captured log entries. Safe to call
-// concurrently with appendLog. Must be called before Close.
-func (s *Session) Logs() []LogEntry {
+// Logs returns a snapshot copy of the captured log entries. Must be called
+// before Close.
+func (s *qjsSession) Logs() []LogEntry {
 	s.logsMu.Lock()
 	defer s.logsMu.Unlock()
 	if len(s.logs) == 0 {
@@ -90,34 +107,55 @@ func (s *Session) Logs() []LogEntry {
 	return out
 }
 
-func newSession(ctx context.Context, eng *Engine, requestID string) (*Session, error) {
-	sessCtx, cancel := context.WithCancel(ctx)
-	opt := qjs.Option{
-		Context:            sessCtx,
-		CloseOnContextDone: true,
-		MemoryLimit:        int(eng.cfg.MemoryLimit),
-	}
-	rt, err := qjs.New(opt)
+// ctxInit is the JS that installs the persistent globalThis.ctx with all
+// fields at their zero/null state. Fields are filled in later via PatchContext.
+const ctxInit = `globalThis.ctx = {
+	endpointType: null,
+	endpoint: null,
+	requestModel: null,
+	routedModel: null,
+	request: null,
+	apiKey: null,
+	provider: null,
+	providerModel: null,
+	attempt: null,
+	annotations: {},
+	stream: false,
+	sourceFormat: ""
+};`
+
+func newSession(ctx context.Context, eng *qjsEngine, requestID string) (*qjsSession, error) {
+	vm, err := quickjs.NewVM()
 	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("jsx: qjs.New: %w", err)
+		return nil, fmt.Errorf("jsx: quickjs.NewVM: %w", err)
 	}
-	s := &Session{engine: eng, rt: rt, cancel: cancel, requestID: requestID}
+	if eng.cfg.MemoryLimit > 0 {
+		vm.SetMemoryLimit(uintptr(eng.cfg.MemoryLimit))
+	}
+	s := &qjsSession{engine: eng, vm: vm, ctx: ctx, requestID: requestID}
 	registerHelpers(s)
 
-	c := rt.Context()
-	if _, err := c.Eval("sdk.js", qjs.Code(sdkSource)); err != nil {
+	if _, err := vm.EvalFile(sdkSource, internalFilename("sdk.js"), quickjs.EvalGlobal); err != nil {
 		s.Close()
 		return nil, fmt.Errorf("jsx: eval sdk: %w", err)
 	}
+	if _, err := vm.EvalFile(ctxInit, internalFilename("ctx-init.js"), quickjs.EvalGlobal); err != nil {
+		s.Close()
+		return nil, fmt.Errorf("jsx: init ctx: %w", err)
+	}
 
-	scripts, err := eng.store.ListEnabledScripts(sessCtx)
+	scripts, err := eng.store.ListEnabledScripts(ctx)
 	if err != nil {
 		s.Close()
 		return nil, fmt.Errorf("jsx: list scripts: %w", err)
 	}
 	for _, sc := range scripts {
-		if _, err := c.Eval("script:"+sc.ID, qjs.Code(sc.Source)); err != nil {
+		filename, err := scriptFilename(sc.ID)
+		if err != nil {
+			s.Close()
+			return nil, err
+		}
+		if _, err := vm.EvalFile(sc.Source, filename, quickjs.EvalGlobal); err != nil {
 			s.Close()
 			return nil, fmt.Errorf("jsx: eval script %s: %w", sc.ID, err)
 		}
@@ -125,203 +163,208 @@ func newSession(ctx context.Context, eng *Engine, requestID string) (*Session, e
 	return s, nil
 }
 
-// Close releases the underlying QuickJS runtime. Safe to call multiple times.
-// If the session was tainted by a hook timeout, the runtime's wasm module is
-// already gone — Close still tries rt.Close() but recovers any panic so the
-// caller's `defer session.Close()` is always safe.
-func (s *Session) Close() {
+// Close releases the underlying QuickJS VM. Safe to call multiple times.
+func (s *qjsSession) Close() {
 	if s.closed {
 		return
 	}
 	s.closed = true
-	if s.rt != nil {
+	if s.vm != nil {
 		func() {
 			defer func() { _ = recover() }()
-			s.rt.Close()
+			_ = s.vm.Close()
 		}()
-		s.rt = nil
-	}
-	if s.cancel != nil {
-		s.cancel()
+		s.vm = nil
 	}
 }
 
-// Context returns the underlying qjs.Context for direct use within the package.
-func (s *Session) Context() *qjs.Context {
-	if s.rt == nil {
+func (s *qjsSession) timeout() time.Duration {
+	if s.engine.cfg.HookTimeout > 0 {
+		return s.engine.cfg.HookTimeout
+	}
+	return 5 * time.Second
+}
+
+// PatchContext shallow-merges patch's non-nil fields onto globalThis.ctx.
+func (s *qjsSession) PatchContext(patch ContextPatch) error {
+	if s.tainted {
+		return ErrHookTimeout
+	}
+	b, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("jsx: marshal context patch: %w", err)
+	}
+	if string(b) == "{}" {
 		return nil
 	}
-	return s.rt.Context()
+	if _, err := s.vm.EvalFile("Object.assign(globalThis.ctx, "+string(b)+")", internalFilename("patch-context.js"), quickjs.EvalGlobal); err != nil {
+		return fmt.Errorf("jsx: patch context: %w", err)
+	}
+	return nil
 }
 
-// RunSortHook calls the sortProviders waterfall with the given input. Return
-// semantics: if no tap mutated the value (passthrough), in.Providers is
-// returned unchanged; if a tap returned an array of candidates, that array
-// is returned; if a tap returned a `{providers: [...]}` shape, that array is
-// returned. An empty array means "no providers" (gateway then fails 502).
-func (s *Session) RunSortHook(in SortInput) ([]Candidate, error) {
-	lit, err := marshalToJSLiteral(in)
+// evalJSON evaluates a hook IIFE and returns the result as JSON bytes.
+// isUndefined is true when the IIFE returned `undefined` (passthrough). On a
+// timeout/interrupt the session is tainted and ErrHookTimeout is returned.
+func (s *qjsSession) evalJSON(name, filename, expr string) (data json.RawMessage, isUndefined bool, err error) {
+	if s.tainted {
+		return nil, false, ErrHookTimeout
+	}
+	if terr := s.vm.SetEvalTimeout(s.timeout()); terr != nil {
+		return nil, false, fmt.Errorf("jsx: %s set timeout: %w", name, terr)
+	}
+	v, err := s.vm.EvalValueFile(expr, filename, quickjs.EvalGlobal)
 	if err != nil {
-		return nil, err
-	}
-	expr := fmt.Sprintf(`(async () => {
-		const context = %s;
-		const r = await picotera.hooks.sortProviders.runWaterfall(context, { providers: JSON.parse(JSON.stringify(context.providers)) });
-		if (r === context || typeof r === 'undefined') return null;
-		return JSON.stringify(r);
-	})()`, lit)
-	jsonStr, err := s.runHookExpr("sortProviders.js", expr)
-	if err != nil {
-		return nil, err
-	}
-	if jsonStr == "" || jsonStr == "null" {
-		return in.Providers, nil
-	}
-	// Try {providers: [...]} first.
-	var obj struct {
-		Providers []Candidate `json:"providers"`
-	}
-	if err := json.Unmarshal([]byte(jsonStr), &obj); err == nil && obj.Providers != nil {
-		logx.WithContext(s.Context()).WithField("new_providers", obj.Providers).Debug("sortProviders hook returned new providers")
-		return obj.Providers, nil
-	}
-	// Try direct array.
-	var arr []Candidate
-	if err := json.Unmarshal([]byte(jsonStr), &arr); err == nil {
-		logx.WithContext(s.Context()).WithField("new_providers", arr).Debug("sortProviders hook returned new providers")
-		return arr, nil
-	}
-	return in.Providers, nil
-}
-
-// RunBeforeRequestHook calls the beforeRequest waterfall and decodes the
-// returned `{next, delay, upstreamModel}` shape. Passthrough or a return that
-// doesn't carry these keys collapses to `Next=false, Delay=0, UpstreamModel=""`.
-// A non-string upstreamModel is dropped at the JS boundary (treated as "" =
-// keep default).
-func (s *Session) RunBeforeRequestHook(in BeforeRequestInput) (BeforeRequestDecision, error) {
-	var dec BeforeRequestDecision
-	lit, err := marshalToJSLiteral(in)
-	if err != nil {
-		return dec, err
-	}
-	expr := fmt.Sprintf(`(async () => {
-		const ctx = %s;
-		const r = await picotera.hooks.beforeRequest.runWaterfall(ctx, { next: ctx.currentRetryCount > 0, delay: 0 });
-		if (r === ctx || typeof r === 'undefined' || r === null) return null;
-		const um = (typeof r.upstreamModel === 'string') ? r.upstreamModel : '';
-		return JSON.stringify({ next: !!r.next, delay: r.delay || 0, upstreamModel: um });
-	})()`, lit)
-	jsonStr, err := s.runHookExpr("beforeRequest.js", expr)
-	if err != nil {
-		return dec, err
-	}
-	if jsonStr == "" || jsonStr == "null" {
-		if in.CurrentRetryCount > 0 {
-			dec.Next = true
+		if isInterrupt(err) {
+			s.tainted = true
+			return nil, false, ErrHookTimeout
 		}
-		return dec, nil
+		return nil, false, fmt.Errorf("jsx: %s: %w", name, err)
 	}
-	if err := json.Unmarshal([]byte(jsonStr), &dec); err != nil {
-		return dec, fmt.Errorf("jsx: beforeRequest decode: %w", err)
+	defer v.Free()
+	if v.IsUndefined() {
+		return nil, true, nil
 	}
-	return dec, nil
+	b, merr := v.MarshalJSON()
+	if merr != nil {
+		return nil, false, fmt.Errorf("jsx: %s marshal: %w", name, merr)
+	}
+	// marshalJSON relies on the underlying JS value's GC lifetime, so we need to clone the bytes to avoid use-after-free.
+	b = bytes.Clone(b)
+	return json.RawMessage(b), false, nil
 }
 
-// RunRewriteModelHook calls the rewriteModel waterfall once before MPE
-// resolution. Returns the (possibly rewritten) model name. If no tap mutated
-// the value, or a tap returned a non-string, the original modelName is
-// returned. Equality with the input means the caller should skip body rewriting
-// and re-resolution.
-func (s *Session) RunRewriteModelHook(in RewriteModelInput, modelName string) (string, error) {
-	ctxLit, err := marshalToJSLiteral(in)
+func isInterrupt(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "interrupted")
+}
+
+func mustJSON(v any) (string, error) {
+	b, err := json.Marshal(v)
 	if err != nil {
-		return modelName, err
+		return "", fmt.Errorf("jsx: marshal initial: %w", err)
 	}
-	initLit, err := marshalToJSLiteral(modelName)
+	return string(b), nil
+}
+
+// RunRewriteModel runs the rewriteModel waterfall. A non-string result keeps
+// the initial value.
+func (s *qjsSession) RunRewriteModel(initial string) (string, error) {
+	init, err := mustJSON(initial)
 	if err != nil {
-		return modelName, err
+		return initial, err
 	}
-	expr := fmt.Sprintf(`(async () => {
-		const ctx = %s;
-		const initial = %s;
-		const r = await picotera.hooks.rewriteModel.runWaterfall(ctx, initial);
-		if (typeof r !== 'string') return null;
-		return JSON.stringify(r);
-	})()`, ctxLit, initLit)
-	jsonStr, err := s.runHookExpr("rewriteModel.js", expr)
-	if err != nil {
-		return modelName, err
-	}
-	if jsonStr == "" || jsonStr == "null" {
-		return modelName, nil
+	expr := `(function () {
+		var r = picotera.hooks.rewriteModel.runWaterfall(globalThis.ctx, ` + init + `);
+		if (typeof r !== 'string') return undefined;
+		return r;
+	})()`
+	data, undef, err := s.evalJSON("rewriteModel", internalFilename("hook-rewriteModel.js"), expr)
+	if err != nil || undef {
+		return initial, err
 	}
 	var out string
-	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
-		return modelName, fmt.Errorf("jsx: rewriteModel decode: %w", err)
+	if err := json.Unmarshal(data, &out); err != nil {
+		return initial, fmt.Errorf("jsx: rewriteModel decode: %w", err)
 	}
 	return out, nil
 }
 
-// RunRewriteHook calls the rewriteRequest waterfall. The hook input value is
-// ctx.pendingRequest; passthrough yields the input pendingRequest unchanged.
-// The hook must return a complete PendingRequest object — partial overrides
-// are not supported.
-//
-// Body roundtrip: if a tap leaves `body` as a non-string (object/array/...),
-// it is JSON.stringify'd at the JS boundary so Go always receives a JSON
-// string token in PendingRequestShape.Body when the field is present.
-func (s *Session) RunRewriteHook(in RewriteInput) (PendingRequestShape, error) {
-	out := in.PendingRequest
-	lit, err := marshalToJSLiteral(in)
+// RunSortProviders runs the sortProviders waterfall. Passthrough keeps the
+// initial list. A returned array (or {providers: [...]}) replaces it; an empty
+// array means "no providers".
+func (s *qjsSession) RunSortProviders(initial []CandidateView) ([]CandidateView, error) {
+	init, err := mustJSON(initial)
 	if err != nil {
-		return out, err
+		return initial, err
 	}
-	expr := fmt.Sprintf(`(async () => {
-		const ctx = %s;
-		const initial = ctx.pendingRequest;
-		const r = await picotera.hooks.rewriteRequest.runWaterfall(ctx, initial);
-		const v = (typeof r === 'undefined' || r === null) ? initial : r;
+	expr := `(function () {
+		var initial = ` + init + `;
+		var r = picotera.hooks.sortProviders.runWaterfall(globalThis.ctx, initial);
+		if (r === globalThis.ctx || typeof r === 'undefined' || r === null) return undefined;
+		if (Array.isArray(r)) return r;
+		if (r && Array.isArray(r.providers)) return r.providers;
+		return undefined;
+	})()`
+	data, undef, err := s.evalJSON("sortProviders", internalFilename("hook-sortProviders.js"), expr)
+	if err != nil || undef {
+		return initial, err
+	}
+	var out []CandidateView
+	if err := json.Unmarshal(data, &out); err != nil {
+		logx.WithContext(s.ctx).WithError(err).Debug("sortProviders hook returned undecodable value; keeping input")
+		return initial, nil
+	}
+	return out, nil
+}
+
+// RunBeforeRequest runs the beforeRequest waterfall. Passthrough keeps the
+// initial decision. A non-string upstreamModel is dropped at the JS boundary.
+func (s *qjsSession) RunBeforeRequest(initial BeforeRequestDecision) (BeforeRequestDecision, error) {
+	init, err := mustJSON(initial)
+	if err != nil {
+		return initial, err
+	}
+	expr := `(function () {
+		var r = picotera.hooks.beforeRequest.runWaterfall(globalThis.ctx, ` + init + `);
+		if (r === globalThis.ctx || typeof r === 'undefined' || r === null) return undefined;
+		var um = (typeof r.upstreamModel === 'string') ? r.upstreamModel : '';
+		return { next: !!r.next, delay: r.delay || 0, upstreamModel: um };
+	})()`
+	data, undef, err := s.evalJSON("beforeRequest", internalFilename("hook-beforeRequest.js"), expr)
+	if err != nil || undef {
+		return initial, err
+	}
+	var out BeforeRequestDecision
+	if err := json.Unmarshal(data, &out); err != nil {
+		return initial, fmt.Errorf("jsx: beforeRequest decode: %w", err)
+	}
+	return out, nil
+}
+
+// RunRewriteRequest runs the rewriteRequest waterfall. The hook must return a
+// complete pending request; passthrough keeps the initial. A non-string body
+// is JSON.stringify'd at the JS boundary so Go always receives a JSON string
+// token in Body when the field is present.
+func (s *qjsSession) RunRewriteRequest(initial PendingRequestShape) (PendingRequestShape, error) {
+	init, err := mustJSON(initial)
+	if err != nil {
+		return initial, err
+	}
+	expr := `(function () {
+		var initial = ` + init + `;
+		var r = picotera.hooks.rewriteRequest.runWaterfall(globalThis.ctx, initial);
+		var v = (typeof r === 'undefined' || r === null) ? initial : r;
 		if (v && typeof v.body !== 'undefined' && typeof v.body !== 'string') {
 			v.body = JSON.stringify(v.body);
 		}
-		return JSON.stringify(v);
-	})()`, lit)
-	jsonStr, err := s.runHookExpr("rewriteRequest.js", expr)
-	if err != nil {
-		return out, err
+		return v;
+	})()`
+	data, undef, err := s.evalJSON("rewriteRequest", internalFilename("hook-rewriteRequest.js"), expr)
+	if err != nil || undef {
+		return initial, err
 	}
-	if jsonStr == "" || jsonStr == "null" {
-		return out, nil
+	var out PendingRequestShape
+	if err := json.Unmarshal(data, &out); err != nil {
+		return initial, fmt.Errorf("jsx: rewriteRequest decode: %w", err)
 	}
-	var newOut PendingRequestShape
-	if err := json.Unmarshal([]byte(jsonStr), &newOut); err != nil {
-		return out, fmt.Errorf("jsx: rewriteRequest decode: %w", err)
-	}
-	return newOut, nil
+	return out, nil
 }
 
-// RunBeforeTransformHook calls the beforeTransform waterfall with the current
-// outbound profile. The hook contract is strict because its result controls
-// bridge construction: taps must return an object, with string type and object
-// config when present.
-func (s *Session) RunBeforeTransformHook(in BeforeTransformInput, initial OutboundProfile) (OutboundProfile, error) {
+// RunBeforeTransform runs the beforeTransform waterfall. The contract is strict
+// because its result drives bridge construction: taps must return an object,
+// with string type and object config when present.
+func (s *qjsSession) RunBeforeTransform(initial OutboundProfile) (OutboundProfile, error) {
 	if initial.Config == nil {
 		initial.Config = map[string]any{}
 	}
-	ctxLit, err := marshalToJSLiteral(in)
+	init, err := mustJSON(initial)
 	if err != nil {
 		return initial, err
 	}
-	initLit, err := marshalToJSLiteral(initial)
-	if err != nil {
-		return initial, err
-	}
-	expr := fmt.Sprintf(`(async () => {
-		const ctx = %s;
-		const initial = %s;
-		const r = await picotera.hooks.beforeTransform.runWaterfall(ctx, initial);
-		if (typeof r === 'undefined' || r === null) return null;
+	expr := `(function () {
+		var initial = ` + init + `;
+		var r = picotera.hooks.beforeTransform.runWaterfall(globalThis.ctx, initial);
+		if (typeof r === 'undefined' || r === null) return undefined;
 		if (typeof r !== 'object' || Array.isArray(r)) {
 			throw new Error("jsx: beforeTransform result must be object");
 		}
@@ -333,20 +376,17 @@ func (s *Session) RunBeforeTransformHook(in BeforeTransformInput, initial Outbou
 				throw new Error("jsx: beforeTransform config must be object");
 			}
 		}
-		return JSON.stringify({
+		return {
 			type: Object.prototype.hasOwnProperty.call(r, "type") ? r.type : initial.type,
 			config: Object.prototype.hasOwnProperty.call(r, "config") ? r.config : {}
-		});
-	})()`, ctxLit, initLit)
-	jsonStr, err := s.runHookExpr("beforeTransform.js", expr)
-	if err != nil {
+		};
+	})()`
+	data, undef, err := s.evalJSON("beforeTransform", internalFilename("hook-beforeTransform.js"), expr)
+	if err != nil || undef {
 		return initial, err
 	}
-	if jsonStr == "" || jsonStr == "null" {
-		return initial, nil
-	}
 	var out OutboundProfile
-	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+	if err := json.Unmarshal(data, &out); err != nil {
 		return initial, fmt.Errorf("jsx: beforeTransform decode: %w", err)
 	}
 	if out.Config == nil {
@@ -355,135 +395,26 @@ func (s *Session) RunBeforeTransformHook(in BeforeTransformInput, initial Outbou
 	return out, nil
 }
 
-// RunRewriteProviderModelsHook calls the rewriteProviderModels waterfall after
-// default aggregation. Returns the hook-processed model list, falling back to
-// the input if the hook returns a non-array, returns undefined, or if
-// json.Unmarshal of the result fails.
-func (s *Session) RunRewriteProviderModelsHook(in RewriteProviderModelsInput, models []ProviderModelEntry) ([]ProviderModelEntry, error) {
-	ctxLit, err := marshalToJSLiteral(in)
+// RunRewriteProviderModels runs the rewriteProviderModels waterfall. A
+// non-array / undefined result, or an undecodable array, keeps the input.
+func (s *qjsSession) RunRewriteProviderModels(initial []ProviderModelEntry) ([]ProviderModelEntry, error) {
+	init, err := mustJSON(initial)
 	if err != nil {
-		return models, err
+		return initial, err
 	}
-	initLit, err := marshalToJSLiteral(models)
-	if err != nil {
-		return models, err
-	}
-	expr := fmt.Sprintf(`(async () => {
-		const ctx = %s;
-		const initial = %s;
-		const r = await picotera.hooks.rewriteProviderModels.runWaterfall(ctx, initial);
-		if (typeof r === 'undefined' || r === null || !Array.isArray(r)) return null;
-		return JSON.stringify(r);
-	})()`, ctxLit, initLit)
-	jsonStr, err := s.runHookExpr("rewriteProviderModels.js", expr)
-	if err != nil {
-		return models, err
-	}
-	if jsonStr == "" || jsonStr == "null" {
-		return models, nil
+	expr := `(function () {
+		var initial = ` + init + `;
+		var r = picotera.hooks.rewriteProviderModels.runWaterfall(globalThis.ctx, initial);
+		if (typeof r === 'undefined' || r === null || !Array.isArray(r)) return undefined;
+		return r;
+	})()`
+	data, undef, err := s.evalJSON("rewriteProviderModels", internalFilename("hook-rewriteProviderModels.js"), expr)
+	if err != nil || undef {
+		return initial, err
 	}
 	var out []ProviderModelEntry
-	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
-		return models, nil
+	if err := json.Unmarshal(data, &out); err != nil {
+		return initial, nil
 	}
 	return out, nil
-}
-
-// runHookExpr evaluates the JS expression with HookTimeout, then
-// JSON-serializes the resolved value (inside the same goroutine as the
-// eval — fastschema/qjs values are not safe to use across goroutines).
-// Returns the JSON string ready for json.Unmarshal.
-func (s *Session) runHookExpr(name, expr string) (string, error) {
-	if s.tainted {
-		return "", ErrHookTimeout
-	}
-	type result struct {
-		jsonStr string
-		err     error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				ch <- result{err: fmt.Errorf("jsx: eval panic: %v", r)}
-			}
-		}()
-		v, err := s.rt.Context().Eval(name, qjs.Code(expr))
-		if err != nil {
-			ch <- result{err: err}
-			return
-		}
-		if v.IsPromise() {
-			v, err = v.Await()
-			if err != nil {
-				ch <- result{err: err}
-				return
-			}
-		}
-		defer v.Free()
-		switch v.Type() {
-		case "Undefined", "Null":
-			ch <- result{jsonStr: "null"}
-			return
-		}
-
-		// Workaround: v.JSONStringify() is not working blocked by https://github.com/fastschema/qjs/issues/44, so we only accept string values from hooks and treat them as JSON strings.
-		jsonStr := v.String()
-		ch <- result{jsonStr: jsonStr}
-	}()
-
-	timeout := s.engine.cfg.HookTimeout
-	if timeout <= 0 {
-		timeout = 5 * time.Second
-	}
-	select {
-	case r := <-ch:
-		return r.jsonStr, r.err
-	case <-time.After(timeout):
-		s.tainted = true
-		s.cancel() // wakes the goroutine via panic; recover handles it
-		<-ch       // drain
-		return "", ErrHookTimeout
-	}
-}
-
-// evalWithTimeout runs an Eval, racing against Engine.Config.HookTimeout.
-// On timeout: cancels the runtime context (causing the in-flight Eval to
-// panic via wazero's CloseOnContextDone), recovers, marks the session as
-// tainted, returns ErrHookTimeout. Subsequent calls fail fast.
-//
-// NOTE: the returned *qjs.Value is bound to the goroutine that produced it.
-// Use runHookExpr instead of touching the Value from another goroutine.
-func (s *Session) evalWithTimeout(name, src string) (*qjs.Value, error) {
-	if s.tainted {
-		return nil, ErrHookTimeout
-	}
-	type result struct {
-		v   *qjs.Value
-		err error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				ch <- result{err: fmt.Errorf("jsx: eval panic: %v", r)}
-			}
-		}()
-		v, err := s.rt.Context().Eval(name, qjs.Code(src))
-		ch <- result{v: v, err: err}
-	}()
-
-	timeout := s.engine.cfg.HookTimeout
-	if timeout <= 0 {
-		timeout = 5 * time.Second
-	}
-	select {
-	case r := <-ch:
-		return r.v, r.err
-	case <-time.After(timeout):
-		s.tainted = true
-		s.cancel() // wakes the goroutine via panic; recover handles it
-		<-ch       // drain so we don't leak the channel send (goroutine will deliver shortly)
-		return nil, ErrHookTimeout
-	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 type gatewayCandidate struct {
-	Candidate jsx.Candidate
+	Candidate jsx.CandidateView
 	Sidecar   gatewayCandidateSidecar
 }
 
@@ -53,10 +53,10 @@ func buildPathCandidateSet(providers []providerCandidateRow, apiKeyAnno map[stri
 		if row.ProxyURL.Valid {
 			proxyURL = row.ProxyURL.String
 		}
-		cand := jsx.Candidate{
-			Provider:    buildJSProviderSummary(row.ProviderID, row.ProviderName, row.ProviderPriority, providerAnno),
-			MPE:         buildJSMPE(row.ModelName, row.ProviderID, row.EndpointPath, row.UpstreamModelName, row.EntryPriority, entryAnno),
-			Annotations: merged,
+		cand := jsx.CandidateView{
+			Provider:      buildJSProviderSummary(row.ProviderID, row.ProviderName, row.ProviderPriority, providerAnno),
+			ProviderModel: buildProviderModel(row.ModelName, row.EndpointPath, row.UpstreamModelName, row.EntryPriority, entryAnno, ""),
+			Annotations:   merged,
 		}
 		key := fmt.Sprintf("%d", row.ProviderID)
 		out.Items = append(out.Items, gatewayCandidate{
@@ -96,10 +96,10 @@ func buildUnifiedCandidateSet(providers []db.GetProvidersByEndpointTypesAndModel
 		if row.ProxyUrl.Valid {
 			proxyURL = row.ProxyUrl.String
 		}
-		cand := jsx.Candidate{
-			Provider:    buildJSProviderSummary(row.ProviderID, row.ProviderName, row.ProviderPriority, providerAnno),
-			MPE:         buildJSMPE(row.ModelName, row.ProviderID, row.EndpointPath, row.UpstreamModelName, row.Priority, entryAnno),
-			Annotations: merged,
+		cand := jsx.CandidateView{
+			Provider:      buildJSProviderSummary(row.ProviderID, row.ProviderName, row.ProviderPriority, providerAnno),
+			ProviderModel: buildProviderModel(row.ModelName, row.EndpointPath, row.UpstreamModelName, row.Priority, entryAnno, upstreamFormatFor(row.EndpointType).String()),
+			Annotations:   merged,
 		}
 		key := fmt.Sprintf("%d|%s", row.ProviderID, row.EndpointPath)
 		out.Items = append(out.Items, gatewayCandidate{
@@ -126,14 +126,14 @@ func buildJSProviderSummary(id int32, name string, priority int32, anno map[stri
 	return jsx.ProviderSummary{ID: id, Name: name, Priority: priority, Annotations: anno}
 }
 
-func buildJSMPE(modelName string, providerID int32, endpointPath string, upstreamModelName string, priority int32, anno map[string]string) jsx.CandidateMPE {
-	return jsx.CandidateMPE{
-		ModelName:         modelName,
-		ProviderID:        providerID,
-		EndpointPath:      endpointPath,
+func buildProviderModel(modelName string, endpointPath string, upstreamModelName string, priority int32, anno map[string]string, upstreamFormat string) jsx.ProviderModel {
+	return jsx.ProviderModel{
+		Name:              modelName,
 		UpstreamModelName: upstreamModelName,
+		Endpoint:          endpointPath,
 		Priority:          priority,
 		Annotations:       anno,
+		UpstreamFormat:    upstreamFormat,
 	}
 }
 
@@ -145,18 +145,18 @@ func candidateSidecarMap(set candidateSet) map[string]gatewayCandidateSidecar {
 	return out
 }
 
-func candidateKey(kind gatewayRouteKind, cand jsx.Candidate) string {
+func candidateKey(kind gatewayRouteKind, cand jsx.CandidateView) string {
 	if kind == gatewayRouteUnified {
 		return fmt.Sprintf("%d|%s", candidateProviderID(cand), candidateEndpointPath(cand))
 	}
 	return fmt.Sprintf("%d", candidateProviderID(cand))
 }
 
-func candidateEndpointPath(c jsx.Candidate) string {
-	return c.MPE.EndpointPath
+func candidateEndpointPath(c jsx.CandidateView) string {
+	return c.ProviderModel.Endpoint
 }
 
-func lookupCandidateSidecar(kind gatewayRouteKind, sidecars map[string]gatewayCandidateSidecar, cand jsx.Candidate) (gatewayCandidateSidecar, bool) {
+func lookupCandidateSidecar(kind gatewayRouteKind, sidecars map[string]gatewayCandidateSidecar, cand jsx.CandidateView) (gatewayCandidateSidecar, bool) {
 	side, ok := sidecars[candidateKey(kind, cand)]
 	return side, ok
 }

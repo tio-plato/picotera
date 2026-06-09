@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"picotera/pkg/logx"
@@ -38,10 +40,12 @@ func startPlugin(cfg Config, stderr io.Writer) (*plugin.Client, LLMBridgeClient,
 	if timeout == 0 {
 		timeout = defaultPluginStartTimeout
 	}
+	cmd := exec.Command(cfg.PluginPath)
+	cmd.Env = append(os.Environ(), "PICOTERA_HEAP_DUMP_DIR="+cfg.HeapDumpDir)
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig:  pluginHandshake,
 		Plugins:          pluginMap(nil),
-		Cmd:              exec.Command(cfg.PluginPath),
+		Cmd:              cmd,
 		StartTimeout:     timeout,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 		Stderr:           stderr,
@@ -152,6 +156,24 @@ func (b *pluginBridge) Close(context.Context) error {
 		b.client.Kill()
 	}
 	return nil
+}
+
+// SignalPlugin forwards sig to the live plugin subprocess. A dead or missing
+// plugin is skipped rather than restarted: a freshly spawned process's heap is
+// useless for diagnosing a leak.
+func (b *pluginBridge) SignalPlugin(sig syscall.Signal) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.client == nil || b.client.Exited() {
+		logx.New().WithField("source", "llmbridge").Debug("skip signalling plugin: no live subprocess")
+		return nil
+	}
+	rc := b.client.ReattachConfig()
+	if rc == nil || rc.Pid == 0 {
+		logx.New().WithField("source", "llmbridge").Debug("skip signalling plugin: no pid")
+		return nil
+	}
+	return syscall.Kill(rc.Pid, sig)
 }
 
 func (b *pluginBridge) BridgeRequest(ctx context.Context, src, dst Format, body []byte, headers http.Header, pendingURL string, profile OutboundProfile) ([]byte, string, error) {

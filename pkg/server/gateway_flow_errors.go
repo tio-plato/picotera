@@ -9,6 +9,7 @@ import (
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
+	"picotera/pkg/logx"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -82,6 +83,7 @@ func (f *gatewayFlow) failGatewayErrorWithFallback(err error, fallbackStatus int
 }
 
 func (f *gatewayFlow) failHook(err error) {
+	logx.WithContext(f.ctxs.Request).WithError(err).Error("hook failed")
 	status := gatewayHookStatus(err)
 	errMsg := err.Error()
 	f.failMeta(int32(status), errMsg, db.FinishReasonInternal)

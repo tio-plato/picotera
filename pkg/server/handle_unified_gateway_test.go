@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 
 	"picotera/pkg/contract"
@@ -128,6 +129,10 @@ func (fakeLLMBridge) BridgeStream(ctx context.Context, src, upstream llmbridge.F
 
 func (fakeLLMBridge) AggregateStream(ctx context.Context, format llmbridge.Format, contentType string, body []byte, profile llmbridge.OutboundProfile) ([]byte, error) {
 	return llmbridgeimpl.AggregateStream(ctx, format, contentType, body, profile)
+}
+
+func (fakeLLMBridge) SignalPlugin(sig syscall.Signal) error {
+	return nil
 }
 
 func TestCandidateEndpointTypes(t *testing.T) {
