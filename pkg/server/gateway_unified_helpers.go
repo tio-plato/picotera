@@ -447,6 +447,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 			// then expose the bridged bytes as a reader.
 			upstreamBody, err := io.ReadAll(teedUpstream)
 			if err != nil {
+				_ = teedUpstream.Close()
 				cancel()
 				h.failUnifiedSuccess(hdrCtx, a, err.Error())
 				return

@@ -136,10 +136,14 @@ func (f *gatewayFlow) run() {
 	if !f.authenticateAndBackfill() {
 		return
 	}
+	defer (func() {
+		if f.session != nil {
+			f.session.Close()
+		}
+	})()
 	if !f.resolveAndRewriteModel() {
 		return
 	}
-	defer f.session.Close()
 	sorted, sidecars, ok := f.resolveAndSortCandidates()
 	if !ok {
 		return
