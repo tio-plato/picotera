@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"picotera/pkg/annotations"
+	"picotera/pkg/datamask"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
@@ -38,6 +39,7 @@ type gatewayFlow struct {
 	auth           gatewayAuthState
 	model          gatewayModelState
 	session        jsx.Session
+	masker         *datamask.Masker
 }
 
 type gatewayFlowConfig struct {
@@ -94,7 +96,14 @@ func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, s
 	if cfg.Credentials == 0 {
 		cfg.Credentials = cfg.Endpoint.CredentialsResolver
 	}
-	return &gatewayFlow{h: h, w: w, r: r, startedAt: startedAt, config: cfg}
+	return &gatewayFlow{
+		h:         h,
+		w:         w,
+		r:         r,
+		startedAt: startedAt,
+		config:    cfg,
+		masker:    datamask.New(h.config.JSDataURLMaskMinBytes),
+	}
 }
 
 // detectStreaming reports whether the client expects a streaming response,
@@ -269,7 +278,7 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		endpointType = "unified"
 	}
 	epSummary := endpointSummaryFromRow(f.config.Endpoint)
-	clientReq := serializeClientRequest(f.r, f.body, mode.RoutedModel, f.config.PathVars)
+	clientReq := serializeClientRequest(f.r, f.body, mode.RoutedModel, f.config.PathVars, f.masker)
 	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
 	streaming := mode.Streaming
 	srcFormat := f.config.SourceFormat.String()
@@ -313,7 +322,7 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 	// Reflect the final routed model (and, if the body/annotations changed, the
 	// updated request/annotations) onto the persistent ctx.
 	routed := jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations}
-	finalReq := serializeClientRequest(f.r, f.body, f.model.Routed, f.config.PathVars)
+	finalReq := serializeClientRequest(f.r, f.body, f.model.Routed, f.config.PathVars, f.masker)
 	finalAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
 	if err := f.session.PatchContext(jsx.ContextPatch{
 		RoutedModel: &routed,

@@ -29,6 +29,7 @@ type Config struct {
 	JSMemoryLimit                int64         `mapstructure:"js_memory_limit"`
 	JSMaxTotalAttempts           int           `mapstructure:"js_max_total_attempts"`
 	JSMaxDelay                   time.Duration `mapstructure:"js_max_delay"`
+	JSDataURLMaskMinBytes        int           `mapstructure:"js_data_url_mask_min_bytes"`
 	LLMBridgePluginPath          string        `mapstructure:"llmbridge_plugin_path"`
 	LLMBridgePluginStartTimeout  time.Duration `mapstructure:"llmbridge_plugin_start_timeout"`
 	HeapDumpDir                  string        `mapstructure:"heap_dump_dir"`
@@ -82,6 +83,7 @@ func Parse() (*Config, error) {
 	viper.SetDefault("js_memory_limit", int64(64*1024*1024))
 	viper.SetDefault("js_max_total_attempts", 50)
 	viper.SetDefault("js_max_delay", 60*time.Second)
+	viper.SetDefault("js_data_url_mask_min_bytes", 30720)
 	viper.SetDefault("kv.driver", "memory")
 	viper.SetDefault("kv.redis_url", "localhost:6379")
 	viper.SetDefault("llmbridge_plugin_start_timeout", 10*time.Second)
@@ -91,6 +93,11 @@ func Parse() (*Config, error) {
 
 	bindEnvs(Config{})
 	viper.Unmarshal(&config)
+
+	if config.JSDataURLMaskMinBytes < 0 {
+		return nil, errors.New("configx: js_data_url_mask_min_bytes must not be negative")
+	}
+
 	return &config, nil
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"picotera/pkg/annotations"
 	"picotera/pkg/contract"
+	"picotera/pkg/datamask"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
@@ -139,13 +140,16 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 	if len(bodyBytes) > 0 {
 		jsHeaders.Set("Content-Type", "application/json")
 	}
+	// Mask oversized data-urls so the simulated request shape matches what
+	// scripts see in production. A fresh masker per simulation.
+	masker := datamask.New(s.config.JSDataURLMaskMinBytes)
 	clientReq := jsx.RequestShape{
 		Path:     endpoint.Path,
 		Method:   http.MethodPost,
 		Headers:  mapLowerKeys(jsHeaders),
 		Model:    modelName,
 		PathVars: pathVars,
-		Body:     jsonBodyOrNil(jsHeaders, bodyBytes),
+		Body:     maskJSONBody(ctx, masker, jsonBodyOrNil(jsHeaders, bodyBytes)),
 	}
 	endpointJS := endpointSummaryFromRow(endpoint)
 

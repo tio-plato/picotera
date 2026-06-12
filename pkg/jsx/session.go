@@ -62,10 +62,28 @@ type qjsSession struct {
 	logsBytes int
 	logsTrunc bool
 
-	// rrBody holds the current rewriteRequest input body. It is exposed to JS
-	// lazily via the __picotera_rr_body host function so an untouched body
-	// never crosses into QuickJS. Set per RunRewriteRequest call.
-	rrBody string
+	// rrBodyFn lazily provides the current rewriteRequest input body. It is
+	// exposed to JS via the __picotera_rr_body host function so an untouched
+	// body never crosses into QuickJS — and, since the provider itself performs
+	// data-url masking, a body the hook never reads is never even masked. The
+	// result is cached (rrBodyDone/rrBodyCached) so repeated JS reads see a
+	// stable value. Set per RunRewriteRequest call.
+	rrBodyFn     func() string
+	rrBodyCached string
+	rrBodyDone   bool
+}
+
+// rrBodyValue returns the rewriteRequest input body, invoking the provider at
+// most once and caching the result.
+func (s *qjsSession) rrBodyValue() string {
+	if s.rrBodyFn == nil {
+		return ""
+	}
+	if !s.rrBodyDone {
+		s.rrBodyCached = s.rrBodyFn()
+		s.rrBodyDone = true
+	}
+	return s.rrBodyCached
 }
 
 func (s *qjsSession) appendLog(level, message string) {
@@ -326,23 +344,29 @@ func (s *qjsSession) RunBeforeRequest(initial BeforeRequestDecision) (BeforeRequ
 	return out, nil
 }
 
-// RunRewriteRequest runs the rewriteRequest waterfall. The hook must return a
-// complete pending request; passthrough keeps the initial. Body is returned as
-// a JSON string token in Body when present (mirroring PendingRequestShape).
+// RunRewriteRequest runs the rewriteRequest waterfall. initial carries only
+// url/method/headers — its Body MUST be nil; the body is supplied lazily via
+// the body provider. The returned shape's Body is a JSON string token only when
+// a hook actually read or wrote it; otherwise Body is nil and the caller falls
+// back to its own original bytes.
 //
 // The body is NOT embedded into the eval source. Instead it is exposed lazily
-// via __picotera_rr_body and a getter on pending.body, so an untouched body
-// (the common case — hooks usually rewrite only url/headers) is never parsed,
-// serialized, or moved through QuickJS. This keeps memory flat for multi-MiB
-// request bodies that would otherwise blow the JS memory limit during the
-// embed → parse → re-stringify → marshal round-trip.
-func (s *qjsSession) RunRewriteRequest(initial PendingRequestShape) (PendingRequestShape, error) {
-	hasBody := initial.Body != nil
-	s.rrBody = string(initial.Body)
+// via __picotera_rr_body (which invokes the provider) and a getter on
+// pending.body, so an untouched body (the common case — hooks usually rewrite
+// only url/headers) is never parsed, serialized, or moved through QuickJS — and
+// the provider's own work (e.g. data-url masking) never even happens. This
+// keeps memory flat for multi-MiB request bodies that would otherwise blow the
+// JS memory limit during the embed → parse → re-stringify → marshal round-trip.
+func (s *qjsSession) RunRewriteRequest(initial PendingRequestShape, body func() string) (PendingRequestShape, error) {
+	if initial.Body != nil {
+		return initial, fmt.Errorf("jsx: RunRewriteRequest: initial.Body must be nil; supply the body via the provider")
+	}
+	hasBody := body != nil
+	s.rrBodyFn = body
+	s.rrBodyCached = ""
+	s.rrBodyDone = false
 
-	stripped := initial
-	stripped.Body = nil
-	init, err := mustJSON(stripped)
+	init, err := mustJSON(initial)
 	if err != nil {
 		return initial, err
 	}
@@ -418,7 +442,10 @@ func (s *qjsSession) RunRewriteRequest(initial PendingRequestShape) (PendingRequ
 		// Body absent / removed by the hook: leave Body nil so the caller falls
 		// back to the original request bytes.
 	case "unchanged":
-		out.Body = bodyToken(s.rrBody)
+		// The hook never touched the body: leave Body nil so the caller falls
+		// back to its original (unmasked) request bytes — content-equivalent,
+		// and it skips both a needless large-string marshal and any Unmask.
+		out.Body = nil
 	case "set":
 		final, err := s.readGlobalString("__picotera_rr_out")
 		if err != nil {

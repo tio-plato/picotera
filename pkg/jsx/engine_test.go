@@ -281,21 +281,22 @@ func TestSession_RewriteRequest_Passthrough(t *testing.T) {
 		URL:     "https://x/v1/chat",
 		Method:  "POST",
 		Headers: map[string][]string{"content-type": {"application/json"}},
-		Body:    json.RawMessage(`{"a":1}`),
 	}
-	out, err := s.RunRewriteRequest(in)
+	calls := 0
+	provider := func() string { calls++; return `{"a":1}` }
+	out, err := s.RunRewriteRequest(in, provider)
 	if err != nil {
 		t.Fatalf("RunRewriteRequest: %v", err)
 	}
 	if out.URL != in.URL || out.Method != in.Method {
 		t.Errorf("passthrough should preserve URL/Method, got %+v", out)
 	}
-	var inner string
-	if err := json.Unmarshal(out.Body, &inner); err != nil {
-		t.Fatalf("body should be a JSON string token, got %s: %v", string(out.Body), err)
+	if calls != 0 {
+		t.Errorf("provider should not be called when hook ignores body, got %d calls", calls)
 	}
-	if inner != `{"a":1}` {
-		t.Errorf("body content mismatch: got %q", inner)
+	// Untouched body → nil Body so the caller falls back to its own bytes.
+	if out.Body != nil {
+		t.Errorf("passthrough should leave Body nil, got %s", string(out.Body))
 	}
 }
 
@@ -307,8 +308,7 @@ func TestSession_RewriteRequest_BodyJSONRoundtrip(t *testing.T) {
 		URL:     "https://x",
 		Method:  "POST",
 		Headers: map[string][]string{"content-type": {"application/json"}},
-		Body:    json.RawMessage(`{"a":1}`),
-	})
+	}, func() string { return `{"a":1}` })
 	if err != nil {
 		t.Fatalf("RunRewriteRequest: %v", err)
 	}

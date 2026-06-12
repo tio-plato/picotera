@@ -31,10 +31,12 @@ func registerHelpers(s *qjsSession) {
 // raw JSON string via __picotera_rr_body(). The rewriteRequest hook defines
 // pending.body as a lazy accessor that calls this and JSON.parses the result
 // only when a hook actually reads or writes the body — so large untouched
-// bodies are never parsed or re-serialized inside QuickJS.
+// bodies are never parsed or re-serialized inside QuickJS. rrBodyValue invokes
+// the body provider at most once (caching the result) so repeated reads are
+// consistent and the masking the provider performs happens lazily.
 func registerRewriteBody(s *qjsSession) {
 	_ = s.vm.RegisterFunc("__picotera_rr_body", func() string {
-		return s.rrBody
+		return s.rrBodyValue()
 	}, false)
 }
 

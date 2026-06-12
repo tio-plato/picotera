@@ -98,21 +98,21 @@ func TestSession_RewriteRequest_LargeBody(t *testing.T) {
 					URL:     "https://upstream/v1/messages",
 					Method:  "POST",
 					Headers: map[string][]string{"content-type": {"application/json"}},
-					Body:    json.RawMessage(body),
 				}
-				out, err := s.RunRewriteRequest(in)
+				// Neither hook reads pending.body, so the provider must never be
+				// invoked — the multi-MiB body never enters QuickJS at all.
+				calls := 0
+				provider := func() string { calls++; return string(body) }
+				out, err := s.RunRewriteRequest(in, provider)
 				if err != nil {
 					t.Fatalf("RunRewriteRequest (%d MiB, %s): %v", mb, h.name, err)
 				}
-
-				// Body is returned as a JSON string token; the inner string must
-				// equal the original body bytes byte-for-byte (untouched body).
-				var inner string
-				if err := json.Unmarshal(out.Body, &inner); err != nil {
-					t.Fatalf("decode body token (%d MiB, %s): %v (out.Body len=%d)", mb, h.name, err, len(out.Body))
+				if calls != 0 {
+					t.Fatalf("body provider called %d times (%d MiB, %s); hook never reads body", calls, mb, h.name)
 				}
-				if inner != string(body) {
-					t.Fatalf("body round-trip mismatch (%d MiB, %s): got len=%d want len=%d", mb, h.name, len(inner), len(body))
+				// Body untouched → nil so the caller falls back to original bytes.
+				if out.Body != nil {
+					t.Fatalf("expected nil Body on passthrough (%d MiB, %s), got %d bytes", mb, h.name, len(out.Body))
 				}
 			})
 		}
@@ -135,14 +135,20 @@ func TestSession_RewriteRequest_BodyAccess(t *testing.T) {
 	`})
 
 	body := mockMessagesBody(512 * 1024)
+	calls := 0
+	provider := func() string { calls++; return string(body) }
 	out, err := s.RunRewriteRequest(PendingRequestShape{
 		URL:     "https://upstream/v1/messages",
 		Method:  "POST",
 		Headers: map[string][]string{"content-type": {"application/json"}},
-		Body:    json.RawMessage(body),
-	})
+	}, provider)
 	if err != nil {
 		t.Fatalf("RunRewriteRequest: %v", err)
+	}
+	// The hook reads pending.body twice (read model, then mutate); the provider
+	// must run exactly once thanks to caching.
+	if calls != 1 {
+		t.Fatalf("body provider called %d times, want 1", calls)
 	}
 
 	var inner string

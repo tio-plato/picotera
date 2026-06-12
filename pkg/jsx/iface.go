@@ -26,7 +26,7 @@ type Session interface {
 	RunRewriteModel(initial string) (string, error)
 	RunSortProviders(initial []CandidateView) ([]CandidateView, error)
 	RunBeforeRequest(initial BeforeRequestDecision) (BeforeRequestDecision, error)
-	RunRewriteRequest(initial PendingRequestShape) (PendingRequestShape, error)
+	RunRewriteRequest(initial PendingRequestShape, body func() string) (PendingRequestShape, error)
 	RunBeforeTransform(initial OutboundProfile) (OutboundProfile, error)
 	RunRewriteProviderModels(initial []ProviderModelEntry) ([]ProviderModelEntry, error)
 

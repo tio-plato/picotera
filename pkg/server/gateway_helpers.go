@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"picotera/pkg/contract"
+	"picotera/pkg/datamask"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
@@ -749,28 +750,62 @@ func jsonBodyOrNil(headers http.Header, body []byte) json.RawMessage {
 }
 
 // serializePendingRequest captures the upstream request as a PendingRequestShape
-// for the rewriteRequest hook. Headers are lower-cased; body follows the
-// content-type rule (only application/json bodies are exposed to JS).
-func serializePendingRequest(req *http.Request, body []byte) jsx.PendingRequestShape {
+// for the rewriteRequest hook. Headers are lower-cased; the body is NOT
+// embedded here — it is supplied lazily via pendingBodyProvider so an untouched
+// (and unmasked) body never crosses into QuickJS.
+func serializePendingRequest(req *http.Request) jsx.PendingRequestShape {
 	return jsx.PendingRequestShape{
 		URL:     req.URL.String(),
 		Method:  req.Method,
 		Headers: mapLowerKeys(req.Header.Clone()),
-		Body:    jsonBodyOrNil(req.Header, body),
+	}
+}
+
+// pendingBodyProvider returns a lazy provider of the rewriteRequest input body
+// (the raw JSON string) for the hook, or nil when the body is not JS-visible
+// (non-JSON content-type / invalid JSON). The body is masked on first read;
+// since the provider only runs if a hook actually reads pending.body, masking
+// is skipped entirely for the common untouched-body case. A mask failure logs a
+// warning and yields the unmasked body (safe degradation).
+func pendingBodyProvider(ctx context.Context, masker *datamask.Masker, header http.Header, reqBody []byte) func() string {
+	if jsonBodyOrNil(header, reqBody) == nil {
+		return nil
+	}
+	return func() string {
+		masked, err := masker.Mask(reqBody)
+		if err != nil {
+			logx.WithContext(ctx).WithError(err).Warn("datamask: mask pending body failed; using unmasked body")
+			return string(reqBody)
+		}
+		return string(masked)
 	}
 }
 
 // serializeClientRequest captures the inbound client request as a RequestShape
-// for the JS hooks. Same body rule as serializePendingRequest.
-func serializeClientRequest(r *http.Request, body []byte, model string, pathVars map[string]string) jsx.RequestShape {
+// for the JS hooks. The JS-visible JSON body (if any) is data-url masked.
+func serializeClientRequest(r *http.Request, body []byte, model string, pathVars map[string]string, masker *datamask.Masker) jsx.RequestShape {
 	return jsx.RequestShape{
 		Path:     r.URL.Path,
 		Method:   r.Method,
 		Headers:  mapLowerKeys(r.Header.Clone()),
 		Model:    model,
 		PathVars: pathVars,
-		Body:     jsonBodyOrNil(r.Header, body),
+		Body:     maskJSONBody(r.Context(), masker, jsonBodyOrNil(r.Header, body)),
 	}
+}
+
+// maskJSONBody data-url masks a JS-visible JSON body, falling back to the
+// original (with a warning) on a mask failure. A nil input passes through.
+func maskJSONBody(ctx context.Context, masker *datamask.Masker, raw json.RawMessage) json.RawMessage {
+	if raw == nil {
+		return nil
+	}
+	masked, err := masker.Mask(raw)
+	if err != nil {
+		logx.WithContext(ctx).WithError(err).Warn("datamask: mask client body failed; using unmasked body")
+		return raw
+	}
+	return json.RawMessage(masked)
 }
 
 // buildRequestFromPending constructs a fresh *http.Request from the rewrite
