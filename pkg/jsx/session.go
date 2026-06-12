@@ -144,7 +144,8 @@ const ctxInit = `globalThis.ctx = {
 	attempt: null,
 	annotations: {},
 	stream: false,
-	sourceFormat: ""
+	sourceFormat: "",
+	format: ""
 };`
 
 func newSession(ctx context.Context, eng *qjsEngine, requestID string) (*qjsSession, error) {

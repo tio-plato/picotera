@@ -149,5 +149,6 @@ type ContextPatch struct {
 	Annotations      *map[string]string `json:"annotations,omitempty"`
 	Stream           *bool              `json:"stream,omitempty"`
 	SourceFormat     *string            `json:"sourceFormat,omitempty"`
+	Format           *string            `json:"format,omitempty"`
 	UpstreamResponse json.RawMessage    `json:"upstreamResponse,omitempty"` // only rewriteProviderModels
 }

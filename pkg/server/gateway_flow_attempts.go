@@ -253,6 +253,12 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 		return attemptPrepared{}, err
 	}
 	req, reqBody = prepared.Request, prepared.RequestBody
+	// The body is now in the upstream's format (after any llmbridge conversion),
+	// so ctx.format reflects the format of the request about to be sent.
+	outFormat := input.Sidecar.UpstreamFormat.String()
+	if err := f.session.PatchContext(jsx.ContextPatch{Format: &outFormat}); err != nil {
+		return attemptPrepared{}, gatewayHookError{err: err}
+	}
 	pending := serializePendingRequest(req)
 	newPending, err := f.session.RunRewriteRequest(pending, pendingBodyProvider(input.AttemptCtx, f.masker, req.Header, reqBody))
 	if err != nil {
