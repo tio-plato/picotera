@@ -164,8 +164,7 @@ async function saveEdit(pe: ProviderEndpointView) {
   error.value = ''
   try {
     await upsertMutation.mutateAsync({
-      providerId: props.providerId,
-      endpointPath: pe.endpointPath,
+      ...pe,
       upstreamUrl: editDraft.value.upstreamUrl,
       credentialsResolver: editDraft.value.credentialsResolver,
     })

@@ -86,17 +86,7 @@ function toggleModels(p: ProviderView) {
 }
 
 async function toggleDisabled(p: ProviderView) {
-  const body = {
-    id: p.id,
-    name: p.name,
-    credentials: p.credentials,
-    priority: p.priority,
-    providerModels: p.providerModels,
-    annotations: p.annotations,
-    disabled: !p.disabled,
-    supportsNativeWebSearch: p.supportsNativeWebSearch,
-  }
-  await updateProviderMutation.mutateAsync(body)
+  await updateProviderMutation.mutateAsync({ ...p, disabled: !p.disabled })
 }
 
 function confirmDelete(_event: Event, p: ProviderView) {

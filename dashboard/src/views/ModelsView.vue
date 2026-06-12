@@ -161,13 +161,7 @@ function openPricingMatch(m: ModelView) {
 }
 
 async function toggleDisabled(m: ModelView) {
-  const body = {
-    name: m.name,
-    disabled: !m.disabled,
-    annotations: m.annotations ?? {},
-    ...(m.pricing ? { pricing: m.pricing } : {}),
-  }
-  await upsertModelMutation.mutateAsync(body)
+  await upsertModelMutation.mutateAsync({ ...m, disabled: !m.disabled })
 }
 
 function openCreateFromOrphan(name: string) {
