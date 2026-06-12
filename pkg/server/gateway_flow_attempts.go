@@ -242,6 +242,17 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 	if err != nil {
 		return attemptPrepared{}, err
 	}
+	// Web-search rewriting / beforeTransform / llmbridge conversion run BEFORE
+	// the rewriteRequest hook, so the hook sees (and mutates) the body in the
+	// upstream's format — a hook keyed on the upstream endpoint would otherwise
+	// write fields that the cross-format bridge silently drops.
+	input.Request = req
+	input.RequestBody = reqBody
+	prepared, err := f.config.PrepareAttempt(input.AttemptCtx, f, input)
+	if err != nil {
+		return attemptPrepared{}, err
+	}
+	req, reqBody = prepared.Request, prepared.RequestBody
 	pending := serializePendingRequest(req)
 	newPending, err := f.session.RunRewriteRequest(pending, pendingBodyProvider(input.AttemptCtx, f.masker, req.Header, reqBody))
 	if err != nil {
@@ -252,9 +263,9 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 		return attemptPrepared{}, gatewayHookError{err: err}
 	}
 	// The hook read or rewrote the (masked) body: restore any data-url
-	// placeholders before the body goes to web-search rewriting / llmbridge
-	// conversion / the upstream. An untouched body (newPending.Body nil) used
-	// the original unmasked fallback bytes, so it needs no restore.
+	// placeholders before the body goes to the upstream. An untouched body
+	// (newPending.Body nil) used the original unmasked fallback bytes, so it
+	// needs no restore.
 	if newPending.Body != nil && f.masker.Active() {
 		unmasked, uerr := f.masker.Unmask(reqBody)
 		if uerr != nil {
@@ -265,9 +276,9 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 			resetRequestBody(req, reqBody)
 		}
 	}
-	input.Request = req
-	input.RequestBody = reqBody
-	return f.config.PrepareAttempt(input.AttemptCtx, f, input)
+	prepared.Request = req
+	prepared.RequestBody = reqBody
+	return prepared, nil
 }
 
 func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInput, resp *http.Response, providerID int32) {
