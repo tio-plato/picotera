@@ -61,6 +61,11 @@ type qjsSession struct {
 	logs      []LogEntry
 	logsBytes int
 	logsTrunc bool
+
+	// rrBody holds the current rewriteRequest input body. It is exposed to JS
+	// lazily via the __picotera_rr_body host function so an untouched body
+	// never crosses into QuickJS. Set per RunRewriteRequest call.
+	rrBody string
 }
 
 func (s *qjsSession) appendLog(level, message string) {
@@ -322,32 +327,135 @@ func (s *qjsSession) RunBeforeRequest(initial BeforeRequestDecision) (BeforeRequ
 }
 
 // RunRewriteRequest runs the rewriteRequest waterfall. The hook must return a
-// complete pending request; passthrough keeps the initial. A non-string body
-// is JSON.stringify'd at the JS boundary so Go always receives a JSON string
-// token in Body when the field is present.
+// complete pending request; passthrough keeps the initial. Body is returned as
+// a JSON string token in Body when present (mirroring PendingRequestShape).
+//
+// The body is NOT embedded into the eval source. Instead it is exposed lazily
+// via __picotera_rr_body and a getter on pending.body, so an untouched body
+// (the common case — hooks usually rewrite only url/headers) is never parsed,
+// serialized, or moved through QuickJS. This keeps memory flat for multi-MiB
+// request bodies that would otherwise blow the JS memory limit during the
+// embed → parse → re-stringify → marshal round-trip.
 func (s *qjsSession) RunRewriteRequest(initial PendingRequestShape) (PendingRequestShape, error) {
-	init, err := mustJSON(initial)
+	hasBody := initial.Body != nil
+	s.rrBody = string(initial.Body)
+
+	stripped := initial
+	stripped.Body = nil
+	init, err := mustJSON(stripped)
 	if err != nil {
 		return initial, err
 	}
+
+	hasBodyJS := "false"
+	if hasBody {
+		hasBodyJS = "true"
+	}
+
+	// The hook sees pending.body as a lazy accessor; the final body (only when a
+	// hook reads/writes it, or returns a fresh object) is handed back out-of-band
+	// through globalThis.__picotera_rr_out so the multi-MiB string is never
+	// re-escaped into the marshaled meta result.
 	expr := `(function () {
 		var initial = ` + init + `;
+		var hasBody = ` + hasBodyJS + `;
+		var touched = false, parsed, parsedDone = false;
+		if (hasBody) {
+			Object.defineProperty(initial, 'body', {
+				enumerable: true,
+				configurable: true,
+				get: function () {
+					touched = true;
+					if (!parsedDone) { parsed = JSON.parse(globalThis.__picotera_rr_body()); parsedDone = true; }
+					return parsed;
+				},
+				set: function (val) { touched = true; parsedDone = true; parsed = val; }
+			});
+		}
 		var r = picotera.hooks.rewriteRequest.runWaterfall(globalThis.ctx, initial);
 		var v = (typeof r === 'undefined' || r === null) ? initial : r;
-		if (v && typeof v.body !== 'undefined' && typeof v.body !== 'string') {
-			v.body = JSON.stringify(v.body);
+		var meta = { url: v.url, method: v.method, headers: v.headers };
+		globalThis.__picotera_rr_out = '';
+		if (v === initial) {
+			if (!hasBody) {
+				meta.bodyState = 'none';
+			} else if (!touched) {
+				meta.bodyState = 'unchanged';
+			} else {
+				meta.bodyState = 'set';
+				globalThis.__picotera_rr_out = (typeof parsed === 'string') ? parsed : JSON.stringify(parsed);
+			}
+		} else {
+			var nb = v.body;
+			if (typeof nb === 'undefined' || nb === null) {
+				meta.bodyState = 'none';
+			} else {
+				meta.bodyState = 'set';
+				globalThis.__picotera_rr_out = (typeof nb === 'string') ? nb : JSON.stringify(nb);
+			}
 		}
-		return v;
+		return meta;
 	})()`
+
 	data, undef, err := s.evalJSON("rewriteRequest", internalFilename("hook-rewriteRequest.js"), expr)
 	if err != nil || undef {
 		return initial, err
 	}
-	var out PendingRequestShape
-	if err := json.Unmarshal(data, &out); err != nil {
+
+	var meta struct {
+		URL       string              `json:"url"`
+		Method    string              `json:"method"`
+		Headers   map[string][]string `json:"headers"`
+		BodyState string              `json:"bodyState"`
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
 		return initial, fmt.Errorf("jsx: rewriteRequest decode: %w", err)
 	}
+
+	out := PendingRequestShape{URL: meta.URL, Method: meta.Method, Headers: meta.Headers}
+	switch meta.BodyState {
+	case "none":
+		// Body absent / removed by the hook: leave Body nil so the caller falls
+		// back to the original request bytes.
+	case "unchanged":
+		out.Body = bodyToken(s.rrBody)
+	case "set":
+		final, err := s.readGlobalString("__picotera_rr_out")
+		if err != nil {
+			return initial, fmt.Errorf("jsx: rewriteRequest read body: %w", err)
+		}
+		out.Body = bodyToken(final)
+	default:
+		return initial, fmt.Errorf("jsx: rewriteRequest: unexpected bodyState %q", meta.BodyState)
+	}
 	return out, nil
+}
+
+// bodyToken wraps a raw request body as a JSON string token, the shape
+// PendingRequestShape.Body carries to the gateway (buildRequestFromPending
+// unmarshals it back to the outgoing bytes).
+func bodyToken(raw string) json.RawMessage {
+	tok, _ := json.Marshal(raw)
+	return json.RawMessage(tok)
+}
+
+// readGlobalString reads globalThis[name] and returns it as a Go string.
+func (s *qjsSession) readGlobalString(name string) (string, error) {
+	g := s.vm.GlobalObject()
+	defer g.Free()
+	atom, err := s.vm.NewAtom(name)
+	if err != nil {
+		return "", err
+	}
+	v, err := s.vm.GetProperty(g, atom)
+	if err != nil {
+		return "", err
+	}
+	str, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("jsx: global %s is not a string (%T)", name, v)
+	}
+	return str, nil
 }
 
 // RunBeforeTransform runs the beforeTransform waterfall. The contract is strict

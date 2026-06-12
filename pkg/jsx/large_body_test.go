@@ -118,3 +118,48 @@ func TestSession_RewriteRequest_LargeBody(t *testing.T) {
 		}
 	}
 }
+
+// TestSession_RewriteRequest_BodyAccess covers the lazy-body path when a hook
+// actually reads and mutates pending.body: the getter must parse the original
+// body on demand and the mutated value must be serialized back out.
+func TestSession_RewriteRequest_BodyAccess(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, pending) {
+			if (pending.body.model !== "claude-opus-4-6") {
+				throw new Error("lazy getter did not parse body: " + pending.body.model);
+			}
+			pending.body.model = "rewritten-model";
+			pending.body.messages.push({ role: "user", content: "追加一句中文" });
+			return pending;
+		});
+	`})
+
+	body := mockMessagesBody(512 * 1024)
+	out, err := s.RunRewriteRequest(PendingRequestShape{
+		URL:     "https://upstream/v1/messages",
+		Method:  "POST",
+		Headers: map[string][]string{"content-type": {"application/json"}},
+		Body:    json.RawMessage(body),
+	})
+	if err != nil {
+		t.Fatalf("RunRewriteRequest: %v", err)
+	}
+
+	var inner string
+	if err := json.Unmarshal(out.Body, &inner); err != nil {
+		t.Fatalf("decode body token: %v", err)
+	}
+	var got struct {
+		Model    string `json:"model"`
+		Messages []any  `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(inner), &got); err != nil {
+		t.Fatalf("decode inner body: %v", err)
+	}
+	if got.Model != "rewritten-model" {
+		t.Errorf("model not rewritten: got %q", got.Model)
+	}
+	if len(got.Messages) != 3 {
+		t.Errorf("appended message missing: got %d messages, want 3", len(got.Messages))
+	}
+}
