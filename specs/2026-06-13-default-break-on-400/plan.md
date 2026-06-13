@@ -3,7 +3,8 @@
 ## 1. 修正 passthrough 决策回显（`pkg/jsx/session.go`）
 
 - `RunAfterUpstreamError` 中将 `zero` 由 `AfterUpstreamErrorDecision{Break: initial.Break, StatusCode: initial.StatusCode, Message: initial.Message}` 改为 `AfterUpstreamErrorDecision{Break: initial.Break}`。
-- 更新该方法上方的注释：passthrough 沿用初始 `break`，且不携带 `statusCode` / `message` 覆盖（等价 follow-upstream）。
+- **JS wrapper 同步修正**：no-op tap / 无 tap 时 `runWaterfall` 返回种子输入对象本身（identity），不会落到 `zero`，否则种子的 `statusCode` / `message` 仍被回显。将种子存入变量 `input`，passthrough 判定加上 `r === input`，使其返回 `undefined` 落到 `zero`。
+- 更新该方法上方的注释：passthrough（含返回未改动的输入对象）沿用初始 `break`，且不携带 `statusCode` / `message` 覆盖（等价 follow-upstream）。
 
 ## 2. 网关层种入 400 默认 break（`pkg/server/gateway_flow_attempts.go`）
 

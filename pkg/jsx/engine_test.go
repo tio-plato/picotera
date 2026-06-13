@@ -276,15 +276,41 @@ func TestSession_BeforeRequest_UpstreamModelNonStringDropped(t *testing.T) {
 }
 
 func TestSession_AfterUpstreamError_Passthrough(t *testing.T) {
-	// A tap that returns nothing leaves the initial value intact (break=false,
-	// original status/message preserved).
+	// A tap that returns nothing keeps the initial break and carries no
+	// statusCode/message override (follow-upstream semantics).
 	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function () {});`})
 	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{StatusCode: 429, Message: "rate limited"})
 	if err != nil {
 		t.Fatalf("RunAfterUpstreamError: %v", err)
 	}
-	if dec.Break || dec.StatusCode != 429 || dec.Message != "rate limited" {
-		t.Errorf("passthrough should preserve initial, got %+v", dec)
+	if dec.Break || dec.StatusCode != 0 || dec.Message != "" {
+		t.Errorf("passthrough should keep break and drop overrides, got %+v", dec)
+	}
+}
+
+func TestSession_AfterUpstreamError_DefaultBreakSeed(t *testing.T) {
+	// A break=true seed (e.g. the gateway's default 400 passthrough) with a
+	// passthrough hook keeps break=true and carries no override, so the caller
+	// faithfully passes through the upstream status/body/Content-Type.
+	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function () {});`})
+	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{Break: true, StatusCode: 400, Message: "bad"})
+	if err != nil {
+		t.Fatalf("RunAfterUpstreamError: %v", err)
+	}
+	if !dec.Break || dec.StatusCode != 0 || dec.Message != "" {
+		t.Errorf("want {break:true, statusCode:0, message:\"\"}, got %+v", dec)
+	}
+}
+
+func TestSession_AfterUpstreamError_HookOverridesDefaultBreak(t *testing.T) {
+	// A hook can switch off the seeded default break by returning { break: false }.
+	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function () { return { break: false }; });`})
+	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{Break: true, StatusCode: 400, Message: "bad"})
+	if err != nil {
+		t.Fatalf("RunAfterUpstreamError: %v", err)
+	}
+	if dec.Break {
+		t.Errorf("hook should override default break to false, got %+v", dec)
 	}
 }
 

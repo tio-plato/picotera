@@ -377,7 +377,11 @@ func (f *gatewayFlow) runAfterUpstreamError(state *attemptState, streamed bool) 
 		logx.WithContext(f.ctxs.Request).WithError(err).Warn("afterUpstreamError patch context failed")
 		return jsx.AfterUpstreamErrorDecision{}, false
 	}
-	dec, err := f.session.RunAfterUpstreamError(jsx.UpstreamErrorView{StatusCode: statusCode, Message: message, Streamed: streamed})
+	// Seed break=true for a bare 400 upstream error that hasn't streamed yet, so
+	// the default is to pass that response through; the hook can read this default
+	// in input.break and return { break: false } to keep trying other providers.
+	defaultBreak := statusCode == http.StatusBadRequest && !streamed
+	dec, err := f.session.RunAfterUpstreamError(jsx.UpstreamErrorView{Break: defaultBreak, StatusCode: statusCode, Message: message, Streamed: streamed})
 	if err != nil {
 		logx.WithContext(f.ctxs.Request).WithError(err).Warn("afterUpstreamError hook failed")
 		return jsx.AfterUpstreamErrorDecision{}, false
