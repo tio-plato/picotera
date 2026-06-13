@@ -10,7 +10,7 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "run-s lint:*",
-    "lint:oxlint": "oxlint . --fix",
+    "lint:oxlint": "oxlint . --fix --ignore-path=.prettierignore",
     "lint:eslint": "eslint . --fix --cache",
     "format": "oxfmt src/",
     "generate-openapi": "openapi-typescript --output src/openapi-types.d.ts ../openapi.yaml"
