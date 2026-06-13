@@ -57,6 +57,8 @@ type successInput struct {
 	UpstreamModel     string
 	Prepared          attemptPrepared
 	Entry             *liveEntry
+	CurrentRetryCount int
+	TotalAttemptCount int
 }
 
 type attemptResult struct {
@@ -120,6 +122,10 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 	if err != nil {
 		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, db.FinishReasonInternal)
 		cancel()
+		if hookDec, brk := f.runAfterUpstreamError(state, false); brk {
+			f.respondUpstreamErrorBreak(hookDec, 0, []byte(err.Error()), nil)
+			return true, true
+		}
 		return false, false
 	}
 	defer f.h.liveRequests.Remove(input.UpstreamID)
@@ -134,6 +140,10 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 		}
 		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, db.FinishReasonInternal)
 		cancel()
+		if hookDec, brk := f.runAfterUpstreamError(state, false); brk {
+			f.respondUpstreamErrorBreak(hookDec, 0, []byte(err.Error()), nil)
+			return true, true
+		}
 		return false, false
 	}
 	reqArtifactCtx, reqArtifactCancel := f.ctxs.Persist()
@@ -144,13 +154,20 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 	if err != nil {
 		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, f.finishReasonFor(input.UpstreamID, classifyForwardError(err, f.ctxs.Request)))
 		cancel()
+		if hookDec, brk := f.runAfterUpstreamError(state, false); brk {
+			f.respondUpstreamErrorBreak(hookDec, 0, []byte(err.Error()), nil)
+			return true, true
+		}
 		return false, false
 	}
 	if resp.StatusCode == http.StatusOK {
-		f.config.HandleSuccess(successInput{Flow: f, Candidate: cand, Sidecar: side, Response: resp, AttemptCtx: input.AttemptCtx, Cancel: cancel, UpstreamID: input.UpstreamID, UpstreamCreatedAt: input.UpstreamCreatedAt, AttemptStart: input.AttemptStart, UpstreamStartTime: upstreamStart, ProviderID: side.ProviderID, RoutedModel: f.model.Routed, UpstreamModel: input.UpstreamModel, Prepared: prepared, Entry: input.Entry})
+		f.config.HandleSuccess(successInput{Flow: f, Candidate: cand, Sidecar: side, Response: resp, AttemptCtx: input.AttemptCtx, Cancel: cancel, UpstreamID: input.UpstreamID, UpstreamCreatedAt: input.UpstreamCreatedAt, AttemptStart: input.AttemptStart, UpstreamStartTime: upstreamStart, ProviderID: side.ProviderID, RoutedModel: f.model.Routed, UpstreamModel: input.UpstreamModel, Prepared: prepared, Entry: input.Entry, CurrentRetryCount: input.CurrentRetryCount, TotalAttemptCount: input.TotalAttemptCount})
 		return true, false
 	}
-	f.handleUpstreamNonOK(state, input, resp, side.ProviderID)
+	if f.handleUpstreamNonOK(state, input, resp, side.ProviderID) {
+		cancel()
+		return true, true
+	}
 	cancel()
 	return false, false
 }
@@ -273,18 +290,30 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 	return prepared, nil
 }
 
-func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInput, resp *http.Response, providerID int32) {
+// handleUpstreamNonOK records a non-200 upstream response as a failed attempt
+// and runs the afterUpstreamError hook. It returns true when the hook decided to
+// break — in which case the downstream response has already been written and the
+// caller must stop trying further providers.
+func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInput, resp *http.Response, providerID int32) bool {
 	decoded, err := decodedBody(resp)
 	if err != nil {
 		_ = resp.Body.Close()
 		f.recordAttemptFailure(state, input, providerID, int32(resp.StatusCode), fmt.Errorf("decode upstream response: %w", err), db.FinishReasonInternal)
-		return
+		if hookDec, brk := f.runAfterUpstreamError(state, false); brk {
+			f.respondUpstreamErrorBreak(hookDec, resp.StatusCode, []byte(err.Error()), nil)
+			return true
+		}
+		return false
 	}
 	respBody, err := io.ReadAll(decoded.Body)
 	_ = decoded.Body.Close()
 	if err != nil {
 		f.recordAttemptFailure(state, input, providerID, int32(resp.StatusCode), fmt.Errorf("decode upstream response: %w", err), db.FinishReasonInternal)
-		return
+		if hookDec, brk := f.runAfterUpstreamError(state, false); brk {
+			f.respondUpstreamErrorBreak(hookDec, resp.StatusCode, []byte(err.Error()), nil)
+			return true
+		}
+		return false
 	}
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
@@ -300,6 +329,11 @@ func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInpu
 		CreatedAt:    pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
 	})
 	updateAttemptState(state, providerID, resp.StatusCode, errMsg, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg))
+	if hookDec, brk := f.runAfterUpstreamError(state, false); brk {
+		f.respondUpstreamErrorBreak(hookDec, resp.StatusCode, respBody, resp.Header)
+		return true
+	}
+	return false
 }
 
 // finishReasonFor resolves the finish reason for a request row, preferring a
@@ -321,6 +355,93 @@ func (f *gatewayFlow) recordAttemptFailure(state *attemptState, input attemptInp
 	defer pcancel()
 	f.h.completeFailedAttemptWithReason(pctx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, statusCode, err.Error(), finishReason)
 	updateAttemptState(state, providerID, int(statusCode), err.Error(), err)
+}
+
+// runAfterUpstreamError patches the per-attempt ctx (counts + lastError, which
+// updateAttemptState must have already written into state.LastJSErr) and runs
+// the afterUpstreamError waterfall. It returns the decision plus whether the
+// caller should break now (decision.Break && !streamed). A hook failure is
+// advisory: it is logged and treated as break=false.
+func (f *gatewayFlow) runAfterUpstreamError(state *attemptState, streamed bool) (jsx.AfterUpstreamErrorDecision, bool) {
+	var statusCode int
+	var message string
+	if state.LastJSErr != nil {
+		statusCode = state.LastJSErr.StatusCode
+		message = state.LastJSErr.Message
+	}
+	if err := f.session.PatchContext(jsx.ContextPatch{Attempt: &jsx.AttemptState{
+		CurrentRetryCount: state.CurrentRetryCount,
+		TotalAttemptCount: state.TotalAttemptCount,
+		LastError:         state.LastJSErr,
+	}}); err != nil {
+		logx.WithContext(f.ctxs.Request).WithError(err).Warn("afterUpstreamError patch context failed")
+		return jsx.AfterUpstreamErrorDecision{}, false
+	}
+	dec, err := f.session.RunAfterUpstreamError(jsx.UpstreamErrorView{StatusCode: statusCode, Message: message, Streamed: streamed})
+	if err != nil {
+		logx.WithContext(f.ctxs.Request).WithError(err).Warn("afterUpstreamError hook failed")
+		return jsx.AfterUpstreamErrorDecision{}, false
+	}
+	return dec, dec.Break && !streamed
+}
+
+// respondUpstreamErrorBreak writes the downstream response for an
+// afterUpstreamError break and finalizes the meta row. dec.Message overrides the
+// body (application/json); otherwise the upstream's original body + Content-Type
+// are passed through. dec.StatusCode overrides the status; otherwise the
+// upstream's original status, falling back to 502.
+func (f *gatewayFlow) respondUpstreamErrorBreak(dec jsx.AfterUpstreamErrorDecision, origStatus int, origBody []byte, origHeader http.Header) {
+	status := dec.StatusCode
+	if status <= 0 {
+		status = origStatus
+	}
+	if status <= 0 {
+		status = http.StatusBadGateway
+	}
+	var body []byte
+	contentType := "application/json"
+	if dec.Message != "" {
+		body = []byte(dec.Message)
+	} else {
+		body = origBody
+		if origHeader != nil {
+			if ct := origHeader.Get("Content-Type"); ct != "" {
+				contentType = ct
+			}
+		}
+	}
+	f.w.Header().Set("Content-Type", contentType)
+	f.w.WriteHeader(status)
+	_, _ = f.w.Write(body)
+	errMsg := dec.Message
+	if errMsg == "" {
+		errMsg = string(origBody)
+	}
+	f.failMeta(int32(status), errMsg, db.FinishReasonInternal)
+	pctx, pcancel := f.ctxs.Persist()
+	defer pcancel()
+	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), body, f.collectLogs(), nil)
+}
+
+// runStreamErrorHook runs the afterUpstreamError waterfall for an in-stream
+// error (HTTP 200 + an SSE error payload). The response already streamed to the
+// client, so streamed=true and the hook's break is ignored — it runs purely for
+// observation (logging, kv writes). Unlike runAfterUpstreamError it does not
+// depend on an attemptState; the success path has no state, so the caller passes
+// the counts and error explicitly.
+func (f *gatewayFlow) runStreamErrorHook(providerID int32, currentRetry, totalAttempt, statusCode int, message string) {
+	lastErr := &jsx.LastError{ProviderID: int(providerID), StatusCode: statusCode, Message: message}
+	if err := f.session.PatchContext(jsx.ContextPatch{Attempt: &jsx.AttemptState{
+		CurrentRetryCount: currentRetry,
+		TotalAttemptCount: totalAttempt,
+		LastError:         lastErr,
+	}}); err != nil {
+		logx.WithContext(f.ctxs.Request).WithError(err).Warn("afterUpstreamError patch context failed")
+		return
+	}
+	if _, err := f.session.RunAfterUpstreamError(jsx.UpstreamErrorView{StatusCode: statusCode, Message: message, Streamed: true}); err != nil {
+		logx.WithContext(f.ctxs.Request).WithError(err).Warn("afterUpstreamError hook failed")
+	}
 }
 
 func updateAttemptState(state *attemptState, providerID int32, statusCode int, message string, err error) {

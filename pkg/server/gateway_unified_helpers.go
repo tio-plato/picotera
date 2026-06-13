@@ -563,6 +563,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		status = int32(db.RequestStatusFailed)
 		errMsg = pgtype.Text{String: streamErr, Valid: true}
 		fr = int32(db.FinishReasonStreamError)
+		input.Flow.runStreamErrorHook(a.providerID, input.CurrentRetryCount, input.TotalAttemptCount, resp.StatusCode, streamErr)
 	}
 
 	upstreamFr := input.Flow.finishReasonFor(a.upstreamID, fr)

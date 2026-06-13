@@ -115,6 +115,28 @@ type PendingRequestShape struct {
 	Body    []byte              `json:"-"`
 }
 
+// UpstreamErrorView is the waterfall input for the afterUpstreamError hook. It
+// describes an upstream attempt that just failed. StatusCode is the upstream's
+// original HTTP status (0 for connection/build failures with no response).
+// Streamed is true when the client response already started streaming (an
+// in-stream SSE error), in which case Break in the decision is ignored.
+type UpstreamErrorView struct {
+	Break      bool   `json:"break"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	Streamed   bool   `json:"streamed"`
+}
+
+// AfterUpstreamErrorDecision is the waterfall output for the afterUpstreamError
+// hook. Break (only honored when streamed=false) interrupts the gateway request
+// and writes a downstream response: StatusCode<=0 follows the upstream's
+// original status; Message=="" follows the upstream's original body.
+type AfterUpstreamErrorDecision struct {
+	Break      bool   `json:"break"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+}
+
 // OutboundProfile is the waterfall value for the beforeTransform hook: the
 // axonhub outbound transformer selection for a unified gateway attempt.
 type OutboundProfile struct {

@@ -581,3 +581,29 @@ func (s *qjsSession) RunRewriteProviderModels(initial []ProviderModelEntry) ([]P
 	}
 	return out, nil
 }
+
+// RunAfterUpstreamError runs the afterUpstreamError waterfall. Passthrough
+// (undefined / null / returning ctx) keeps the initial value (break=false). A
+// returned object is normalized: break is coerced to a boolean, statusCode to
+// an integer, and a non-string message is dropped to "".
+func (s *qjsSession) RunAfterUpstreamError(initial UpstreamErrorView) (AfterUpstreamErrorDecision, error) {
+	zero := AfterUpstreamErrorDecision{Break: initial.Break, StatusCode: initial.StatusCode, Message: initial.Message}
+	init, err := mustJSON(initial)
+	if err != nil {
+		return zero, err
+	}
+	expr := `(function () {
+		var r = picotera.hooks.afterUpstreamError.runWaterfall(globalThis.ctx, ` + init + `);
+		if (r === globalThis.ctx || typeof r === 'undefined' || r === null) return undefined;
+		return { break: !!r.break, statusCode: r.statusCode | 0, message: (typeof r.message === 'string') ? r.message : '' };
+	})()`
+	data, undef, err := s.evalJSON("afterUpstreamError", internalFilename("hook-afterUpstreamError.js"), expr)
+	if err != nil || undef {
+		return zero, err
+	}
+	var out AfterUpstreamErrorDecision
+	if err := json.Unmarshal(data, &out); err != nil {
+		return zero, fmt.Errorf("jsx: afterUpstreamError decode: %w", err)
+	}
+	return out, nil
+}

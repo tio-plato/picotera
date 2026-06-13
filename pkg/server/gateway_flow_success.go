@@ -252,6 +252,7 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		status = int32(db.RequestStatusFailed)
 		errMsg = pgtype.Text{String: streamErr, Valid: true}
 		fr = int32(db.FinishReasonStreamError)
+		input.Flow.runStreamErrorHook(input.ProviderID, input.CurrentRetryCount, input.TotalAttemptCount, statusCode, streamErr)
 	}
 
 	upstreamFr := input.Flow.finishReasonFor(input.UpstreamID, fr)

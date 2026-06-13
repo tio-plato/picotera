@@ -275,6 +275,85 @@ func TestSession_BeforeRequest_UpstreamModelNonStringDropped(t *testing.T) {
 	}
 }
 
+func TestSession_AfterUpstreamError_Passthrough(t *testing.T) {
+	// A tap that returns nothing leaves the initial value intact (break=false,
+	// original status/message preserved).
+	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function () {});`})
+	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{StatusCode: 429, Message: "rate limited"})
+	if err != nil {
+		t.Fatalf("RunAfterUpstreamError: %v", err)
+	}
+	if dec.Break || dec.StatusCode != 429 || dec.Message != "rate limited" {
+		t.Errorf("passthrough should preserve initial, got %+v", dec)
+	}
+}
+
+func TestSession_AfterUpstreamError_Break(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function () { return { break: true, statusCode: 400, message: "nope" }; });`})
+	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{StatusCode: 500, Message: "boom"})
+	if err != nil {
+		t.Fatalf("RunAfterUpstreamError: %v", err)
+	}
+	if !dec.Break || dec.StatusCode != 400 || dec.Message != "nope" {
+		t.Errorf("want {break:true, statusCode:400, message:nope}, got %+v", dec)
+	}
+}
+
+func TestSession_AfterUpstreamError_BreakFollowsUpstream(t *testing.T) {
+	// break=true with no statusCode/message means "follow upstream": the
+	// decision carries the empty overrides so the caller falls back.
+	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function () { return { break: true }; });`})
+	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{StatusCode: 503, Message: "unavailable"})
+	if err != nil {
+		t.Fatalf("RunAfterUpstreamError: %v", err)
+	}
+	if !dec.Break || dec.StatusCode != 0 || dec.Message != "" {
+		t.Errorf("want {break:true, statusCode:0, message:\"\"}, got %+v", dec)
+	}
+}
+
+func TestSession_AfterUpstreamError_NonStringMessageDropped(t *testing.T) {
+	// statusCode is integer-cast (|0): a numeric string coerces to its int; a
+	// non-string message is dropped to "".
+	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function () { return { break: true, statusCode: "418", message: 42 }; });`})
+	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{})
+	if err != nil {
+		t.Fatalf("RunAfterUpstreamError: %v", err)
+	}
+	if !dec.Break || dec.StatusCode != 418 || dec.Message != "" {
+		t.Errorf("statusCode should coerce to 418 and non-string message drop, got %+v", dec)
+	}
+}
+
+func TestSession_AfterUpstreamError_Streamed(t *testing.T) {
+	// The hook observes streamed=true; it can still return break but the caller
+	// is responsible for ignoring it. Here we only verify the input is visible.
+	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function (ctx, v) { return { break: v.streamed, statusCode: 0, message: "" }; });`})
+	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{StatusCode: 200, Message: "stream error", Streamed: true})
+	if err != nil {
+		t.Fatalf("RunAfterUpstreamError: %v", err)
+	}
+	if !dec.Break {
+		t.Errorf("hook should see streamed=true, got %+v", dec)
+	}
+}
+
+func TestSession_AfterUpstreamError_LastErrorVisible(t *testing.T) {
+	// ctx.attempt.lastError is consumed by the hook (set via PatchContext before
+	// the run). Mirror the server's patch and assert the hook reads it.
+	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.afterUpstreamError.tap("a", function (ctx) { return { break: true, statusCode: 0, message: ctx.attempt.lastError.message }; });`})
+	if err := s.PatchContext(ContextPatch{Attempt: &AttemptState{LastError: &LastError{ProviderID: 7, StatusCode: 500, Message: "prev"}}}); err != nil {
+		t.Fatalf("PatchContext: %v", err)
+	}
+	dec, err := s.RunAfterUpstreamError(UpstreamErrorView{StatusCode: 500, Message: "prev"})
+	if err != nil {
+		t.Fatalf("RunAfterUpstreamError: %v", err)
+	}
+	if dec.Message != "prev" {
+		t.Errorf("hook should read ctx.attempt.lastError.message, got %q", dec.Message)
+	}
+}
+
 func TestSession_RewriteRequest_Passthrough(t *testing.T) {
 	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.rewriteRequest.tap("a", function () {});`})
 	in := PendingRequestShape{

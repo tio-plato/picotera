@@ -29,6 +29,7 @@
       rewriteRequest: new Waterfall(),
       rewriteModel: new Waterfall(),
       rewriteProviderModels: new Waterfall(),
+      afterUpstreamError: new Waterfall(),
     },
     kv: {
       get: function (key) {

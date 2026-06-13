@@ -40,6 +40,9 @@ type Session interface {
 	RunRewriteRequest(initial PendingRequestShape, body []byte) (PendingRequestShape, error)
 	RunBeforeTransform(initial OutboundProfile) (OutboundProfile, error)
 	RunRewriteProviderModels(initial []ProviderModelEntry) ([]ProviderModelEntry, error)
+	// RunAfterUpstreamError runs the afterUpstreamError waterfall after an
+	// upstream attempt failed. Passthrough keeps the initial value (break=false).
+	RunAfterUpstreamError(initial UpstreamErrorView) (AfterUpstreamErrorDecision, error)
 
 	Logs() []LogEntry
 	Close()
