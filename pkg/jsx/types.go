@@ -23,8 +23,10 @@ type ModelSummary struct {
 }
 
 // RequestShape is the JS-visible shape of the incoming client request
-// (ctx.request). Body is included as a parsed JSON value only when the
-// content-type is application/json and the body parses; otherwise omitted.
+// (ctx.request). It carries no body field: ctx.request.body is installed
+// separately by the session as a lazy Proxy over the Go-side body tree (see
+// Session.SetClientBody), so a large body a hook never reads never crosses into
+// QuickJS.
 type RequestShape struct {
 	Path    string              `json:"path"`
 	Method  string              `json:"method"`
@@ -34,7 +36,6 @@ type RequestShape struct {
 	// (e.g. {model} in /v1beta/models/{model}:generateContent). Omitted when
 	// the endpoint has no variables.
 	PathVars map[string]string `json:"pathVars,omitempty"`
-	Body     json.RawMessage   `json:"body,omitempty"`
 }
 
 // ApiKeySummary is the JS-visible shape of the API key that authorized the
@@ -103,14 +104,15 @@ type BeforeRequestDecision struct {
 }
 
 // PendingRequestShape is the waterfall value for the rewriteRequest hook: the
-// upstream request about to be sent. Body carries a JSON string token only
-// when content-type is application/json; otherwise omitted and the Go side
-// keeps the pre-hook bytes verbatim.
+// upstream request about to be sent. Body never crosses the JSON boundary
+// (json:"-"): on input it is always nil — the session installs pending.body as
+// a lazy Proxy over the Go-side body tree — and on output it carries the final
+// upstream body bytes directly (nil means "fall back to the pre-hook bytes").
 type PendingRequestShape struct {
 	URL     string              `json:"url"`
 	Method  string              `json:"method"`
 	Headers map[string][]string `json:"headers"`
-	Body    json.RawMessage     `json:"body,omitempty"`
+	Body    []byte              `json:"-"`
 }
 
 // OutboundProfile is the waterfall value for the beforeTransform hook: the

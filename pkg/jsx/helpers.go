@@ -18,25 +18,44 @@ import (
 // SetEvalTimeout cannot interrupt a blocking host function.
 var fetchClient = &http.Client{Timeout: 5 * time.Second}
 
-// registerHelpers wires fetch / console / kv into the VM as synchronous host
-// functions.
+// registerHelpers wires fetch / console / kv / body-proxy into the VM as
+// synchronous host functions.
 func registerHelpers(s *qjsSession) {
 	registerFetch(s.vm)
 	registerConsole(s)
 	registerKV(s)
-	registerRewriteBody(s)
+	registerObjects(s)
 }
 
-// registerRewriteBody exposes the current rewriteRequest input body to JS as a
-// raw JSON string via __picotera_rr_body(). The rewriteRequest hook defines
-// pending.body as a lazy accessor that calls this and JSON.parses the result
-// only when a hook actually reads or writes the body — so large untouched
-// bodies are never parsed or re-serialized inside QuickJS. rrBodyValue invokes
-// the body provider at most once (caching the result) so repeated reads are
-// consistent and the masking the provider performs happens lazily.
-func registerRewriteBody(s *qjsSession) {
-	_ = s.vm.RegisterFunc("__picotera_rr_body", func() string {
-		return s.rrBodyValue()
+// registerObjects exposes the body object registry to JS. ctx.request.body and
+// rewriteRequest's pending.body are JS Proxies whose get/set/enumerate/delete
+// traps forward through these synchronous host functions, so scalars cross into
+// QuickJS only when a script reads them and writes land straight on the Go-side
+// jsonast tree. Functions that can fail return (value, error) so the SDK throws
+// on the error element; void ops return error (null on success). See objects.go.
+func registerObjects(s *qjsSession) {
+	vm := s.vm
+	reg := s.registry
+	_ = vm.RegisterFunc("__picotera_obj_root", func(slot string) (string, error) {
+		return reg.rootDesc(slot)
+	}, false)
+	_ = vm.RegisterFunc("__picotera_obj_get", func(id int, key string) (string, error) {
+		return reg.get(id, key)
+	}, false)
+	_ = vm.RegisterFunc("__picotera_obj_set", func(id int, key, valueJSON string) error {
+		return reg.set(id, key, valueJSON)
+	}, false)
+	_ = vm.RegisterFunc("__picotera_obj_del", func(id int, key string) error {
+		return reg.del(id, key)
+	}, false)
+	_ = vm.RegisterFunc("__picotera_obj_keys", func(id int) (string, error) {
+		return reg.keysDesc(id)
+	}, false)
+	_ = vm.RegisterFunc("__picotera_obj_has", func(id int, key string) (int, error) {
+		return reg.has(id, key)
+	}, false)
+	_ = vm.RegisterFunc("__picotera_obj_setlen", func(id, length int) error {
+		return reg.setlen(id, length)
 	}, false)
 }
 

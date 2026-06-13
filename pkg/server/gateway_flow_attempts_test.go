@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"picotera/pkg/contract"
-	"picotera/pkg/datamask"
 	"picotera/pkg/db"
 	"picotera/pkg/jsx"
 	"picotera/pkg/kv"
@@ -79,7 +78,6 @@ picotera.hooks.rewriteRequest.tap('add-include-usage', function (ctx, pending) {
 		},
 		body:    []byte(`{"model":"gpt-4o","input":[{"role":"user","content":"ping"}],"stream":true}`),
 		session: session,
-		masker:  datamask.New(0),
 		model:   gatewayModelState{Original: "gpt-4o", Routed: "gpt-4o"},
 	}
 	input := attemptInput{

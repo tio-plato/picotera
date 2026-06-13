@@ -99,16 +99,11 @@ func TestSession_RewriteRequest_LargeBody(t *testing.T) {
 					Method:  "POST",
 					Headers: map[string][]string{"content-type": {"application/json"}},
 				}
-				// Neither hook reads pending.body, so the provider must never be
-				// invoked — the multi-MiB body never enters QuickJS at all.
-				calls := 0
-				provider := func() string { calls++; return string(body) }
-				out, err := s.RunRewriteRequest(in, provider)
+				// Neither hook reads pending.body, so the multi-MiB body is never
+				// parsed into the jsonast tree nor moved through QuickJS at all.
+				out, err := s.RunRewriteRequest(in, body)
 				if err != nil {
 					t.Fatalf("RunRewriteRequest (%d MiB, %s): %v", mb, h.name, err)
-				}
-				if calls != 0 {
-					t.Fatalf("body provider called %d times (%d MiB, %s); hook never reads body", calls, mb, h.name)
 				}
 				// Body untouched → nil so the caller falls back to original bytes.
 				if out.Body != nil {
@@ -135,32 +130,21 @@ func TestSession_RewriteRequest_BodyAccess(t *testing.T) {
 	`})
 
 	body := mockMessagesBody(512 * 1024)
-	calls := 0
-	provider := func() string { calls++; return string(body) }
 	out, err := s.RunRewriteRequest(PendingRequestShape{
 		URL:     "https://upstream/v1/messages",
 		Method:  "POST",
 		Headers: map[string][]string{"content-type": {"application/json"}},
-	}, provider)
+	}, body)
 	if err != nil {
 		t.Fatalf("RunRewriteRequest: %v", err)
 	}
-	// The hook reads pending.body twice (read model, then mutate); the provider
-	// must run exactly once thanks to caching.
-	if calls != 1 {
-		t.Fatalf("body provider called %d times, want 1", calls)
-	}
 
-	var inner string
-	if err := json.Unmarshal(out.Body, &inner); err != nil {
-		t.Fatalf("decode body token: %v", err)
-	}
 	var got struct {
 		Model    string `json:"model"`
 		Messages []any  `json:"messages"`
 	}
-	if err := json.Unmarshal([]byte(inner), &got); err != nil {
-		t.Fatalf("decode inner body: %v", err)
+	if err := json.Unmarshal(out.Body, &got); err != nil {
+		t.Fatalf("decode body: %v (raw len=%d)", err, len(out.Body))
 	}
 	if got.Model != "rewritten-model" {
 		t.Errorf("model not rewritten: got %q", got.Model)

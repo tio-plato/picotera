@@ -19,13 +19,13 @@
 
 - `body.model = 'x'`、`body.messages.push({...})`、`body.messages.splice(i, 1)`、`delete body.metadata` 均正常工作。
 - 写入普通对象/数组时其内容被拷贝进托管树;其中嵌套的 Proxy 子树按**深拷贝**并入。
+- **把一个 Proxy 赋给另一位置**(`body.a = body.b`):**深拷贝**并入,不报错也不产生别名。原生 `splice`/`shift`/`unshift` 在对象/数组元素的数组上正常工作正是依赖这一点。
 - `JSON.parse(JSON.stringify(x))` 是显式深拷贝手段:得到可自由修改的普通 JS 对象,写回时整体拷贝。
 
 ### 报错(均抛 JS 异常,fail fast)
 
-- **把 Proxy 直接赋给另一个位置**:`body.a = body.b` → 报错。需要拷贝时用 `JSON.parse(JSON.stringify(body.b))`。
 - 写入 `undefined`、函数等不可 JSON 序列化的值。
-- 数组:索引越界写(合法写入范围 `[0, length]`,`length` 位置即追加)、`delete arr[i]`、把 `length` 改大。收缩 `length` 合法(截断)。
+- 数组:索引越界写(合法写入范围 `[0, length]`,`length` 位置即追加)、`delete arr[i]`(仅允许删除**最后一个**元素,供 `pop`/`splice` 等原生方法从尾部删除使用;删除其他索引报错)、把 `length` 改大。收缩 `length` 合法(截断)。
 - **失效 Proxy**:`pending.body` 的 Proxy 只在当次 attempt 的 rewriteRequest 内有效;`ctx.request.body` 的 Proxy 在 rewriteModel 改写了 body 后整体更换。把旧 Proxy 存到全局变量后再访问 → 报错。
 
 ### rewriteRequest 返回值
@@ -55,9 +55,9 @@
 | `__picotera_obj_root(slot)` | `(string) → (descriptor, error)` | slot 非 `"request"`/`"pending"`;字节 parse 失败 |
 | `__picotera_obj_get(id, key)` | `(int, string) → (descriptor, error)` | id 失效;array 键非索引或越界 |
 | `__picotera_obj_set(id, key, valueJSON)` | `(int, string, string) → error` | id 失效;valueJSON 非法;marker 非法或指向失效 id;array 索引越界(> len) |
-| `__picotera_obj_del(id, key)` | `(int, string) → error` | id 失效;节点为 array |
+| `__picotera_obj_del(id, key)` | `(int, string) → error` | id 失效;array 上删除非最后一个元素(仅允许删尾,供 pop/splice 使用) |
 | `__picotera_obj_keys(id)` | `(int) → (string, error)` | id 失效;返回 `{"t":"o","keys":[...]}` 或 `{"t":"a","len":n}` |
-| `__picotera_obj_has(id, key)` | `(int, string) → (bool, error)` | id 失效 |
+| `__picotera_obj_has(id, key)` | `(int, string) → (int, error)` | id 失效(返回 1/0,因 QuickJS 绑定不支持 Go bool 跨界) |
 | `__picotera_obj_setlen(id, len)` | `(int, int) → error` | id 失效;节点非 array;len 大于当前长度 |
 
 ### marker

@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"picotera/pkg/contract"
-	"picotera/pkg/datamask"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
@@ -751,8 +750,8 @@ func jsonBodyOrNil(headers http.Header, body []byte) json.RawMessage {
 
 // serializePendingRequest captures the upstream request as a PendingRequestShape
 // for the rewriteRequest hook. Headers are lower-cased; the body is NOT
-// embedded here — it is supplied lazily via pendingBodyProvider so an untouched
-// (and unmasked) body never crosses into QuickJS.
+// embedded here — the session installs pending.body as a lazy Proxy so an
+// untouched body never crosses into QuickJS.
 func serializePendingRequest(req *http.Request) jsx.PendingRequestShape {
 	return jsx.PendingRequestShape{
 		URL:     req.URL.String(),
@@ -761,67 +760,27 @@ func serializePendingRequest(req *http.Request) jsx.PendingRequestShape {
 	}
 }
 
-// pendingBodyProvider returns a lazy provider of the rewriteRequest input body
-// (the raw JSON string) for the hook, or nil when the body is not JS-visible
-// (non-JSON content-type / invalid JSON). The body is masked on first read;
-// since the provider only runs if a hook actually reads pending.body, masking
-// is skipped entirely for the common untouched-body case. A mask failure logs a
-// warning and yields the unmasked body (safe degradation).
-func pendingBodyProvider(ctx context.Context, masker *datamask.Masker, header http.Header, reqBody []byte) func() string {
-	if jsonBodyOrNil(header, reqBody) == nil {
-		return nil
-	}
-	return func() string {
-		masked, err := masker.Mask(reqBody)
-		if err != nil {
-			logx.WithContext(ctx).WithError(err).Warn("datamask: mask pending body failed; using unmasked body")
-			return string(reqBody)
-		}
-		return string(masked)
-	}
-}
-
 // serializeClientRequest captures the inbound client request as a RequestShape
-// for the JS hooks. The JS-visible JSON body (if any) is data-url masked.
-func serializeClientRequest(r *http.Request, body []byte, model string, pathVars map[string]string, masker *datamask.Masker) jsx.RequestShape {
+// for the JS hooks. The body is registered separately via Session.SetClientBody
+// (a lazy Proxy), so it is not part of the shape.
+func serializeClientRequest(r *http.Request, model string, pathVars map[string]string) jsx.RequestShape {
 	return jsx.RequestShape{
 		Path:     r.URL.Path,
 		Method:   r.Method,
 		Headers:  mapLowerKeys(r.Header.Clone()),
 		Model:    model,
 		PathVars: pathVars,
-		Body:     maskJSONBody(r.Context(), masker, jsonBodyOrNil(r.Header, body)),
 	}
-}
-
-// maskJSONBody data-url masks a JS-visible JSON body, falling back to the
-// original (with a warning) on a mask failure. A nil input passes through.
-func maskJSONBody(ctx context.Context, masker *datamask.Masker, raw json.RawMessage) json.RawMessage {
-	if raw == nil {
-		return nil
-	}
-	masked, err := masker.Mask(raw)
-	if err != nil {
-		logx.WithContext(ctx).WithError(err).Warn("datamask: mask client body failed; using unmasked body")
-		return raw
-	}
-	return json.RawMessage(masked)
 }
 
 // buildRequestFromPending constructs a fresh *http.Request from the rewrite
-// hook's returned PendingRequestShape. fallbackBody is used when p.Body is
-// absent (non-JSON content-type / hidden from JS) — those bytes are sent as
-// the request body verbatim. When p.Body is present it carries a JSON string
-// token (the SDK stringifies object bodies before they reach Go); the inner
-// string contents become the outgoing body bytes.
+// hook's returned PendingRequestShape. fallbackBody is used when p.Body is nil
+// (the hook left the body untouched, removed it, or produced a byte-identical
+// clean passthrough); otherwise p.Body carries the final upstream bytes directly.
 func buildRequestFromPending(ctx context.Context, p jsx.PendingRequestShape, fallbackBody []byte) (*http.Request, []byte, error) {
 	outBody := fallbackBody
 	if p.Body != nil {
-		var s string
-		if err := json.Unmarshal(p.Body, &s); err != nil {
-			return nil, nil, fmt.Errorf("rewriteRequest: decode body: %w", err)
-		}
-		outBody = []byte(s)
+		outBody = p.Body
 	}
 	req, err := http.NewRequestWithContext(ctx, p.Method, p.URL, bytes.NewReader(outBody))
 	if err != nil {

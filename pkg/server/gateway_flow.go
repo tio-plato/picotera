@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"picotera/pkg/annotations"
-	"picotera/pkg/datamask"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
@@ -39,7 +38,6 @@ type gatewayFlow struct {
 	auth           gatewayAuthState
 	model          gatewayModelState
 	session        jsx.Session
-	masker         *datamask.Masker
 }
 
 type gatewayFlowConfig struct {
@@ -102,7 +100,6 @@ func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, s
 		r:         r,
 		startedAt: startedAt,
 		config:    cfg,
-		masker:    datamask.New(h.config.JSDataURLMaskMinBytes),
 	}
 }
 
@@ -278,7 +275,7 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		endpointType = "unified"
 	}
 	epSummary := endpointSummaryFromRow(f.config.Endpoint)
-	clientReq := serializeClientRequest(f.r, f.body, mode.RoutedModel, f.config.PathVars, f.masker)
+	clientReq := serializeClientRequest(f.r, mode.RoutedModel, f.config.PathVars)
 	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
 	streaming := mode.Streaming
 	srcFormat := f.config.SourceFormat.String()
@@ -292,6 +289,10 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		Stream:       &streaming,
 		SourceFormat: &srcFormat,
 	}); err != nil {
+		f.failHook(err)
+		return false
+	}
+	if err := f.session.SetClientBody([]byte(jsonBodyOrNil(f.r.Header, f.body))); err != nil {
 		f.failHook(err)
 		return false
 	}
@@ -322,13 +323,20 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 	// Reflect the final routed model (and, if the body/annotations changed, the
 	// updated request/annotations) onto the persistent ctx.
 	routed := jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations}
-	finalReq := serializeClientRequest(f.r, f.body, f.model.Routed, f.config.PathVars, f.masker)
+	finalReq := serializeClientRequest(f.r, f.model.Routed, f.config.PathVars)
 	finalAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
 	if err := f.session.PatchContext(jsx.ContextPatch{
 		RoutedModel: &routed,
 		Request:     &finalReq,
 		Annotations: &finalAnno,
 	}); err != nil {
+		f.failHook(err)
+		return false
+	}
+	// The model rewrite may have changed the body bytes; re-register so the
+	// ctx.request.body Proxy reflects the final body (and any prior Proxy is
+	// invalidated).
+	if err := f.session.SetClientBody([]byte(jsonBodyOrNil(f.r.Header, f.body))); err != nil {
 		f.failHook(err)
 		return false
 	}

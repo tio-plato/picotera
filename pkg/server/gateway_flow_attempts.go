@@ -260,27 +260,13 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 		return attemptPrepared{}, gatewayHookError{err: err}
 	}
 	pending := serializePendingRequest(req)
-	newPending, err := f.session.RunRewriteRequest(pending, pendingBodyProvider(input.AttemptCtx, f.masker, req.Header, reqBody))
+	newPending, err := f.session.RunRewriteRequest(pending, []byte(jsonBodyOrNil(req.Header, reqBody)))
 	if err != nil {
 		return attemptPrepared{}, gatewayHookError{err: err}
 	}
 	req, reqBody, err = buildRequestFromPending(input.AttemptCtx, newPending, reqBody)
 	if err != nil {
 		return attemptPrepared{}, gatewayHookError{err: err}
-	}
-	// The hook read or rewrote the (masked) body: restore any data-url
-	// placeholders before the body goes to the upstream. An untouched body
-	// (newPending.Body nil) used the original unmasked fallback bytes, so it
-	// needs no restore.
-	if newPending.Body != nil && f.masker.Active() {
-		unmasked, uerr := f.masker.Unmask(reqBody)
-		if uerr != nil {
-			return attemptPrepared{}, gatewayHookError{err: uerr}
-		}
-		if !bytes.Equal(unmasked, reqBody) {
-			reqBody = unmasked
-			resetRequestBody(req, reqBody)
-		}
 	}
 	prepared.Request = req
 	prepared.RequestBody = reqBody

@@ -10,7 +10,6 @@ import (
 
 	"picotera/pkg/annotations"
 	"picotera/pkg/contract"
-	"picotera/pkg/datamask"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
 	"picotera/pkg/jsx"
@@ -140,16 +139,12 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 	if len(bodyBytes) > 0 {
 		jsHeaders.Set("Content-Type", "application/json")
 	}
-	// Mask oversized data-urls so the simulated request shape matches what
-	// scripts see in production. A fresh masker per simulation.
-	masker := datamask.New(s.config.JSDataURLMaskMinBytes)
 	clientReq := jsx.RequestShape{
 		Path:     endpoint.Path,
 		Method:   http.MethodPost,
 		Headers:  mapLowerKeys(jsHeaders),
 		Model:    modelName,
 		PathVars: pathVars,
-		Body:     maskJSONBody(ctx, masker, jsonBodyOrNil(jsHeaders, bodyBytes)),
 	}
 	endpointJS := endpointSummaryFromRow(endpoint)
 
@@ -169,6 +164,9 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 		SourceFormat: &srcFormatStr,
 	}); perr != nil {
 		return nil, hookHumaError(perr)
+	}
+	if serr := session.SetClientBody([]byte(jsonBodyOrNil(jsHeaders, bodyBytes))); serr != nil {
+		return nil, hookHumaError(serr)
 	}
 
 	newModel, err := session.RunRewriteModel(modelName)
@@ -199,8 +197,11 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 		}
 		modelName = newModel
 		modelAnno = s.fetchModelAnnotations(ctx, modelName)
-		clientReq.Model = modelName
-		clientReq.Body = jsonBodyOrNil(jsHeaders, bodyBytes)
+		// Re-register the (possibly rewritten) body so ctx.request.body reflects
+		// it and any Proxy over the previous body is invalidated.
+		if serr := session.SetClientBody([]byte(jsonBodyOrNil(jsHeaders, bodyBytes))); serr != nil {
+			return nil, hookHumaError(serr)
+		}
 	}
 
 	// 7. Resolve candidates.

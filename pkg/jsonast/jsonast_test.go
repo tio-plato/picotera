@@ -65,15 +65,15 @@ func TestParseStrictRejects(t *testing.T) {
 		`"unterminated`,
 		`tru`,
 		`{"a":}`,
-		`123 456`,     // two values
-		`{} {}`,       // trailing value
-		`null null`,   // trailing value
-		`"a"x`,        // trailing junk
-		`{"a":1,}`,    // trailing comma
-		`[1,]`,        // trailing comma
-		`"\uZZZZ"`,    // invalid escape
-		`01`,          // invalid number
-		`{"a" 1}`,     // missing colon
+		`123 456`,   // two values
+		`{} {}`,     // trailing value
+		`null null`, // trailing value
+		`"a"x`,      // trailing junk
+		`{"a":1,}`,  // trailing comma
+		`[1,]`,      // trailing comma
+		`"\uZZZZ"`,  // invalid escape
+		`01`,        // invalid number
+		`{"a" 1}`,   // missing colon
 	}
 	for _, b := range bad {
 		if _, err := Parse([]byte(b)); err == nil {
@@ -182,3 +182,48 @@ func TestWalkAbortsOnError(t *testing.T) {
 type stringErr struct{ s string }
 
 func (e *stringErr) Error() string { return e.s }
+
+func TestCloneIsDeepAndIndependent(t *testing.T) {
+	n, err := Parse([]byte(`{"a":[1,2,{"b":"x"}],"c":"keep"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Clone(n)
+
+	// Mutate the clone: append an array element, rewrite a nested string, drop
+	// a member. None of it may touch the original.
+	c.Members[0].Value.Elems = append(c.Members[0].Value.Elems, &Node{Kind: KindNull})
+	c.Members[0].Value.Elems[2].Members[0].Value.SetString("mutated")
+	c.Members = c.Members[:1]
+
+	origOut, err := Encode(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(origOut) != `{"a":[1,2,{"b":"x"}],"c":"keep"}` {
+		t.Errorf("original mutated by clone edits: %q", origOut)
+	}
+}
+
+func TestClonePreservesRawBytes(t *testing.T) {
+	// Unmodified scalars must round-trip byte-for-byte through a clone (escape
+	// form and numeric literal preserved via the shared raw bytes).
+	const in = `{"s":"\/escaped","n":1e10,"d":"data:image/png;base64,AAAA"}`
+	n, err := Parse([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := Encode(Clone(n))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != in {
+		t.Errorf("clone round-trip mismatch\n in: %q\nout: %q", in, string(out))
+	}
+}
+
+func TestCloneNil(t *testing.T) {
+	if Clone(nil) != nil {
+		t.Errorf("Clone(nil) should be nil")
+	}
+}
