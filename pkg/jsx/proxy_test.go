@@ -111,6 +111,89 @@ func TestProxy_ArraySplice(t *testing.T) {
 	}
 }
 
+func TestProxy_ArrayMutators(t *testing.T) {
+	// shift/unshift/pop/splice-with-insert/reverse all run through the host
+	// slice ops; the hook asserts return values and final order in-script.
+	out, err := runRR(t, `{"a":[{"i":0},{"i":1},{"i":2},{"i":3}]}`, `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, p) {
+			var a = p.body.a;
+			var first = a.shift();
+			if (first.i !== 0) throw new Error("shift returned " + first.i);
+			if (a.length !== 3) throw new Error("len after shift " + a.length);
+			var n = a.unshift({ i: -1 });
+			if (n !== 4) throw new Error("unshift returned " + n);
+			if (a[0].i !== -1) throw new Error("unshift order " + a[0].i);
+			var last = a.pop();
+			if (last.i !== 3) throw new Error("pop returned " + last.i);
+			var removed = a.splice(1, 1, { i: 9 }, { i: 10 });
+			if (removed.length !== 1 || removed[0].i !== 1) throw new Error("splice removed " + JSON.stringify(removed));
+			a.reverse();
+			return p;
+		});
+	`)
+	if err != nil {
+		t.Fatalf("array mutator hook failed: %v", err)
+	}
+	var got struct {
+		A []struct {
+			I int `json:"i"`
+		} `json:"a"`
+	}
+	if err := json.Unmarshal(out.Body, &got); err != nil {
+		t.Fatalf("decode: %v (raw=%s)", err, out.Body)
+	}
+	// After shift/unshift/pop/splice the order is [-1, 9, 10, 2]; reverse → [2,10,9,-1].
+	want := []int{2, 10, 9, -1}
+	if len(got.A) != len(want) {
+		t.Fatalf("a = %+v, want %v", got.A, want)
+	}
+	for i, w := range want {
+		if got.A[i].I != w {
+			t.Errorf("a[%d].i = %d, want %d (full %+v)", i, got.A[i].I, w, got.A)
+		}
+	}
+}
+
+func TestProxy_PopShiftEmpty(t *testing.T) {
+	_, err := runRR(t, `{"a":[]}`, `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, p) {
+			if (p.body.a.pop() !== undefined) throw new Error("pop empty");
+			if (p.body.a.shift() !== undefined) throw new Error("shift empty");
+			return p;
+		});
+	`)
+	if err != nil {
+		t.Fatalf("empty pop/shift hook failed: %v", err)
+	}
+}
+
+func TestProxy_UnshiftRelocatesNoAlias(t *testing.T) {
+	// Relocating an existing object element via unshift must not alias it: a
+	// freshly-inserted object can be mutated without touching the relocated one.
+	out, err := runRR(t, `{"a":[{"v":"orig"}]}`, `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, p) {
+			p.body.a.unshift({ v: "new" });
+			p.body.a[0].v = "mutated";
+			if (p.body.a[1].v !== "orig") throw new Error("relocated element aliased: " + p.body.a[1].v);
+			return p;
+		});
+	`)
+	if err != nil {
+		t.Fatalf("hook failed: %v", err)
+	}
+	var got struct {
+		A []struct {
+			V string `json:"v"`
+		} `json:"a"`
+	}
+	if err := json.Unmarshal(out.Body, &got); err != nil {
+		t.Fatalf("decode: %v (raw=%s)", err, out.Body)
+	}
+	if len(got.A) != 2 || got.A[0].V != "mutated" || got.A[1].V != "orig" {
+		t.Errorf("a = %+v", got.A)
+	}
+}
+
 func TestProxy_NestedProxyDeepCopiedOnSet(t *testing.T) {
 	// Assigning an object that embeds another Proxy deep-copies that subtree;
 	// later mutating the source must not affect the copy.

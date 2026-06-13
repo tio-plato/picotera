@@ -57,6 +57,12 @@ func registerObjects(s *qjsSession) {
 	_ = vm.RegisterFunc("__picotera_obj_setlen", func(id, length int) error {
 		return reg.setlen(id, length)
 	}, false)
+	_ = vm.RegisterFunc("__picotera_arr_splice", func(id, start, deleteCount int, itemsJSON string) (string, error) {
+		return reg.arrSplice(id, start, deleteCount, itemsJSON)
+	}, false)
+	_ = vm.RegisterFunc("__picotera_arr_reverse", func(id int) error {
+		return reg.arrReverse(id)
+	}, false)
 }
 
 type fetchResponse struct {

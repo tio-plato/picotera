@@ -1,6 +1,7 @@
 package jsx
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -199,6 +200,131 @@ func TestRegistry_Keys(t *testing.T) {
 	}
 	if desc != `{"t":"o","keys":["b","a"]}` {
 		t.Errorf("keys descriptor mismatch (document order expected): %s", desc)
+	}
+}
+
+// spliceResult mirrors the {"removed":[...],"len":N} JSON arrSplice returns.
+type spliceResult struct {
+	Removed []json.RawMessage `json:"removed"`
+	Len     int               `json:"len"`
+}
+
+func arrayRootID(t *testing.T, r *objectRegistry) int {
+	t.Helper()
+	desc, err := r.rootDesc("request")
+	if err != nil {
+		t.Fatalf("rootDesc: %v", err)
+	}
+	if !strings.Contains(desc, `"t":"a"`) {
+		t.Fatalf("root is not an array: %s", desc)
+	}
+	var id int
+	fmtSscanID(desc, &id)
+	return id
+}
+
+func TestRegistry_ArrSpliceDeleteAndInsert(t *testing.T) {
+	r := newReqRegistry(t, `[{"i":0},{"i":1},{"i":2}]`)
+	id := arrayRootID(t, r)
+	// splice(1, 1, {x:9}) → remove {i:1}, insert {x:9}.
+	res, err := r.arrSplice(id, 1, 1, `[{"x":9}]`)
+	if err != nil {
+		t.Fatalf("arrSplice: %v", err)
+	}
+	var sr spliceResult
+	if err := json.Unmarshal([]byte(res), &sr); err != nil {
+		t.Fatalf("unmarshal result: %v (%s)", err, res)
+	}
+	if sr.Len != 3 {
+		t.Errorf("len = %d, want 3", sr.Len)
+	}
+	if len(sr.Removed) != 1 || !strings.Contains(string(sr.Removed[0]), `"t":"o"`) {
+		t.Errorf("removed = %v", sr.Removed)
+	}
+	// New order: {i:0}, {x:9}, {i:2}.
+	mid, _ := r.get(id, "1")
+	var midID int
+	fmtSscanID(mid, &midID)
+	if got, _ := r.get(midID, "x"); got != `{"t":"j","v":9}` {
+		t.Errorf("arr[1].x = %s, want 9", got)
+	}
+	last, _ := r.get(id, "2")
+	var lastID int
+	fmtSscanID(last, &lastID)
+	if got, _ := r.get(lastID, "i"); got != `{"t":"j","v":2}` {
+		t.Errorf("arr[2].i = %s, want 2", got)
+	}
+	if !r.request.tree.dirty {
+		t.Error("tree should be dirty after splice")
+	}
+}
+
+func TestRegistry_ArrSpliceBounds(t *testing.T) {
+	r := newReqRegistry(t, `[1,2,3]`)
+	id := arrayRootID(t, r)
+	if _, err := r.arrSplice(id, 4, 0, `[]`); err == nil {
+		t.Error("start beyond len should error")
+	}
+	if _, err := r.arrSplice(id, 0, 5, `[]`); err == nil {
+		t.Error("deleteCount beyond len should error")
+	}
+	if _, err := r.arrSplice(id, 0, 0, `{}`); err == nil {
+		t.Error("non-array itemsJSON should error")
+	}
+}
+
+func TestRegistry_ArrSpliceRelocateNoClone(t *testing.T) {
+	// Unshift a fresh element; an existing object element keeps its identity
+	// (same registered id), proving it was pointer-relocated, not cloned.
+	r := newReqRegistry(t, `[{"k":"v"}]`)
+	id := arrayRootID(t, r)
+	before, _ := r.get(id, "0")
+	var beforeID int
+	fmtSscanID(before, &beforeID)
+	if _, err := r.arrSplice(id, 0, 0, `[{"fresh":1}]`); err != nil {
+		t.Fatalf("arrSplice: %v", err)
+	}
+	after, _ := r.get(id, "1") // existing element shifted to index 1
+	var afterID int
+	fmtSscanID(after, &afterID)
+	if beforeID != afterID {
+		t.Errorf("existing element was cloned (id %d → %d), expected relocation", beforeID, afterID)
+	}
+}
+
+func TestRegistry_ArrReverse(t *testing.T) {
+	r := newReqRegistry(t, `[1,2,3]`)
+	id := arrayRootID(t, r)
+	if err := r.arrReverse(id); err != nil {
+		t.Fatalf("arrReverse: %v", err)
+	}
+	if got, _ := r.get(id, "0"); got != `{"t":"j","v":3}` {
+		t.Errorf("arr[0] = %s, want 3", got)
+	}
+	if got, _ := r.get(id, "2"); got != `{"t":"j","v":1}` {
+		t.Errorf("arr[2] = %s, want 1", got)
+	}
+	if !r.request.tree.dirty {
+		t.Error("tree should be dirty after reverse")
+	}
+}
+
+func TestRegistry_ArrOpErrors(t *testing.T) {
+	r := newReqRegistry(t, `{"obj":{}}`)
+	id := rootID(t, r)
+	// splice/reverse on an object node error.
+	if _, err := r.arrSplice(id, 0, 0, `[]`); err == nil {
+		t.Error("splice on non-array should error")
+	}
+	if err := r.arrReverse(id); err == nil {
+		t.Error("reverse on non-array should error")
+	}
+	// Stale id errors.
+	if _, err := r.arrSplice(99999, 0, 0, `[]`); err != errStaleProxy {
+		t.Errorf("stale splice = %v, want errStaleProxy", err)
+	}
+	if err := r.arrReverse(99999); err != errStaleProxy {
+		t.Errorf("stale reverse = %v, want errStaleProxy", err)
 	}
 }
 

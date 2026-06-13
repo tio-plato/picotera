@@ -346,6 +346,93 @@ func (r *objectRegistry) setlen(id, length int) error {
 	return nil
 }
 
+// arrSplice performs a native-Array.prototype.splice on an array node directly
+// on the Go-side []*Node slice: existing elements that merely shift position are
+// pointer-relocated, never cloned (the whole point of routing splice through the
+// host instead of per-index set traps). The SDK does JS-faithful argument
+// normalization, so start/deleteCount arrive already clamped to legal ranges;
+// this still validates defensively. itemsJSON is the inserted-items array
+// serialized through markerReplacer — each item is resolveMarkers(clone=true)'d
+// (a Proxy argument is deep-copied, matching the set path). It returns
+// {"removed":[<descriptor>,...],"len":<newLen>}: removed elements are described
+// (object/array by id, scalars inline) so the SDK can return them.
+func (r *objectRegistry) arrSplice(id, start, deleteCount int, itemsJSON string) (string, error) {
+	e, ok := r.entries[id]
+	if !ok {
+		return "", errStaleProxy
+	}
+	if e.node.Kind != jsonast.KindArray {
+		return "", fmt.Errorf("jsx: splice on a non-array")
+	}
+	n := len(e.node.Elems)
+	if start < 0 || start > n {
+		return "", fmt.Errorf("jsx: splice start %d out of range [0,%d]", start, n)
+	}
+	if deleteCount < 0 || deleteCount > n-start {
+		return "", fmt.Errorf("jsx: splice deleteCount %d out of range [0,%d]", deleteCount, n-start)
+	}
+
+	itemsNode, err := jsonast.Parse([]byte(itemsJSON))
+	if err != nil {
+		return "", fmt.Errorf("jsx: parse splice items: %w", err)
+	}
+	if itemsNode.Kind != jsonast.KindArray {
+		return "", fmt.Errorf("jsx: splice items must be a JSON array")
+	}
+	items := make([]*jsonast.Node, len(itemsNode.Elems))
+	for i, it := range itemsNode.Elems {
+		resolved, rerr := r.resolveMarkers(it, true)
+		if rerr != nil {
+			return "", rerr
+		}
+		items[i] = resolved
+	}
+
+	removed := e.node.Elems[start : start+deleteCount]
+	var b []byte
+	b = append(b, `{"removed":[`...)
+	for i, rn := range removed {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		desc, derr := r.describe(rn, e.tree)
+		if derr != nil {
+			return "", derr
+		}
+		b = append(b, desc...)
+	}
+
+	// Three-index slice caps capacity at start so the first append can't
+	// overwrite the tail still referenced by elems[start+deleteCount:].
+	elems := e.node.Elems
+	newElems := append(append(elems[:start:start], items...), elems[start+deleteCount:]...)
+	e.node.Elems = newElems
+	e.tree.dirty = true
+
+	b = append(b, `],"len":`...)
+	b = strconv.AppendInt(b, int64(len(newElems)), 10)
+	b = append(b, '}')
+	return string(b), nil
+}
+
+// arrReverse reverses an array node's elements in place by swapping pointers —
+// no element is cloned. It backs Array.prototype.reverse on the array Proxy.
+func (r *objectRegistry) arrReverse(id int) error {
+	e, ok := r.entries[id]
+	if !ok {
+		return errStaleProxy
+	}
+	if e.node.Kind != jsonast.KindArray {
+		return fmt.Errorf("jsx: reverse on a non-array")
+	}
+	elems := e.node.Elems
+	for i, j := 0, len(elems)-1; i < j; i, j = i+1, j-1 {
+		elems[i], elems[j] = elems[j], elems[i]
+	}
+	e.tree.dirty = true
+	return nil
+}
+
 // resolveMarkers walks a freshly-parsed value tree, replacing every marker
 // object ({"__picotera_object": <id>}) with the registered node it points at.
 // When clone is true the replacement is a deep copy (the set path, which keeps
