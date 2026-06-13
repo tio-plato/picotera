@@ -6,7 +6,13 @@ export type ConversationPart =
   | { kind: 'text'; text: string }
   | { kind: 'thinking'; text: string }
   | { kind: 'toolCall'; id: string | null; name: string; input: unknown }
-  | { kind: 'toolResult'; id: string | null; name: string | null; output: unknown; isError: boolean }
+  | {
+      kind: 'toolResult'
+      id: string | null
+      name: string | null
+      output: unknown
+      isError: boolean
+    }
   | { kind: 'media'; mediaType: string; label: string }
 
 export interface ConversationMessage {
@@ -46,7 +52,10 @@ function pushThinking(parts: ConversationPart[], text: unknown) {
   if (typeof text === 'string' && text !== '') parts.push({ kind: 'thinking', text })
 }
 
-function messageOrNull(role: ConversationRole, parts: ConversationPart[]): ConversationMessage | null {
+function messageOrNull(
+  role: ConversationRole,
+  parts: ConversationPart[],
+): ConversationMessage | null {
   return parts.length ? { role, parts } : null
 }
 
@@ -143,7 +152,10 @@ function parseOpenAIContentParts(content: unknown): ConversationPart[] {
   for (const partValue of asArray(content)) {
     const part = asRecord(partValue)
     if (!part) continue
-    if ((part.type === 'text' || part.type === 'input_text' || part.type === 'output_text') && typeof part.text === 'string') {
+    if (
+      (part.type === 'text' || part.type === 'input_text' || part.type === 'output_text') &&
+      typeof part.text === 'string'
+    ) {
       pushText(parts, part.text)
     } else if (part.type === 'image_url') {
       parts.push({ kind: 'media', mediaType: 'image', label: '[image]' })
@@ -171,7 +183,9 @@ function parseOpenAIChatMessage(messageValue: unknown): ConversationMessage | nu
 
   if (role === 'tool') {
     const output =
-      typeof message.content === 'string' ? parseMaybeJson(message.content) : (message.content ?? null)
+      typeof message.content === 'string'
+        ? parseMaybeJson(message.content)
+        : (message.content ?? null)
     parts.push({
       kind: 'toolResult',
       id: stringOrNull(message.tool_call_id),
@@ -428,7 +442,10 @@ function parseGeminiParts(partsValue: unknown): ConversationPart[] {
   return parts
 }
 
-function parseGeminiContent(contentValue: unknown, defaultRole: ConversationRole): ConversationMessage | null {
+function parseGeminiContent(
+  contentValue: unknown,
+  defaultRole: ConversationRole,
+): ConversationMessage | null {
   const content = asRecord(contentValue)
   if (!content) return null
   const role = roleFromGemini(content.role) ?? defaultRole

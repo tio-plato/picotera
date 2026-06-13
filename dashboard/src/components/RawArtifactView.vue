@@ -67,8 +67,6 @@ async function copyAsCurl() {
     // clipboard unavailable — silently ignore
   }
 }
-
-
 </script>
 
 <template>
@@ -141,9 +139,9 @@ async function copyAsCurl() {
             >
             <SegmentedControl
               v-if="payload.bodyEncoding !== 'base64' && requestBodyOptions.length > 1"
-              :model-value="(bodyView as 'raw' | 'json')"
+              :model-value="bodyView as 'raw' | 'json'"
               :options="requestBodyOptions"
-              @update:model-value="bodyView = ($event as 'raw' | 'json')"
+              @update:model-value="bodyView = $event as 'raw' | 'json'"
             />
           </div>
           <div

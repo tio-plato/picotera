@@ -98,7 +98,7 @@ async function copyKey(k: ApiKeyView) {
             v-for="k in apiKeys"
             :key="k.id"
             :selected="panel.isActive(`apiKey:${k.id}`)"
-            :class="k.disabled ? 'opacity-55' : ''"
+            :dimmed="k.disabled"
           >
             <Td>
               <span class="font-medium">{{ k.name }}</span>

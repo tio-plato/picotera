@@ -75,9 +75,7 @@ const sankeyLayerLabels: Record<SankeyVariant, string[]> = {
 }
 
 function getSankeyHiddenForBuild(variant: SankeyVariant): number[] {
-  return sankeyHiddenLayers.value[variant]
-    .filter((i) => i > 0)
-    .map((i) => i - 1)
+  return sankeyHiddenLayers.value[variant].filter((i) => i > 0).map((i) => i - 1)
 }
 
 function toggleSankeyLayer(index: number) {
@@ -517,7 +515,8 @@ const tokenCompositionSankey = computed<{ nodes: SankeyNode[]; links: SankeyLink
   }
   if (showLayer2) {
     const sourceForDetail = showLayer1 ? 'input' : 'root'
-    if (tb.input > 0) links.push({ source: sourceForDetail, target: 'in_uncached', value: tb.input })
+    if (tb.input > 0)
+      links.push({ source: sourceForDetail, target: 'in_uncached', value: tb.input })
     if (tb.cacheRead > 0)
       links.push({ source: sourceForDetail, target: 'in_cache_read', value: tb.cacheRead })
     if (tb.cacheWrite > 0)
@@ -1381,7 +1380,9 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >输入速度</span
           >
-          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
           <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
             (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>
@@ -1400,7 +1401,9 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >输出速度</span
           >
-          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
           <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
             (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>
@@ -1419,7 +1422,9 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >TTFT 平均时间</span
           >
-          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
           <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
             (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>
@@ -1438,7 +1443,9 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >输出速度</span
           >
-          <StateText v-if="speedBoxplotQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-if="speedBoxplotQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
           <StateText v-else-if="speedBoxplotQuery.isError.value" compact :dashed="false">{{
             (speedBoxplotQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>

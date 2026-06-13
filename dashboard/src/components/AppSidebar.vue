@@ -54,7 +54,9 @@ const nav: { name: string; label: string; icon: IconName }[] = [
         </svg>
       </span>
       <div class="flex flex-col leading-[1.15]">
-        <span class="font-semibold text-[0.9375rem] tracking-[-0.01em] text-ink">{{ appTitle }}</span>
+        <span class="font-semibold text-[0.9375rem] tracking-[-0.01em] text-ink">{{
+          appTitle
+        }}</span>
         <span class="font-mono text-2xs text-ink-faint">LLM gateway</span>
       </div>
     </div>

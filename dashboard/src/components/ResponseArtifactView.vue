@@ -22,7 +22,7 @@ const subView = defineModel<SubView>('subView', { required: true })
 const headersOpen = defineModel<boolean>('headersOpen', { required: true })
 const thinkingOpen = defineModel<boolean>('thinkingOpen', { required: true })
 
-const {responseRawShowTimings: showTimings} = useRequestDetailUiState()
+const { responseRawShowTimings: showTimings } = useRequestDetailUiState()
 const isSSE = computed(() => isSSEContentType(props.payload.headers))
 const isBinary = computed(() => props.payload.bodyEncoding === 'base64')
 const jsonBody = computed(() => {
@@ -201,7 +201,10 @@ watch(
         >
           {{ jsonBody.error }}
         </StateText>
-        <label v-if="payload.timings?.length" class="flex items-center gap-1.5 text-2xs text-ink-muted select-none">
+        <label
+          v-if="payload.timings?.length"
+          class="flex items-center gap-1.5 text-2xs text-ink-muted select-none"
+        >
           <input type="checkbox" v-model="showTimings" class="accent-accent-ink" />
           显示到达时间
         </label>

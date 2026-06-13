@@ -114,24 +114,28 @@ const requestsQuery = useQuery({
 const requests = computed<RequestView[]>(() => requestsQuery.data.value?.items ?? [])
 
 // When requests change after refresh, compute which ones are new
-watch(requests, (newRequests) => {
-  if (!isRefreshing.value) return
-  isRefreshing.value = false
-  const currentIds = new Set(newRequests.map((r) => rowKey(r)))
-  const fresh = new Set<string | number>()
-  for (const id of currentIds) {
-    if (!previousRequestIds.value.has(id)) {
-      fresh.add(id)
+watch(
+  requests,
+  (newRequests) => {
+    if (!isRefreshing.value) return
+    isRefreshing.value = false
+    const currentIds = new Set(newRequests.map((r) => rowKey(r)))
+    const fresh = new Set<string | number>()
+    for (const id of currentIds) {
+      if (!previousRequestIds.value.has(id)) {
+        fresh.add(id)
+      }
     }
-  }
-  newRowKeys.value = fresh
-  previousRequestIds.value = currentIds
-  if (fresh.size > 0) {
-    setTimeout(() => {
-      newRowKeys.value = new Set()
-    }, 100)
-  }
-}, { flush: 'post' })
+    newRowKeys.value = fresh
+    previousRequestIds.value = currentIds
+    if (fresh.size > 0) {
+      setTimeout(() => {
+        newRowKeys.value = new Set()
+      }, 100)
+    }
+  },
+  { flush: 'post' },
+)
 const loading = computed(() => requestsQuery.isLoading.value || requestsQuery.isFetching.value)
 const hasMore = computed(() => requestsQuery.data.value?.pagination.hasMore ?? false)
 const canGoHome = computed(() => !!currentCursor.value)

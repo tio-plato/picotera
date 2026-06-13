@@ -27,7 +27,9 @@ export function groupColor(index: number): string {
   if (index < CHART_COLOR_COUNT) {
     return toHex(readCSSVar(`--color-chart-${index}`) || FALLBACK_COLORS[index]!)
   }
-  const base = readCSSVar(`--color-chart-${index % CHART_COLOR_COUNT}`) || FALLBACK_COLORS[index % CHART_COLOR_COUNT]!
+  const base =
+    readCSSVar(`--color-chart-${index % CHART_COLOR_COUNT}`) ||
+    FALLBACK_COLORS[index % CHART_COLOR_COUNT]!
   const hueMatch = base.match(/oklch\(([^ ]+) ([^ ]+) ([^ )]+)\)/)
   if (!hueMatch) return toHex(base)
   const [, l, c, h] = hueMatch

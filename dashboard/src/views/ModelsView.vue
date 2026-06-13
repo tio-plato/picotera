@@ -206,7 +206,7 @@ function confirmDelete(_event: Event, m: ModelView) {
               v-for="m in sortedModels"
               :key="m.name"
               :selected="panel.isActive(`model:${m.name}`)"
-              :class="m.disabled ? 'opacity-55' : ''"
+              :dimmed="m.disabled"
             >
               <Td>
                 <span class="font-mono font-medium">{{ m.name }}</span>

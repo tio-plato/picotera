@@ -19,7 +19,7 @@ const props = defineProps<{
   items: Row[]
   rowKey: (row: Row, index: number) => string | number
   selected?: (row: Row) => boolean
-  hoverable?: boolean
+  dimmed?: (row: Row) => boolean
   newRowKeys?: Set<string | number>
   onRowClick?: (row: Row, event: MouseEvent) => void
 }>()
@@ -68,7 +68,7 @@ function handleRowClick(row: Row, event: MouseEvent) {
         v-for="(row, i) in items"
         :key="rowKey(row, i)"
         :selected="selected?.(row)"
-        :hoverable="hoverable"
+        :dimmed="dimmed?.(row)"
         :is-new="newRowKeys?.has(rowKey(row, i))"
         :class="onRowClick ? 'cursor-pointer' : ''"
         @click="(event: MouseEvent) => handleRowClick(row, event)"

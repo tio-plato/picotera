@@ -135,12 +135,7 @@ function rowSelected(id: number) {
           </tr>
         </thead>
         <tbody>
-          <Tr
-            v-for="p in providers"
-            :key="p.id"
-            :selected="rowSelected(p.id)"
-            :class="p.disabled ? 'opacity-55' : ''"
-          >
+          <Tr v-for="p in providers" :key="p.id" :selected="rowSelected(p.id)" :dimmed="p.disabled">
             <Td
               ><span class="font-mono text-ink-faint">{{ p.id }}</span></Td
             >

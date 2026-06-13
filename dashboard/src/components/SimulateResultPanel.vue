@@ -46,7 +46,9 @@ const modelChanged = computed(() => props.result.originalModel !== props.result.
           <span class="text-xs text-ink-faint tabular-nums">{{ idx + 1 }}.</span>
           <span class="font-medium text-ink">{{ c.provider.name }}</span>
           <span class="text-xs text-ink-faint">#{{ c.provider.id }}</span>
-          <span class="font-mono text-xs text-ink-muted break-all">{{ c.providerModel.endpoint }}</span>
+          <span class="font-mono text-xs text-ink-muted break-all">{{
+            c.providerModel.endpoint
+          }}</span>
           <Tag v-if="c.bridged" variant="accent">桥接 → {{ c.upstreamFormat }}</Tag>
           <Tag v-else variant="muted">{{ c.upstreamFormat }}</Tag>
           <Tag v-if="c.provider.disabled" variant="more">已禁用</Tag>
@@ -54,7 +56,9 @@ const modelChanged = computed(() => props.result.originalModel !== props.result.
         <div class="flex gap-x-6 gap-y-1 text-xs">
           <div class="min-w-0 flex-1">
             <div class="text-ink-faint">上游模型</div>
-            <div class="font-mono break-all">{{ c.providerModel.upstreamModelName || c.providerModel.name }}</div>
+            <div class="font-mono break-all">
+              {{ c.providerModel.upstreamModelName || c.providerModel.name }}
+            </div>
           </div>
           <div v-if="c.bridged && c.outboundProfile" class="min-w-0 flex-1">
             <div class="text-ink-faint">桥接适配器</div>
@@ -72,7 +76,9 @@ const modelChanged = computed(() => props.result.originalModel !== props.result.
           </div>
           <div class="flex-1">
             <div class="text-ink-faint">合并优先级</div>
-            <div class="font-mono tabular-nums">{{ c.providerModel.priority + c.provider.priority }}</div>
+            <div class="font-mono tabular-nums">
+              {{ c.providerModel.priority + c.provider.priority }}
+            </div>
           </div>
         </div>
         <details v-if="c.bridged && c.outboundProfile" class="text-xs">

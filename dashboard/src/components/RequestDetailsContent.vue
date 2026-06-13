@@ -9,10 +9,7 @@ import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
 import ConversationArtifactView from './ConversationArtifactView.vue'
 import TimedRawView from './TimedRawView.vue'
-import {
-  useRequestDetailUiState,
-  type DetailTab,
-} from '@/composables/useRequestDetailUiState'
+import { useRequestDetailUiState, type DetailTab } from '@/composables/useRequestDetailUiState'
 
 const props = defineProps<{ requestId: string; providers?: ProviderView[] }>()
 const emit = defineEmits<{ selectedRequest: [requestId: string] }>()
@@ -189,7 +186,9 @@ function statusLabel(s: number) {
 
 import { finishReasonLabel } from '@/utils/requestLabels'
 
-function finishReasonVariant(reason: number | undefined | null): 'ok' | 'default' | 'muted' | 'accent' {
+function finishReasonVariant(
+  reason: number | undefined | null,
+): 'ok' | 'default' | 'muted' | 'accent' {
   if (reason === undefined || reason === null) return 'muted'
   if (reason === 3) return 'ok' // EOF is normal
   return 'default'
@@ -339,7 +338,9 @@ watch(detailTabs, (tabs) => {
               }}</span>
             </Field>
             <Field label="最近更新" as="div">
-              <span class="font-mono tabular-nums text-xs">{{ formatTime(live?.lastChunkAt) }}</span>
+              <span class="font-mono tabular-nums text-xs">{{
+                formatTime(live?.lastChunkAt)
+              }}</span>
             </Field>
           </div>
           <div v-if="live?.body" class="flex flex-col gap-1.5">

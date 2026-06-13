@@ -81,7 +81,7 @@ async function toggle(s: ScriptView) {
             v-for="s in scripts"
             :key="s.id"
             :selected="panel.isActive(`script:${s.id}`)"
-            :class="!s.enabled ? 'opacity-55' : ''"
+            :dimmed="!s.enabled"
           >
             <Td>
               <span class="font-medium">{{ s.name }}</span>
