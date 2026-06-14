@@ -314,7 +314,7 @@ function confirmDelete(_event: Event, m: ModelView) {
             <li
               v-for="row in orphanRows"
               :key="row.name"
-              class="group flex items-center gap-2 px-3 py-2 border-b border-line last:border-b-0"
+              class="group flex items-center gap-2 px-3 py-2 border-b border-line last:border-b-0 transition-colors hover:bg-surface-50/75"
             >
               <span class="font-mono text-sm text-ink flex-none">{{ row.name }}</span>
               <TagList class="flex-1 min-w-0">
