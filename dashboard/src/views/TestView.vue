@@ -1,10 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { Badge, Button, CodeEditor, Field, Icon, Input, SegmentedControl, Select, Textarea } from '@/ui'
+import {
+  Badge,
+  Button,
+  CodeEditor,
+  ComboBox,
+  type ComboBoxOption,
+  Field,
+  Icon,
+  Input,
+  SegmentedControl,
+  Select,
+  Textarea,
+} from '@/ui'
 import {
   listApiKeys,
   listEndpoints,
+  listModels,
   listProviderEndpoints,
   listProviders,
   postGatewayTest,
@@ -51,7 +64,7 @@ const streamOptions = [
 const mode = ref<Mode>('direct')
 const model = ref('')
 const system = ref('You are a helpful assistant.')
-const maxTokens = ref(256)
+const maxTokens = ref(32768)
 const userMessage = ref('Hello!')
 const streamMode = ref<'stream' | 'once'>('stream')
 
@@ -77,6 +90,7 @@ const bodyError = ref('')
 const providersQuery = useQuery({ queryKey: queryKeys.providers.all, queryFn: listProviders })
 const endpointsQuery = useQuery({ queryKey: queryKeys.endpoints.all, queryFn: listEndpoints })
 const apiKeysQuery = useQuery({ queryKey: queryKeys.apiKeys.all, queryFn: listApiKeys })
+const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listModels })
 
 const providerEndpointsQuery = useQuery({
   queryKey: computed(() => queryKeys.providerEndpoints.list({ providerId: directProviderId.value })),
@@ -88,6 +102,31 @@ const providers = computed(() => providersQuery.data.value ?? [])
 const endpoints = computed(() => endpointsQuery.data.value ?? [])
 const apiKeys = computed(() => apiKeysQuery.data.value ?? [])
 const providerEndpoints = computed(() => providerEndpointsQuery.data.value ?? [])
+const models = computed(() => modelsQuery.data.value ?? [])
+
+// --- model selection (ComboBox) ---
+const selectedProvider = computed(() =>
+  providers.value.find((p) => p.id === directProviderId.value),
+)
+
+const modelOptions = computed<ComboBoxOption[]>(() => {
+  if (mode.value === 'direct') {
+    const entries = selectedProvider.value?.providerModels ?? []
+    // Direct mode bypasses routing, so the upstream sees the real upstream model
+    // name when one is configured; the route name stays as the display label.
+    return entries.map((entry) => {
+      const hasUpstream = !!entry.upstreamModelName && entry.upstreamModelName !== entry.model
+      return {
+        value: hasUpstream ? entry.upstreamModelName! : entry.model,
+        label: entry.model,
+        hint: hasUpstream ? entry.upstreamModelName : undefined,
+      }
+    })
+  }
+  return models.value.map((m) => ({ value: m.name }))
+})
+
+const modelAllowCustom = computed(() => mode.value === 'direct')
 
 // path -> endpointType map, used to infer format for direct + gateway-path targets
 const endpointTypeByPath = computed(() => {
@@ -432,7 +471,12 @@ watch(mode, () => {
 
       <!-- structured fields -->
       <Field label="模型">
-        <Input v-model="model" mono placeholder="例如 claude-sonnet-4-6" />
+        <ComboBox
+          v-model="model"
+          :options="modelOptions"
+          :allow-custom="modelAllowCustom"
+          placeholder="例如 claude-sonnet-4-6"
+        />
       </Field>
 
       <Field label="系统提示词">
