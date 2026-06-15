@@ -39,6 +39,8 @@ type RequestView struct {
 	ModelCost           *float64 `json:"modelCost,omitempty"`
 	ModelCostCurrency   string   `json:"modelCostCurrency,omitempty"`
 	ProjectID           *int32   `json:"projectId,omitempty"`
+	InferredProvider    string   `json:"inferredProvider,omitempty"`
+	InferredModel       string   `json:"inferredModel,omitempty"`
 }
 
 type TraceCostView struct {
@@ -90,6 +92,8 @@ type requestLike struct {
 	ModelCostCurrency  pgtype.Text
 	UserMessagePreview pgtype.Text
 	ProjectID          pgtype.Int4
+	InferredProvider   pgtype.Text
+	InferredModel      pgtype.Text
 }
 
 func toRequestView(r requestLike) *RequestView {
@@ -178,6 +182,12 @@ func toRequestView(r requestLike) *RequestView {
 		v := r.ProjectID.Int32
 		view.ProjectID = &v
 	}
+	if r.InferredProvider.Valid {
+		view.InferredProvider = r.InferredProvider.String
+	}
+	if r.InferredModel.Valid {
+		view.InferredModel = r.InferredModel.String
+	}
 	return view
 }
 
@@ -208,6 +218,8 @@ func ToRequestView(r *db.Request) *RequestView {
 		ModelCostCurrency:  r.ModelCostCurrency,
 		UserMessagePreview: r.UserMessagePreview,
 		ProjectID:          r.ProjectID,
+		InferredProvider:   r.InferredProvider,
+		InferredModel:      r.InferredModel,
 	})
 }
 
@@ -238,6 +250,8 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		ModelCostCurrency:  r.ModelCostCurrency,
 		UserMessagePreview: r.UserMessagePreview,
 		ProjectID:          r.ProjectID,
+		InferredProvider:   r.InferredProvider,
+		InferredModel:      r.InferredModel,
 	})
 }
 
@@ -268,6 +282,8 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		ModelCostCurrency:  r.ModelCostCurrency,
 		UserMessagePreview: r.UserMessagePreview,
 		ProjectID:          r.ProjectID,
+		InferredProvider:   r.InferredProvider,
+		InferredModel:      r.InferredModel,
 	})
 }
 

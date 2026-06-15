@@ -12,7 +12,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, user_message_preview, cache_write_1h_tokens, project_id, finish_reason FROM request WHERE id = $1 AND created_at = $2::timestamp
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, user_message_preview, cache_write_1h_tokens, project_id, finish_reason, inferred_provider, inferred_model FROM request WHERE id = $1 AND created_at = $2::timestamp
 `
 
 type GetRequestParams struct {
@@ -49,6 +49,8 @@ func (q *Queries) GetRequest(ctx context.Context, arg GetRequestParams) (Request
 		&i.CacheWrite1hTokens,
 		&i.ProjectID,
 		&i.FinishReason,
+		&i.InferredProvider,
+		&i.InferredModel,
 	)
 	return i, err
 }
@@ -206,7 +208,8 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens, r.cache_write_tokens, r.cache_write_1h_tokens,
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
        r.model_cost, r.model_cost_currency,
-       r.user_message_preview, r.project_id, r.finish_reason
+       r.user_message_preview, r.project_id, r.finish_reason,
+       r.inferred_provider, r.inferred_model
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = $1::text
 WHERE
@@ -271,6 +274,8 @@ type ListRequestsRow struct {
 	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
 	ProjectID          pgtype.Int4      `json:"projectId"`
 	FinishReason       pgtype.Int4      `json:"finishReason"`
+	InferredProvider   pgtype.Text      `json:"inferredProvider"`
+	InferredModel      pgtype.Text      `json:"inferredModel"`
 }
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
@@ -319,6 +324,8 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 			&i.UserMessagePreview,
 			&i.ProjectID,
 			&i.FinishReason,
+			&i.InferredProvider,
+			&i.InferredModel,
 		); err != nil {
 			return nil, err
 		}
@@ -342,7 +349,8 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.cache_write_tokens, r.cache_write_1h_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at,
        r.model_cost, r.model_cost_currency,
-       r.user_message_preview, r.project_id, r.finish_reason
+       r.user_message_preview, r.project_id, r.finish_reason,
+       r.inferred_provider, r.inferred_model
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC
@@ -379,6 +387,8 @@ type ListRequestsBySpanRow struct {
 	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
 	ProjectID          pgtype.Int4      `json:"projectId"`
 	FinishReason       pgtype.Int4      `json:"finishReason"`
+	InferredProvider   pgtype.Text      `json:"inferredProvider"`
+	InferredModel      pgtype.Text      `json:"inferredModel"`
 }
 
 func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error) {
@@ -416,6 +426,8 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpan
 			&i.UserMessagePreview,
 			&i.ProjectID,
 			&i.FinishReason,
+			&i.InferredProvider,
+			&i.InferredModel,
 		); err != nil {
 			return nil, err
 		}
@@ -481,8 +493,9 @@ SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     cache_read_tokens = $9, cache_write_tokens = $10,
     cache_write_1h_tokens = $11,
     model_cost = $12, model_cost_currency = $13,
-    finish_reason = $14
-WHERE id = $1 AND created_at = $15::timestamp
+    finish_reason = $14,
+    inferred_provider = $15, inferred_model = $16
+WHERE id = $1 AND created_at = $17::timestamp
 `
 
 type UpdateRequestOnCompleteParams struct {
@@ -500,6 +513,8 @@ type UpdateRequestOnCompleteParams struct {
 	ModelCost          pgtype.Numeric   `json:"modelCost"`
 	ModelCostCurrency  pgtype.Text      `json:"modelCostCurrency"`
 	FinishReason       pgtype.Int4      `json:"finishReason"`
+	InferredProvider   pgtype.Text      `json:"inferredProvider"`
+	InferredModel      pgtype.Text      `json:"inferredModel"`
 	CreatedAt          pgtype.Timestamp `json:"createdAt"`
 }
 
@@ -519,6 +534,8 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 		arg.ModelCost,
 		arg.ModelCostCurrency,
 		arg.FinishReason,
+		arg.InferredProvider,
+		arg.InferredModel,
 		arg.CreatedAt,
 	)
 	return err

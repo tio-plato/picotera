@@ -584,6 +584,8 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
 		FinishReason:       pgtype.Int4{Int32: upstreamFr, Valid: true},
+		InferredProvider:   pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""},
+		InferredModel:      pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""},
 		CreatedAt:          pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(a.gatewayStart).Milliseconds())
@@ -602,6 +604,8 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
 		FinishReason:       pgtype.Int4{Int32: metaFr, Valid: true},
+		InferredProvider:   pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""},
+		InferredModel:      pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""},
 		CreatedAt:          pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
 	_ = r

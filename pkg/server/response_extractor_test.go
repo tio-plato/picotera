@@ -1,11 +1,14 @@
 package server
 
 import (
+	"encoding/base64"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // chunkReader delivers pre-defined chunks sequentially.
@@ -547,4 +550,205 @@ func TestResponseExtractor_SSE_StreamError_FirstWins(t *testing.T) {
 	if got := extractor.StreamError(); got != "first error" {
 		t.Errorf("StreamError() = %q, want %q", got, "first error")
 	}
+}
+
+func TestResponseExtractor_SSE_InferredProvider_OpenRouter(t *testing.T) {
+	events := []string{
+		"data: {\"id\":\"gen-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"nvidia/nemotron-3-ultra-550b-a55b-20260604:free\",\"provider\":\"Nvidia\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"}}]}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "Nvidia" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "Nvidia")
+	}
+	if m.InferredModel != "nvidia/nemotron-3-ultra-550b-a55b-20260604:free" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "nvidia/nemotron-3-ultra-550b-a55b-20260604:free")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredProvider_BedrockMessageStart(t *testing.T) {
+	events := []string{
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_bdrk_7xxvzn3y5guhlrkyxno2katnow5gsvlkk7hu3x3ddo6nwhily4ra\",\"model\":\"claude-opus-4-7\",\"role\":\"assistant\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "Amazon Bedrock" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "Amazon Bedrock")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredProvider_BedrockInvocationMetrics(t *testing.T) {
+	events := []string{
+		"event: message_stop\ndata: {\"type\":\"message_stop\",\"amazon-bedrock-invocationMetrics\":{\"inputTokenCount\":100,\"outputTokenCount\":91}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "Amazon Bedrock" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "Amazon Bedrock")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredProvider_FirstHitWins(t *testing.T) {
+	// provider field appears first and should lock; later invocationMetrics is ignored.
+	events := []string{
+		"data: {\"provider\":\"OpenRouter\"}\n\n",
+		"event: message_stop\ndata: {\"type\":\"message_stop\",\"amazon-bedrock-invocationMetrics\":{}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "OpenRouter" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "OpenRouter")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_SignatureDecodes(t *testing.T) {
+	model := "claude-opus-4-5-20251101"
+	sig := buildSignaturePayload(model)
+	events := []string{
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"" + sig + "\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != model {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, model)
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_SignaturePriorityOverModelField(t *testing.T) {
+	model := "from-signature"
+	sig := buildSignaturePayload(model)
+	events := []string{
+		"data: {\"model\":\"from-model\"}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"" + sig + "\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != model {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, model)
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_FallsBackToModelField(t *testing.T) {
+	events := []string{
+		"data: {\"model\":\"fallback-model\"}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "fallback-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "fallback-model")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_BadSignatureFallsBack(t *testing.T) {
+	events := []string{
+		"data: {\"model\":\"fallback-model\"}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"not-base64!!!\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "fallback-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "fallback-model")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_SignatureNonASCIIFallsBack(t *testing.T) {
+	model := "claude-opus-4\xff"
+	sig := buildSignaturePayload(model)
+	events := []string{
+		"data: {\"model\":\"fallback-model\"}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"" + sig + "\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "fallback-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "fallback-model")
+	}
+}
+
+func TestResponseExtractor_JSON_InferredModel_SignatureDecodes(t *testing.T) {
+	model := "claude-sonnet-4-20251101"
+	sig := buildSignaturePayload(model)
+	jsonData := `{"id":"msg_1","type":"message","model":"json-model","content":[{"type":"thinking","thinking":"...","signature":"` + sig + `"},{"type":"text","text":"Hi"}],"usage":{"input_tokens":10,"output_tokens":5}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != model {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, model)
+	}
+}
+
+func TestResponseExtractor_JSON_InferredModel_FallsBackToModelField(t *testing.T) {
+	jsonData := `{"id":"msg_1","type":"message","model":"json-model","content":[{"type":"text","text":"Hi"}],"usage":{"input_tokens":10,"output_tokens":5}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "json-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "json-model")
+	}
+}
+
+func TestResponseExtractor_JSON_InferredProvider_BedrockTopLevelID(t *testing.T) {
+	jsonData := `{"id":"msg_bdrk_abc123","type":"message","model":"claude-opus-4-7","content":[{"type":"text","text":"Hi"}],"usage":{"input_tokens":10,"output_tokens":5}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "Amazon Bedrock" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "Amazon Bedrock")
+	}
+}
+
+func buildSignaturePayload(model string) string {
+	// Build a protobuf message whose [2][1][6] path contains `model`.
+	inner := protowire.AppendTag(nil, 6, protowire.BytesType)
+	inner = protowire.AppendBytes(inner, []byte(model))
+	middle := protowire.AppendTag(nil, 1, protowire.BytesType)
+	middle = protowire.AppendBytes(middle, inner)
+	outer := protowire.AppendTag(nil, 2, protowire.BytesType)
+	outer = protowire.AppendBytes(outer, middle)
+	return base64.StdEncoding.EncodeToString(outer)
 }

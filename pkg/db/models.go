@@ -104,6 +104,8 @@ type Request struct {
 	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
 	ProjectID          pgtype.Int4      `json:"projectId"`
 	FinishReason       pgtype.Int4      `json:"finishReason"`
+	InferredProvider   pgtype.Text      `json:"inferredProvider"`
+	InferredModel      pgtype.Text      `json:"inferredModel"`
 }
 
 type RequestOverviewHourly struct {

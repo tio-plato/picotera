@@ -419,11 +419,17 @@ watch(detailTabs, (tabs) => {
               <Field label="渠道" as="div">
                 <span class="font-mono text-sm">{{ providerLabel(selected.providerId) }}</span>
               </Field>
-              <Field label="端点" as="div">
-                <span class="font-mono text-sm">{{ selected.endpointPath || '—' }}</span>
+              <Field label="推测渠道" as="div">
+                <span class="font-mono text-sm">{{ selected.inferredProvider || '—' }}</span>
               </Field>
               <Field label="模型" as="div">
                 <span class="font-mono text-sm">{{ selected.model || '—' }}</span>
+              </Field>
+              <Field label="推测模型" as="div">
+                <span class="font-mono text-sm">{{ selected.inferredModel || '—' }}</span>
+              </Field>
+              <Field label="端点" as="div">
+                <span class="font-mono text-sm">{{ selected.endpointPath || '—' }}</span>
               </Field>
               <Field label="状态码" as="div">
                 <span

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"io"
 	"strings"
 	"time"
@@ -8,7 +9,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// ResponseMetrics holds extracted TTFT and token usage from a provider response.
+// ResponseMetrics holds extracted TTFT, token usage, and inferred provider/model
+// from a provider response.
 type ResponseMetrics struct {
 	TTFTMs             *int64
 	InputTokens        *int64
@@ -16,10 +18,13 @@ type ResponseMetrics struct {
 	CacheReadTokens    *int64
 	CacheWriteTokens   *int64
 	CacheWrite1HTokens *int64
+	InferredProvider   string
+	InferredModel      string
 }
 
 // ResponseExtractor wraps an io.Reader and inspects bytes as they flow through,
-// extracting TTFT and token usage from SSE or JSON provider responses.
+// extracting TTFT, token usage, and inferred provider/model from SSE or JSON
+// provider responses.
 type ResponseExtractor struct {
 	inner        io.Reader
 	mode         string // "sse" or "json"
@@ -36,6 +41,11 @@ type ResponseExtractor struct {
 	// streamError holds the first in-stream error.message seen in an SSE data
 	// payload (empty means no error). Detected independently of metrics.
 	streamError string
+
+	// Inference accumulators. Once non-empty they are locked (first hit wins).
+	inferredProvider string
+	sigModel         string
+	respModel        string
 }
 
 // NewResponseExtractor creates a new extractor. contentType is the upstream
@@ -54,6 +64,12 @@ func NewResponseExtractor(inner io.Reader, contentType string, startTime time.Ti
 
 // Metrics returns the extracted metrics. Call after the Read loop finishes.
 func (e *ResponseExtractor) Metrics() ResponseMetrics {
+	e.metrics.InferredProvider = e.inferredProvider
+	if e.sigModel != "" {
+		e.metrics.InferredModel = e.sigModel
+	} else {
+		e.metrics.InferredModel = e.respModel
+	}
 	return e.metrics
 }
 
@@ -130,6 +146,29 @@ func (e *ResponseExtractor) processSSEEvent(eventBytes []byte) {
 	e.extractOpenAIResponsesSSE(payload)
 	// Try Anthropic format
 	e.extractAnthropicSSE(payload)
+
+	// Infer provider/model from this payload.
+	e.inferProvider(payload)
+	e.inferModelField(payload)
+	e.inferSignatureDeltaFromSSE(payload)
+}
+
+// inferSignatureDeltaFromSSE detects Anthropic signature_delta events and
+// tries to decode the first signature seen.
+func (e *ResponseExtractor) inferSignatureDeltaFromSSE(payload string) {
+	if e.sigModel != "" {
+		return
+	}
+	result := gjson.Parse(payload)
+	if result.Get("type").String() != "content_block_delta" {
+		return
+	}
+	if result.Get("delta.type").String() != "signature_delta" {
+		return
+	}
+	if sig := result.Get("delta.signature").String(); sig != "" {
+		e.inferSignatureModel(sig)
+	}
 }
 
 // detectStreamError records the first non-empty error message found in an SSE
@@ -260,6 +299,11 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 func (e *ResponseExtractor) extractJSONMetrics() {
 	result := gjson.ParseBytes(e.jsonBuf)
 
+	// Infer provider/model from the accumulated JSON body.
+	e.inferProvider(result.String())
+	e.inferModelField(result.String())
+	e.inferSignatureModelFromJSON(result)
+
 	// Try OpenAI Chat Completions format
 	usage := result.Get("usage")
 	e.setOpenAIInputTokens(usage)
@@ -311,6 +355,78 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 	if e.metrics.CacheWriteTokens == nil {
 		e.extractAnthropicCacheCreation(result.Get("usage"))
 	}
+}
+
+// inferProvider extracts the upstream provider identity from a payload.
+// Rules, first match wins and locks:
+//   1. top-level "provider" field is a non-empty string;
+//   2. message id (SSE "message.id", JSON "id") starts with "msg_bdrk_";
+//   3. payload contains an "amazon-bedrock-invocationMetrics" field.
+func (e *ResponseExtractor) inferProvider(payload string) {
+	if e.inferredProvider != "" {
+		return
+	}
+	result := gjson.Parse(payload)
+	if v := result.Get("provider"); v.Exists() && v.Type == gjson.String && v.String() != "" {
+		e.inferredProvider = v.String()
+		return
+	}
+	msgID := result.Get("message.id").String()
+	if msgID == "" {
+		msgID = result.Get("id").String()
+	}
+	if strings.HasPrefix(msgID, "msg_bdrk_") {
+		e.inferredProvider = "Amazon Bedrock"
+		return
+	}
+	if result.Get("amazon-bedrock-invocationMetrics").Exists() {
+		e.inferredProvider = "Amazon Bedrock"
+	}
+}
+
+// inferModelField records the first non-empty top-level "model" field seen.
+func (e *ResponseExtractor) inferModelField(payload string) {
+	if e.respModel != "" {
+		return
+	}
+	if v := gjson.Get(payload, "model"); v.Exists() && v.Type == gjson.String && v.String() != "" {
+		e.respModel = v.String()
+	}
+}
+
+// inferSignatureModel decodes a base64-encoded thinking signature, navigates
+// the protobuf wire format to field path [2][1][6], and if the bytes are
+// printable ASCII uses them as the inferred model. First valid signature wins.
+func (e *ResponseExtractor) inferSignatureModel(sig string) {
+	if e.sigModel != "" {
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(sig)
+	if err != nil {
+		return
+	}
+	val, ok := protoNavigate(data, []int{2, 1, 6})
+	if !ok || !isPrintableASCII(val) {
+		return
+	}
+	e.sigModel = string(val)
+}
+
+// inferSignatureModelFromJSON scans an Anthropic-style non-streaming JSON body
+// for thinking content blocks and tries to decode the first signature found.
+func (e *ResponseExtractor) inferSignatureModelFromJSON(result gjson.Result) {
+	if e.sigModel != "" {
+		return
+	}
+	result.Get("content").ForEach(func(_, value gjson.Result) bool {
+		if value.Get("type").String() == "thinking" {
+			if sig := value.Get("signature").String(); sig != "" {
+				e.inferSignatureModel(sig)
+				return false
+			}
+		}
+		return true
+	})
 }
 
 func (e *ResponseExtractor) extractAnthropicCacheCreation(usage gjson.Result) {

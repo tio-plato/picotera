@@ -273,6 +273,8 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
 		FinishReason:       pgtype.Int4{Int32: upstreamFr, Valid: true},
+		InferredProvider:   pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""},
+		InferredModel:      pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""},
 		CreatedAt:          pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
 	})
 	metaTimeSpent := int32(time.Since(input.Flow.startedAt).Milliseconds())
@@ -291,6 +293,8 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 		ModelCost:          modelCost,
 		ModelCostCurrency:  modelCcy,
 		FinishReason:       pgtype.Int4{Int32: metaFr, Valid: true},
+		InferredProvider:   pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""},
+		InferredModel:      pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""},
 		CreatedAt:          pgtype.Timestamp{Time: input.Flow.meta.CreatedAt, Valid: true},
 	})
 }
