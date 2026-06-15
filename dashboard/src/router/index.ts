@@ -19,6 +19,7 @@ const router = createRouter({
     { path: '/projects', name: 'projects', component: () => import('@/views/ProjectsView.vue') },
     { path: '/scripts', name: 'scripts', component: () => import('@/views/ScriptsView.vue') },
     { path: '/simulate', name: 'simulate', component: () => import('@/views/SimulateView.vue') },
+    { path: '/test', name: 'test', component: () => import('@/views/TestView.vue') },
     { path: '/kv', name: 'kv', component: () => import('@/views/KvView.vue') },
     { path: '/rates', name: 'rates', component: () => import('@/views/RatesView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },

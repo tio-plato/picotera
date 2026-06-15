@@ -496,3 +496,48 @@ export async function simulateDispatch(
   if (error) fail(error, '模拟调度失败')
   return data
 }
+
+// --- Endpoint testing (streaming, raw fetch) ---
+//
+// The two test "send" actions stream their responses, so they bypass
+// openapi-fetch and return the raw Response for the caller to read incrementally
+// (via the body stream) or as JSON. Neither throws on non-2xx — the UI surfaces
+// the upstream status and body.
+
+export interface TestDirectPayload {
+  providerId: number
+  endpointPath: string
+  stream: boolean
+  pathVars?: Record<string, string>
+  body: unknown
+}
+
+// postTestDirect calls the short-circuit test route. The backend injects the
+// provider's credentials and forwards `body` verbatim to the upstream.
+export function postTestDirect(payload: TestDirectPayload, signal?: AbortSignal): Promise<Response> {
+  return fetch('/api/picotera/test/direct', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  })
+}
+
+// postGatewayTest sends a full gateway request to `targetUrl` authenticated with
+// the API key's plaintext value as a Bearer token.
+export function postGatewayTest(
+  targetUrl: string,
+  apiKey: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<Response> {
+  return fetch(targetUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal,
+  })
+}

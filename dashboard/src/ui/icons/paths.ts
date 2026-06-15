@@ -38,6 +38,7 @@ import {
   IconX,
   IconCloudFog,
   IconGeometry,
+  IconFlask,
 } from '@tabler/icons-vue'
 
 export type IconName =
@@ -80,6 +81,7 @@ export type IconName =
   | 'bolt'
   | 'geometry'
   | 'cloud-fog'
+  | 'flask'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -121,4 +123,5 @@ export const iconComponents: Record<IconName, Component> = {
   bolt: IconBolt,
   'cloud-fog': IconCloudFog,
   geometry: IconGeometry,
+  flask: IconFlask,
 }

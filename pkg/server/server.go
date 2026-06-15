@@ -251,6 +251,12 @@ func (s *Server) registerEndpoints() {
 	s.router.Post("/api/picotera/v1beta/models/{model}:generateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiGenerateContent))
 	s.router.Post("/api/picotera/v1beta/models/{model}:streamGenerateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiStreamGenerateContent))
 
+	// Short-circuit test route: forwards a caller-supplied body straight to a
+	// provider's upstream, bypassing the entire gateway pipeline (no scripts,
+	// no MPE, no logging). Registered before the catch-all mount like the
+	// unified routes; not a Huma operation, so it never enters openapi.yaml.
+	s.router.Post("/api/picotera/test/direct", s.handleTestDirect)
+
 	s.router.Mount("/", &gatewayHandler{s})
 }
 

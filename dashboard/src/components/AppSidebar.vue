@@ -24,6 +24,7 @@ const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'projects', label: '项目', icon: 'folder' },
   { name: 'scripts', label: '脚本', icon: 'braces' },
   { name: 'simulate', label: '模拟', icon: 'geometry' },
+  { name: 'test', label: '测试', icon: 'flask' },
   { name: 'kv', label: '缓存', icon: 'db' },
   { name: 'rates', label: '汇率', icon: 'currency-dollar' },
   { name: 'settings', label: '设置', icon: 'settings' },
