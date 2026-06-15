@@ -742,6 +742,25 @@ func TestResponseExtractor_JSON_InferredProvider_BedrockTopLevelID(t *testing.T)
 	}
 }
 
+func TestResponseExtractor_SignatureFixture_File(t *testing.T) {
+	data, err := os.ReadFile("../../fixtures/signature.txt")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	sig := strings.TrimSpace(string(data))
+
+	extractor := &ResponseExtractor{}
+	extractor.inferSignatureModel(sig)
+
+	if extractor.sigModel == "" {
+		t.Fatal("expected model to be inferred from fixture signature, got empty")
+	}
+	want := "claude-opus-4-8"
+	if extractor.sigModel != want {
+		t.Errorf("InferredModel from fixture: got %q, want %q", extractor.sigModel, want)
+	}
+}
+
 func buildSignaturePayload(model string) string {
 	// Build a protobuf message whose [2][1][6] path contains `model`.
 	inner := protowire.AppendTag(nil, 6, protowire.BytesType)
