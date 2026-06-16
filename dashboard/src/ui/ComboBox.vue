@@ -105,7 +105,7 @@ function onMenuClose(reason: 'select' | 'outside' | 'escape') {
 const menuOpen = computed(() => menuRef.value?.open ?? false)
 watch(menuOpen, (v) => {
   if (v) {
-    query.value = props.modelValue
+    query.value = ''
     focusInput()
   }
 })
