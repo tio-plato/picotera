@@ -1246,6 +1246,9 @@ components:
           type: string
         inferredModel:
           type: string
+        inferredModelSource:
+          format: int32
+          type: integer
         inferredProvider:
           type: string
         inputTokens:

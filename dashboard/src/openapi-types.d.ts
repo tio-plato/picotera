@@ -1356,6 +1356,8 @@ export interface components {
             finishReason?: number;
             id: string;
             inferredModel?: string;
+            /** Format: int32 */
+            inferredModelSource?: number;
             inferredProvider?: string;
             /** Format: int32 */
             inputTokens?: number;

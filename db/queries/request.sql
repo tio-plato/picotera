@@ -4,7 +4,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
        r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id, r.finish_reason,
-       r.inferred_provider, r.inferred_model
+       r.inferred_provider, r.inferred_model, r.inferred_model_source
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = sqlc.narg('trace_id')::text
 WHERE
@@ -132,7 +132,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.created_at,
        r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id, r.finish_reason,
-       r.inferred_provider, r.inferred_model
+       r.inferred_provider, r.inferred_model, r.inferred_model_source
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC;
@@ -150,7 +150,8 @@ SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     cache_write_1h_tokens = $11,
     model_cost = $12, model_cost_currency = $13,
     finish_reason = $14,
-    inferred_provider = $15, inferred_model = $16
+    inferred_provider = $15, inferred_model = $16,
+    inferred_model_source = $17
 WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 
 -- name: UpdateRequestModel :exec

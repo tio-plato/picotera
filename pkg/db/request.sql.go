@@ -12,7 +12,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, user_message_preview, cache_write_1h_tokens, project_id, finish_reason, inferred_provider, inferred_model FROM request WHERE id = $1 AND created_at = $2::timestamp
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, user_message_preview, cache_write_1h_tokens, project_id, finish_reason, inferred_provider, inferred_model, inferred_model_source FROM request WHERE id = $1 AND created_at = $2::timestamp
 `
 
 type GetRequestParams struct {
@@ -51,6 +51,7 @@ func (q *Queries) GetRequest(ctx context.Context, arg GetRequestParams) (Request
 		&i.FinishReason,
 		&i.InferredProvider,
 		&i.InferredModel,
+		&i.InferredModelSource,
 	)
 	return i, err
 }
@@ -209,7 +210,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
        r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id, r.finish_reason,
-       r.inferred_provider, r.inferred_model
+       r.inferred_provider, r.inferred_model, r.inferred_model_source
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = $1::text
 WHERE
@@ -249,33 +250,34 @@ type ListRequestsParams struct {
 }
 
 type ListRequestsRow struct {
-	ID                 string           `json:"id"`
-	SpanID             pgtype.Text      `json:"spanId"`
-	ParentSpanID       pgtype.Text      `json:"parentSpanId"`
-	Type               int32            `json:"type"`
-	Status             int32            `json:"status"`
-	ProviderID         pgtype.Int4      `json:"providerId"`
-	EndpointPath       pgtype.Text      `json:"endpointPath"`
-	ApiKeyID           pgtype.Int4      `json:"apiKeyId"`
-	Model              pgtype.Text      `json:"model"`
-	UpstreamModel      pgtype.Text      `json:"upstreamModel"`
-	InputTokens        pgtype.Int4      `json:"inputTokens"`
-	CacheReadTokens    pgtype.Int4      `json:"cacheReadTokens"`
-	OutputTokens       pgtype.Int4      `json:"outputTokens"`
-	CacheWriteTokens   pgtype.Int4      `json:"cacheWriteTokens"`
-	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
-	StatusCode         pgtype.Int4      `json:"statusCode"`
-	ErrorMessage       pgtype.Text      `json:"errorMessage"`
-	TtftMs             pgtype.Int4      `json:"ttftMs"`
-	TimeSpentMs        pgtype.Int4      `json:"timeSpentMs"`
-	CreatedAt          pgtype.Timestamp `json:"createdAt"`
-	ModelCost          pgtype.Numeric   `json:"modelCost"`
-	ModelCostCurrency  pgtype.Text      `json:"modelCostCurrency"`
-	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
-	ProjectID          pgtype.Int4      `json:"projectId"`
-	FinishReason       pgtype.Int4      `json:"finishReason"`
-	InferredProvider   pgtype.Text      `json:"inferredProvider"`
-	InferredModel      pgtype.Text      `json:"inferredModel"`
+	ID                  string           `json:"id"`
+	SpanID              pgtype.Text      `json:"spanId"`
+	ParentSpanID        pgtype.Text      `json:"parentSpanId"`
+	Type                int32            `json:"type"`
+	Status              int32            `json:"status"`
+	ProviderID          pgtype.Int4      `json:"providerId"`
+	EndpointPath        pgtype.Text      `json:"endpointPath"`
+	ApiKeyID            pgtype.Int4      `json:"apiKeyId"`
+	Model               pgtype.Text      `json:"model"`
+	UpstreamModel       pgtype.Text      `json:"upstreamModel"`
+	InputTokens         pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens     pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens        pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens    pgtype.Int4      `json:"cacheWriteTokens"`
+	CacheWrite1hTokens  pgtype.Int4      `json:"cacheWrite1hTokens"`
+	StatusCode          pgtype.Int4      `json:"statusCode"`
+	ErrorMessage        pgtype.Text      `json:"errorMessage"`
+	TtftMs              pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs         pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt           pgtype.Timestamp `json:"createdAt"`
+	ModelCost           pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency   pgtype.Text      `json:"modelCostCurrency"`
+	UserMessagePreview  pgtype.Text      `json:"userMessagePreview"`
+	ProjectID           pgtype.Int4      `json:"projectId"`
+	FinishReason        pgtype.Int4      `json:"finishReason"`
+	InferredProvider    pgtype.Text      `json:"inferredProvider"`
+	InferredModel       pgtype.Text      `json:"inferredModel"`
+	InferredModelSource int16            `json:"inferredModelSource"`
 }
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
@@ -326,6 +328,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 			&i.FinishReason,
 			&i.InferredProvider,
 			&i.InferredModel,
+			&i.InferredModelSource,
 		); err != nil {
 			return nil, err
 		}
@@ -350,7 +353,7 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.created_at,
        r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id, r.finish_reason,
-       r.inferred_provider, r.inferred_model
+       r.inferred_provider, r.inferred_model, r.inferred_model_source
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
 ORDER BY r.created_at ASC, r.id ASC
@@ -362,33 +365,34 @@ type ListRequestsBySpanParams struct {
 }
 
 type ListRequestsBySpanRow struct {
-	ID                 string           `json:"id"`
-	SpanID             pgtype.Text      `json:"spanId"`
-	ParentSpanID       pgtype.Text      `json:"parentSpanId"`
-	Type               int32            `json:"type"`
-	Status             int32            `json:"status"`
-	ProviderID         pgtype.Int4      `json:"providerId"`
-	EndpointPath       pgtype.Text      `json:"endpointPath"`
-	ApiKeyID           pgtype.Int4      `json:"apiKeyId"`
-	Model              pgtype.Text      `json:"model"`
-	UpstreamModel      pgtype.Text      `json:"upstreamModel"`
-	InputTokens        pgtype.Int4      `json:"inputTokens"`
-	CacheReadTokens    pgtype.Int4      `json:"cacheReadTokens"`
-	OutputTokens       pgtype.Int4      `json:"outputTokens"`
-	CacheWriteTokens   pgtype.Int4      `json:"cacheWriteTokens"`
-	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
-	StatusCode         pgtype.Int4      `json:"statusCode"`
-	ErrorMessage       pgtype.Text      `json:"errorMessage"`
-	TtftMs             pgtype.Int4      `json:"ttftMs"`
-	TimeSpentMs        pgtype.Int4      `json:"timeSpentMs"`
-	CreatedAt          pgtype.Timestamp `json:"createdAt"`
-	ModelCost          pgtype.Numeric   `json:"modelCost"`
-	ModelCostCurrency  pgtype.Text      `json:"modelCostCurrency"`
-	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
-	ProjectID          pgtype.Int4      `json:"projectId"`
-	FinishReason       pgtype.Int4      `json:"finishReason"`
-	InferredProvider   pgtype.Text      `json:"inferredProvider"`
-	InferredModel      pgtype.Text      `json:"inferredModel"`
+	ID                  string           `json:"id"`
+	SpanID              pgtype.Text      `json:"spanId"`
+	ParentSpanID        pgtype.Text      `json:"parentSpanId"`
+	Type                int32            `json:"type"`
+	Status              int32            `json:"status"`
+	ProviderID          pgtype.Int4      `json:"providerId"`
+	EndpointPath        pgtype.Text      `json:"endpointPath"`
+	ApiKeyID            pgtype.Int4      `json:"apiKeyId"`
+	Model               pgtype.Text      `json:"model"`
+	UpstreamModel       pgtype.Text      `json:"upstreamModel"`
+	InputTokens         pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens     pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens        pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens    pgtype.Int4      `json:"cacheWriteTokens"`
+	CacheWrite1hTokens  pgtype.Int4      `json:"cacheWrite1hTokens"`
+	StatusCode          pgtype.Int4      `json:"statusCode"`
+	ErrorMessage        pgtype.Text      `json:"errorMessage"`
+	TtftMs              pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs         pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt           pgtype.Timestamp `json:"createdAt"`
+	ModelCost           pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency   pgtype.Text      `json:"modelCostCurrency"`
+	UserMessagePreview  pgtype.Text      `json:"userMessagePreview"`
+	ProjectID           pgtype.Int4      `json:"projectId"`
+	FinishReason        pgtype.Int4      `json:"finishReason"`
+	InferredProvider    pgtype.Text      `json:"inferredProvider"`
+	InferredModel       pgtype.Text      `json:"inferredModel"`
+	InferredModelSource int16            `json:"inferredModelSource"`
 }
 
 func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error) {
@@ -428,6 +432,7 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpan
 			&i.FinishReason,
 			&i.InferredProvider,
 			&i.InferredModel,
+			&i.InferredModelSource,
 		); err != nil {
 			return nil, err
 		}
@@ -494,28 +499,30 @@ SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
     cache_write_1h_tokens = $11,
     model_cost = $12, model_cost_currency = $13,
     finish_reason = $14,
-    inferred_provider = $15, inferred_model = $16
-WHERE id = $1 AND created_at = $17::timestamp
+    inferred_provider = $15, inferred_model = $16,
+    inferred_model_source = $17
+WHERE id = $1 AND created_at = $18::timestamp
 `
 
 type UpdateRequestOnCompleteParams struct {
-	ID                 string           `json:"id"`
-	StatusCode         pgtype.Int4      `json:"statusCode"`
-	ErrorMessage       pgtype.Text      `json:"errorMessage"`
-	TimeSpentMs        pgtype.Int4      `json:"timeSpentMs"`
-	Status             int32            `json:"status"`
-	TtftMs             pgtype.Int4      `json:"ttftMs"`
-	InputTokens        pgtype.Int4      `json:"inputTokens"`
-	OutputTokens       pgtype.Int4      `json:"outputTokens"`
-	CacheReadTokens    pgtype.Int4      `json:"cacheReadTokens"`
-	CacheWriteTokens   pgtype.Int4      `json:"cacheWriteTokens"`
-	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
-	ModelCost          pgtype.Numeric   `json:"modelCost"`
-	ModelCostCurrency  pgtype.Text      `json:"modelCostCurrency"`
-	FinishReason       pgtype.Int4      `json:"finishReason"`
-	InferredProvider   pgtype.Text      `json:"inferredProvider"`
-	InferredModel      pgtype.Text      `json:"inferredModel"`
-	CreatedAt          pgtype.Timestamp `json:"createdAt"`
+	ID                  string           `json:"id"`
+	StatusCode          pgtype.Int4      `json:"statusCode"`
+	ErrorMessage        pgtype.Text      `json:"errorMessage"`
+	TimeSpentMs         pgtype.Int4      `json:"timeSpentMs"`
+	Status              int32            `json:"status"`
+	TtftMs              pgtype.Int4      `json:"ttftMs"`
+	InputTokens         pgtype.Int4      `json:"inputTokens"`
+	OutputTokens        pgtype.Int4      `json:"outputTokens"`
+	CacheReadTokens     pgtype.Int4      `json:"cacheReadTokens"`
+	CacheWriteTokens    pgtype.Int4      `json:"cacheWriteTokens"`
+	CacheWrite1hTokens  pgtype.Int4      `json:"cacheWrite1hTokens"`
+	ModelCost           pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency   pgtype.Text      `json:"modelCostCurrency"`
+	FinishReason        pgtype.Int4      `json:"finishReason"`
+	InferredProvider    pgtype.Text      `json:"inferredProvider"`
+	InferredModel       pgtype.Text      `json:"inferredModel"`
+	InferredModelSource int16            `json:"inferredModelSource"`
+	CreatedAt           pgtype.Timestamp `json:"createdAt"`
 }
 
 func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error {
@@ -536,6 +543,7 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 		arg.FinishReason,
 		arg.InferredProvider,
 		arg.InferredModel,
+		arg.InferredModelSource,
 		arg.CreatedAt,
 	)
 	return err

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"picotera/pkg/db"
+
 	"github.com/tidwall/gjson"
 )
 
@@ -20,6 +22,9 @@ type ResponseMetrics struct {
 	CacheWrite1HTokens *int64
 	InferredProvider   string
 	InferredModel      string
+	// InferredModelSource is a db.InferredModelSource* enum value describing
+	// where InferredModel came from (signature vs response model field).
+	InferredModelSource int32
 }
 
 // ResponseExtractor wraps an io.Reader and inspects bytes as they flow through,
@@ -67,8 +72,13 @@ func (e *ResponseExtractor) Metrics() ResponseMetrics {
 	e.metrics.InferredProvider = e.inferredProvider
 	if e.sigModel != "" {
 		e.metrics.InferredModel = e.sigModel
-	} else {
+		e.metrics.InferredModelSource = db.InferredModelSourceSignature
+	} else if e.respModel != "" {
 		e.metrics.InferredModel = e.respModel
+		e.metrics.InferredModelSource = db.InferredModelSourceResponse
+	} else {
+		e.metrics.InferredModel = ""
+		e.metrics.InferredModelSource = db.InferredModelSourceUnknown
 	}
 	return e.metrics
 }
@@ -359,9 +369,9 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 
 // inferProvider extracts the upstream provider identity from a payload.
 // Rules, first match wins and locks:
-//   1. top-level "provider" field is a non-empty string;
-//   2. message id (SSE "message.id", JSON "id") starts with "msg_bdrk_";
-//   3. payload contains an "amazon-bedrock-invocationMetrics" field.
+//  1. top-level "provider" field is a non-empty string;
+//  2. message id (SSE "message.id", JSON "id") starts with "msg_bdrk_";
+//  3. payload contains an "amazon-bedrock-invocationMetrics" field.
 func (e *ResponseExtractor) inferProvider(payload string) {
 	if e.inferredProvider != "" {
 		return

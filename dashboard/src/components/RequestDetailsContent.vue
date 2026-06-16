@@ -142,6 +142,18 @@ function providerLabel(id: number | undefined | null) {
   return p ? p.name : `#${id}`
 }
 
+// inferredModelSource: 1 = 思维链签名, 2 = 响应结构, 其余/缺省 = 无来源。
+function inferredModelSourceLabel(source: number | undefined | null): string {
+  switch (source) {
+    case 1:
+      return '思维链'
+    case 2:
+      return '响应'
+    default:
+      return ''
+  }
+}
+
 function statusVariantTag(code: number | undefined | null): 'ok' | 'default' | 'muted' | 'accent' {
   if (!code) return 'muted'
   if (code >= 200 && code < 300) return 'ok'
@@ -426,7 +438,14 @@ watch(detailTabs, (tabs) => {
                 <span class="font-mono text-sm">{{ selected.model || '—' }}</span>
               </Field>
               <Field label="推测模型" as="div">
-                <span class="font-mono text-sm">{{ selected.inferredModel || '—' }}</span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="font-mono text-sm">{{ selected.inferredModel || '—' }}</span>
+                  <Tag
+                    v-if="inferredModelSourceLabel(selected.inferredModelSource)"
+                    variant="muted"
+                    >{{ inferredModelSourceLabel(selected.inferredModelSource) }}</Tag
+                  >
+                </span>
               </Field>
               <Field label="端点" as="div">
                 <span class="font-mono text-sm">{{ selected.endpointPath || '—' }}</span>
