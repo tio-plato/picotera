@@ -190,6 +190,7 @@ defineExpose({ open, show, close, toggle, focusInput })
       <div
         v-if="open"
         ref="floatingRef"
+        data-floating-menu
         class="flex flex-col bg-surface-0 border border-line rounded-xl shadow-lg z-[1000] overflow-hidden"
         :class="floatingClass"
         role="listbox"

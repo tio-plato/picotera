@@ -46,6 +46,8 @@ function onDocMouseDown(e: MouseEvent) {
   const t = e.target as Node
   if (floatingRef.value?.contains(t)) return
   if (triggerRef.value?.contains(t)) return
+  // 忽略嵌套的 teleport 浮层（如货币 Select 的下拉），否则点选项会先关掉整个设置菜单
+  if (t instanceof Element && t.closest('[data-floating-menu]')) return
   close()
 }
 

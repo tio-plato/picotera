@@ -67,6 +67,7 @@ function clear(e: MouseEvent) {
     :placement="placement"
     floating-class="w-64"
     class="inline-flex"
+    @update:model-value="pick"
   >
     <template #trigger="{ toggle, open }">
       <button
