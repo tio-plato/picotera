@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/logx"
 
@@ -90,6 +91,12 @@ func (s *Server) handleTestDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// Anthropic's API requires the anthropic-version header; the normal gateway
+	// path injects it via llmbridge, but this short-circuit route bypasses the
+	// bridge and must supply it directly.
+	if endpoint.EndpointType == contract.EndpointType_AnthropicMessages {
+		req.Header.Set("anthropic-version", "2023-06-01")
+	}
 	// No client headers are copied: the dashboard initiates this, there is no
 	// upstream LLM client request to forward. applyCredentials with a nil
 	// source request writes credentials per the resolver.
