@@ -210,6 +210,7 @@ watch(
   generatedBody,
   (body) => {
     if (manualOverride.value) return
+    if (baseFormat.value === null) return
     rawBody.value = body ? JSON.stringify(body, null, 2) : ''
   },
   { immediate: true, deep: true },
@@ -249,7 +250,7 @@ const pathVarNames = computed(() => {
 function pathVarValue(name: string): string {
   // `model` defaults to the model field unless explicitly overridden.
   if (pathVars.value[name] !== undefined) return pathVars.value[name]
-  if (name === 'model') return model.value.trim()
+  if (name === 'model' && hasSupportedFormat.value) return model.value.trim()
   return ''
 }
 
@@ -281,7 +282,8 @@ function substitutePath(path: string): string {
 const selectedApiKey = computed(() => apiKeys.value.find((k) => k.id === gatewayApiKeyId.value))
 
 // --- submission validity ---
-const formatUnsupported = computed(() => activeSelectionMade.value && baseFormat.value === null)
+const hasSupportedFormat = computed(() => baseFormat.value !== null)
+const formatUnsupported = computed(() => activeSelectionMade.value && !hasSupportedFormat.value)
 
 const activeSelectionMade = computed(() => {
   if (mode.value === 'direct') return !!directEndpointPath.value
@@ -291,13 +293,19 @@ const activeSelectionMade = computed(() => {
 
 const canSubmit = computed(() => {
   if (sending.value) return false
-  if (!baseFormat.value) return false
-  if (!model.value.trim()) return false
+  if (!activeSelectionMade.value) return false
   if (mode.value === 'direct') {
-    return directProviderId.value !== 0 && !!directEndpointPath.value
+    if (directProviderId.value === 0) return false
+    if (!directEndpointPath.value) return false
+  } else {
+    if (gatewayApiKeyId.value === 0) return false
+    if (gatewayTargetKind.value === 'path' && !gatewayEndpointPath.value) return false
   }
-  if (gatewayApiKeyId.value === 0) return false
-  if (gatewayTargetKind.value === 'path') return !!gatewayEndpointPath.value
+  if (hasSupportedFormat.value) {
+    if (!model.value.trim()) return false
+  } else {
+    if (!rawBody.value.trim()) return false
+  }
   return true
 })
 
@@ -342,7 +350,7 @@ function effectivePathVars(): Record<string, string> | undefined {
 }
 
 function resolveBody(): unknown | null {
-  if (manualOverride.value) {
+  if (!hasSupportedFormat.value || manualOverride.value) {
     try {
       return JSON.parse(rawBody.value)
     } catch (e) {
@@ -481,7 +489,7 @@ watch(mode, () => {
             <Input
               class="flex-1"
               :model-value="pathVarValue(name)"
-              :placeholder="name === 'model' ? '默认取模型字段' : ''"
+              :placeholder="name === 'model' && hasSupportedFormat ? '默认取模型字段' : ''"
               @update:model-value="(v: string | number) => setPathVar(name, String(v))"
             />
           </label>
@@ -492,43 +500,44 @@ watch(mode, () => {
         v-if="formatUnsupported"
         class="border border-warn/30 bg-warn/5 text-warn text-xs rounded-md px-3 py-2"
       >
-        所选端点格式不支持测试（仅支持 Anthropic Messages / OpenAI Chat / OpenAI Responses /
-        Gemini）。
+        所选端点格式没有结构化表单，请直接在下方填写原始请求体进行测试。
       </div>
 
       <!-- structured fields -->
-      <Field label="模型">
-        <ComboBox
-          v-model="model"
-          :options="modelOptions"
-          :allow-custom="modelAllowCustom"
-          placeholder="例如 claude-sonnet-4-6"
-        />
-      </Field>
-
-      <Field label="系统提示词">
-        <Textarea v-model="system" rows="2" placeholder="可留空" />
-      </Field>
-
-      <div class="grid grid-cols-2 gap-3">
-        <Field label="最大 Tokens">
-          <Input v-model.number="maxTokens" type="number" />
-        </Field>
-        <Field label="流式" as="div">
-          <SegmentedControl
-            v-model="streamMode"
-            :options="streamOptions"
-            :class="streamLocked ? 'opacity-55 pointer-events-none' : ''"
+      <template v-if="hasSupportedFormat">
+        <Field label="模型">
+          <ComboBox
+            v-model="model"
+            :options="modelOptions"
+            :allow-custom="modelAllowCustom"
+            placeholder="例如 claude-sonnet-4-6"
           />
         </Field>
-      </div>
 
-      <Field label="用户消息">
-        <Textarea v-model="userMessage" rows="4" />
-      </Field>
+        <Field label="系统提示词">
+          <Textarea v-model="system" rows="2" placeholder="可留空" />
+        </Field>
 
-      <!-- advanced raw body -->
-      <Field label="原始请求体（高级）" as="div" :error="bodyError">
+        <div class="grid grid-cols-2 gap-3">
+          <Field label="最大 Tokens">
+            <Input v-model.number="maxTokens" type="number" />
+          </Field>
+          <Field label="流式" as="div">
+            <SegmentedControl
+              v-model="streamMode"
+              :options="streamOptions"
+              :class="streamLocked ? 'opacity-55 pointer-events-none' : ''"
+            />
+          </Field>
+        </div>
+
+        <Field label="用户消息">
+          <Textarea v-model="userMessage" rows="4" />
+        </Field>
+      </template>
+
+      <!-- raw body -->
+      <Field :label="hasSupportedFormat ? '原始请求体（高级）' : '原始请求体'" as="div" :error="bodyError">
         <div class="flex flex-col gap-1.5">
           <CodeEditor
             :model-value="rawBody"
@@ -536,7 +545,7 @@ watch(mode, () => {
             @update:model-value="onRawBodyInput"
           />
           <div class="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" @click="rebuildBody">由字段重建</Button>
+            <Button v-if="hasSupportedFormat" type="button" variant="ghost" size="sm" @click="rebuildBody">由字段重建</Button>
             <span v-if="manualOverride" class="text-2xs text-warn">已手动覆盖</span>
           </div>
         </div>
