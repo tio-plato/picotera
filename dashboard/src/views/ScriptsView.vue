@@ -27,6 +27,7 @@ const deleteScriptMutation = useMutation({
 const updateScriptMutation = useMutation({
   mutationFn: (script: ScriptView) =>
     updateScript(script.id, {
+      id: script.id,
       name: script.name,
       source: script.source,
       enabled: !script.enabled,

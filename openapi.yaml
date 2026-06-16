@@ -1310,11 +1310,14 @@ components:
           type: string
         enabled:
           type: boolean
+        id:
+          type: string
         name:
           type: string
         source:
           type: string
       required:
+        - id
         - name
         - source
         - enabled

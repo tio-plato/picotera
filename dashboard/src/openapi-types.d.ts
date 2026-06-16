@@ -1394,6 +1394,7 @@ export interface components {
              */
             readonly $schema?: string;
             enabled: boolean;
+            id: string;
             name: string;
             source: string;
         };
