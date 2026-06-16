@@ -40,7 +40,10 @@ const sizeClass = computed(() =>
   props.size === 'sm' ? 'px-2 py-1.5 text-sm' : 'px-3 py-2 text-sm',
 )
 
-const displayLabel = computed(() => props.modelValue || props.placeholder)
+const displayLabel = computed(() => {
+  const selected = props.options.find((o) => o.value === props.modelValue)
+  return selected?.label ?? props.modelValue ?? props.placeholder
+})
 
 const customValue = computed(() => {
   if (!props.allowCustom) return null
