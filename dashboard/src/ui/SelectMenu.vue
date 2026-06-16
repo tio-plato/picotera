@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="V extends string | number">
-import { ref, computed, useTemplateRef, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, useTemplateRef, watch, nextTick, onBeforeUnmount, useId } from 'vue'
 import {
   useFloating,
   offset,
@@ -47,6 +47,8 @@ const emit = defineEmits<{
 const open = ref(false)
 const internalQuery = ref('')
 const activeIndex = ref(0)
+const activeByKeyboard = ref(false)
+const listboxId = useId()
 const triggerRef = useTemplateRef<HTMLElement>('triggerRef')
 const floatingRef = useTemplateRef<HTMLElement>('floatingRef')
 const inputRef = useTemplateRef<HTMLInputElement>('inputRef')
@@ -98,11 +100,35 @@ function focusInput() {
   })
 }
 
+function nextEnabledIndex(from: number, dir: 1 | -1): number {
+  const opts = filteredOptions.value
+  let i = from
+  while (true) {
+    const n = i + dir
+    if (n < 0 || n >= opts.length) return from // 边界不回绕
+    if (!opts[n]?.disabled) return n
+    i = n
+  }
+}
+
+function initialActiveIndex(): number {
+  const opts = filteredOptions.value
+  const sel = opts.findIndex((o) => o.value === props.modelValue && !o.disabled)
+  if (sel >= 0) return sel
+  return opts.findIndex((o) => !o.disabled) // 无则首个可用，全不可用返回 -1
+}
+
+function onOptionHover(i: number) {
+  activeIndex.value = i
+  activeByKeyboard.value = false
+}
+
 function show() {
   if (props.disabled) return
   open.value = true
   query.value = ''
-  activeIndex.value = filteredOptions.value.length > 0 ? 0 : -1
+  activeIndex.value = initialActiveIndex()
+  activeByKeyboard.value = false
   if (props.searchable) focusInput()
 }
 
@@ -137,10 +163,12 @@ function onKeydown(e: KeyboardEvent) {
   if (!open.value) return
   if (e.key === 'ArrowDown') {
     e.preventDefault()
-    activeIndex.value = Math.min(filteredOptions.value.length - 1, activeIndex.value + 1)
+    activeByKeyboard.value = true
+    activeIndex.value = nextEnabledIndex(activeIndex.value, 1)
   } else if (e.key === 'ArrowUp') {
     e.preventDefault()
-    activeIndex.value = Math.max(0, activeIndex.value - 1)
+    activeByKeyboard.value = true
+    activeIndex.value = nextEnabledIndex(activeIndex.value, -1)
   } else if (e.key === 'Enter') {
     const opt = filteredOptions.value[activeIndex.value]
     if (opt && !opt.disabled) {
@@ -163,8 +191,20 @@ watch(open, (v) => {
 watch(
   () => query.value,
   () => {
-    activeIndex.value = filteredOptions.value.length > 0 ? 0 : -1
+    activeIndex.value = initialActiveIndex()
+    activeByKeyboard.value = false
   },
+)
+
+watch(activeIndex, (i) => {
+  if (i < 0) return
+  nextTick(() => {
+    floatingRef.value?.querySelector(`[data-index="${i}"]`)?.scrollIntoView({ block: 'nearest' })
+  })
+})
+
+const activeDescendant = computed(() =>
+  open.value && activeIndex.value >= 0 ? `${listboxId}-opt-${activeIndex.value}` : undefined,
 )
 
 onBeforeUnmount(() => {
@@ -194,6 +234,7 @@ defineExpose({ open, show, close, toggle, focusInput })
         class="flex flex-col bg-surface-0 border border-line rounded-xl shadow-lg z-[1000] overflow-hidden"
         :class="floatingClass"
         role="listbox"
+        :aria-activedescendant="activeDescendant"
         :style="floatingStyles"
       >
         <div
@@ -205,6 +246,8 @@ defineExpose({ open, show, close, toggle, focusInput })
             ref="inputRef"
             v-model="query"
             type="text"
+            role="combobox"
+            :aria-activedescendant="activeDescendant"
             :placeholder="placeholder"
             class="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm text-ink placeholder:text-ink-faint"
           />
@@ -213,19 +256,24 @@ defineExpose({ open, show, close, toggle, focusInput })
         <div class="flex-1 overflow-y-auto py-1">
           <button
             v-for="(opt, i) in filteredOptions"
+            :id="`${listboxId}-opt-${i}`"
             :key="String(opt.value)"
             type="button"
             role="option"
+            :data-index="i"
             :aria-selected="opt.value === modelValue"
             :disabled="opt.disabled"
-            class="flex items-center justify-between gap-2 w-full px-2.5 py-1.5 bg-transparent border-0 text-left text-sm cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex items-center justify-between gap-2 w-full px-2.5 py-1.5 border-0 text-left text-sm cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             :class="[
-              opt.value === modelValue
-                ? 'bg-accent-faint text-accent-ink font-medium'
-                : 'text-ink hover:bg-surface-50',
-              activeIndex === i && opt.value !== modelValue ? 'bg-surface-50' : '',
+              opt.value === modelValue ? 'text-accent-ink font-medium' : 'text-ink',
+              activeIndex === i
+                ? 'bg-surface-100'
+                : opt.value === modelValue
+                  ? 'bg-accent-faint'
+                  : 'bg-transparent',
+              activeIndex === i && activeByKeyboard ? 'ring-1 ring-inset ring-accent rounded-md' : '',
             ]"
-            @mouseenter="activeIndex = i"
+            @mouseenter="onOptionHover(i)"
             @click="pick(opt.value)"
           >
             <span class="flex flex-col min-w-0 leading-tight">
