@@ -30,7 +30,7 @@ const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listMode
 const kind = ref<Kind>('path')
 const selectedPath = ref('')
 const selectedFormat = ref<(typeof UNIFIED_FORMATS)[number]['value']>('anthropicMessages')
-const apiKeyId = ref<number | undefined>(undefined)
+const apiKeyId = ref(0)
 const model = ref('')
 const bodyText = ref('')
 const pathVars = ref<Record<string, string>>({})
@@ -40,6 +40,27 @@ const bodyError = ref('')
 const endpoints = computed(() => endpointsQuery.data.value ?? [])
 const apiKeys = computed(() => apiKeysQuery.data.value ?? [])
 const modelNames = computed(() => (modelsQuery.data.value ?? []).map((m) => m.name))
+
+const modelOptions = computed(() => [
+  { value: '', label: '请选择模型', disabled: true },
+  ...modelNames.value.map((name) => ({ value: name, label: name })),
+])
+
+const pathOptions = computed(() => [
+  { value: '', label: '请选择端点', disabled: true },
+  ...endpoints.value.map((e) => ({
+    value: e.path,
+    label: e.path + (e.name ? ` — ${e.name}` : ''),
+  })),
+])
+
+const apiKeyOptions = computed(() => [
+  { value: 0, label: '请选择 API Key', disabled: true },
+  ...apiKeys.value.map((k) => ({
+    value: k.id,
+    label: `${k.name} (#${k.id})${k.disabled ? ' — 已禁用' : ''}`,
+  })),
+])
 
 const selectedEndpoint = computed(
   () => endpoints.value.find((e) => e.path === selectedPath.value) ?? null,
@@ -111,7 +132,7 @@ async function submit() {
       kind.value === 'path'
         ? { kind: 'path', path: selectedPath.value }
         : { kind: 'unified', format: selectedFormat.value },
-    apiKeyId: apiKeyId.value!,
+    apiKeyId: apiKeyId.value,
     model: model.value.trim(),
     body: normalized,
   }
@@ -134,19 +155,10 @@ async function submit() {
     </Field>
 
     <Field v-if="kind === 'path'" label="端点路径">
-      <Select v-model="selectedPath">
-        <option value="" disabled>请选择端点</option>
-        <option v-for="e in endpoints" :key="e.path" :value="e.path">
-          {{ e.path }}{{ e.name ? ` — ${e.name}` : '' }}
-        </option>
-      </Select>
+      <Select v-model="selectedPath" :options="pathOptions" />
     </Field>
     <Field v-else label="统一路由格式">
-      <Select v-model="selectedFormat">
-        <option v-for="f in UNIFIED_FORMATS" :key="f.value" :value="f.value">
-          {{ f.label }}
-        </option>
-      </Select>
+      <Select v-model="selectedFormat" :options="UNIFIED_FORMATS" />
     </Field>
 
     <Field v-if="kind === 'path' && pathVarNames.length > 0" label="路径变量" as="div">
@@ -162,19 +174,11 @@ async function submit() {
     </Field>
 
     <Field label="API Key">
-      <Select v-model.number="apiKeyId">
-        <option :value="undefined" disabled>请选择 API Key</option>
-        <option v-for="k in apiKeys" :key="k.id" :value="k.id">
-          {{ k.name }} (#{{ k.id }}){{ k.disabled ? ' — 已禁用' : '' }}
-        </option>
-      </Select>
+      <Select v-model="apiKeyId" :options="apiKeyOptions" />
     </Field>
 
     <Field label="模型">
-      <Input v-model="model" list="simulate-model-list" placeholder="例如 claude-sonnet-4-6" />
-      <datalist id="simulate-model-list">
-        <option v-for="name in modelNames" :key="name" :value="name" />
-      </datalist>
+      <Select v-model="model" :options="modelOptions" />
     </Field>
 
     <Field label="请求体" :error="bodyError">

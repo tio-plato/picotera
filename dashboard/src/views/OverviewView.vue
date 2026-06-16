@@ -119,6 +119,40 @@ const ccy = provideCurrencyContext(overviewTargetCurrency)
 const isOriginalMode = computed(() => ccy.targetCurrency.value == null)
 const overviewCurrencyRates = computed(() => ccy.rates.value)
 
+const overviewCurrencyOptions = computed(() => [
+  { value: '', label: '跟随设置' },
+  { value: 'original', label: '原始货币' },
+  ...overviewCurrencyRates.value.map((r) => ({
+    value: r.code,
+    label: `${r.code} ${r.symbol} · ${r.name}`,
+  })),
+])
+
+const apiKeyOptions = computed(() => [
+  { value: 0, label: '全部' },
+  ...apiKeys.value.map((k) => ({ value: k.id, label: k.name })),
+])
+
+const providerOptions = computed(() => [
+  { value: 0, label: '全部' },
+  ...providers.value.map((p) => ({ value: p.id, label: p.name })),
+])
+
+const projectOptions = computed(() => [
+  { value: 0, label: '全部' },
+  ...projects.value.map((p) => ({ value: p.id, label: p.name })),
+])
+
+const modelSelectOptions = computed(() => [
+  { value: '', label: '全部' },
+  ...modelOptions.value.map((m) => ({ value: m, label: m })),
+])
+
+const upstreamModelSelectOptions = computed(() => [
+  { value: '', label: '全部' },
+  ...upstreamModelOptions.value.map((u) => ({ value: u, label: u })),
+])
+
 const rangeOptions: { value: OverviewRange; label: string }[] = [
   { value: '1d', label: '24 小时' },
   { value: '7d', label: '7 天' },
@@ -857,52 +891,31 @@ function formatCurrencyCompact(v: number, code: string) {
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">货币</span>
-        <Select v-model="overviewCurrencyValue" size="sm">
-          <option value="">跟随设置</option>
-          <option value="original">原始货币</option>
-          <option v-for="r in overviewCurrencyRates" :key="r.code" :value="r.code">
-            {{ r.code }} {{ r.symbol }} · {{ r.name }}
-          </option>
-        </Select>
+        <Select v-model="overviewCurrencyValue" size="sm" :options="overviewCurrencyOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">密钥</span>
-        <Select v-model.number="filters.apiKeyId" size="sm">
-          <option :value="0">全部</option>
-          <option v-for="k in apiKeys" :key="k.id" :value="k.id">{{ k.name }}</option>
-        </Select>
+        <Select v-model="filters.apiKeyId" size="sm" :options="apiKeyOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
           >请求模型</span
         >
-        <Select v-model="filters.model" size="sm">
-          <option value="">全部</option>
-          <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
-        </Select>
+        <Select v-model="filters.model" size="sm" :options="modelSelectOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
           >上游模型</span
         >
-        <Select v-model="filters.upstreamModel" size="sm">
-          <option value="">全部</option>
-          <option v-for="u in upstreamModelOptions" :key="u" :value="u">{{ u }}</option>
-        </Select>
+        <Select v-model="filters.upstreamModel" size="sm" :options="upstreamModelSelectOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">渠道</span>
-        <Select v-model.number="filters.providerId" size="sm">
-          <option :value="0">全部</option>
-          <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </Select>
+        <Select v-model="filters.providerId" size="sm" :options="providerOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">项目</span>
-        <Select v-model.number="filters.projectId" size="sm">
-          <option :value="0">全部</option>
-          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </Select>
+        <Select v-model="filters.projectId" size="sm" :options="projectOptions" />
       </div>
       <Button
         variant="ghost"

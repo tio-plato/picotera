@@ -69,14 +69,46 @@ const userMessage = ref('Hello!')
 const streamMode = ref<'stream' | 'once'>('stream')
 
 // --- direct mode selection ---
-const directProviderId = ref<number | undefined>(undefined)
+const directProviderId = ref(0)
 const directEndpointPath = ref('')
 
 // --- gateway mode selection ---
-const gatewayApiKeyId = ref<number | undefined>(undefined)
+const gatewayApiKeyId = ref(0)
 const gatewayTargetKind = ref<GatewayTargetKind>('unified')
 const gatewayUnifiedFormat = ref<TestFormat>('anthropicMessages')
 const gatewayEndpointPath = ref('')
+
+const providerOptions = computed(() => [
+  { value: 0, label: '请选择渠道', disabled: true },
+  ...providers.value.map((p) => ({
+    value: p.id,
+    label: `${p.name} (#${p.id})${p.disabled ? ' — 已禁用' : ''}`,
+  })),
+])
+
+const directEndpointOptions = computed(() => [
+  { value: '', label: '请选择端点', disabled: true },
+  ...providerEndpoints.value.map((pe) => ({
+    value: pe.endpointPath,
+    label: `${pe.endpointPath} → ${pe.upstreamUrl}`,
+  })),
+])
+
+const apiKeyOptions = computed(() => [
+  { value: 0, label: '请选择 API Key', disabled: true },
+  ...apiKeys.value.map((k) => ({
+    value: k.id,
+    label: `${k.name} (#${k.id})${k.disabled ? ' — 已禁用' : ''}`,
+  })),
+])
+
+const endpointPathOptions = computed(() => [
+  { value: '', label: '请选择端点', disabled: true },
+  ...endpoints.value.map((e) => ({
+    value: e.path,
+    label: e.path + (e.name ? ` — ${e.name}` : ''),
+  })),
+])
 
 // path variables (keyed by placeholder name) for whichever target carries {name} tokens
 const pathVars = ref<Record<string, string>>({})
@@ -93,7 +125,9 @@ const apiKeysQuery = useQuery({ queryKey: queryKeys.apiKeys.all, queryFn: listAp
 const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listModels })
 
 const providerEndpointsQuery = useQuery({
-  queryKey: computed(() => queryKeys.providerEndpoints.list({ providerId: directProviderId.value })),
+  queryKey: computed(() =>
+    queryKeys.providerEndpoints.list({ providerId: directProviderId.value }),
+  ),
   queryFn: () => listProviderEndpoints(directProviderId.value),
   enabled: computed(() => directProviderId.value !== undefined),
 })
@@ -193,7 +227,8 @@ function rebuildBody() {
 const activePath = computed(() => {
   if (mode.value === 'direct') return directEndpointPath.value
   if (gatewayTargetKind.value === 'path') return gatewayEndpointPath.value
-  if (isGeminiFormat(gatewayUnifiedFormat.value)) return unifiedRoutePath(gatewayUnifiedFormat.value)
+  if (isGeminiFormat(gatewayUnifiedFormat.value))
+    return unifiedRoutePath(gatewayUnifiedFormat.value)
   return ''
 })
 
@@ -255,9 +290,9 @@ const canSubmit = computed(() => {
   if (!baseFormat.value) return false
   if (!model.value.trim()) return false
   if (mode.value === 'direct') {
-    return directProviderId.value !== undefined && !!directEndpointPath.value
+    return directProviderId.value !== 0 && !!directEndpointPath.value
   }
-  if (gatewayApiKeyId.value === undefined) return false
+  if (gatewayApiKeyId.value === 0) return false
   if (gatewayTargetKind.value === 'path') return !!gatewayEndpointPath.value
   return true
 })
@@ -279,7 +314,9 @@ const aggregated = computed(() => {
   return aggregateResponse(baseFormat.value, rawResponse.value, effectiveStream.value)
 })
 
-const replyHtml = computed(() => (aggregated.value.reply ? renderMarkdown(aggregated.value.reply) : ''))
+const replyHtml = computed(() =>
+  aggregated.value.reply ? renderMarkdown(aggregated.value.reply) : '',
+)
 
 function resetResponse() {
   statusCode.value = null
@@ -340,7 +377,12 @@ async function send() {
         gatewayTargetKind.value === 'unified'
           ? unifiedRoutePath(gatewayUnifiedFormat.value)
           : gatewayEndpointPath.value
-      res = await postGatewayTest(substitutePath(targetPath), selectedApiKey.value!.key, body, controller.signal)
+      res = await postGatewayTest(
+        substitutePath(targetPath),
+        selectedApiKey.value!.key,
+        body,
+        controller.signal,
+      )
     }
 
     statusCode.value = res.status
@@ -397,33 +439,22 @@ watch(mode, () => {
       <!-- direct mode targets -->
       <template v-if="mode === 'direct'">
         <Field label="渠道">
-          <Select v-model.number="directProviderId">
-            <option :value="undefined" disabled>请选择渠道</option>
-            <option v-for="p in providers" :key="p.id" :value="p.id">
-              {{ p.name }} (#{{ p.id }}){{ p.disabled ? ' — 已禁用' : '' }}
-            </option>
-          </Select>
+          <Select v-model="directProviderId" :options="providerOptions" />
         </Field>
 
         <Field label="端点绑定">
-          <Select v-model="directEndpointPath" :disabled="directProviderId === undefined">
-            <option value="" disabled>请选择端点</option>
-            <option v-for="pe in providerEndpoints" :key="pe.endpointPath" :value="pe.endpointPath">
-              {{ pe.endpointPath }} → {{ pe.upstreamUrl }}
-            </option>
-          </Select>
+          <Select
+            v-model="directEndpointPath"
+            :options="directEndpointOptions"
+            :disabled="directProviderId === 0"
+          />
         </Field>
       </template>
 
       <!-- gateway mode targets -->
       <template v-else>
         <Field label="API Key">
-          <Select v-model.number="gatewayApiKeyId">
-            <option :value="undefined" disabled>请选择 API Key</option>
-            <option v-for="k in apiKeys" :key="k.id" :value="k.id">
-              {{ k.name }} (#{{ k.id }}){{ k.disabled ? ' — 已禁用' : '' }}
-            </option>
-          </Select>
+          <Select v-model="gatewayApiKeyId" :options="apiKeyOptions" />
         </Field>
 
         <Field label="目标类型" as="div">
@@ -431,19 +462,10 @@ watch(mode, () => {
         </Field>
 
         <Field v-if="gatewayTargetKind === 'unified'" label="统一路由格式">
-          <Select v-model="gatewayUnifiedFormat">
-            <option v-for="f in UNIFIED_FORMATS" :key="f.value" :value="f.value">
-              {{ f.label }}
-            </option>
-          </Select>
+          <Select v-model="gatewayUnifiedFormat" :options="UNIFIED_FORMATS" />
         </Field>
         <Field v-else label="端点路径">
-          <Select v-model="gatewayEndpointPath">
-            <option value="" disabled>请选择端点</option>
-            <option v-for="e in endpoints" :key="e.path" :value="e.path">
-              {{ e.path }}{{ e.name ? ` — ${e.name}` : '' }}
-            </option>
-          </Select>
+          <Select v-model="gatewayEndpointPath" :options="endpointPathOptions" />
         </Field>
       </template>
 
@@ -466,7 +488,8 @@ watch(mode, () => {
         v-if="formatUnsupported"
         class="border border-warn/30 bg-warn/5 text-warn text-xs rounded-md px-3 py-2"
       >
-        所选端点格式不支持测试（仅支持 Anthropic Messages / OpenAI Chat / OpenAI Responses / Gemini）。
+        所选端点格式不支持测试（仅支持 Anthropic Messages / OpenAI Chat / OpenAI Responses /
+        Gemini）。
       </div>
 
       <!-- structured fields -->

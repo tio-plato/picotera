@@ -74,6 +74,15 @@ const availableEndpoints = computed(() =>
   ),
 )
 
+const endpointPathOptions = computed(() => [
+  {
+    value: '',
+    label: availableEndpoints.value.length ? '选择端点' : '该渠道暂无可绑定端点',
+    disabled: true,
+  },
+  ...availableEndpoints.value.map((e) => ({ value: e.path, label: `${e.path} — ${e.name}` })),
+])
+
 function guessUpstreamUrl(endpointPath: string) {
   if (!endpointPath) return ''
 
@@ -88,10 +97,6 @@ function guessUpstreamUrl(endpointPath: string) {
     shortestMatchedBinding.upstreamUrl.length - shortestMatchedBinding.endpointPath.length,
   )
   return `${prefix}${endpointPath}`
-}
-
-function onAddEndpointPathChange() {
-  form.value.upstreamUrl = guessUpstreamUrl(form.value.endpointPath)
 }
 
 const upsertMutation = useMutation({
@@ -110,6 +115,13 @@ watch(
     form.value.upstreamUrl = ''
     form.value.credentialsResolver = 'unknown'
     editingPath.value = null
+  },
+)
+
+watch(
+  () => form.value.endpointPath,
+  (path) => {
+    form.value.upstreamUrl = guessUpstreamUrl(path)
   },
 )
 
@@ -294,12 +306,9 @@ function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
                 <Select
                   v-model="editDraft.credentialsResolver"
                   size="sm"
+                  :options="RESOLVER_OPTIONS"
                   @keydown="onEditKeydown($event, pe)"
-                >
-                  <option v-for="opt in RESOLVER_OPTIONS" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </option>
-                </Select>
+                />
               </Field>
             </div>
           </template>
@@ -316,16 +325,9 @@ function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
           <Select
             v-model="form.endpointPath"
             size="sm"
+            :options="endpointPathOptions"
             :disabled="!availableEndpoints.length"
-            @change="onAddEndpointPathChange"
-          >
-            <option value="" disabled>
-              {{ availableEndpoints.length ? '选择端点' : '该渠道暂无可绑定端点' }}
-            </option>
-            <option v-for="e in availableEndpoints" :key="e.path" :value="e.path">
-              {{ e.path }} — {{ e.name }}
-            </option>
-          </Select>
+          />
         </Field>
         <Field label="上游 URL">
           <Input
@@ -339,12 +341,9 @@ function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
           <Select
             v-model="form.credentialsResolver"
             size="sm"
+            :options="RESOLVER_OPTIONS"
             :disabled="!availableEndpoints.length"
-          >
-            <option v-for="opt in RESOLVER_OPTIONS" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </option>
-          </Select>
+          />
         </Field>
         <div class="flex justify-end">
           <Button
