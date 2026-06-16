@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
+import { useQueryClient } from '@tanstack/vue-query'
 import PreferencesMenu from '@/components/PreferencesMenu.vue'
 import { useAppTitle } from '@/composables/useAppTitle'
 import Icon from '@/ui/icons/Icon.vue'
 import type { IconName } from '@/ui/icons/paths'
 
 const route = useRoute()
+const queryClient = useQueryClient()
 const { appTitle } = useAppTitle()
+const refreshing = ref(false)
 const activeRouteName = computed(() => {
   if (route.name === 'requestDetail') return 'requests'
   return route.name
@@ -94,8 +97,23 @@ const nav: { name: string; label: string; icon: IconName }[] = [
       </RouterLink>
     </nav>
 
-    <div class="px-3.5 pt-2.5 pb-3 border-t border-line flex items-center justify-between gap-2">
+    <div class="px-3.5 pt-2.5 pb-3 border-t border-line flex items-center gap-2">
       <PreferencesMenu />
+      <button
+        type="button"
+        aria-label="刷新"
+        title="刷新"
+        :disabled="refreshing"
+        class="inline-flex items-center justify-center w-7 h-7 p-0 bg-transparent text-ink-muted border border-transparent rounded-md cursor-pointer transition-colors hover:bg-sidebar-hover hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"
+        :class="refreshing ? 'animate-spin' : ''"
+        @click="async () => {
+          refreshing = true
+          await queryClient.invalidateQueries()
+          refreshing = false
+        }"
+      >
+        <Icon name="refresh" :size="14" />
+      </button>
     </div>
   </aside>
 </template>
