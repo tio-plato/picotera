@@ -21,7 +21,7 @@ const currencyValue = computed({
 
 const currencyOptions = computed(() => [
   { value: '', label: '原始货币' },
-  ...rates.value.map((r) => ({ value: r.code, label: `${r.code} ${r.symbol} · ${r.name}` })),
+  ...rates.value.map((r) => ({ value: r.code, label: `${r.code} ${r.symbol}`, hint: r.name })),
 ])
 const open = ref(false)
 const triggerRef = useTemplateRef<HTMLElement>('triggerRef')

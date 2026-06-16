@@ -124,7 +124,8 @@ const overviewCurrencyOptions = computed(() => [
   { value: 'original', label: '原始货币' },
   ...overviewCurrencyRates.value.map((r) => ({
     value: r.code,
-    label: `${r.code} ${r.symbol} · ${r.name}`,
+    label: `${r.code} ${r.symbol}`,
+    hint: r.name,
   })),
 ])
 

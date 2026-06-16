@@ -50,7 +50,8 @@ const pathOptions = computed(() => [
   { value: '', label: '请选择端点', disabled: true },
   ...endpoints.value.map((e) => ({
     value: e.path,
-    label: e.path + (e.name ? ` — ${e.name}` : ''),
+    label: e.name || e.path,
+    hint: e.name ? e.path : undefined,
   })),
 ])
 
@@ -58,7 +59,8 @@ const apiKeyOptions = computed(() => [
   { value: 0, label: '请选择 API Key', disabled: true },
   ...apiKeys.value.map((k) => ({
     value: k.id,
-    label: `${k.name} (#${k.id})${k.disabled ? ' — 已禁用' : ''}`,
+    label: k.name,
+    hint: `#${k.id}${k.disabled ? ' · 已禁用' : ''}`,
   })),
 ])
 

@@ -82,7 +82,8 @@ const providerOptions = computed(() => [
   { value: 0, label: '请选择渠道', disabled: true },
   ...providers.value.map((p) => ({
     value: p.id,
-    label: `${p.name} (#${p.id})${p.disabled ? ' — 已禁用' : ''}`,
+    label: p.name,
+    hint: `#${p.id}${p.disabled ? ' · 已禁用' : ''}`,
   })),
 ])
 
@@ -90,7 +91,8 @@ const directEndpointOptions = computed(() => [
   { value: '', label: '请选择端点', disabled: true },
   ...providerEndpoints.value.map((pe) => ({
     value: pe.endpointPath,
-    label: `${pe.endpointPath} → ${pe.upstreamUrl}`,
+    label: pe.endpointPath,
+    hint: pe.upstreamUrl,
   })),
 ])
 
@@ -98,7 +100,8 @@ const apiKeyOptions = computed(() => [
   { value: 0, label: '请选择 API Key', disabled: true },
   ...apiKeys.value.map((k) => ({
     value: k.id,
-    label: `${k.name} (#${k.id})${k.disabled ? ' — 已禁用' : ''}`,
+    label: k.name,
+    hint: `#${k.id}${k.disabled ? ' · 已禁用' : ''}`,
   })),
 ])
 
@@ -106,7 +109,8 @@ const endpointPathOptions = computed(() => [
   { value: '', label: '请选择端点', disabled: true },
   ...endpoints.value.map((e) => ({
     value: e.path,
-    label: e.path + (e.name ? ` — ${e.name}` : ''),
+    label: e.name || e.path,
+    hint: e.name ? e.path : undefined,
   })),
 ])
 

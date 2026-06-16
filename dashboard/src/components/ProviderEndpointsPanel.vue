@@ -80,7 +80,11 @@ const endpointPathOptions = computed(() => [
     label: availableEndpoints.value.length ? '选择端点' : '该渠道暂无可绑定端点',
     disabled: true,
   },
-  ...availableEndpoints.value.map((e) => ({ value: e.path, label: `${e.path} — ${e.name}` })),
+  ...availableEndpoints.value.map((e) => ({
+    value: e.path,
+    label: e.name || e.path,
+    hint: e.name ? e.path : undefined,
+  })),
 ])
 
 function guessUpstreamUrl(endpointPath: string) {
