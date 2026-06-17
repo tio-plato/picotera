@@ -299,6 +299,7 @@ func applyCredentials(req *http.Request, credentials string, resolver int32, sou
 //     to bypass http.Header's MIME normalization, which would mangle the
 //     underscore)
 //  3. x-session-affinity
+//  4. x-session-id
 func extractParentSpanID(h http.Header) string {
 	if v := strings.TrimSpace(h.Get("X-Claude-Code-Session-Id")); v != "" {
 		return v
@@ -314,6 +315,9 @@ func extractParentSpanID(h http.Header) string {
 		}
 	}
 	if v := strings.TrimSpace(h.Get("x-session-affinity")); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(h.Get("x-session-id")); v != "" {
 		return v
 	}
 	return ""
