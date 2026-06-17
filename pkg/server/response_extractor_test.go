@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"picotera/pkg/db"
+
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
@@ -664,6 +666,40 @@ func TestResponseExtractor_SSE_InferredModel_FallsBackToModelField(t *testing.T)
 	m := extractor.Metrics()
 	if m.InferredModel != "fallback-model" {
 		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "fallback-model")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_MessageModelField(t *testing.T) {
+	events := []string{
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-4-8\",\"id\":\"msg_01Pfr7Jo77eNMGoFEumXYh9t\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "claude-opus-4-8" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "claude-opus-4-8")
+	}
+	if m.InferredModelSource != db.InferredModelSourceResponse {
+		t.Errorf("InferredModelSource: got %d, want response", m.InferredModelSource)
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_TopLevelModelWins(t *testing.T) {
+	events := []string{
+		"data: {\"model\":\"top-level-model\"}\n\n",
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"message-model\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "top-level-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "top-level-model")
 	}
 }
 

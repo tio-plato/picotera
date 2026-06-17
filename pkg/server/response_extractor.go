@@ -394,13 +394,16 @@ func (e *ResponseExtractor) inferProvider(payload string) {
 	}
 }
 
-// inferModelField records the first non-empty top-level "model" field seen.
+// inferModelField records the first non-empty "model" or "message.model" field seen.
 func (e *ResponseExtractor) inferModelField(payload string) {
 	if e.respModel != "" {
 		return
 	}
-	if v := gjson.Get(payload, "model"); v.Exists() && v.Type == gjson.String && v.String() != "" {
-		e.respModel = v.String()
+	for _, path := range []string{"model", "message.model"} {
+		if v := gjson.Get(payload, path); v.Exists() && v.Type == gjson.String && v.String() != "" {
+			e.respModel = v.String()
+			return
+		}
 	}
 }
 
