@@ -107,7 +107,7 @@ const fontSizes: { value: FontSize; label: string }[] = [
     class="inline-flex items-center justify-center w-7 h-7 p-0 bg-transparent text-ink-muted border border-transparent rounded-md cursor-pointer transition-colors hover:bg-sidebar-hover hover:text-ink aria-expanded:bg-sidebar-active-bg aria-expanded:text-sidebar-active-text aria-expanded:border-line"
     @click="toggle"
   >
-    <Icon name="brush" :size="14" />
+    <Icon name="palette" :size="14" />
   </button>
 
   <Teleport to="body">
