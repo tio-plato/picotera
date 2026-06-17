@@ -17,6 +17,7 @@ import (
 	"picotera/pkg/logx"
 	"picotera/pkg/server/static"
 	"syscall"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -44,6 +45,34 @@ type Server struct {
 	projectExtractor *projectExtractor
 	llmBridge        llmbridge.Bridge
 	liveRequests     *liveRequestRegistry
+}
+
+// newGatewayTransport builds an HTTP transport for upstream gateway requests
+// with its own http2.ConfigureTransports call so that responseHeaderTimeout is
+// bound to this exact transport (the HTTP/2 transport reads it from its bound
+// *http.Transport — see the nonStreamBase comment in NewServer). HTTP/2
+// keepalive PINGs are enabled so dead connections — especially silently dropped
+// CONNECT proxy tunnels — are detected and evicted instead of being reused,
+// which otherwise surfaces as "http2: timeout awaiting response headers".
+func newGatewayTransport(config *configx.Config, responseHeaderTimeout time.Duration) *http.Transport {
+	t := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   config.GatewayDialTimeout,
+			KeepAlive: config.GatewayDialKeepAlive,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       config.GatewayIdleConnTimeout,
+		TLSHandshakeTimeout:   config.GatewayTLSHandshakeTimeout,
+		ExpectContinueTimeout: config.GatewayExpectContinueTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
+	}
+	if h2, err := http2.ConfigureTransports(t); err == nil {
+		h2.ReadIdleTimeout = config.GatewayHTTP2ReadIdleTimeout
+		h2.PingTimeout = config.GatewayHTTP2PingTimeout
+	}
+	return t
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -81,37 +110,23 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	logx.WithContext(ctx).Info("connected to database")
 
-	baseTransport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   config.GatewayDialTimeout,
-			KeepAlive: config.GatewayDialKeepAlive,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       config.GatewayIdleConnTimeout,
-		TLSHandshakeTimeout:   config.GatewayTLSHandshakeTimeout,
-		ExpectContinueTimeout: config.GatewayExpectContinueTimeout,
-		ResponseHeaderTimeout: config.GatewayResponseHeaderTimeout,
-	}
-	// Enable HTTP/2 keepalive PINGs so dead connections — especially silently
-	// dropped CONNECT proxy tunnels — are detected and evicted instead of being
-	// reused, which otherwise surfaces as "http2: timeout awaiting response
-	// headers". Without ReadIdleTimeout the implicit h2 transport sends no PINGs.
-	if h2, err := http2.ConfigureTransports(baseTransport); err == nil {
-		h2.ReadIdleTimeout = config.GatewayHTTP2ReadIdleTimeout
-		h2.PingTimeout = config.GatewayHTTP2PingTimeout
-	}
+	baseTransport := newGatewayTransport(config, config.GatewayResponseHeaderTimeout)
 	httpClient := &http.Client{Transport: baseTransport}
 	// Non-streaming requests get a more lenient header timeout: the upstream
-	// may buffer the whole response and return headers late. Clone after
-	// ConfigureTransports so the clone inherits the HTTP/2 config, then raise
-	// the header timeout to the global read timeout (a hard upper bound, not
-	// unlimited). ResponseHeaderTimeout is a connection-level transport field
-	// and cannot be overridden per request, so the cache keys on the streaming
-	// flag and keeps both bases.
-	nonStreamBase := baseTransport.Clone()
-	nonStreamBase.ResponseHeaderTimeout = config.GatewayReadTimeout
+	// may buffer the whole response and return headers late, so raise the header
+	// timeout to the global read timeout (a hard upper bound, not unlimited).
+	//
+	// This MUST be a transport built by its own http2.ConfigureTransports call,
+	// not baseTransport.Clone(): under HTTP/2 the response-header timeout is read
+	// from the *http.Transport bound to the *http2.Transport at ConfigureTransports
+	// time (see x/net/http2 responseHeaderTimeout -> cc.t.t1.ResponseHeaderTimeout).
+	// Clone() only shallow-copies TLSNextProto, whose "h2" entry still points at
+	// baseTransport's http2.Transport — so a cloned transport's raised
+	// ResponseHeaderTimeout is ignored for h2 upstreams and they'd still trip the
+	// 91s header timeout. ResponseHeaderTimeout is a connection-level transport
+	// field and cannot be overridden per request, so the cache keys on the
+	// streaming flag and keeps both bases.
+	nonStreamBase := newGatewayTransport(config, config.GatewayReadTimeout)
 	proxyCache := newProxyTransportCache(baseTransport, nonStreamBase)
 
 	sink, err := artifacts.NewSink(config.S3, logx.WithContext(ctx))
