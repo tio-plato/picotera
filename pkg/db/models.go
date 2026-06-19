@@ -18,6 +18,14 @@ type ApiKey struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
 }
 
+type AppUser struct {
+	ID          int64              `json:"id"`
+	DisplayName string             `json:"displayName"`
+	IsAdmin     bool               `json:"isAdmin"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type Endpoint struct {
 	Path                string `json:"path"`
 	Name                string `json:"name"`
@@ -155,4 +163,12 @@ type Trace struct {
 	FirstRequestAt pgtype.Timestamp `json:"firstRequestAt"`
 	LastRequestAt  pgtype.Timestamp `json:"lastRequestAt"`
 	UpdatedAt      pgtype.Timestamp `json:"updatedAt"`
+}
+
+type UserIdentity struct {
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"userId"`
+	Provider  string             `json:"provider"`
+	Identity  string             `json:"identity"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
 }

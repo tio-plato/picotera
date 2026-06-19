@@ -75,13 +75,16 @@ type AuthConfig struct {
 
 ### 中间件
 
-`auth.Middleware(resolver)` 返回 chi 中间件，挂载在 `router.Use(decompressRequest)` 之后、所有路由注册之前。逻辑：
+`auth.Middleware(resolver)` 返回 chi 中间件，**不**在中间件内部匹配路径前缀，而是通过路由分组把它精确挂在 `/api/picotera` 这组路由上：
 
-- 仅对 `r.URL.Path` 以 `/api/picotera` 为前缀的请求做鉴权；其余路径（网关 catch-all、`/api/unified`、静态资源）直接放行。
-- 解析成功：将 `*db.AppUser` 写入 request context（`auth.WithUser`），放行。
-- 解析失败：写 `401` JSON（`{"message":"unauthorized"}`），不进入 handler。
+- `NewServer` 在 `router.Use(decompressRequest)` 之后，用 `mgmtRouter := router.With(auth.Middleware(resolver))` 派生一个携带该中间件的内联子路由（chi 的 `With` 与父路由共享路由树，只对在其上注册的路由套用中间件）。
+- 所有 `/api/picotera` 路由都注册在 `mgmtRouter` 上：`humachi.New(mgmtRouter, ...)` 承载全部 Huma 管理操作（含 Huma 自带的 `/openapi.*`、`/docs`），`registerEndpoints` 里的 `test/direct` 也改挂 `mgmtRouter`。
+- 网关 catch-all（`router.Mount("/", …)`）与 `/api/unified` 仍注册在裸 `router` 上，不经过该中间件，按 API Key 鉴权。
+- 中间件自身逻辑只剩鉴权：解析成功把 `*db.AppUser` 写入 request context（`auth.WithUser`）放行；失败写 `401` JSON（`{"message":"unauthorized"}`）短路。
 
 humachi 把 request context 透传给 Huma handler 的 `ctx`，因此 `me` handler 通过 `auth.UserFromContext(ctx)` 取当前用户，无需额外管线。
+
+> 由于 Huma 自带的 `/openapi.*` 与 `/docs` 也随管理 API 注册在 `mgmtRouter` 上，它们同样需要用户鉴权（此前的前缀白名单写法会放行这些根路径）。控制台从仓库内置的 `openapi.yaml` 生成类型，不依赖运行时这些端点，故无影响。
 
 > 中间件用闭包构造（`auth.Middleware(resolver)`），`resolver` 持有 `queries` 与 `AuthConfig`，在 `NewServer` 构建 router 阶段即可注册，不依赖尚未构建完成的 `*Server`。
 

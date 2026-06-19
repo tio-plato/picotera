@@ -112,19 +112,29 @@ Hooks are run as priority-sorted waterfalls (higher priority first); each tap ma
 
 ### Unified generation routes
 
-Five chi routes are registered as runtime constants in `server.go` BEFORE the catch-all gateway mount and back the cross-format dispatch:
+Five chi routes are registered as runtime constants in `server.go` BEFORE the catch-all gateway mount and back the cross-format dispatch. They live under `/api/unified` (NOT `/api/picotera`) so the user-auth middleware — which guards only the `/api/picotera` prefix — leaves them open; like the gateway they authenticate via API key:
 
-- `POST /api/picotera/v1/messages` — Anthropic Messages source.
-- `POST /api/picotera/v1/responses` — OpenAI Responses source.
-- `POST /api/picotera/v1/chat/completions` — OpenAI Chat Completions source.
-- `POST /api/picotera/v1beta/models/{model}:generateContent` — Gemini GenerateContent source (non-stream).
-- `POST /api/picotera/v1beta/models/{model}:streamGenerateContent` — Gemini GenerateContent source (stream).
+- `POST /api/unified/v1/messages` — Anthropic Messages source.
+- `POST /api/unified/v1/responses` — OpenAI Responses source.
+- `POST /api/unified/v1/chat/completions` — OpenAI Chat Completions source.
+- `POST /api/unified/v1beta/models/{model}:generateContent` — Gemini GenerateContent source (non-stream).
+- `POST /api/unified/v1beta/models/{model}:streamGenerateContent` — Gemini GenerateContent source (stream).
 
 These are NOT rows in the `endpoint` table — operators only configure the underlying upstream `endpoint` rows (`anthropicMessages`, `openaiChatCompletions`, `openaiResponses`, `geminiGenerateContent`, `geminiStreamGenerateContent`). The unified handler (`pkg/server/handle_unified_gateway.go`) collects every candidate MPE that supports the requested model+stream tuple via `GetProvidersByEndpointTypesAndModel`, runs all five JS hooks (same shapes as the path-based gateway), and per attempt: if the chosen upstream's `endpoint_type` differs from the source format, runs the body through `pkg/llmbridge/` **before** `rewriteRequest` (the hook sees and mutates the upstream-format body) and the response back before writing to the client. Identity (1:1) attempts are byte-for-byte passthrough so token/TTFT extraction is unaffected.
 
+### User authentication (`pkg/auth/`)
+
+A chi middleware (`auth.Middleware`) authenticates the internal management API. It does **not** match a path prefix internally; instead `server.go` derives `mgmtRouter := router.With(auth.Middleware(...))` (after `decompressRequest`) and registers every `/api/picotera` route on it — the Huma management operations (`humachi.New(mgmtRouter, ...)`, which also carries Huma's own `/openapi.*` and `/docs`) plus the raw `test/direct` route. The gateway catch-all and `/api/unified` stay on the bare `router` and authenticate via API key; static assets fall through the gateway. (Because Huma's docs routes live on `mgmtRouter` too, they now require auth — the dashboard generates types from the checked-in `openapi.yaml`, so nothing depends on them being open.) Resolution (`auth.Resolver.Resolve`) follows a fixed precedence, no implicit defaults:
+
+1. **single-user-mode** (`PICOTERA_AUTH_SINGLE_USER_MODE=true`) — ignores all headers, fixes identity `(single-user-mode, root)`, and **unconditionally** bootstraps that user as `is_admin=true` (independent of auto-create).
+2. **http-header** (`PICOTERA_AUTH_HEADER_ENABLED=true`, `PICOTERA_AUTH_HEADER_NAME=<header>`) — reads the configured header; empty/missing → 401. Non-empty value is the `identity` under provider `http-header`; unknown identity creates a user only when `PICOTERA_AUTH_AUTO_CREATE_USER=true` (else 401). Startup fails fast if `HEADER_ENABLED` is set with an empty `HEADER_NAME`.
+3. **neither configured** → every `/api/picotera` request is 401.
+
+On success the resolved `*db.AppUser` is stored on the request context (`auth.WithUser`); humachi passes it through so handlers read it via `auth.UserFromContext(ctx)` (see `GET /api/picotera/me`). On failure the middleware writes `401 {"message":"unauthorized"}` directly. Two tables back this (`db/migrations/033_users.sql`): `app_user` and `user_identity` (unique `(provider, identity)`, no FK on `user_id`); auto-create is a single transaction with `ON CONFLICT DO NOTHING` + reread as a concurrency guard. `is_admin` is **not** consulted for any authorization in this phase — it only feeds the `picotera set-admin <user-id>` CLI and the `me` view. No per-resource ownership.
+
 ### Database Schema
 
-Core tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request` (hypertable), `script`, `traces`, `project`. Uses JSONB for flexible fields (provider models, annotations, project paths). Upsert pattern via `ON CONFLICT DO UPDATE`. The `request` hypertable also carries a nullable `project_id` foreign reference (no FK constraint) populated by the project extractor on insert. TimescaleDB continuous aggregates (`request_overview_hourly`, `request_speed_hourly`) power the overview dashboard metrics.
+Core tables: `provider`, `endpoint`, `provider_endpoint`, `model`, `model_provider_endpoint`, `api_key`, `request` (hypertable), `script`, `traces`, `project`, `app_user`, `user_identity`. Uses JSONB for flexible fields (provider models, annotations, project paths). Upsert pattern via `ON CONFLICT DO UPDATE`. The `request` hypertable also carries a nullable `project_id` foreign reference (no FK constraint) populated by the project extractor on insert. TimescaleDB continuous aggregates (`request_overview_hourly`, `request_speed_hourly`) power the overview dashboard metrics.
 
 ## Dashboard
 

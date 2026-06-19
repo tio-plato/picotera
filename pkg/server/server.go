@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"picotera/db/migrations"
 	"picotera/pkg/artifacts"
+	"picotera/pkg/auth"
 	"picotera/pkg/configx"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
@@ -33,6 +34,7 @@ type Server struct {
 	queries          *db.Queries
 	db               *pgxpool.Pool
 	router           *chi.Mux
+	mgmtRouter       chi.Router
 	api              huma.API
 	config           *configx.Config
 	httpClient       *http.Client
@@ -137,7 +139,14 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	router := chi.NewMux()
 	router.Use(decompressRequest)
-	api := humachi.New(router, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
+	// The user-auth middleware guards only the internal management API. Instead
+	// of matching a path prefix inside the middleware, we derive a sub-router
+	// that carries it and register every /api/picotera route on that sub-router
+	// (the Huma management operations below, plus the raw test/direct route in
+	// registerEndpoints). The gateway catch-all and /api/unified stay on the
+	// bare router and authenticate via API key.
+	mgmtRouter := router.With(auth.Middleware(auth.NewResolver(conn, queries, config.Auth)))
+	api := humachi.New(mgmtRouter, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
 
 	kvStore, err := kv.New(config.KV.Driver, kv.WithRedisURL(config.KV.RedisURL))
 	if err != nil {
@@ -170,6 +179,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		queries:          queries,
 		db:               conn,
 		router:           router,
+		mgmtRouter:       mgmtRouter,
 		api:              api,
 		httpClient:       httpClient,
 		proxyCache:       proxyCache,
@@ -254,23 +264,26 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationGetGlobalSetting, s.handleGetGlobalSetting)
 	huma.Register(mgmt, contract.OperationUpsertGlobalSetting, s.handleUpsertGlobalSetting)
 	huma.Register(mgmt, contract.OperationDeleteGlobalSetting, s.handleDeleteGlobalSetting)
+	huma.Register(mgmt, contract.OperationGetMe, s.handleGetMe)
 }
 
 func (s *Server) registerEndpoints() {
 	// Unified generation routes. Registered BEFORE the catch-all gateway
 	// mount so chi resolves them as exact-match handlers, never reaching
 	// endpointRouter.Match. They route to handle_unified_gateway.go.
-	s.router.Post("/api/picotera/v1/messages", s.handleUnifiedGenerate(llmbridge.FormatAnthropicMessages))
-	s.router.Post("/api/picotera/v1/responses", s.handleUnifiedGenerate(llmbridge.FormatOpenAIResponses))
-	s.router.Post("/api/picotera/v1/chat/completions", s.handleUnifiedGenerate(llmbridge.FormatOpenAIChatCompletions))
-	s.router.Post("/api/picotera/v1beta/models/{model}:generateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiGenerateContent))
-	s.router.Post("/api/picotera/v1beta/models/{model}:streamGenerateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiStreamGenerateContent))
+	s.router.Post("/api/unified/v1/messages", s.handleUnifiedGenerate(llmbridge.FormatAnthropicMessages))
+	s.router.Post("/api/unified/v1/responses", s.handleUnifiedGenerate(llmbridge.FormatOpenAIResponses))
+	s.router.Post("/api/unified/v1/chat/completions", s.handleUnifiedGenerate(llmbridge.FormatOpenAIChatCompletions))
+	s.router.Post("/api/unified/v1beta/models/{model}:generateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiGenerateContent))
+	s.router.Post("/api/unified/v1beta/models/{model}:streamGenerateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiStreamGenerateContent))
 
 	// Short-circuit test route: forwards a caller-supplied body straight to a
 	// provider's upstream, bypassing the entire gateway pipeline (no scripts,
 	// no MPE, no logging). Registered before the catch-all mount like the
 	// unified routes; not a Huma operation, so it never enters openapi.yaml.
-	s.router.Post("/api/picotera/test/direct", s.handleTestDirect)
+	// Registered on mgmtRouter so it inherits user auth like the rest of
+	// /api/picotera.
+	s.mgmtRouter.Post("/api/picotera/test/direct", s.handleTestDirect)
 
 	s.router.Mount("/", &gatewayHandler{s})
 }

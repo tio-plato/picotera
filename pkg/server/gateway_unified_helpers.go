@@ -248,7 +248,7 @@ func betterRow(a, b db.GetProvidersByEndpointTypesAndModelRow, srcType int32) bo
 // unifiedStreamArgs bundles the (many) inputs the unified streaming success
 // path needs. Wrapped so the call site stays readable.
 //
-// metaEndpointPath is the unified route path (`/api/picotera/v1/messages` …)
+// metaEndpointPath is the unified route path (`/api/unified/v1/messages` …)
 // — what the meta row should record. upstreamPath is the chosen upstream's
 // configured endpoint.path — what the upstream row should record.
 type unifiedStreamArgs struct {

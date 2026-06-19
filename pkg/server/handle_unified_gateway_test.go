@@ -168,7 +168,7 @@ func TestCandidateEndpointTypes(t *testing.T) {
 
 func TestExtractUnifiedModel_BodyFormats(t *testing.T) {
 	body := []byte(`{"model":"claude-3-5-sonnet","stream":true}`)
-	r := httptest.NewRequest("POST", "/api/picotera/v1/messages", nil)
+	r := httptest.NewRequest("POST", "/api/unified/v1/messages", nil)
 	model, err := extractUnifiedModel(llmbridge.FormatAnthropicMessages, r, body)
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestExtractUnifiedModel_GeminiFromPath(t *testing.T) {
 	// {model} into the URL params.
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("model", "gemini-2.5-pro")
-	r := httptest.NewRequest("POST", "/api/picotera/v1beta/models/gemini-2.5-pro:streamGenerateContent", nil)
+	r := httptest.NewRequest("POST", "/api/unified/v1beta/models/gemini-2.5-pro:streamGenerateContent", nil)
 	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 
 	model, err := extractUnifiedModel(llmbridge.FormatGeminiStreamGenerateContent, r, []byte(`{"contents":[]}`))
@@ -211,7 +211,7 @@ func TestExtractUnifiedModel_GeminiFromPath(t *testing.T) {
 
 func TestDetectStreaming(t *testing.T) {
 	newReq := func(accept ...string) *http.Request {
-		r := httptest.NewRequest("POST", "/api/picotera/v1/messages", nil)
+		r := httptest.NewRequest("POST", "/api/unified/v1/messages", nil)
 		for _, a := range accept {
 			r.Header.Add("Accept", a)
 		}

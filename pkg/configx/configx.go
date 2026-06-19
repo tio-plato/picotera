@@ -32,6 +32,14 @@ type Config struct {
 	LLMBridgePluginPath          string        `mapstructure:"llmbridge_plugin_path"`
 	LLMBridgePluginStartTimeout  time.Duration `mapstructure:"llmbridge_plugin_start_timeout"`
 	HeapDumpDir                  string        `mapstructure:"heap_dump_dir"`
+	Auth                         AuthConfig    `mapstructure:"auth"`
+}
+
+type AuthConfig struct {
+	HeaderEnabled  bool   `mapstructure:"header_enabled"`
+	HeaderName     string `mapstructure:"header_name"`
+	AutoCreateUser bool   `mapstructure:"auto_create_user"`
+	SingleUserMode bool   `mapstructure:"single_user_mode"`
 }
 
 type KVConfig struct {
@@ -91,6 +99,10 @@ func Parse() (*Config, error) {
 
 	bindEnvs(Config{})
 	viper.Unmarshal(&config)
+
+	if config.Auth.HeaderEnabled && config.Auth.HeaderName == "" {
+		return nil, errors.New("auth.header_enabled is set but auth.header_name is empty")
+	}
 
 	return &config, nil
 }

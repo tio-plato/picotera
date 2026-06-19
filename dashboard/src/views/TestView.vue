@@ -261,15 +261,15 @@ function setPathVar(name: string, value: string) {
 function unifiedRoutePath(format: TestFormat): string {
   switch (format) {
     case 'anthropicMessages':
-      return '/api/picotera/v1/messages'
+      return '/api/unified/v1/messages'
     case 'openaiResponses':
-      return '/api/picotera/v1/responses'
+      return '/api/unified/v1/responses'
     case 'openaiChatCompletions':
-      return '/api/picotera/v1/chat/completions'
+      return '/api/unified/v1/chat/completions'
     case 'geminiGenerateContent':
-      return '/api/picotera/v1beta/models/{model}:generateContent'
+      return '/api/unified/v1beta/models/{model}:generateContent'
     case 'geminiStreamGenerateContent':
-      return '/api/picotera/v1beta/models/{model}:streamGenerateContent'
+      return '/api/unified/v1beta/models/{model}:streamGenerateContent'
   }
 }
 

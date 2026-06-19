@@ -57,11 +57,15 @@ type Querier interface {
 	GetProvidersByEndpointTypesAndModel(ctx context.Context, arg GetProvidersByEndpointTypesAndModelParams) ([]GetProvidersByEndpointTypesAndModelRow, error)
 	GetRequest(ctx context.Context, arg GetRequestParams) (Request, error)
 	GetScript(ctx context.Context, id string) (Script, error)
+	GetUserByID(ctx context.Context, id int64) (AppUser, error)
+	GetUserByIdentity(ctx context.Context, arg GetUserByIdentityParams) (AppUser, error)
 	InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error)
 	InsertAutoCreatedProject(ctx context.Context, arg InsertAutoCreatedProjectParams) (Project, error)
 	InsertProject(ctx context.Context, arg InsertProjectParams) (Project, error)
 	InsertRequest(ctx context.Context, arg InsertRequestParams) (pgtype.Timestamp, error)
 	InsertScript(ctx context.Context, arg InsertScriptParams) (Script, error)
+	InsertUser(ctx context.Context, arg InsertUserParams) (AppUser, error)
+	InsertUserIdentity(ctx context.Context, arg InsertUserIdentityParams) (UserIdentity, error)
 	ListApiKeys(ctx context.Context) ([]ApiKey, error)
 	ListAvailableModelNames(ctx context.Context) ([]string, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
@@ -93,6 +97,7 @@ type Querier interface {
 	UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error
 	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
+	UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams) (AppUser, error)
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertExchangeRate(ctx context.Context, arg UpsertExchangeRateParams) (ExchangeRate, error)
 	UpsertGlobalSetting(ctx context.Context, arg UpsertGlobalSettingParams) (GlobalSetting, error)

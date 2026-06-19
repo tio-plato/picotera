@@ -27,6 +27,7 @@ export type CursorFilters = Readonly<{ limit: number; cursor?: string }>
 export type RequestListFilters = RequestsFilters & Partial<CursorFilters>
 
 export const queryKeys = {
+  me: ['me'] as const,
   providers: {
     all: ['providers'] as const,
     detail: (id: number) => ['providers', id] as const,

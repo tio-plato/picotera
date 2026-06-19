@@ -70,7 +70,7 @@ picotera.hooks.rewriteRequest.tap('add-include-usage', function (ctx, pending) {
 
 	f := &gatewayFlow{
 		h: &gatewayHandler{Server: &Server{llmBridge: realBridge{}}},
-		r: httptest.NewRequest("POST", "/api/picotera/v1/responses", nil),
+		r: httptest.NewRequest("POST", "/api/unified/v1/responses", nil),
 		config: gatewayFlowConfig{
 			Kind:           gatewayRouteUnified,
 			SourceFormat:   llmbridge.FormatOpenAIResponses,

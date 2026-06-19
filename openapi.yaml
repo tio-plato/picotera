@@ -451,6 +451,27 @@ components:
       required:
         - candidates
       type: object
+    MeView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/MeView.json
+          format: uri
+          readOnly: true
+          type: string
+        displayName:
+          type: string
+        id:
+          format: int64
+          type: integer
+        isAdmin:
+          type: boolean
+      required:
+        - id
+        - displayName
+        - isAdmin
+      type: object
     MergeProjectRequestBody:
       additionalProperties: false
       properties:
@@ -2030,6 +2051,25 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Create or update a KV entry
+  /api/picotera/me:
+    get:
+      operationId: getMe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get current user
+      tags:
+        - User
   /api/picotera/models:
     get:
       operationId: listModels

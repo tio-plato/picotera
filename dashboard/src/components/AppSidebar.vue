@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
-import { useQueryClient } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import PreferencesMenu from '@/components/PreferencesMenu.vue'
 import { useAppTitle } from '@/composables/useAppTitle'
+import { fetchMe } from '@/api/client'
+import { queryKeys } from '@/api/queryKeys'
 import Icon from '@/ui/icons/Icon.vue'
 import type { IconName } from '@/ui/icons/paths'
 
 const route = useRoute()
 const queryClient = useQueryClient()
 const { appTitle } = useAppTitle()
+
+const { data: me } = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe })
 const refreshing = ref(false)
 const activeRouteName = computed(() => {
   if (route.name === 'requestDetail') return 'requests'
@@ -98,13 +102,18 @@ const nav: { name: string; label: string; icon: IconName }[] = [
     </nav>
 
     <div class="px-3.5 pt-2.5 pb-3 border-t border-line flex items-center gap-2">
+      <span
+        class="flex-1 min-w-0 truncate text-sm text-ink-muted"
+        :title="me?.displayName ?? ''"
+        >{{ me?.displayName ?? '' }}</span
+      >
       <PreferencesMenu />
       <button
         type="button"
         aria-label="刷新"
         title="刷新"
         :disabled="refreshing"
-        class="inline-flex items-center justify-center w-7 h-7 p-0 bg-transparent text-ink-muted border border-transparent rounded-md cursor-pointer transition-colors hover:bg-sidebar-hover hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"
+        class="shrink-0 inline-flex items-center justify-center w-7 h-7 p-0 bg-transparent text-ink-muted border border-transparent rounded-md cursor-pointer transition-colors hover:bg-sidebar-hover hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"
         :class="refreshing ? 'animate-spin' : ''"
         @click="async () => {
           refreshing = true

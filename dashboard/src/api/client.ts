@@ -10,6 +10,7 @@ import type {
   GlobalSettingView,
   KvEntryView,
   KvMutateBody,
+  MeView,
   ModelView,
   OverviewDimension,
   OverviewDistributionView,
@@ -432,6 +433,12 @@ export async function deleteGlobalSetting(key: string): Promise<void> {
 
 export function invalidateGlobalSettings(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.globalSettings.all })
+}
+
+export async function fetchMe(): Promise<MeView> {
+  const { data, error } = await api.GET('/api/picotera/me')
+  if (error) fail(error, '加载用户信息失败')
+  return data
 }
 
 function overviewQuery(filters: OverviewFilters) {

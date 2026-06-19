@@ -501,15 +501,15 @@ func simulateFormatFromString(s string) (llmbridge.Format, error) {
 func unifiedRoutePath(f llmbridge.Format) string {
 	switch f {
 	case llmbridge.FormatAnthropicMessages:
-		return "/api/picotera/v1/messages"
+		return "/api/unified/v1/messages"
 	case llmbridge.FormatOpenAIResponses:
-		return "/api/picotera/v1/responses"
+		return "/api/unified/v1/responses"
 	case llmbridge.FormatOpenAIChatCompletions:
-		return "/api/picotera/v1/chat/completions"
+		return "/api/unified/v1/chat/completions"
 	case llmbridge.FormatGeminiGenerateContent:
-		return "/api/picotera/v1beta/models/{model}:generateContent"
+		return "/api/unified/v1beta/models/{model}:generateContent"
 	case llmbridge.FormatGeminiStreamGenerateContent:
-		return "/api/picotera/v1beta/models/{model}:streamGenerateContent"
+		return "/api/unified/v1beta/models/{model}:streamGenerateContent"
 	default:
 		return ""
 	}

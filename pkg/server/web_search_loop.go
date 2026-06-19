@@ -12,7 +12,7 @@ import (
 )
 
 // buildWebSearchSubBody constructs the body for the next self-call round to
-// /api/picotera/v1/messages. originalBody still carries the original
+// /api/unified/v1/messages. originalBody still carries the original
 // web_search_2025xxxx / web_search_20260209 tools and any server_tool_use /
 // web_search_tool_result history from the client. accumulatedContent is the
 // Anthropic-native content blocks produced so far (including server_tool_use +
@@ -154,7 +154,7 @@ func mergeUsageBytes(outer, sub []byte) []byte {
 }
 
 // loopWebSearchNonStream runs the server-side web search loop for non-streaming
-// responses. Each iteration self-calls /api/picotera/v1/messages and merges the
+// responses. Each iteration self-calls /api/unified/v1/messages and merges the
 // result into accumulated.
 func (h *gatewayHandler) loopWebSearchNonStream(ctx context.Context, accumulated []byte, wsCtx *webSearchContext, fwdHeaders http.Header) []byte {
 	round := 1
@@ -173,7 +173,7 @@ func (h *gatewayHandler) loopWebSearchNonStream(ctx context.Context, accumulated
 			return accumulated
 		}
 
-		subReq := httptest.NewRequestWithContext(ctx, "POST", "/api/picotera/v1/messages", bytes.NewReader(subBody))
+		subReq := httptest.NewRequestWithContext(ctx, "POST", "/api/unified/v1/messages", bytes.NewReader(subBody))
 		for k, vs := range fwdHeaders {
 			for _, v := range vs {
 				subReq.Header.Add(k, v)
