@@ -59,6 +59,7 @@ type Querier interface {
 	GetScript(ctx context.Context, id string) (Script, error)
 	GetUserByID(ctx context.Context, id int64) (AppUser, error)
 	GetUserByIdentity(ctx context.Context, arg GetUserByIdentityParams) (AppUser, error)
+	GetUserIdentity(ctx context.Context, arg GetUserIdentityParams) (UserIdentity, error)
 	InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error)
 	InsertAutoCreatedProject(ctx context.Context, arg InsertAutoCreatedProjectParams) (Project, error)
 	InsertProject(ctx context.Context, arg InsertProjectParams) (Project, error)
@@ -98,6 +99,7 @@ type Querier interface {
 	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams) (AppUser, error)
+	UpdateUserIdentityUser(ctx context.Context, arg UpdateUserIdentityUserParams) (UserIdentity, error)
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertExchangeRate(ctx context.Context, arg UpsertExchangeRateParams) (ExchangeRate, error)
 	UpsertGlobalSetting(ctx context.Context, arg UpsertGlobalSettingParams) (GlobalSetting, error)

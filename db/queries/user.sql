@@ -16,5 +16,11 @@ VALUES ($1, $2, $3)
 ON CONFLICT (provider, identity) DO NOTHING
 RETURNING *;
 
+-- name: GetUserIdentity :one
+SELECT * FROM user_identity WHERE provider = $1 AND identity = $2 LIMIT 1;
+
+-- name: UpdateUserIdentityUser :one
+UPDATE user_identity SET user_id = $3 WHERE provider = $1 AND identity = $2 RETURNING *;
+
 -- name: UpdateUserAdmin :one
 UPDATE app_user SET is_admin = $2, updated_at = now() WHERE id = $1 RETURNING *;

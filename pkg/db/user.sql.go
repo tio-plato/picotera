@@ -51,6 +51,28 @@ func (q *Queries) GetUserByIdentity(ctx context.Context, arg GetUserByIdentityPa
 	return i, err
 }
 
+const getUserIdentity = `-- name: GetUserIdentity :one
+SELECT id, user_id, provider, identity, created_at FROM user_identity WHERE provider = $1 AND identity = $2 LIMIT 1
+`
+
+type GetUserIdentityParams struct {
+	Provider string `json:"provider"`
+	Identity string `json:"identity"`
+}
+
+func (q *Queries) GetUserIdentity(ctx context.Context, arg GetUserIdentityParams) (UserIdentity, error) {
+	row := q.db.QueryRow(ctx, getUserIdentity, arg.Provider, arg.Identity)
+	var i UserIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.Identity,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertUser = `-- name: InsertUser :one
 INSERT INTO app_user (display_name, is_admin) VALUES ($1, $2) RETURNING id, display_name, is_admin, created_at, updated_at
 `
@@ -117,6 +139,29 @@ func (q *Queries) UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateUserIdentityUser = `-- name: UpdateUserIdentityUser :one
+UPDATE user_identity SET user_id = $3 WHERE provider = $1 AND identity = $2 RETURNING id, user_id, provider, identity, created_at
+`
+
+type UpdateUserIdentityUserParams struct {
+	Provider string `json:"provider"`
+	Identity string `json:"identity"`
+	UserID   int64  `json:"userId"`
+}
+
+func (q *Queries) UpdateUserIdentityUser(ctx context.Context, arg UpdateUserIdentityUserParams) (UserIdentity, error) {
+	row := q.db.QueryRow(ctx, updateUserIdentityUser, arg.Provider, arg.Identity, arg.UserID)
+	var i UserIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.Identity,
+		&i.CreatedAt,
 	)
 	return i, err
 }
