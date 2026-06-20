@@ -116,11 +116,15 @@ const apiKeyOptions = computed(() => [
 
 const endpointPathOptions = computed(() => [
   { value: '', label: '请选择端点', disabled: true },
-  ...endpoints.value.map((e) => ({
-    value: e.path,
-    label: e.name || e.path,
-    hint: e.name ? e.path : undefined,
-  })),
+  ...endpoints.value
+    // Unified routes have their own dedicated target kind above; the label API
+    // lists them too, so drop them here to avoid duplicate entries.
+    .filter((e) => !e.path.startsWith('/api/unified/'))
+    .map((e) => ({
+      value: e.path,
+      label: e.name || e.path,
+      hint: e.name ? e.path : undefined,
+    })),
 ])
 
 // path variables (keyed by placeholder name) for whichever target carries {name} tokens

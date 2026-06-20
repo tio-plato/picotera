@@ -46,6 +46,16 @@ func (s *Server) handleListEndpointLabels(ctx context.Context, _ *struct{}) (*co
 	for i := range endpoints {
 		labels[i] = contract.ToEndpointLabel(&endpoints[i])
 	}
+	// Unified generation routes are runtime constants, not endpoint-table rows,
+	// so append synthetic labels — otherwise they never show up in the requests
+	// page endpoint filter even though request rows record these paths.
+	for _, r := range unifiedRoutes {
+		labels = append(labels, contract.EndpointLabel{
+			Path:         r.Path,
+			Name:         r.Name,
+			EndpointType: r.Format.String(),
+		})
+	}
 	return &contract.ListEndpointLabelsResponse{Body: labels}, nil
 }
 

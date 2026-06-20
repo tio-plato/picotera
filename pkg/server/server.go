@@ -332,16 +332,11 @@ func (s *Server) registerEndpoints() {
 	// group (the middleware answers it with 204 before reaching the handler).
 	s.router.Group(func(r chi.Router) {
 		r.Use(corsMiddleware)
-		unified := func(pattern string, format llmbridge.Format) {
-			h := s.handleUnifiedGenerate(format)
-			r.Post(pattern, h)
-			r.Options(pattern, h)
+		for _, route := range unifiedRoutes {
+			h := s.handleUnifiedGenerate(route.Format)
+			r.Post(route.Path, h)
+			r.Options(route.Path, h)
 		}
-		unified("/api/unified/v1/messages", llmbridge.FormatAnthropicMessages)
-		unified("/api/unified/v1/responses", llmbridge.FormatOpenAIResponses)
-		unified("/api/unified/v1/chat/completions", llmbridge.FormatOpenAIChatCompletions)
-		unified("/api/unified/v1beta/models/{model}:generateContent", llmbridge.FormatGeminiGenerateContent)
-		unified("/api/unified/v1beta/models/{model}:streamGenerateContent", llmbridge.FormatGeminiStreamGenerateContent)
 	})
 
 	// Short-circuit test route: forwards a caller-supplied body straight to a

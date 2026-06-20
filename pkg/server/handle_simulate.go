@@ -500,25 +500,6 @@ func simulateFormatFromString(s string) (llmbridge.Format, error) {
 	}
 }
 
-// unifiedRoutePath returns the canonical path the matching unified route is
-// mounted on. Mirrors the literal strings in server.go.
-func unifiedRoutePath(f llmbridge.Format) string {
-	switch f {
-	case llmbridge.FormatAnthropicMessages:
-		return "/api/unified/v1/messages"
-	case llmbridge.FormatOpenAIResponses:
-		return "/api/unified/v1/responses"
-	case llmbridge.FormatOpenAIChatCompletions:
-		return "/api/unified/v1/chat/completions"
-	case llmbridge.FormatGeminiGenerateContent:
-		return "/api/unified/v1beta/models/{model}:generateContent"
-	case llmbridge.FormatGeminiStreamGenerateContent:
-		return "/api/unified/v1beta/models/{model}:streamGenerateContent"
-	default:
-		return ""
-	}
-}
-
 // formatForEndpointType maps a path endpoint's EndpointType to the llmbridge
 // format used to compute sourceFormat in the simulator response. Path
 // endpoints never bridge — their upstreamFormat is always the same as the
