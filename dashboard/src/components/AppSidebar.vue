@@ -28,6 +28,7 @@ const nav: { name: string; label: string; icon: IconName }[] = [
   { name: 'requests', label: '请求', icon: 'activity' },
   { name: 'traces', label: '追踪', icon: 'route' },
   { name: 'apiKeys', label: '密钥', icon: 'key' },
+  { name: 'users', label: '用户', icon: 'users' },
   { name: 'projects', label: '项目', icon: 'folder' },
   { name: 'scripts', label: '脚本', icon: 'braces' },
   { name: 'simulate', label: '模拟', icon: 'geometry' },

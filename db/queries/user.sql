@@ -24,3 +24,35 @@ UPDATE user_identity SET user_id = $3 WHERE provider = $1 AND identity = $2 RETU
 
 -- name: UpdateUserAdmin :one
 UPDATE app_user SET is_admin = $2, updated_at = now() WHERE id = $1 RETURNING *;
+
+-- name: ListUsers :many
+SELECT * FROM app_user ORDER BY id;
+
+-- name: UpdateUser :one
+UPDATE app_user
+SET display_name = $2, is_admin = $3, disabled = $4, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: DeleteUser :exec
+DELETE FROM app_user WHERE id = $1;
+
+-- name: DeleteUserIdentitiesByUser :exec
+DELETE FROM user_identity WHERE user_id = $1;
+
+-- name: ListUserIdentities :many
+SELECT * FROM user_identity WHERE user_id = $1 ORDER BY id;
+
+-- name: GetUserIdentityByID :one
+SELECT * FROM user_identity WHERE id = $1 LIMIT 1;
+
+-- name: CreateUserIdentity :one
+INSERT INTO user_identity (user_id, provider, identity)
+VALUES ($1, $2, $3)
+RETURNING *;
+
+-- name: UpdateUserIdentity :one
+UPDATE user_identity SET provider = $2, identity = $3 WHERE id = $1 RETURNING *;
+
+-- name: DeleteUserIdentity :exec
+DELETE FROM user_identity WHERE id = $1;

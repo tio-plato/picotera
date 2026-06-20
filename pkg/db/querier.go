@@ -15,6 +15,7 @@ type Querier interface {
 	CountTraces(ctx context.Context, arg CountTracesParams) (int64, error)
 	CountTracesFiltered(ctx context.Context, arg CountTracesFilteredParams) (int64, error)
 	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
+	CreateUserIdentity(ctx context.Context, arg CreateUserIdentityParams) (UserIdentity, error)
 	DeleteApiKey(ctx context.Context, id int32) error
 	DeleteEndpoint(ctx context.Context, path string) error
 	DeleteExchangeRate(ctx context.Context, code string) error
@@ -24,6 +25,9 @@ type Querier interface {
 	DeleteProvider(ctx context.Context, id int32) error
 	DeleteProviderEndpoint(ctx context.Context, arg DeleteProviderEndpointParams) error
 	DeleteScript(ctx context.Context, id string) error
+	DeleteUser(ctx context.Context, id int64) error
+	DeleteUserIdentitiesByUser(ctx context.Context, userID int64) error
+	DeleteUserIdentity(ctx context.Context, id int64) error
 	GetApiKey(ctx context.Context, id int32) (ApiKey, error)
 	GetApiKeyByKey(ctx context.Context, key string) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
@@ -60,6 +64,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id int64) (AppUser, error)
 	GetUserByIdentity(ctx context.Context, arg GetUserByIdentityParams) (AppUser, error)
 	GetUserIdentity(ctx context.Context, arg GetUserIdentityParams) (UserIdentity, error)
+	GetUserIdentityByID(ctx context.Context, id int64) (UserIdentity, error)
 	InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error)
 	InsertAutoCreatedProject(ctx context.Context, arg InsertAutoCreatedProjectParams) (Project, error)
 	InsertProject(ctx context.Context, arg InsertProjectParams) (Project, error)
@@ -87,6 +92,8 @@ type Querier interface {
 	ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error)
 	ListScripts(ctx context.Context) ([]Script, error)
 	ListTraceBackfillCandidates(ctx context.Context) ([]ListTraceBackfillCandidatesRow, error)
+	ListUserIdentities(ctx context.Context, userID int64) ([]UserIdentity, error)
+	ListUsers(ctx context.Context) ([]AppUser, error)
 	MatchProjectByPaths(ctx context.Context, candidatePaths []string) (int32, error)
 	MergeProjectReassignRequests(ctx context.Context, arg MergeProjectReassignRequestsParams) (int64, error)
 	MergeProjectUpdateTarget(ctx context.Context, arg MergeProjectUpdateTargetParams) (Project, error)
@@ -98,7 +105,9 @@ type Querier interface {
 	UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error
 	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
+	UpdateUser(ctx context.Context, arg UpdateUserParams) (AppUser, error)
 	UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams) (AppUser, error)
+	UpdateUserIdentity(ctx context.Context, arg UpdateUserIdentityParams) (UserIdentity, error)
 	UpdateUserIdentityUser(ctx context.Context, arg UpdateUserIdentityUserParams) (UserIdentity, error)
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertExchangeRate(ctx context.Context, arg UpsertExchangeRateParams) (ExchangeRate, error)

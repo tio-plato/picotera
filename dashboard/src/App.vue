@@ -23,6 +23,7 @@ const pageMeta = computed(() => {
     requestDetail: { title: '请求', hint: '到底哪里搞错了' },
     traces: { title: '追踪', hint: '今天都干啥了' },
     apiKeys: { title: '密钥', hint: '上网不涉密，涉密不上网' },
+    users: { title: '用户', hint: '谁在用这套系统' },
     projects: { title: '项目', hint: '开坑不填天理难容' },
     scripts: { title: '脚本', hint: '这是图灵完备的' },
     simulate: { title: '模拟', hint: '研究研究配成啥了' },

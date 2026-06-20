@@ -265,6 +265,15 @@ func (s *Server) registerOperations() {
 	huma.Register(mgmt, contract.OperationUpsertGlobalSetting, s.handleUpsertGlobalSetting)
 	huma.Register(mgmt, contract.OperationDeleteGlobalSetting, s.handleDeleteGlobalSetting)
 	huma.Register(mgmt, contract.OperationGetMe, s.handleGetMe)
+	huma.Register(mgmt, contract.OperationListUsers, s.handleListUsers)
+	huma.Register(mgmt, contract.OperationGetUser, s.handleGetUser)
+	huma.Register(mgmt, contract.OperationCreateUser, s.handleCreateUser)
+	huma.Register(mgmt, contract.OperationUpdateUser, s.handleUpdateUser)
+	huma.Register(mgmt, contract.OperationDeleteUser, s.handleDeleteUser)
+	huma.Register(mgmt, contract.OperationListUserIdentities, s.handleListUserIdentities)
+	huma.Register(mgmt, contract.OperationCreateUserIdentity, s.handleCreateUserIdentity)
+	huma.Register(mgmt, contract.OperationUpdateUserIdentity, s.handleUpdateUserIdentity)
+	huma.Register(mgmt, contract.OperationDeleteUserIdentity, s.handleDeleteUserIdentity)
 }
 
 func (s *Server) registerEndpoints() {

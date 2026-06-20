@@ -29,6 +29,10 @@ import type {
   SimulateDispatchResponseBody,
   UpsertGlobalSettingRequestBody,
   UpsertProjectRequestBody,
+  UserView,
+  UserMutateBody,
+  UserIdentityView,
+  UserIdentityMutateBody,
 } from '@/api'
 import type { components } from '@/openapi-types'
 import {
@@ -226,6 +230,73 @@ export async function deleteApiKey(id: number): Promise<void> {
   if (error) fail(error, '删除 API Key 失败')
 }
 
+export async function listUsers(): Promise<UserView[]> {
+  const { data, error } = await api.GET('/api/picotera/users')
+  if (error) fail(error, '加载用户失败')
+  return data ?? []
+}
+
+export async function createUser(body: UserMutateBody): Promise<UserView> {
+  const { data, error } = await api.POST('/api/picotera/users', { body })
+  if (error) fail(error, '创建用户失败')
+  return data
+}
+
+export async function updateUser(id: number, body: UserMutateBody): Promise<UserView> {
+  const { data, error } = await api.PUT('/api/picotera/users/{id}', {
+    params: { path: { id } },
+    body,
+  })
+  if (error) fail(error, '保存用户失败')
+  return data
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  const { error } = await api.POST('/api/picotera/users/delete', { body: { id } })
+  if (error) fail(error, '删除用户失败')
+}
+
+export async function listUserIdentities(userId: number): Promise<UserIdentityView[]> {
+  const { data, error } = await api.GET('/api/picotera/users/{userId}/identities', {
+    params: { path: { userId } },
+  })
+  if (error) fail(error, '加载身份失败')
+  return data ?? []
+}
+
+export async function createUserIdentity(
+  userId: number,
+  body: UserIdentityMutateBody,
+): Promise<UserIdentityView> {
+  const { data, error } = await api.POST('/api/picotera/users/{userId}/identities', {
+    params: { path: { userId } },
+    body,
+  })
+  if (error) fail(error, '添加身份失败')
+  return data
+}
+
+export async function updateUserIdentity(
+  userId: number,
+  id: number,
+  body: UserIdentityMutateBody,
+): Promise<UserIdentityView> {
+  const { data, error } = await api.PUT('/api/picotera/users/{userId}/identities/{id}', {
+    params: { path: { userId, id } },
+    body,
+  })
+  if (error) fail(error, '保存身份失败')
+  return data
+}
+
+export async function deleteUserIdentity(userId: number, id: number): Promise<void> {
+  const { error } = await api.POST('/api/picotera/users/{userId}/identities/delete', {
+    params: { path: { userId } },
+    body: { id },
+  })
+  if (error) fail(error, '删除身份失败')
+}
+
 export async function listProjects(): Promise<ProjectView[]> {
   const { data, error } = await api.GET('/api/picotera/projects')
   if (error) fail(error, '加载项目失败')
@@ -390,6 +461,14 @@ export function invalidateScripts(client: QueryClient) {
 
 export function invalidateApiKeys(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.apiKeys.all })
+}
+
+export function invalidateUsers(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.users.all })
+}
+
+export function invalidateUserIdentities(client: QueryClient, userId: number) {
+  client.invalidateQueries({ queryKey: queryKeys.users.identities(userId) })
 }
 
 export function invalidateProjects(client: QueryClient) {

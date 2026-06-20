@@ -16,6 +16,7 @@ const router = createRouter({
     },
     { path: '/traces', name: 'traces', component: () => import('@/views/TracesView.vue') },
     { path: '/api-keys', name: 'apiKeys', component: () => import('@/views/ApiKeysView.vue') },
+    { path: '/users', name: 'users', component: () => import('@/views/UsersView.vue') },
     { path: '/projects', name: 'projects', component: () => import('@/views/ProjectsView.vue') },
     { path: '/scripts', name: 'scripts', component: () => import('@/views/ScriptsView.vue') },
     { path: '/simulate', name: 'simulate', component: () => import('@/views/SimulateView.vue') },

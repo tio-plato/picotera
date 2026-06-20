@@ -9,8 +9,60 @@ import (
 	"context"
 )
 
+const createUserIdentity = `-- name: CreateUserIdentity :one
+INSERT INTO user_identity (user_id, provider, identity)
+VALUES ($1, $2, $3)
+RETURNING id, user_id, provider, identity, created_at
+`
+
+type CreateUserIdentityParams struct {
+	UserID   int64  `json:"userId"`
+	Provider string `json:"provider"`
+	Identity string `json:"identity"`
+}
+
+func (q *Queries) CreateUserIdentity(ctx context.Context, arg CreateUserIdentityParams) (UserIdentity, error) {
+	row := q.db.QueryRow(ctx, createUserIdentity, arg.UserID, arg.Provider, arg.Identity)
+	var i UserIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.Identity,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM app_user WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteUser, id)
+	return err
+}
+
+const deleteUserIdentitiesByUser = `-- name: DeleteUserIdentitiesByUser :exec
+DELETE FROM user_identity WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserIdentitiesByUser(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteUserIdentitiesByUser, userID)
+	return err
+}
+
+const deleteUserIdentity = `-- name: DeleteUserIdentity :exec
+DELETE FROM user_identity WHERE id = $1
+`
+
+func (q *Queries) DeleteUserIdentity(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteUserIdentity, id)
+	return err
+}
+
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, display_name, is_admin, created_at, updated_at FROM app_user WHERE id = $1 LIMIT 1
+SELECT id, display_name, is_admin, created_at, updated_at, disabled FROM app_user WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (AppUser, error) {
@@ -22,12 +74,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (AppUser, error) {
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Disabled,
 	)
 	return i, err
 }
 
 const getUserByIdentity = `-- name: GetUserByIdentity :one
-SELECT u.id, u.display_name, u.is_admin, u.created_at, u.updated_at FROM app_user u
+SELECT u.id, u.display_name, u.is_admin, u.created_at, u.updated_at, u.disabled FROM app_user u
 JOIN user_identity i ON i.user_id = u.id
 WHERE i.provider = $1 AND i.identity = $2
 LIMIT 1
@@ -47,6 +100,7 @@ func (q *Queries) GetUserByIdentity(ctx context.Context, arg GetUserByIdentityPa
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Disabled,
 	)
 	return i, err
 }
@@ -73,8 +127,25 @@ func (q *Queries) GetUserIdentity(ctx context.Context, arg GetUserIdentityParams
 	return i, err
 }
 
+const getUserIdentityByID = `-- name: GetUserIdentityByID :one
+SELECT id, user_id, provider, identity, created_at FROM user_identity WHERE id = $1 LIMIT 1
+`
+
+func (q *Queries) GetUserIdentityByID(ctx context.Context, id int64) (UserIdentity, error) {
+	row := q.db.QueryRow(ctx, getUserIdentityByID, id)
+	var i UserIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.Identity,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertUser = `-- name: InsertUser :one
-INSERT INTO app_user (display_name, is_admin) VALUES ($1, $2) RETURNING id, display_name, is_admin, created_at, updated_at
+INSERT INTO app_user (display_name, is_admin) VALUES ($1, $2) RETURNING id, display_name, is_admin, created_at, updated_at, disabled
 `
 
 type InsertUserParams struct {
@@ -91,6 +162,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (AppUser
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Disabled,
 	)
 	return i, err
 }
@@ -121,8 +193,102 @@ func (q *Queries) InsertUserIdentity(ctx context.Context, arg InsertUserIdentity
 	return i, err
 }
 
+const listUserIdentities = `-- name: ListUserIdentities :many
+SELECT id, user_id, provider, identity, created_at FROM user_identity WHERE user_id = $1 ORDER BY id
+`
+
+func (q *Queries) ListUserIdentities(ctx context.Context, userID int64) ([]UserIdentity, error) {
+	rows, err := q.db.Query(ctx, listUserIdentities, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UserIdentity
+	for rows.Next() {
+		var i UserIdentity
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Provider,
+			&i.Identity,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, display_name, is_admin, created_at, updated_at, disabled FROM app_user ORDER BY id
+`
+
+func (q *Queries) ListUsers(ctx context.Context) ([]AppUser, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AppUser
+	for rows.Next() {
+		var i AppUser
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.IsAdmin,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Disabled,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateUser = `-- name: UpdateUser :one
+UPDATE app_user
+SET display_name = $2, is_admin = $3, disabled = $4, updated_at = now()
+WHERE id = $1
+RETURNING id, display_name, is_admin, created_at, updated_at, disabled
+`
+
+type UpdateUserParams struct {
+	ID          int64  `json:"id"`
+	DisplayName string `json:"displayName"`
+	IsAdmin     bool   `json:"isAdmin"`
+	Disabled    bool   `json:"disabled"`
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (AppUser, error) {
+	row := q.db.QueryRow(ctx, updateUser,
+		arg.ID,
+		arg.DisplayName,
+		arg.IsAdmin,
+		arg.Disabled,
+	)
+	var i AppUser
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.IsAdmin,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Disabled,
+	)
+	return i, err
+}
+
 const updateUserAdmin = `-- name: UpdateUserAdmin :one
-UPDATE app_user SET is_admin = $2, updated_at = now() WHERE id = $1 RETURNING id, display_name, is_admin, created_at, updated_at
+UPDATE app_user SET is_admin = $2, updated_at = now() WHERE id = $1 RETURNING id, display_name, is_admin, created_at, updated_at, disabled
 `
 
 type UpdateUserAdminParams struct {
@@ -139,6 +305,30 @@ func (q *Queries) UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Disabled,
+	)
+	return i, err
+}
+
+const updateUserIdentity = `-- name: UpdateUserIdentity :one
+UPDATE user_identity SET provider = $2, identity = $3 WHERE id = $1 RETURNING id, user_id, provider, identity, created_at
+`
+
+type UpdateUserIdentityParams struct {
+	ID       int64  `json:"id"`
+	Provider string `json:"provider"`
+	Identity string `json:"identity"`
+}
+
+func (q *Queries) UpdateUserIdentity(ctx context.Context, arg UpdateUserIdentityParams) (UserIdentity, error) {
+	row := q.db.QueryRow(ctx, updateUserIdentity, arg.ID, arg.Provider, arg.Identity)
+	var i UserIdentity
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.Identity,
+		&i.CreatedAt,
 	)
 	return i, err
 }

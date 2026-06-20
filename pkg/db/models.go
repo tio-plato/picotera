@@ -24,6 +24,7 @@ type AppUser struct {
 	IsAdmin     bool               `json:"isAdmin"`
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+	Disabled    bool               `json:"disabled"`
 }
 
 type Endpoint struct {

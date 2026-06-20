@@ -51,6 +51,11 @@ export const queryKeys = {
     all: ['apiKeys'] as const,
     detail: (id: number) => ['apiKeys', id] as const,
   },
+  users: {
+    all: ['users'] as const,
+    detail: (id: number) => ['users', id] as const,
+    identities: (userId: number) => ['users', userId, 'identities'] as const,
+  },
   projects: {
     all: ['projects'] as const,
     detail: (id: number) => ['projects', id] as const,

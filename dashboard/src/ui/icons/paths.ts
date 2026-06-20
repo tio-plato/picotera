@@ -39,6 +39,8 @@ import {
   IconCloudFog,
   IconGeometry,
   IconFlask,
+  IconUsers,
+  IconShieldCheck,
 } from '@tabler/icons-vue'
 
 export type IconName =
@@ -69,8 +71,6 @@ export type IconName =
   | 'cloud-upload'
   | 'loader'
   | 'check'
-  | 'eye'
-  | 'eye-off'
   | 'puzzle'
   | 'puzzle-off'
   | 'currency-dollar'
@@ -82,6 +82,8 @@ export type IconName =
   | 'geometry'
   | 'cloud-fog'
   | 'flask'
+  | 'users'
+  | 'shield-check'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -111,8 +113,6 @@ export const iconComponents: Record<IconName, Component> = {
   'cloud-upload': IconCloudUpload,
   loader: IconLoader2,
   check: IconCheck,
-  eye: IconEye,
-  'eye-off': IconEyeOff,
   puzzle: IconPuzzle,
   'puzzle-off': IconPuzzleOff,
   'currency-dollar': IconCurrencyDollar,
@@ -124,4 +124,6 @@ export const iconComponents: Record<IconName, Component> = {
   'cloud-fog': IconCloudFog,
   geometry: IconGeometry,
   flask: IconFlask,
+  users: IconUsers,
+  'shield-check': IconShieldCheck,
 }

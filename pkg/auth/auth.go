@@ -88,6 +88,9 @@ func (r *Resolver) resolveOrCreate(ctx context.Context, provider, identity, disp
 		Identity: identity,
 	})
 	if err == nil {
+		if u.Disabled {
+			return nil, ErrUnauthorized
+		}
 		return &u, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
