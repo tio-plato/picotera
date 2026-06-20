@@ -535,7 +535,7 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 // credentials based on the auth type.
 // The provided ctx is used for the request context, enabling cancellation of
 // upstream reads (e.g., by the idle timeout reader).
-func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, sendResolver int32, pathVars map[string]string) (*http.Request, []byte, error) {
+func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, sendResolver int32, pathVars map[string]string, authHeaderName string) (*http.Request, []byte, error) {
 	// Substitute path variables in the upstream URL.
 	var err error
 	upstreamURL, err = substitutePathVars(upstreamURL, pathVars)
@@ -560,10 +560,15 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 	// Forward non-credential client query params, with upstream-defined keys winning on conflict.
 	mergeClientQuery(req.URL, original.URL.RawQuery)
 
-	// Copy headers from original request, excluding auth headers, Host, and Content-Length
+	// Copy headers from original request, excluding auth headers, Host, and Content-Length.
+	// authHeaderName (the local management-API auth header, when configured) is also skipped
+	// so it never leaks to the upstream provider.
+	authHeaderName = strings.ToLower(authHeaderName)
 	for key, values := range original.Header {
 		lower := strings.ToLower(key)
-		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" || lower == "host" || lower == "content-length" {
+		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" ||
+			lower == "host" || lower == "content-length" ||
+			(authHeaderName != "" && lower == authHeaderName) {
 			continue
 		}
 		for _, value := range values {
@@ -577,6 +582,43 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 	req.ContentLength = int64(len(reqBody))
 
 	return req, reqBody, nil
+}
+
+const redactedPlaceholder = "[REDACTED]"
+
+// redactUpstreamCredentials redacts upstream provider credentials in a cloned
+// header and the raw URL, returning the redacted header and URL. It mutates the
+// provided header in place (the caller passes a clone) and only touches fields
+// that actually carry a credential:
+//   - Authorization: keeps the scheme prefix → "<scheme> [REDACTED]"; a value
+//     with no whitespace is replaced wholesale.
+//   - X-Api-Key / X-Goog-Api-Key: replaced wholesale.
+//   - URL "key" query param: value replaced, leaving other params intact.
+func redactUpstreamCredentials(header http.Header, rawURL string) (http.Header, string) {
+	if auth := header.Get("Authorization"); auth != "" {
+		if scheme, _, found := strings.Cut(auth, " "); found {
+			header.Set("Authorization", scheme+" "+redactedPlaceholder)
+		} else {
+			header.Set("Authorization", redactedPlaceholder)
+		}
+	}
+	if header.Get("X-Api-Key") != "" {
+		header.Set("X-Api-Key", redactedPlaceholder)
+	}
+	if header.Get("X-Goog-Api-Key") != "" {
+		header.Set("X-Goog-Api-Key", redactedPlaceholder)
+	}
+
+	if u, err := url.Parse(rawURL); err == nil {
+		q := u.Query()
+		if q.Has("key") {
+			q.Set("key", redactedPlaceholder)
+			u.RawQuery = q.Encode()
+			rawURL = u.String()
+		}
+	}
+
+	return header, rawURL
 }
 
 // forwardRequest sends the request to the upstream provider using the

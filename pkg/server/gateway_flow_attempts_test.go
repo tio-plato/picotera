@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"picotera/pkg/configx"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/jsx"
@@ -69,7 +70,7 @@ picotera.hooks.rewriteRequest.tap('add-include-usage', function (ctx, pending) {
 	}
 
 	f := &gatewayFlow{
-		h: &gatewayHandler{Server: &Server{llmBridge: realBridge{}}},
+		h: &gatewayHandler{Server: &Server{llmBridge: realBridge{}, config: &configx.Config{}}},
 		r: httptest.NewRequest("POST", "/api/unified/v1/responses", nil),
 		config: gatewayFlowConfig{
 			Kind:           gatewayRouteUnified,

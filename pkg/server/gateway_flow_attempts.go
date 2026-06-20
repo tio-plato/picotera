@@ -147,7 +147,8 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 		return false, false
 	}
 	reqArtifactCtx, reqArtifactCancel := f.ctxs.Persist()
-	f.h.uploadRequestArtifact(reqArtifactCtx, input.UpstreamID, input.UpstreamCreatedAt, prepared.Request.Method, prepared.Request.URL.String(), prepared.Request.Header.Clone(), prepared.RequestBody)
+	redactedHeader, redactedURL := redactUpstreamCredentials(prepared.Request.Header.Clone(), prepared.Request.URL.String())
+	f.h.uploadRequestArtifact(reqArtifactCtx, input.UpstreamID, input.UpstreamCreatedAt, prepared.Request.Method, redactedURL, redactedHeader, prepared.RequestBody)
 	reqArtifactCancel()
 	upstreamStart := time.Now()
 	resp, err := f.h.forwardRequest(prepared.Request, side.ProxyURL, f.model.Mode.Streaming)
@@ -256,7 +257,11 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 			return attemptPrepared{}, err
 		}
 	}
-	req, reqBody, err := buildUpstreamRequest(input.AttemptCtx, f.r, body, input.Sidecar.UpstreamURL, upstreamModel, input.Sidecar.Credentials, input.Sidecar.SendResolver, f.config.PathVars)
+	authHeaderName := ""
+	if f.h.config.Auth.HeaderEnabled {
+		authHeaderName = f.h.config.Auth.HeaderName
+	}
+	req, reqBody, err := buildUpstreamRequest(input.AttemptCtx, f.r, body, input.Sidecar.UpstreamURL, upstreamModel, input.Sidecar.Credentials, input.Sidecar.SendResolver, f.config.PathVars, authHeaderName)
 	if err != nil {
 		return attemptPrepared{}, err
 	}
