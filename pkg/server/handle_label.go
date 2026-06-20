@@ -50,7 +50,11 @@ func (s *Server) handleListEndpointLabels(ctx context.Context, _ *struct{}) (*co
 }
 
 func (s *Server) handleListProjectLabels(ctx context.Context, _ *struct{}) (*contract.ListProjectLabelsResponse, error) {
-	rows, err := s.queries.ListProjects(ctx)
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.queries.ListProjects(ctx, u.ID)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list projects", err)
 	}

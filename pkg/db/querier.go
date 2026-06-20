@@ -19,15 +19,15 @@ type Querier interface {
 	DeleteApiKey(ctx context.Context, arg DeleteApiKeyParams) error
 	DeleteEndpoint(ctx context.Context, path string) error
 	DeleteExchangeRate(ctx context.Context, code string) error
-	DeleteGlobalSetting(ctx context.Context, key string) (int64, error)
 	DeleteModel(ctx context.Context, name string) error
-	DeleteProject(ctx context.Context, id int32) error
+	DeleteProject(ctx context.Context, arg DeleteProjectParams) error
 	DeleteProvider(ctx context.Context, id int32) error
 	DeleteProviderEndpoint(ctx context.Context, arg DeleteProviderEndpointParams) error
 	DeleteScript(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserIdentitiesByUser(ctx context.Context, userID int64) error
 	DeleteUserIdentity(ctx context.Context, id int64) error
+	DeleteUserSetting(ctx context.Context, arg DeleteUserSettingParams) (int64, error)
 	GetApiKey(ctx context.Context, arg GetApiKeyParams) (ApiKey, error)
 	GetApiKeyByKey(ctx context.Context, key string) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
@@ -35,14 +35,13 @@ type Querier interface {
 	GetExchangeRateByCode(ctx context.Context, code string) (ExchangeRate, error)
 	GetExchangeRates(ctx context.Context) ([]ExchangeRate, error)
 	GetFirstEndpointByType(ctx context.Context, endpointType int32) (Endpoint, error)
-	GetGlobalSetting(ctx context.Context, key string) (GlobalSetting, error)
 	GetModelByName(ctx context.Context, name string) (Model, error)
 	GetModels(ctx context.Context) ([]Model, error)
 	GetOverviewSpeedBoxplot(ctx context.Context, arg GetOverviewSpeedBoxplotParams) ([]GetOverviewSpeedBoxplotRow, error)
 	GetOverviewTokenBreakdown(ctx context.Context, arg GetOverviewTokenBreakdownParams) (GetOverviewTokenBreakdownRow, error)
 	GetOverviewTotals(ctx context.Context, arg GetOverviewTotalsParams) (GetOverviewTotalsRow, error)
-	GetProject(ctx context.Context, id int32) (Project, error)
-	GetProjectByName(ctx context.Context, name string) (Project, error)
+	GetProject(ctx context.Context, arg GetProjectParams) (Project, error)
+	GetProjectByName(ctx context.Context, arg GetProjectByNameParams) (Project, error)
 	GetProviderByID(ctx context.Context, id int32) (Provider, error)
 	GetProviderEndpoint(ctx context.Context, arg GetProviderEndpointParams) (ProviderEndpoint, error)
 	GetProviders(ctx context.Context) ([]Provider, error)
@@ -65,6 +64,7 @@ type Querier interface {
 	GetUserByIdentity(ctx context.Context, arg GetUserByIdentityParams) (AppUser, error)
 	GetUserIdentity(ctx context.Context, arg GetUserIdentityParams) (UserIdentity, error)
 	GetUserIdentityByID(ctx context.Context, id int64) (UserIdentity, error)
+	GetUserSetting(ctx context.Context, arg GetUserSettingParams) (UserSetting, error)
 	InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error)
 	InsertAutoCreatedProject(ctx context.Context, arg InsertAutoCreatedProjectParams) (Project, error)
 	InsertProject(ctx context.Context, arg InsertProjectParams) (Project, error)
@@ -75,7 +75,6 @@ type Querier interface {
 	ListApiKeys(ctx context.Context, userID int64) ([]ApiKey, error)
 	ListAvailableModelNames(ctx context.Context) ([]string, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
-	ListGlobalSettings(ctx context.Context) ([]GlobalSetting, error)
 	ListOverviewBreakdownCosts(ctx context.Context, arg ListOverviewBreakdownCostsParams) ([]ListOverviewBreakdownCostsRow, error)
 	ListOverviewBreakdownTokens(ctx context.Context, arg ListOverviewBreakdownTokensParams) ([]ListOverviewBreakdownTokensRow, error)
 	ListOverviewCacheHitRateSeries(ctx context.Context, arg ListOverviewCacheHitRateSeriesParams) ([]ListOverviewCacheHitRateSeriesRow, error)
@@ -85,7 +84,7 @@ type Querier interface {
 	ListOverviewSeriesTraces(ctx context.Context, arg ListOverviewSeriesTracesParams) ([]ListOverviewSeriesTracesRow, error)
 	ListOverviewSpeedSeries(ctx context.Context, arg ListOverviewSpeedSeriesParams) ([]ListOverviewSpeedSeriesRow, error)
 	ListOverviewTraceCountsByDimension(ctx context.Context, arg ListOverviewTraceCountsByDimensionParams) ([]ListOverviewTraceCountsByDimensionRow, error)
-	ListProjects(ctx context.Context) ([]Project, error)
+	ListProjects(ctx context.Context, userID int64) ([]Project, error)
 	ListProviderEndpoints(ctx context.Context, providerID pgtype.Int4) ([]ProviderEndpoint, error)
 	ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error)
 	ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error)
@@ -93,8 +92,9 @@ type Querier interface {
 	ListScripts(ctx context.Context) ([]Script, error)
 	ListTraceBackfillCandidates(ctx context.Context) ([]ListTraceBackfillCandidatesRow, error)
 	ListUserIdentities(ctx context.Context, userID int64) ([]UserIdentity, error)
+	ListUserSettings(ctx context.Context, userID int64) ([]UserSetting, error)
 	ListUsers(ctx context.Context) ([]AppUser, error)
-	MatchProjectByPaths(ctx context.Context, candidatePaths []string) (int32, error)
+	MatchProjectByPaths(ctx context.Context, arg MatchProjectByPathsParams) (int32, error)
 	MergeProjectReassignRequests(ctx context.Context, arg MergeProjectReassignRequestsParams) (int64, error)
 	MergeProjectUpdateTarget(ctx context.Context, arg MergeProjectUpdateTargetParams) (Project, error)
 	UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (ApiKey, error)
@@ -111,11 +111,11 @@ type Querier interface {
 	UpdateUserIdentityUser(ctx context.Context, arg UpdateUserIdentityUserParams) (UserIdentity, error)
 	UpsertEndpoint(ctx context.Context, arg UpsertEndpointParams) (Endpoint, error)
 	UpsertExchangeRate(ctx context.Context, arg UpsertExchangeRateParams) (ExchangeRate, error)
-	UpsertGlobalSetting(ctx context.Context, arg UpsertGlobalSettingParams) (GlobalSetting, error)
 	UpsertModel(ctx context.Context, arg UpsertModelParams) (Model, error)
 	UpsertProjectSeen(ctx context.Context, arg UpsertProjectSeenParams) error
 	UpsertProviderEndpoint(ctx context.Context, arg UpsertProviderEndpointParams) (ProviderEndpoint, error)
 	UpsertTrace(ctx context.Context, arg UpsertTraceParams) (UpsertTraceRow, error)
+	UpsertUserSetting(ctx context.Context, arg UpsertUserSettingParams) (UserSetting, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -7,7 +7,8 @@ import type {
   ExchangeRateView,
   FetchModelsRequestBody,
   FetchModelsResponseBody,
-  GlobalSettingView,
+  ConfigView,
+  UserSettingView,
   KvEntryView,
   KvMutateBody,
   MeView,
@@ -31,7 +32,7 @@ import type {
   ScriptView,
   SimulateDispatchRequestBody,
   SimulateDispatchResponseBody,
-  UpsertGlobalSettingRequestBody,
+  UpsertUserSettingRequestBody,
   UpsertProjectRequestBody,
   UserView,
   UserMutateBody,
@@ -485,13 +486,13 @@ export function invalidateExchangeRates(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.exchangeRates.all })
 }
 
-export async function listGlobalSettings(): Promise<GlobalSettingView[]> {
+export async function listUserSettings(): Promise<UserSettingView[]> {
   const { data, error } = await api.GET('/api/picotera/settings')
   if (error) fail(error, '加载设置失败')
   return data ?? []
 }
 
-export async function getGlobalSetting(key: string): Promise<GlobalSettingView> {
+export async function getUserSetting(key: string): Promise<UserSettingView> {
   const { data, error } = await api.GET('/api/picotera/settings/{key}', {
     params: { path: { key } },
   })
@@ -499,23 +500,29 @@ export async function getGlobalSetting(key: string): Promise<GlobalSettingView> 
   return data
 }
 
-export async function upsertGlobalSetting(
-  body: UpsertGlobalSettingRequestBody,
-): Promise<GlobalSettingView> {
+export async function upsertUserSetting(
+  body: UpsertUserSettingRequestBody,
+): Promise<UserSettingView> {
   const { data, error } = await api.PUT('/api/picotera/settings', { body })
   if (error) fail(error, '保存设置失败')
   return data
 }
 
-export async function deleteGlobalSetting(key: string): Promise<void> {
+export async function deleteUserSetting(key: string): Promise<void> {
   const { error } = await api.DELETE('/api/picotera/settings/{key}', {
     params: { path: { key } },
   })
   if (error) fail(error, '删除设置失败')
 }
 
-export function invalidateGlobalSettings(client: QueryClient) {
-  client.invalidateQueries({ queryKey: queryKeys.globalSettings.all })
+export function invalidateUserSettings(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.userSettings.all })
+}
+
+export async function getConfig(): Promise<ConfigView> {
+  const { data, error } = await api.GET('/api/picotera/config')
+  if (error) fail(error, '加载应用配置失败')
+  return data
 }
 
 export async function fetchMe(): Promise<MeView> {

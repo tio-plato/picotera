@@ -1,24 +1,22 @@
 import { computed, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { getGlobalSetting } from '@/api/client'
+import { getConfig } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 
 const DEFAULT_TITLE = 'PicoTera'
 
 export function useAppTitle() {
   const query = useQuery({
-    queryKey: queryKeys.globalSettings.detail('app.title'),
-    queryFn: () => getGlobalSetting('app.title'),
+    queryKey: queryKeys.config,
+    queryFn: getConfig,
     retry: false,
-    // If the setting doesn't exist (404), return null instead of throwing.
     throwOnError: false,
   })
 
   const appTitle = computed(() => {
-    if (!query.data.value) return DEFAULT_TITLE
-    const val = query.data.value.value
-    if (typeof val === 'string') {
-      return val.trim() || DEFAULT_TITLE
+    const title = query.data.value?.title
+    if (typeof title === 'string') {
+      return title.trim() || DEFAULT_TITLE
     }
     return DEFAULT_TITLE
   })

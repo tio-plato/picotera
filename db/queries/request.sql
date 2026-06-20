@@ -155,7 +155,8 @@ ORDER BY r.created_at ASC, r.id ASC;
 -- name: UpdateRequestOnHeader :exec
 UPDATE request
 SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7,
-    user_id = sqlc.narg('user_id')::bigint
+    user_id = sqlc.narg('user_id')::bigint,
+    project_id = sqlc.narg('project_id')::int
 WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 
 -- name: UpdateRequestOnComplete :exec

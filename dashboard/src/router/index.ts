@@ -10,13 +10,11 @@ const ADMIN_ROUTES = new Set([
   'providers',
   'models',
   'endpoints',
-  'projects',
   'scripts',
   'kv',
   'rates',
   'users',
   'simulate',
-  'settings',
 ])
 
 const router = createRouter({

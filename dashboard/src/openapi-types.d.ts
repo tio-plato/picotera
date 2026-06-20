@@ -57,6 +57,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get runtime application configuration */
+        get: operations["getConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/endpoints": {
         parameters: {
             query?: never;
@@ -788,10 +805,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all global settings */
-        get: operations["listGlobalSettings"];
-        /** Create or update a global setting */
-        put: operations["upsertGlobalSetting"];
+        /** List all settings for the current user */
+        get: operations["listUserSettings"];
+        /** Create or update a setting for the current user */
+        put: operations["upsertUserSetting"];
         post?: never;
         delete?: never;
         options?: never;
@@ -806,12 +823,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a global setting by key */
-        get: operations["getGlobalSetting"];
+        /** Get a setting by key for the current user */
+        get: operations["getUserSetting"];
         put?: never;
         post?: never;
-        /** Delete a global setting */
-        delete: operations["deleteGlobalSetting"];
+        /** Delete a setting for the current user */
+        delete: operations["deleteUserSetting"];
         options?: never;
         head?: never;
         patch?: never;
@@ -976,6 +993,15 @@ export interface components {
             updatedAt: string;
             /** Format: int64 */
             userId: number;
+        };
+        ConfigView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ConfigView.json
+             */
+            readonly $schema?: string;
+            title: string;
         };
         CreateProviderRequestBody: {
             /**
@@ -1160,16 +1186,6 @@ export interface components {
             providerId: number;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
             removedModels: string[] | null;
-        };
-        GlobalSettingView: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/GlobalSettingView.json
-             */
-            readonly $schema?: string;
-            key: string;
-            value: unknown;
         };
         InterruptRequestResponseBody: {
             /**
@@ -1778,16 +1794,6 @@ export interface components {
             readonly $schema?: string;
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
         };
-        UpsertGlobalSettingRequestBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/UpsertGlobalSettingRequestBody.json
-             */
-            readonly $schema?: string;
-            key: string;
-            value: unknown;
-        };
         UpsertProjectRequestBody: {
             /**
              * Format: uri
@@ -1824,6 +1830,16 @@ export interface components {
             proxyUrl?: string;
             supportsNativeWebSearch: boolean;
         };
+        UpsertUserSettingRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpsertUserSettingRequestBody.json
+             */
+            readonly $schema?: string;
+            key: string;
+            value: unknown;
+        };
         UserIdentityMutateBody: {
             /**
              * Format: uri
@@ -1859,6 +1875,16 @@ export interface components {
             disabled?: boolean;
             displayName: string;
             isAdmin?: boolean;
+        };
+        UserSettingView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UserSettingView.json
+             */
+            readonly $schema?: string;
+            key: string;
+            value: unknown;
         };
         UserView: {
             /**
@@ -2030,6 +2056,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiKeyView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigView"];
                 };
             };
             /** @description Error */
@@ -3698,7 +3753,7 @@ export interface operations {
             };
         };
     };
-    listGlobalSettings: {
+    listUserSettings: {
         parameters: {
             query?: never;
             header?: never;
@@ -3713,7 +3768,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GlobalSettingView"][] | null;
+                    "application/json": components["schemas"]["UserSettingView"][] | null;
                 };
             };
             /** @description Error */
@@ -3727,7 +3782,7 @@ export interface operations {
             };
         };
     };
-    upsertGlobalSetting: {
+    upsertUserSetting: {
         parameters: {
             query?: never;
             header?: never;
@@ -3736,7 +3791,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpsertGlobalSettingRequestBody"];
+                "application/json": components["schemas"]["UpsertUserSettingRequestBody"];
             };
         };
         responses: {
@@ -3746,7 +3801,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GlobalSettingView"];
+                    "application/json": components["schemas"]["UserSettingView"];
                 };
             };
             /** @description Error */
@@ -3760,7 +3815,7 @@ export interface operations {
             };
         };
     };
-    getGlobalSetting: {
+    getUserSetting: {
         parameters: {
             query?: never;
             header?: never;
@@ -3777,7 +3832,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GlobalSettingView"];
+                    "application/json": components["schemas"]["UserSettingView"];
                 };
             };
             /** @description Error */
@@ -3791,7 +3846,7 @@ export interface operations {
             };
         };
     };
-    deleteGlobalSetting: {
+    deleteUserSetting: {
         parameters: {
             query?: never;
             header?: never;

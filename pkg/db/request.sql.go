@@ -582,8 +582,9 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 const updateRequestOnHeader = `-- name: UpdateRequestOnHeader :exec
 UPDATE request
 SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7,
-    user_id = $8::bigint
-WHERE id = $1 AND created_at = $9::timestamp
+    user_id = $8::bigint,
+    project_id = $9::int
+WHERE id = $1 AND created_at = $10::timestamp
 `
 
 type UpdateRequestOnHeaderParams struct {
@@ -595,6 +596,7 @@ type UpdateRequestOnHeaderParams struct {
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Status        int32            `json:"status"`
 	UserID        pgtype.Int8      `json:"userId"`
+	ProjectID     pgtype.Int4      `json:"projectId"`
 	CreatedAt     pgtype.Timestamp `json:"createdAt"`
 }
 
@@ -608,6 +610,7 @@ func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOn
 		arg.ApiKeyID,
 		arg.Status,
 		arg.UserID,
+		arg.ProjectID,
 		arg.CreatedAt,
 	)
 	return err

@@ -27,7 +27,9 @@ const userNav: NavItem[] = [
   { name: 'apiKeys', label: '密钥', icon: 'key' },
   { name: 'requests', label: '请求', icon: 'activity' },
   { name: 'traces', label: '追踪', icon: 'route' },
+  { name: 'projects', label: '项目', icon: 'folder' },
   { name: 'test', label: '测试', icon: 'flask' },
+  { name: 'settings', label: '设置', icon: 'settings' },
 ]
 
 // Admin features: hidden entirely for non-admins (also guarded by the router).
@@ -35,13 +37,11 @@ const adminNav: NavItem[] = [
   { name: 'providers', label: '渠道', icon: 'cloud-fog' },
   { name: 'models', label: '模型', icon: 'cpu' },
   { name: 'endpoints', label: '端点', icon: 'plug' },
-  { name: 'projects', label: '项目', icon: 'folder' },
   { name: 'scripts', label: '脚本', icon: 'braces' },
   { name: 'kv', label: '缓存', icon: 'db' },
   { name: 'rates', label: '汇率', icon: 'currency-dollar' },
   { name: 'users', label: '用户', icon: 'users' },
   { name: 'simulate', label: '模拟', icon: 'geometry' },
-  { name: 'settings', label: '设置', icon: 'settings' },
 ]
 </script>
 

@@ -257,6 +257,20 @@ func (s *Server) register(mgmt, admin *huma.Group) {
 	huma.Register(mgmt, contract.OperationListEndpointLabels, s.handleListEndpointLabels)
 	huma.Register(mgmt, contract.OperationListProjectLabels, s.handleListProjectLabels)
 	huma.Register(mgmt, contract.OperationListUpstreamModelLabels, s.handleListUpstreamModelLabels)
+
+	// Projects are per-user resources: every authenticated user manages their own.
+	huma.Register(mgmt, contract.OperationListProjects, s.handleListProjects)
+	huma.Register(mgmt, contract.OperationGetProject, s.handleGetProject)
+	huma.Register(mgmt, contract.OperationUpsertProject, s.handleUpsertProject)
+	huma.Register(mgmt, contract.OperationDeleteProject, s.handleDeleteProject)
+	huma.Register(mgmt, contract.OperationMergeProject, s.handleMergeProject)
+
+	// Per-user settings and runtime config.
+	huma.Register(mgmt, contract.OperationListUserSettings, s.handleListUserSettings)
+	huma.Register(mgmt, contract.OperationGetUserSetting, s.handleGetUserSetting)
+	huma.Register(mgmt, contract.OperationUpsertUserSetting, s.handleUpsertUserSetting)
+	huma.Register(mgmt, contract.OperationDeleteUserSetting, s.handleDeleteUserSetting)
+	huma.Register(mgmt, contract.OperationGetConfig, s.handleGetConfig)
 	// Exchange rates are read by the user-facing currency context (display
 	// currency conversion across overview / requests / traces), so the list is
 	// open to every authenticated user. Writes and pricing matching stay admin.
@@ -280,11 +294,6 @@ func (s *Server) register(mgmt, admin *huma.Group) {
 	huma.Register(admin, contract.OperationListProviderEndpoints, s.handleListProviderEndpoints)
 	huma.Register(admin, contract.OperationUpsertProviderEndpoint, s.handleUpsertProviderEndpoint)
 	huma.Register(admin, contract.OperationDeleteProviderEndpoint, s.handleDeleteProviderEndpoint)
-	huma.Register(admin, contract.OperationListProjects, s.handleListProjects)
-	huma.Register(admin, contract.OperationGetProject, s.handleGetProject)
-	huma.Register(admin, contract.OperationUpsertProject, s.handleUpsertProject)
-	huma.Register(admin, contract.OperationDeleteProject, s.handleDeleteProject)
-	huma.Register(admin, contract.OperationMergeProject, s.handleMergeProject)
 	huma.Register(admin, contract.OperationListScripts, s.handleListScripts)
 	huma.Register(admin, contract.OperationGetScript, s.handleGetScript)
 	huma.Register(admin, contract.OperationCreateScript, s.handleCreateScript)
@@ -299,10 +308,6 @@ func (s *Server) register(mgmt, admin *huma.Group) {
 	huma.Register(admin, contract.OperationPutExchangeRate, s.handlePutExchangeRate)
 	huma.Register(admin, contract.OperationDeleteExchangeRate, s.handleDeleteExchangeRate)
 	huma.Register(admin, contract.OperationMatchPricing, s.handleMatchPricing)
-	huma.Register(admin, contract.OperationListGlobalSettings, s.handleListGlobalSettings)
-	huma.Register(admin, contract.OperationGetGlobalSetting, s.handleGetGlobalSetting)
-	huma.Register(admin, contract.OperationUpsertGlobalSetting, s.handleUpsertGlobalSetting)
-	huma.Register(admin, contract.OperationDeleteGlobalSetting, s.handleDeleteGlobalSetting)
 	huma.Register(admin, contract.OperationListUsers, s.handleListUsers)
 	huma.Register(admin, contract.OperationGetUser, s.handleGetUser)
 	huma.Register(admin, contract.OperationCreateUser, s.handleCreateUser)

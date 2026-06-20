@@ -654,12 +654,13 @@ func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) 
 }
 
 // extractProjectID runs the project regexes over body and asks the project
-// router for a match. Errors are logged and treated as "no match".
-func (s *Server) extractProjectID(ctx context.Context, body []byte) pgtype.Int4 {
+// extractor for a match scoped to userID. Errors are logged and treated as
+// "no match".
+func (s *Server) extractProjectID(ctx context.Context, body []byte, userID int64) pgtype.Int4 {
 	if s.projectExtractor == nil {
 		return pgtype.Int4{Valid: false}
 	}
-	id, ok, err := s.projectExtractor.Extract(ctx, body)
+	id, ok, err := s.projectExtractor.Extract(ctx, body, userID)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).Warn("project extractor failed")
 		return pgtype.Int4{Valid: false}

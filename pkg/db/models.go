@@ -43,12 +43,6 @@ type ExchangeRate struct {
 	UnitsPerUsd pgtype.Numeric `json:"unitsPerUsd"`
 }
 
-type GlobalSetting struct {
-	Key       string             `json:"key"`
-	Value     []byte             `json:"value"`
-	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
-}
-
 type Model struct {
 	Name        string `json:"name"`
 	Disabled    bool   `json:"disabled"`
@@ -65,6 +59,7 @@ type Project struct {
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
 	AutoCreated bool               `json:"autoCreated"`
+	UserID      int64              `json:"userId"`
 }
 
 type Provider struct {
@@ -177,4 +172,11 @@ type UserIdentity struct {
 	Provider  string             `json:"provider"`
 	Identity  string             `json:"identity"`
 	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+}
+
+type UserSetting struct {
+	UserID    int64              `json:"userId"`
+	Key       string             `json:"key"`
+	Value     []byte             `json:"value"`
+	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
 }

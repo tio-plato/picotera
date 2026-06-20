@@ -61,6 +61,20 @@ components:
         - createdAt
         - updatedAt
       type: object
+    ConfigView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/ConfigView.json
+          format: uri
+          readOnly: true
+          type: string
+        title:
+          type: string
+      required:
+        - title
+      type: object
     CreateProviderRequestBody:
       additionalProperties: false
       properties:
@@ -409,22 +423,6 @@ components:
         - providerId
         - providerModels
         - removedModels
-      type: object
-    GlobalSettingView:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          example: https://example.com/schemas/GlobalSettingView.json
-          format: uri
-          readOnly: true
-          type: string
-        key:
-          type: string
-        value: {}
-      required:
-        - key
-        - value
       type: object
     InterruptRequestResponseBody:
       additionalProperties: false
@@ -1686,22 +1684,6 @@ components:
       required:
         - providerModels
       type: object
-    UpsertGlobalSettingRequestBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          example: https://example.com/schemas/UpsertGlobalSettingRequestBody.json
-          format: uri
-          readOnly: true
-          type: string
-        key:
-          type: string
-        value: {}
-      required:
-        - key
-        - value
-      type: object
     UpsertProjectRequestBody:
       additionalProperties: false
       properties:
@@ -1779,6 +1761,22 @@ components:
         - disabled
         - supportsNativeWebSearch
       type: object
+    UpsertUserSettingRequestBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/UpsertUserSettingRequestBody.json
+          format: uri
+          readOnly: true
+          type: string
+        key:
+          type: string
+        value: {}
+      required:
+        - key
+        - value
+      type: object
     UserIdentityMutateBody:
       additionalProperties: false
       properties:
@@ -1841,6 +1839,22 @@ components:
           type: boolean
       required:
         - displayName
+      type: object
+    UserSettingView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/UserSettingView.json
+          format: uri
+          readOnly: true
+          type: string
+        key:
+          type: string
+        value: {}
+      required:
+        - key
+        - value
       type: object
     UserView:
       additionalProperties: false
@@ -1991,6 +2005,23 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Update an API key
+  /api/picotera/config:
+    get:
+      operationId: getConfig
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get runtime application configuration
   /api/picotera/endpoints:
     get:
       operationId: listEndpoints
@@ -3411,14 +3442,14 @@ paths:
       summary: Update a script
   /api/picotera/settings:
     get:
-      operationId: listGlobalSettings
+      operationId: listUserSettings
       responses:
         "200":
           content:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/GlobalSettingView"
+                  $ref: "#/components/schemas/UserSettingView"
                 nullable: true
                 type: array
           description: OK
@@ -3428,21 +3459,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
-      summary: List all global settings
+      summary: List all settings for the current user
     put:
-      operationId: upsertGlobalSetting
+      operationId: upsertUserSetting
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpsertGlobalSettingRequestBody"
+              $ref: "#/components/schemas/UpsertUserSettingRequestBody"
         required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GlobalSettingView"
+                $ref: "#/components/schemas/UserSettingView"
           description: OK
         default:
           content:
@@ -3450,10 +3481,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
-      summary: Create or update a global setting
+      summary: Create or update a setting for the current user
   /api/picotera/settings/{key}:
     delete:
-      operationId: deleteGlobalSetting
+      operationId: deleteUserSetting
       parameters:
         - in: path
           name: key
@@ -3469,9 +3500,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
-      summary: Delete a global setting
+      summary: Delete a setting for the current user
     get:
-      operationId: getGlobalSetting
+      operationId: getUserSetting
       parameters:
         - in: path
           name: key
@@ -3483,7 +3514,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GlobalSettingView"
+                $ref: "#/components/schemas/UserSettingView"
           description: OK
         default:
           content:
@@ -3491,7 +3522,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
-      summary: Get a global setting by key
+      summary: Get a setting by key for the current user
   /api/picotera/simulate/dispatch:
     post:
       operationId: simulateDispatch

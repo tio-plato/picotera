@@ -178,7 +178,9 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 	header := f.r.Header.Clone()
 	parentSpanID := extractParentSpanID(header)
 	parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
-	projectIDPg := f.h.extractProjectID(f.ctxs.Request, f.body)
+	// Project identification happens post-auth (in authenticateAndBackfill), once
+	// the user is known — projects are per-user. The meta row starts with no
+	// project; project_id is backfilled by UpdateRequestOnHeader.
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
 	createdAt := f.h.insertRequest(pctx, db.InsertRequestParams{
@@ -196,7 +198,7 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		ErrorMessage:       pgtype.Text{Valid: false},
 		TimeSpentMs:        pgtype.Int4{Valid: false},
 		UserMessagePreview: extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType),
-		ProjectID:          projectIDPg,
+		ProjectID:          pgtype.Int4{Valid: false},
 		CreatedAt:          pgtype.Timestamp{Time: metaIDCreatedAt, Valid: true},
 		// User is unknown until authentication; the trace is created (with the
 		// real user_id) in authenticateAndBackfill, so insertRequest's upsertTrace
@@ -208,20 +210,13 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		CreatedAt:      createdAt,
 		ParentSpanID:   parentSpanID,
 		ParentSpanIDPg: parentSpanIDPg,
-		ProjectID:      projectIDPg,
+		ProjectID:      pgtype.Int4{Valid: false},
 		RequestHeader:  header,
 		RequestMethod:  f.r.Method,
 		RequestURL:     f.r.URL.String(),
 	}
 	f.h.liveRequests.RegisterMeta(metaID, f.ctxs.cancelRequest)
 	f.h.uploadRequestArtifact(pctx, metaID, createdAt, f.r.Method, f.r.URL.String(), header, f.body)
-	if projectIDPg.Valid {
-		seenCtx, seenCancel := f.ctxs.Persist()
-		go func() {
-			defer seenCancel()
-			f.h.upsertProjectSeen(seenCtx, projectIDPg.Int32, createdAt)
-		}()
-	}
 	return true
 }
 
@@ -245,6 +240,11 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 		APIKeyJS:   apiKeyJS,
 		APIKeyAnno: apiKeyJS.Annotations,
 	}
+	// Project identification is scoped to the authenticated user, so it runs here
+	// rather than at meta-insert time. The result is backfilled onto the meta row
+	// alongside user_id; upstream attempt rows read it from f.meta.ProjectID.
+	projectIDPg := f.h.extractProjectID(f.ctxs.Request, f.body, apiKey.UserID)
+	f.meta.ProjectID = projectIDPg
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
 	f.h.updateRequestOnHeader(pctx, db.UpdateRequestOnHeaderParams{
@@ -252,6 +252,7 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 		EndpointPath: pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
 		ApiKeyID:     f.auth.APIKeyID,
 		UserID:       f.auth.UserID,
+		ProjectID:    projectIDPg,
 		Status:       db.RequestStatusPending,
 		CreatedAt:    pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
 	})
@@ -259,6 +260,13 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 	// row's created_at, so ListRequestTraces' time-window LATERALs still match
 	// the meta row. Subsequent upstream rows extend the window via upsertTrace.
 	f.h.upsertTrace(pctx, f.meta.ParentSpanIDPg, f.auth.UserID, f.meta.CreatedAt)
+	if projectIDPg.Valid {
+		seenCtx, seenCancel := f.ctxs.Persist()
+		go func() {
+			defer seenCancel()
+			f.h.upsertProjectSeen(seenCtx, projectIDPg.Int32, f.meta.CreatedAt)
+		}()
+	}
 	return true
 }
 
