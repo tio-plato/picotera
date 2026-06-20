@@ -889,6 +889,8 @@ export interface components {
             key: string;
             name: string;
             updatedAt: string;
+            /** Format: int64 */
+            userId: number;
         };
         CreateProviderRequestBody: {
             /**
@@ -1540,6 +1542,8 @@ export interface components {
             /** Format: int32 */
             type: number;
             upstreamModel?: string;
+            /** Format: int64 */
+            userId?: number;
             userMessagePreview?: string;
         };
         ScriptMutateBody: {

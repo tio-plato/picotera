@@ -39,6 +39,10 @@ func (s *Server) attachArtifactUrls(ctx context.Context, v *contract.RequestView
 }
 
 func (s *Server) handleListRequests(ctx context.Context, input *contract.ListRequestsRequest) (*contract.ListRequestsResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	limit := input.Limit
 	if limit <= 0 {
 		limit = 20
@@ -89,6 +93,7 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 	}
 
 	rows, err := s.queries.ListRequests(ctx, db.ListRequestsParams{
+		UserID:          u.ID,
 		TraceID:         filterTraceID,
 		Type:            filterType,
 		ProviderID:      filterProviderID,
@@ -133,6 +138,10 @@ func (s *Server) handleListRequests(ctx context.Context, input *contract.ListReq
 }
 
 func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.ListRequestTracesRequest) (*contract.ListRequestTracesResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	limit := input.Limit
 	if limit <= 0 {
 		limit = 20
@@ -158,6 +167,7 @@ func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.Li
 	}
 
 	rows, err := s.queries.ListRequestTraces(ctx, db.ListRequestTracesParams{
+		UserID:              u.ID,
 		CursorLastRequestAt: cursorLastRequestAt,
 		CursorTraceID:       cursorTraceID,
 		Limit:               pgtype.Int4{Int32: fetchLimit, Valid: true},
@@ -203,6 +213,10 @@ func (s *Server) handleListRequestTraces(ctx context.Context, input *contract.Li
 }
 
 func (s *Server) handleGetRequest(ctx context.Context, input *contract.GetRequestRequest) (*contract.GetRequestResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	idCreatedAt, err := requestIDCreatedAt(input.ID)
 	if err != nil {
 		return nil, err
@@ -210,6 +224,7 @@ func (s *Server) handleGetRequest(ctx context.Context, input *contract.GetReques
 	req, err := s.queries.GetRequest(ctx, db.GetRequestParams{
 		ID:          input.ID,
 		IDCreatedAt: pgtype.Timestamp{Time: idCreatedAt, Valid: true},
+		UserID:      u.ID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -223,6 +238,10 @@ func (s *Server) handleGetRequest(ctx context.Context, input *contract.GetReques
 }
 
 func (s *Server) handleListRequestSpans(ctx context.Context, input *contract.ListRequestSpansRequest) (*contract.ListRequestSpansResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	idCreatedAt, err := requestIDCreatedAt(input.ID)
 	if err != nil {
 		return nil, err
@@ -230,6 +249,7 @@ func (s *Server) handleListRequestSpans(ctx context.Context, input *contract.Lis
 	req, err := s.queries.GetRequest(ctx, db.GetRequestParams{
 		ID:          input.ID,
 		IDCreatedAt: pgtype.Timestamp{Time: idCreatedAt, Valid: true},
+		UserID:      u.ID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -240,6 +260,7 @@ func (s *Server) handleListRequestSpans(ctx context.Context, input *contract.Lis
 	rows, err := s.queries.ListRequestsBySpan(ctx, db.ListRequestsBySpanParams{
 		ID:          input.ID,
 		IDCreatedAt: pgtype.Timestamp{Time: idCreatedAt, Valid: true},
+		UserID:      u.ID,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to list request spans", err)

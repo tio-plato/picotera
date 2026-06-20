@@ -239,6 +239,7 @@ func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.CandidateView, side gateway
 		UserMessagePreview: pgtype.Text{Valid: false},
 		ProjectID:          f.meta.ProjectID,
 		CreatedAt:          pgtype.Timestamp{Time: upstreamIDCreatedAt, Valid: true},
+		UserID:             f.auth.UserID,
 	})
 	entry := f.h.liveRequests.RegisterUpstream(upstreamID, cancel)
 	return attemptInput{Candidate: cand, Sidecar: side, Annotations: candAnno, Decision: dec, CurrentRetryCount: state.CurrentRetryCount, TotalAttemptCount: state.TotalAttemptCount, AttemptCtx: attemptCtx, UpstreamID: upstreamID, UpstreamCreatedAt: upstreamCreatedAt, AttemptStart: time.Now(), UpstreamModel: upstreamModel, Entry: entry}, cancel, nil

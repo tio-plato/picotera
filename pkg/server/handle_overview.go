@@ -104,6 +104,10 @@ func hasFilters(in contract.OverviewCommonRequest) bool {
 }
 
 func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetOverviewSummaryRequest) (*contract.GetOverviewSummaryResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	start, end, err := overviewWindow(in.Range, time.Now())
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
@@ -114,6 +118,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 	totals, err := s.queries.GetOverviewTotals(ctx, db.GetOverviewTotalsParams{
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -132,6 +137,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 	tokenBreakdownRow, err := s.queries.GetOverviewTokenBreakdown(ctx, db.GetOverviewTokenBreakdownParams{
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -145,6 +151,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 	breakdownTokenRows, err := s.queries.ListOverviewBreakdownTokens(ctx, db.ListOverviewBreakdownTokensParams{
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -158,6 +165,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 	breakdownCostRows, err := s.queries.ListOverviewBreakdownCosts(ctx, db.ListOverviewBreakdownCostsParams{
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -173,6 +181,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 		traceCount, err = s.queries.CountTracesFiltered(ctx, db.CountTracesFilteredParams{
 			StartAt:       startTS,
 			EndAt:         endTS,
+			UserID:        u.ID,
 			ApiKeyID:      toPgInt4(in.ApiKeyID),
 			Model:         toPgText(in.Model),
 			UpstreamModel: toPgText(in.UpstreamModel),
@@ -183,6 +192,7 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 		traceCount, err = s.queries.CountTraces(ctx, db.CountTracesParams{
 			StartAt: startTS,
 			EndAt:   endTS,
+			UserID:  u.ID,
 		})
 	}
 	if err != nil {
@@ -209,6 +219,10 @@ func (s *Server) handleGetOverviewSummary(ctx context.Context, in *contract.GetO
 }
 
 func (s *Server) handleGetOverviewDistribution(ctx context.Context, in *contract.GetOverviewDistributionRequest) (*contract.GetOverviewDistributionResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	start, end, err := overviewWindow(in.Range, time.Now())
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
@@ -220,6 +234,7 @@ func (s *Server) handleGetOverviewDistribution(ctx context.Context, in *contract
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -234,6 +249,7 @@ func (s *Server) handleGetOverviewDistribution(ctx context.Context, in *contract
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -248,6 +264,7 @@ func (s *Server) handleGetOverviewDistribution(ctx context.Context, in *contract
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -299,6 +316,10 @@ func emptyIfNil(in []contract.OverviewCostView) []contract.OverviewCostView {
 }
 
 func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOverviewSeriesRequest) (*contract.GetOverviewSeriesResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	start, end, err := overviewWindow(in.Range, time.Now())
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
@@ -314,6 +335,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -327,6 +349,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -340,6 +363,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -353,6 +377,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),
@@ -563,6 +588,10 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 }
 
 func (s *Server) handleGetOverviewSpeedBoxplot(ctx context.Context, in *contract.GetOverviewSpeedBoxplotRequest) (*contract.GetOverviewSpeedBoxplotResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	start, end, err := overviewWindow(in.Range, time.Now())
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
@@ -574,6 +603,7 @@ func (s *Server) handleGetOverviewSpeedBoxplot(ctx context.Context, in *contract
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
+		UserID:        u.ID,
 		ApiKeyID:      toPgInt4(in.ApiKeyID),
 		Model:         toPgText(in.Model),
 		UpstreamModel: toPgText(in.UpstreamModel),

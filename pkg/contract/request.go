@@ -42,6 +42,7 @@ type RequestView struct {
 	InferredProvider    string   `json:"inferredProvider,omitempty"`
 	InferredModel       string   `json:"inferredModel,omitempty"`
 	InferredModelSource *int32   `json:"inferredModelSource,omitempty"`
+	UserID              int64    `json:"userId,omitempty"`
 }
 
 type TraceCostView struct {
@@ -96,6 +97,7 @@ type requestLike struct {
 	InferredProvider    pgtype.Text
 	InferredModel       pgtype.Text
 	InferredModelSource int16
+	UserID              pgtype.Int8
 }
 
 func toRequestView(r requestLike) *RequestView {
@@ -194,6 +196,9 @@ func toRequestView(r requestLike) *RequestView {
 		v := int32(r.InferredModelSource)
 		view.InferredModelSource = &v
 	}
+	if r.UserID.Valid {
+		view.UserID = r.UserID.Int64
+	}
 	return view
 }
 
@@ -227,6 +232,7 @@ func ToRequestView(r *db.Request) *RequestView {
 		InferredProvider:    r.InferredProvider,
 		InferredModel:       r.InferredModel,
 		InferredModelSource: r.InferredModelSource,
+		UserID:              r.UserID,
 	})
 }
 
@@ -260,6 +266,7 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		InferredProvider:    r.InferredProvider,
 		InferredModel:       r.InferredModel,
 		InferredModelSource: r.InferredModelSource,
+		UserID:              r.UserID,
 	})
 }
 
@@ -293,6 +300,7 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		InferredProvider:    r.InferredProvider,
 		InferredModel:       r.InferredModel,
 		InferredModelSource: r.InferredModelSource,
+		UserID:              r.UserID,
 	})
 }
 

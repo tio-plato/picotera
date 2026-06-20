@@ -67,6 +67,7 @@ type gatewayMetaState struct {
 type gatewayAuthState struct {
 	APIKey     *db.ApiKey
 	APIKeyID   pgtype.Int4
+	UserID     pgtype.Int8
 	APIKeyJS   *jsx.ApiKeySummary
 	APIKeyAnno map[string]string
 }
@@ -197,6 +198,10 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		UserMessagePreview: extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType),
 		ProjectID:          projectIDPg,
 		CreatedAt:          pgtype.Timestamp{Time: metaIDCreatedAt, Valid: true},
+		// User is unknown until authentication; the trace is created (with the
+		// real user_id) in authenticateAndBackfill, so insertRequest's upsertTrace
+		// is skipped for the meta row.
+		UserID: pgtype.Int8{Valid: false},
 	})
 	f.meta = gatewayMetaState{
 		ID:             metaID,
@@ -236,6 +241,7 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 	f.auth = gatewayAuthState{
 		APIKey:     apiKey,
 		APIKeyID:   pgtype.Int4{Int32: apiKey.ID, Valid: true},
+		UserID:     pgtype.Int8{Int64: apiKey.UserID, Valid: true},
 		APIKeyJS:   apiKeyJS,
 		APIKeyAnno: apiKeyJS.Annotations,
 	}
@@ -245,9 +251,14 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 		ID:           f.meta.ID,
 		EndpointPath: pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
 		ApiKeyID:     f.auth.APIKeyID,
+		UserID:       f.auth.UserID,
 		Status:       db.RequestStatusPending,
 		CreatedAt:    pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
 	})
+	// The trace is created now (post-auth, user known) anchored to the meta
+	// row's created_at, so ListRequestTraces' time-window LATERALs still match
+	// the meta row. Subsequent upstream rows extend the window via upsertTrace.
+	f.h.upsertTrace(pctx, f.meta.ParentSpanIDPg, f.auth.UserID, f.meta.CreatedAt)
 	return true
 }
 

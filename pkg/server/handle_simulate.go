@@ -27,6 +27,10 @@ import (
 // the ranked candidate list without sending any upstream request or recording
 // a request row.
 func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.SimulateDispatchRequest) (*contract.SimulateDispatchResponse, error) {
+	u, err := requireUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	in := req.Body
 
 	// 1. Parse body bytes.
@@ -43,7 +47,7 @@ func (s *Server) handleSimulateDispatch(ctx context.Context, req *contract.Simul
 	}
 
 	// 2. Load API key.
-	apiKeyRow, err := s.queries.GetApiKey(ctx, in.ApiKeyID)
+	apiKeyRow, err := s.queries.GetApiKey(ctx, db.GetApiKeyParams{ID: in.ApiKeyID, UserID: u.ID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, huma.Error404NotFound("api key not found", errorx.RequestNotFound)

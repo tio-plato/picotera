@@ -16,15 +16,17 @@ SELECT COUNT(*)::bigint AS trace_count
 FROM traces
 WHERE last_request_at >= $1::timestamp
   AND last_request_at < $2::timestamp
+  AND user_id = $3::bigint
 `
 
 type CountTracesParams struct {
 	StartAt pgtype.Timestamp `json:"startAt"`
 	EndAt   pgtype.Timestamp `json:"endAt"`
+	UserID  int64            `json:"userId"`
 }
 
 func (q *Queries) CountTraces(ctx context.Context, arg CountTracesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countTraces, arg.StartAt, arg.EndAt)
+	row := q.db.QueryRow(ctx, countTraces, arg.StartAt, arg.EndAt, arg.UserID)
 	var trace_count int64
 	err := row.Scan(&trace_count)
 	return trace_count, err
@@ -35,24 +37,27 @@ SELECT COUNT(*)::bigint AS trace_count
 FROM traces t
 WHERE t.last_request_at >= $1::timestamp
   AND t.last_request_at < $2::timestamp
+  AND t.user_id = $3::bigint
   AND EXISTS (
     SELECT 1
     FROM request r
     WHERE r.parent_span_id = t.parent_span_id
+      AND r.user_id = t.user_id
       AND r.created_at >= t.first_request_at
       AND r.created_at <= t.last_request_at
       AND r.type = 1
-      AND ($3::int IS NULL OR r.api_key_id = $3::int)
-      AND ($4::text IS NULL OR r.model = $4::text)
-      AND ($5::text IS NULL OR r.upstream_model = $5::text)
-      AND ($6::int IS NULL OR r.provider_id = $6::int)
-      AND ($7::int IS NULL OR r.project_id = $7::int)
+      AND ($4::int IS NULL OR r.api_key_id = $4::int)
+      AND ($5::text IS NULL OR r.model = $5::text)
+      AND ($6::text IS NULL OR r.upstream_model = $6::text)
+      AND ($7::int IS NULL OR r.provider_id = $7::int)
+      AND ($8::int IS NULL OR r.project_id = $8::int)
   )
 `
 
 type CountTracesFilteredParams struct {
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -64,6 +69,7 @@ func (q *Queries) CountTracesFiltered(ctx context.Context, arg CountTracesFilter
 	row := q.db.QueryRow(ctx, countTracesFiltered,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -92,15 +98,16 @@ WITH speeds AS (
     AND status = 2
     AND created_at >= $2::timestamp
     AND created_at < $3::timestamp
+    AND user_id = $4::bigint
     AND output_tokens >= 50
     AND ttft_ms IS NOT NULL
     AND time_spent_ms IS NOT NULL
     AND (time_spent_ms - ttft_ms) >= 500
-    AND ($4::int IS NULL OR api_key_id = $4::int)
-    AND ($5::text IS NULL OR model = $5::text)
-    AND ($6::text IS NULL OR upstream_model = $6::text)
-    AND ($7::int IS NULL OR provider_id = $7::int)
-    AND ($8::int IS NULL OR project_id = $8::int)
+    AND ($5::int IS NULL OR api_key_id = $5::int)
+    AND ($6::text IS NULL OR model = $6::text)
+    AND ($7::text IS NULL OR upstream_model = $7::text)
+    AND ($8::int IS NULL OR provider_id = $8::int)
+    AND ($9::int IS NULL OR project_id = $9::int)
 )
 SELECT
   group_key,
@@ -122,6 +129,7 @@ type GetOverviewSpeedBoxplotParams struct {
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -144,6 +152,7 @@ func (q *Queries) GetOverviewSpeedBoxplot(ctx context.Context, arg GetOverviewSp
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -186,16 +195,18 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= $1::timestamp
   AND bucket_at < $2::timestamp
-  AND ($3::int IS NULL OR api_key_id = $3::int)
-  AND ($4::text IS NULL OR model = $4::text)
-  AND ($5::text IS NULL OR upstream_model = $5::text)
-  AND ($6::int IS NULL OR provider_id = $6::int)
-  AND ($7::int IS NULL OR project_id = $7::int)
+  AND user_id = $3::bigint
+  AND ($4::int IS NULL OR api_key_id = $4::int)
+  AND ($5::text IS NULL OR model = $5::text)
+  AND ($6::text IS NULL OR upstream_model = $6::text)
+  AND ($7::int IS NULL OR provider_id = $7::int)
+  AND ($8::int IS NULL OR project_id = $8::int)
 `
 
 type GetOverviewTokenBreakdownParams struct {
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -215,6 +226,7 @@ func (q *Queries) GetOverviewTokenBreakdown(ctx context.Context, arg GetOverview
 	row := q.db.QueryRow(ctx, getOverviewTokenBreakdown,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -246,11 +258,12 @@ WITH filtered AS (
   FROM request_overview_hourly
   WHERE bucket_at >= $1::timestamp
     AND bucket_at < $2::timestamp
-    AND ($3::int IS NULL OR api_key_id = $3::int)
-    AND ($4::text IS NULL OR model = $4::text)
-    AND ($5::text IS NULL OR upstream_model = $5::text)
-    AND ($6::int IS NULL OR provider_id = $6::int)
-    AND ($7::int IS NULL OR project_id = $7::int)
+    AND user_id = $3::bigint
+    AND ($4::int IS NULL OR api_key_id = $4::int)
+    AND ($5::text IS NULL OR model = $5::text)
+    AND ($6::text IS NULL OR upstream_model = $6::text)
+    AND ($7::int IS NULL OR provider_id = $7::int)
+    AND ($8::int IS NULL OR project_id = $8::int)
 ), totals AS (
   SELECT
     COALESCE(SUM(
@@ -283,6 +296,7 @@ FROM totals CROSS JOIN cost_json
 type GetOverviewTotalsParams struct {
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -300,6 +314,7 @@ func (q *Queries) GetOverviewTotals(ctx context.Context, arg GetOverviewTotalsPa
 	row := q.db.QueryRow(ctx, getOverviewTotals,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -323,11 +338,12 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= $1::timestamp
   AND bucket_at < $2::timestamp
-  AND ($3::int IS NULL OR api_key_id = $3::int)
-  AND ($4::text IS NULL OR model = $4::text)
-  AND ($5::text IS NULL OR upstream_model = $5::text)
-  AND ($6::int IS NULL OR provider_id = $6::int)
-  AND ($7::int IS NULL OR project_id = $7::int)
+  AND user_id = $3::bigint
+  AND ($4::int IS NULL OR api_key_id = $4::int)
+  AND ($5::text IS NULL OR model = $5::text)
+  AND ($6::text IS NULL OR upstream_model = $6::text)
+  AND ($7::int IS NULL OR provider_id = $7::int)
+  AND ($8::int IS NULL OR project_id = $8::int)
   AND cost_currency IS NOT NULL
   AND cost_currency <> ''
 GROUP BY 1, 2, 3, 4, 5, 6
@@ -336,6 +352,7 @@ GROUP BY 1, 2, 3, 4, 5, 6
 type ListOverviewBreakdownCostsParams struct {
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -357,6 +374,7 @@ func (q *Queries) ListOverviewBreakdownCosts(ctx context.Context, arg ListOvervi
 	rows, err := q.db.Query(ctx, listOverviewBreakdownCosts,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -402,11 +420,12 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= $1::timestamp
   AND bucket_at < $2::timestamp
-  AND ($3::int IS NULL OR api_key_id = $3::int)
-  AND ($4::text IS NULL OR model = $4::text)
-  AND ($5::text IS NULL OR upstream_model = $5::text)
-  AND ($6::int IS NULL OR provider_id = $6::int)
-  AND ($7::int IS NULL OR project_id = $7::int)
+  AND user_id = $3::bigint
+  AND ($4::int IS NULL OR api_key_id = $4::int)
+  AND ($5::text IS NULL OR model = $5::text)
+  AND ($6::text IS NULL OR upstream_model = $6::text)
+  AND ($7::int IS NULL OR provider_id = $7::int)
+  AND ($8::int IS NULL OR project_id = $8::int)
 GROUP BY 1, 2, 3, 4, 5
 HAVING SUM(
   input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
@@ -416,6 +435,7 @@ HAVING SUM(
 type ListOverviewBreakdownTokensParams struct {
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -436,6 +456,7 @@ func (q *Queries) ListOverviewBreakdownTokens(ctx context.Context, arg ListOverv
 	rows, err := q.db.Query(ctx, listOverviewBreakdownTokens,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -483,11 +504,12 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
-  AND ($4::int IS NULL OR api_key_id = $4::int)
-  AND ($5::text IS NULL OR model = $5::text)
-  AND ($6::text IS NULL OR upstream_model = $6::text)
-  AND ($7::int IS NULL OR provider_id = $7::int)
-  AND ($8::int IS NULL OR project_id = $8::int)
+  AND user_id = $4::bigint
+  AND ($5::int IS NULL OR api_key_id = $5::int)
+  AND ($6::text IS NULL OR model = $6::text)
+  AND ($7::text IS NULL OR upstream_model = $7::text)
+  AND ($8::int IS NULL OR provider_id = $8::int)
+  AND ($9::int IS NULL OR project_id = $9::int)
 GROUP BY bucket_at, group_key
 HAVING SUM(input_tokens + cache_read_tokens + cache_write_tokens + cache_write_1h_tokens) > 0
 ORDER BY bucket_at ASC, group_key ASC
@@ -497,6 +519,7 @@ type ListOverviewCacheHitRateSeriesParams struct {
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -516,6 +539,7 @@ func (q *Queries) ListOverviewCacheHitRateSeries(ctx context.Context, arg ListOv
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -562,11 +586,12 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
-  AND ($4::int IS NULL OR api_key_id = $4::int)
-  AND ($5::text IS NULL OR model = $5::text)
-  AND ($6::text IS NULL OR upstream_model = $6::text)
-  AND ($7::int IS NULL OR provider_id = $7::int)
-  AND ($8::int IS NULL OR project_id = $8::int)
+  AND user_id = $4::bigint
+  AND ($5::int IS NULL OR api_key_id = $5::int)
+  AND ($6::text IS NULL OR model = $6::text)
+  AND ($7::text IS NULL OR upstream_model = $7::text)
+  AND ($8::int IS NULL OR provider_id = $8::int)
+  AND ($9::int IS NULL OR project_id = $9::int)
 GROUP BY key
 ORDER BY total_tokens DESC, key ASC
 `
@@ -575,6 +600,7 @@ type ListOverviewDistributionParams struct {
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -593,6 +619,7 @@ func (q *Queries) ListOverviewDistribution(ctx context.Context, arg ListOverview
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -632,11 +659,12 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
-  AND ($4::int IS NULL OR api_key_id = $4::int)
-  AND ($5::text IS NULL OR model = $5::text)
-  AND ($6::text IS NULL OR upstream_model = $6::text)
-  AND ($7::int IS NULL OR provider_id = $7::int)
-  AND ($8::int IS NULL OR project_id = $8::int)
+  AND user_id = $4::bigint
+  AND ($5::int IS NULL OR api_key_id = $5::int)
+  AND ($6::text IS NULL OR model = $6::text)
+  AND ($7::text IS NULL OR upstream_model = $7::text)
+  AND ($8::int IS NULL OR provider_id = $8::int)
+  AND ($9::int IS NULL OR project_id = $9::int)
   AND cost_currency IS NOT NULL
   AND cost_currency <> ''
 GROUP BY key, currency
@@ -647,6 +675,7 @@ type ListOverviewDistributionCostsParams struct {
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -665,6 +694,7 @@ func (q *Queries) ListOverviewDistributionCosts(ctx context.Context, arg ListOve
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -707,11 +737,12 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
-  AND ($4::int IS NULL OR api_key_id = $4::int)
-  AND ($5::text IS NULL OR model = $5::text)
-  AND ($6::text IS NULL OR upstream_model = $6::text)
-  AND ($7::int IS NULL OR provider_id = $7::int)
-  AND ($8::int IS NULL OR project_id = $8::int)
+  AND user_id = $4::bigint
+  AND ($5::int IS NULL OR api_key_id = $5::int)
+  AND ($6::text IS NULL OR model = $6::text)
+  AND ($7::text IS NULL OR upstream_model = $7::text)
+  AND ($8::int IS NULL OR provider_id = $8::int)
+  AND ($9::int IS NULL OR project_id = $9::int)
 GROUP BY bucket_at, group_key, currency
 ORDER BY bucket_at ASC, group_key ASC, currency ASC
 `
@@ -720,6 +751,7 @@ type ListOverviewSeriesMetricsParams struct {
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -741,6 +773,7 @@ func (q *Queries) ListOverviewSeriesMetrics(ctx context.Context, arg ListOvervie
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -787,14 +820,15 @@ SELECT
 FROM request r
 WHERE r.created_at >= $2::timestamp
   AND r.created_at < $3::timestamp
+  AND r.user_id = $4::bigint
   AND r.type = 1
   AND r.parent_span_id IS NOT NULL
   AND r.parent_span_id <> ''
-  AND ($4::int IS NULL OR r.api_key_id = $4::int)
-  AND ($5::text IS NULL OR r.model = $5::text)
-  AND ($6::text IS NULL OR r.upstream_model = $6::text)
-  AND ($7::int IS NULL OR r.provider_id = $7::int)
-  AND ($8::int IS NULL OR r.project_id = $8::int)
+  AND ($5::int IS NULL OR r.api_key_id = $5::int)
+  AND ($6::text IS NULL OR r.model = $6::text)
+  AND ($7::text IS NULL OR r.upstream_model = $7::text)
+  AND ($8::int IS NULL OR r.provider_id = $8::int)
+  AND ($9::int IS NULL OR r.project_id = $9::int)
 GROUP BY bucket_at, group_key
 ORDER BY bucket_at ASC, group_key ASC
 `
@@ -803,6 +837,7 @@ type ListOverviewSeriesTracesParams struct {
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -821,6 +856,7 @@ func (q *Queries) ListOverviewSeriesTraces(ctx context.Context, arg ListOverview
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -862,11 +898,12 @@ SELECT
 FROM request_speed_hourly
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
-  AND ($4::int IS NULL OR api_key_id = $4::int)
-  AND ($5::text IS NULL OR model = $5::text)
-  AND ($6::text IS NULL OR upstream_model = $6::text)
-  AND ($7::int IS NULL OR provider_id = $7::int)
-  AND ($8::int IS NULL OR project_id = $8::int)
+  AND user_id = $4::bigint
+  AND ($5::int IS NULL OR api_key_id = $5::int)
+  AND ($6::text IS NULL OR model = $6::text)
+  AND ($7::text IS NULL OR upstream_model = $7::text)
+  AND ($8::int IS NULL OR provider_id = $8::int)
+  AND ($9::int IS NULL OR project_id = $9::int)
 GROUP BY bucket_at, group_key
 HAVING SUM(prefill_time_sum) > 0 OR SUM(decode_time_sum) > 0
 ORDER BY bucket_at ASC, group_key ASC
@@ -876,6 +913,7 @@ type ListOverviewSpeedSeriesParams struct {
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -896,6 +934,7 @@ func (q *Queries) ListOverviewSpeedSeries(ctx context.Context, arg ListOverviewS
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,
@@ -940,14 +979,15 @@ SELECT
 FROM request r
 WHERE r.created_at >= $2::timestamp
   AND r.created_at < $3::timestamp
+  AND r.user_id = $4::bigint
   AND r.type = 1
   AND r.parent_span_id IS NOT NULL
   AND r.parent_span_id <> ''
-  AND ($4::int IS NULL OR r.api_key_id = $4::int)
-  AND ($5::text IS NULL OR r.model = $5::text)
-  AND ($6::text IS NULL OR r.upstream_model = $6::text)
-  AND ($7::int IS NULL OR r.provider_id = $7::int)
-  AND ($8::int IS NULL OR r.project_id = $8::int)
+  AND ($5::int IS NULL OR r.api_key_id = $5::int)
+  AND ($6::text IS NULL OR r.model = $6::text)
+  AND ($7::text IS NULL OR r.upstream_model = $7::text)
+  AND ($8::int IS NULL OR r.provider_id = $8::int)
+  AND ($9::int IS NULL OR r.project_id = $9::int)
 GROUP BY key
 `
 
@@ -955,6 +995,7 @@ type ListOverviewTraceCountsByDimensionParams struct {
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
+	UserID        int64            `json:"userId"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Model         pgtype.Text      `json:"model"`
 	UpstreamModel pgtype.Text      `json:"upstreamModel"`
@@ -972,6 +1013,7 @@ func (q *Queries) ListOverviewTraceCountsByDimension(ctx context.Context, arg Li
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
+		arg.UserID,
 		arg.ApiKeyID,
 		arg.Model,
 		arg.UpstreamModel,

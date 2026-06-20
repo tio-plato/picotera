@@ -12,16 +12,20 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, user_message_preview, cache_write_1h_tokens, project_id, finish_reason, inferred_provider, inferred_model, inferred_model_source FROM request WHERE id = $1 AND created_at = $2::timestamp
+SELECT id, span_id, parent_span_id, provider_id, endpoint_path, api_key_id, model, input_tokens, cache_read_tokens, output_tokens, cache_write_tokens, status_code, error_message, ttft_ms, time_spent_ms, created_at, type, status, upstream_model, model_cost, model_cost_currency, user_message_preview, cache_write_1h_tokens, project_id, finish_reason, inferred_provider, inferred_model, inferred_model_source, user_id FROM request
+WHERE id = $1
+  AND created_at = $2::timestamp
+  AND user_id = $3::bigint
 `
 
 type GetRequestParams struct {
 	ID          string           `json:"id"`
 	IDCreatedAt pgtype.Timestamp `json:"idCreatedAt"`
+	UserID      int64            `json:"userId"`
 }
 
 func (q *Queries) GetRequest(ctx context.Context, arg GetRequestParams) (Request, error) {
-	row := q.db.QueryRow(ctx, getRequest, arg.ID, arg.IDCreatedAt)
+	row := q.db.QueryRow(ctx, getRequest, arg.ID, arg.IDCreatedAt, arg.UserID)
 	var i Request
 	err := row.Scan(
 		&i.ID,
@@ -52,6 +56,7 @@ func (q *Queries) GetRequest(ctx context.Context, arg GetRequestParams) (Request
 		&i.InferredProvider,
 		&i.InferredModel,
 		&i.InferredModelSource,
+		&i.UserID,
 	)
 	return i, err
 }
@@ -92,6 +97,7 @@ LEFT JOIN LATERAL (
     COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
 ) metrics ON true
@@ -104,6 +110,7 @@ LEFT JOIN LATERAL (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = traces.parent_span_id
+      AND request.user_id = traces.user_id
       AND created_at >= traces.first_request_at
       AND created_at <= traces.last_request_at
       AND type = 1
@@ -116,6 +123,7 @@ LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
     AND type = 0
@@ -127,6 +135,7 @@ LEFT JOIN LATERAL (
   SELECT project_id
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
     AND type = 0
@@ -135,16 +144,20 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) trace_project ON true
 WHERE
-  $1::timestamp IS NULL
-  OR (traces.last_request_at, traces.id) < (
-    $1::timestamp,
-    $2::text
+  traces.user_id = $1::bigint
+  AND (
+    $2::timestamp IS NULL
+    OR (traces.last_request_at, traces.id) < (
+      $2::timestamp,
+      $3::text
+    )
   )
 ORDER BY traces.last_request_at DESC, traces.id DESC
-LIMIT $3::int
+LIMIT $4::int
 `
 
 type ListRequestTracesParams struct {
+	UserID              int64            `json:"userId"`
 	CursorLastRequestAt pgtype.Timestamp `json:"cursorLastRequestAt"`
 	CursorTraceID       pgtype.Text      `json:"cursorTraceId"`
 	Limit               pgtype.Int4      `json:"limit"`
@@ -169,7 +182,12 @@ type ListRequestTracesRow struct {
 }
 
 func (q *Queries) ListRequestTraces(ctx context.Context, arg ListRequestTracesParams) ([]ListRequestTracesRow, error) {
-	rows, err := q.db.Query(ctx, listRequestTraces, arg.CursorLastRequestAt, arg.CursorTraceID, arg.Limit)
+	rows, err := q.db.Query(ctx, listRequestTraces,
+		arg.UserID,
+		arg.CursorLastRequestAt,
+		arg.CursorTraceID,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -210,16 +228,18 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
        r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id, r.finish_reason,
-       r.inferred_provider, r.inferred_model, r.inferred_model_source
+       r.inferred_provider, r.inferred_model, r.inferred_model_source,
+       r.user_id
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = $1::text
 WHERE
-  ($2::int IS NULL OR r.type = $2)
-  AND ($3::int IS NULL OR r.provider_id = $3)
-  AND ($4::text IS NULL OR r.endpoint_path = $4)
-  AND ($5::text IS NULL OR r.model = $5)
-  AND ($6::text IS NULL OR r.upstream_model = $6)
-  AND ($7::int IS NULL OR r.project_id = $7)
+  r.user_id = $2::bigint
+  AND ($3::int IS NULL OR r.type = $3)
+  AND ($4::int IS NULL OR r.provider_id = $4)
+  AND ($5::text IS NULL OR r.endpoint_path = $5)
+  AND ($6::text IS NULL OR r.model = $6)
+  AND ($7::text IS NULL OR r.upstream_model = $7)
+  AND ($8::int IS NULL OR r.project_id = $8)
   AND (
     $1::text IS NULL
     OR (
@@ -229,15 +249,16 @@ WHERE
     )
   )
   AND (
-    $8::timestamp IS NULL
-    OR (r.created_at, r.id) < ($8::timestamp, $9::text)
+    $9::timestamp IS NULL
+    OR (r.created_at, r.id) < ($9::timestamp, $10::text)
   )
 ORDER BY r.created_at DESC, r.id DESC
-LIMIT $10::int
+LIMIT $11::int
 `
 
 type ListRequestsParams struct {
 	TraceID         pgtype.Text      `json:"traceId"`
+	UserID          int64            `json:"userId"`
 	Type            pgtype.Int4      `json:"type"`
 	ProviderID      pgtype.Int4      `json:"providerId"`
 	EndpointPath    pgtype.Text      `json:"endpointPath"`
@@ -278,11 +299,13 @@ type ListRequestsRow struct {
 	InferredProvider    pgtype.Text      `json:"inferredProvider"`
 	InferredModel       pgtype.Text      `json:"inferredModel"`
 	InferredModelSource int16            `json:"inferredModelSource"`
+	UserID              pgtype.Int8      `json:"userId"`
 }
 
 func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]ListRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listRequests,
 		arg.TraceID,
+		arg.UserID,
 		arg.Type,
 		arg.ProviderID,
 		arg.EndpointPath,
@@ -329,6 +352,7 @@ func (q *Queries) ListRequests(ctx context.Context, arg ListRequestsParams) ([]L
 			&i.InferredProvider,
 			&i.InferredModel,
 			&i.InferredModelSource,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -344,8 +368,9 @@ const listRequestsBySpan = `-- name: ListRequestsBySpan :many
 WITH anchor AS (
   SELECT request.span_id
   FROM request
-  WHERE request.id = $1::text
-    AND request.created_at = $2::timestamp
+  WHERE request.id = $2::text
+    AND request.created_at = $3::timestamp
+    AND request.user_id = $1::bigint
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
@@ -353,13 +378,16 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.created_at,
        r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id, r.finish_reason,
-       r.inferred_provider, r.inferred_model, r.inferred_model_source
+       r.inferred_provider, r.inferred_model, r.inferred_model_source,
+       r.user_id
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
+  AND r.user_id = $1::bigint
 ORDER BY r.created_at ASC, r.id ASC
 `
 
 type ListRequestsBySpanParams struct {
+	UserID      int64            `json:"userId"`
 	ID          string           `json:"id"`
 	IDCreatedAt pgtype.Timestamp `json:"idCreatedAt"`
 }
@@ -393,10 +421,11 @@ type ListRequestsBySpanRow struct {
 	InferredProvider    pgtype.Text      `json:"inferredProvider"`
 	InferredModel       pgtype.Text      `json:"inferredModel"`
 	InferredModelSource int16            `json:"inferredModelSource"`
+	UserID              pgtype.Int8      `json:"userId"`
 }
 
 func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpanParams) ([]ListRequestsBySpanRow, error) {
-	rows, err := q.db.Query(ctx, listRequestsBySpan, arg.ID, arg.IDCreatedAt)
+	rows, err := q.db.Query(ctx, listRequestsBySpan, arg.UserID, arg.ID, arg.IDCreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -433,6 +462,7 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpan
 			&i.InferredProvider,
 			&i.InferredModel,
 			&i.InferredModelSource,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -551,8 +581,9 @@ func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequest
 
 const updateRequestOnHeader = `-- name: UpdateRequestOnHeader :exec
 UPDATE request
-SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7
-WHERE id = $1 AND created_at = $8::timestamp
+SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7,
+    user_id = $8::bigint
+WHERE id = $1 AND created_at = $9::timestamp
 `
 
 type UpdateRequestOnHeaderParams struct {
@@ -563,6 +594,7 @@ type UpdateRequestOnHeaderParams struct {
 	EndpointPath  pgtype.Text      `json:"endpointPath"`
 	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
 	Status        int32            `json:"status"`
+	UserID        pgtype.Int8      `json:"userId"`
 	CreatedAt     pgtype.Timestamp `json:"createdAt"`
 }
 
@@ -575,6 +607,7 @@ func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOn
 		arg.EndpointPath,
 		arg.ApiKeyID,
 		arg.Status,
+		arg.UserID,
 		arg.CreatedAt,
 	)
 	return err

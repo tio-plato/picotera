@@ -16,7 +16,7 @@ type Querier interface {
 	CountTracesFiltered(ctx context.Context, arg CountTracesFilteredParams) (int64, error)
 	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
 	CreateUserIdentity(ctx context.Context, arg CreateUserIdentityParams) (UserIdentity, error)
-	DeleteApiKey(ctx context.Context, id int32) error
+	DeleteApiKey(ctx context.Context, arg DeleteApiKeyParams) error
 	DeleteEndpoint(ctx context.Context, path string) error
 	DeleteExchangeRate(ctx context.Context, code string) error
 	DeleteGlobalSetting(ctx context.Context, key string) (int64, error)
@@ -28,7 +28,7 @@ type Querier interface {
 	DeleteUser(ctx context.Context, id int64) error
 	DeleteUserIdentitiesByUser(ctx context.Context, userID int64) error
 	DeleteUserIdentity(ctx context.Context, id int64) error
-	GetApiKey(ctx context.Context, id int32) (ApiKey, error)
+	GetApiKey(ctx context.Context, arg GetApiKeyParams) (ApiKey, error)
 	GetApiKeyByKey(ctx context.Context, key string) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
 	GetEndpoints(ctx context.Context) ([]Endpoint, error)
@@ -72,7 +72,7 @@ type Querier interface {
 	InsertScript(ctx context.Context, arg InsertScriptParams) (Script, error)
 	InsertUser(ctx context.Context, arg InsertUserParams) (AppUser, error)
 	InsertUserIdentity(ctx context.Context, arg InsertUserIdentityParams) (UserIdentity, error)
-	ListApiKeys(ctx context.Context) ([]ApiKey, error)
+	ListApiKeys(ctx context.Context, userID int64) ([]ApiKey, error)
 	ListAvailableModelNames(ctx context.Context) ([]string, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
 	ListGlobalSettings(ctx context.Context) ([]GlobalSetting, error)

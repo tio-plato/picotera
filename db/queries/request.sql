@@ -4,11 +4,13 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
        r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id, r.finish_reason,
-       r.inferred_provider, r.inferred_model, r.inferred_model_source
+       r.inferred_provider, r.inferred_model, r.inferred_model_source,
+       r.user_id
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = sqlc.narg('trace_id')::text
 WHERE
-  (sqlc.narg('type')::int IS NULL OR r.type = sqlc.narg('type'))
+  r.user_id = sqlc.arg('user_id')::bigint
+  AND (sqlc.narg('type')::int IS NULL OR r.type = sqlc.narg('type'))
   AND (sqlc.narg('provider_id')::int IS NULL OR r.provider_id = sqlc.narg('provider_id'))
   AND (sqlc.narg('endpoint_path')::text IS NULL OR r.endpoint_path = sqlc.narg('endpoint_path'))
   AND (sqlc.narg('model')::text IS NULL OR r.model = sqlc.narg('model'))
@@ -65,6 +67,7 @@ LEFT JOIN LATERAL (
     COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
 ) metrics ON true
@@ -77,6 +80,7 @@ LEFT JOIN LATERAL (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = traces.parent_span_id
+      AND request.user_id = traces.user_id
       AND created_at >= traces.first_request_at
       AND created_at <= traces.last_request_at
       AND type = 1
@@ -89,6 +93,7 @@ LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
     AND type = 0
@@ -100,6 +105,7 @@ LEFT JOIN LATERAL (
   SELECT project_id
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
     AND type = 0
@@ -108,16 +114,22 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) trace_project ON true
 WHERE
-  sqlc.narg('cursor_last_request_at')::timestamp IS NULL
-  OR (traces.last_request_at, traces.id) < (
-    sqlc.narg('cursor_last_request_at')::timestamp,
-    sqlc.narg('cursor_trace_id')::text
+  traces.user_id = sqlc.arg('user_id')::bigint
+  AND (
+    sqlc.narg('cursor_last_request_at')::timestamp IS NULL
+    OR (traces.last_request_at, traces.id) < (
+      sqlc.narg('cursor_last_request_at')::timestamp,
+      sqlc.narg('cursor_trace_id')::text
+    )
   )
 ORDER BY traces.last_request_at DESC, traces.id DESC
 LIMIT sqlc.narg('limit')::int;
 
 -- name: GetRequest :one
-SELECT * FROM request WHERE id = $1 AND created_at = sqlc.arg('id_created_at')::timestamp;
+SELECT * FROM request
+WHERE id = $1
+  AND created_at = sqlc.arg('id_created_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint;
 
 -- name: ListRequestsBySpan :many
 WITH anchor AS (
@@ -125,6 +137,7 @@ WITH anchor AS (
   FROM request
   WHERE request.id = sqlc.arg('id')::text
     AND request.created_at = sqlc.arg('id_created_at')::timestamp
+    AND request.user_id = sqlc.arg('user_id')::bigint
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
@@ -132,14 +145,17 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.created_at,
        r.model_cost, r.model_cost_currency,
        r.user_message_preview, r.project_id, r.finish_reason,
-       r.inferred_provider, r.inferred_model, r.inferred_model_source
+       r.inferred_provider, r.inferred_model, r.inferred_model_source,
+       r.user_id
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
+  AND r.user_id = sqlc.arg('user_id')::bigint
 ORDER BY r.created_at ASC, r.id ASC;
 
 -- name: UpdateRequestOnHeader :exec
 UPDATE request
-SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7
+SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7,
+    user_id = sqlc.narg('user_id')::bigint
 WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 
 -- name: UpdateRequestOnComplete :exec

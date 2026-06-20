@@ -12,6 +12,7 @@ WITH filtered AS (
   FROM request_overview_hourly
   WHERE bucket_at >= sqlc.arg('start_at')::timestamp
     AND bucket_at < sqlc.arg('end_at')::timestamp
+    AND user_id = sqlc.arg('user_id')::bigint
     AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
     AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
     AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -49,17 +50,20 @@ FROM totals CROSS JOIN cost_json;
 SELECT COUNT(*)::bigint AS trace_count
 FROM traces
 WHERE last_request_at >= sqlc.arg('start_at')::timestamp
-  AND last_request_at < sqlc.arg('end_at')::timestamp;
+  AND last_request_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint;
 
 -- name: CountTracesFiltered :one
 SELECT COUNT(*)::bigint AS trace_count
 FROM traces t
 WHERE t.last_request_at >= sqlc.arg('start_at')::timestamp
   AND t.last_request_at < sqlc.arg('end_at')::timestamp
+  AND t.user_id = sqlc.arg('user_id')::bigint
   AND EXISTS (
     SELECT 1
     FROM request r
     WHERE r.parent_span_id = t.parent_span_id
+      AND r.user_id = t.user_id
       AND r.created_at >= t.first_request_at
       AND r.created_at <= t.last_request_at
       AND r.type = 1
@@ -87,6 +91,7 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -110,6 +115,7 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -134,6 +140,7 @@ SELECT
 FROM request r
 WHERE r.created_at >= sqlc.arg('start_at')::timestamp
   AND r.created_at < sqlc.arg('end_at')::timestamp
+  AND r.user_id = sqlc.arg('user_id')::bigint
   AND r.type = 1
   AND r.parent_span_id IS NOT NULL
   AND r.parent_span_id <> ''
@@ -162,6 +169,7 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -185,6 +193,7 @@ SELECT
 FROM request r
 WHERE r.created_at >= sqlc.arg('start_at')::timestamp
   AND r.created_at < sqlc.arg('end_at')::timestamp
+  AND r.user_id = sqlc.arg('user_id')::bigint
   AND r.type = 1
   AND r.parent_span_id IS NOT NULL
   AND r.parent_span_id <> ''
@@ -212,6 +221,7 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -231,6 +241,7 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -250,6 +261,7 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -272,6 +284,7 @@ SELECT
 FROM request_overview_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -298,6 +311,7 @@ SELECT
 FROM request_speed_hourly
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
   AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
   AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
   AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
@@ -324,6 +338,7 @@ WITH speeds AS (
     AND status = 2
     AND created_at >= sqlc.arg('start_at')::timestamp
     AND created_at < sqlc.arg('end_at')::timestamp
+    AND user_id = sqlc.arg('user_id')::bigint
     AND output_tokens >= 50
     AND ttft_ms IS NOT NULL
     AND time_spent_ms IS NOT NULL

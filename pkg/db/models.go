@@ -16,6 +16,7 @@ type ApiKey struct {
 	Disabled    bool               `json:"disabled"`
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+	UserID      int64              `json:"userId"`
 }
 
 type AppUser struct {
@@ -116,6 +117,7 @@ type Request struct {
 	InferredProvider    pgtype.Text      `json:"inferredProvider"`
 	InferredModel       pgtype.Text      `json:"inferredModel"`
 	InferredModelSource int16            `json:"inferredModelSource"`
+	UserID              pgtype.Int8      `json:"userId"`
 }
 
 type RequestOverviewHourly struct {
@@ -125,6 +127,7 @@ type RequestOverviewHourly struct {
 	UpstreamModel      pgtype.Text    `json:"upstreamModel"`
 	ProviderID         pgtype.Int4    `json:"providerId"`
 	ProjectID          pgtype.Int4    `json:"projectId"`
+	UserID             pgtype.Int8    `json:"userId"`
 	CostCurrency       interface{}    `json:"costCurrency"`
 	RequestCount       int64          `json:"requestCount"`
 	InputTokens        int64          `json:"inputTokens"`
@@ -142,6 +145,7 @@ type RequestSpeedHourly struct {
 	ProviderID          pgtype.Int4 `json:"providerId"`
 	ApiKeyID            pgtype.Int4 `json:"apiKeyId"`
 	ProjectID           pgtype.Int4 `json:"projectId"`
+	UserID              pgtype.Int8 `json:"userId"`
 	PrefillTokenSum     int64       `json:"prefillTokenSum"`
 	PrefillTimeSum      int64       `json:"prefillTimeSum"`
 	PrefillRequestCount int64       `json:"prefillRequestCount"`
@@ -164,6 +168,7 @@ type Trace struct {
 	FirstRequestAt pgtype.Timestamp `json:"firstRequestAt"`
 	LastRequestAt  pgtype.Timestamp `json:"lastRequestAt"`
 	UpdatedAt      pgtype.Timestamp `json:"updatedAt"`
+	UserID         int64            `json:"userId"`
 }
 
 type UserIdentity struct {

@@ -10,20 +10,30 @@ import (
 )
 
 const deleteApiKey = `-- name: DeleteApiKey :exec
-DELETE FROM api_key WHERE id = $1
+DELETE FROM api_key WHERE id = $1 AND user_id = $2
 `
 
-func (q *Queries) DeleteApiKey(ctx context.Context, id int32) error {
-	_, err := q.db.Exec(ctx, deleteApiKey, id)
+type DeleteApiKeyParams struct {
+	ID     int32 `json:"id"`
+	UserID int64 `json:"userId"`
+}
+
+func (q *Queries) DeleteApiKey(ctx context.Context, arg DeleteApiKeyParams) error {
+	_, err := q.db.Exec(ctx, deleteApiKey, arg.ID, arg.UserID)
 	return err
 }
 
 const getApiKey = `-- name: GetApiKey :one
-SELECT id, name, annotations, key, disabled, created_at, updated_at FROM api_key WHERE id = $1 LIMIT 1
+SELECT id, name, annotations, key, disabled, created_at, updated_at, user_id FROM api_key WHERE id = $1 AND user_id = $2 LIMIT 1
 `
 
-func (q *Queries) GetApiKey(ctx context.Context, id int32) (ApiKey, error) {
-	row := q.db.QueryRow(ctx, getApiKey, id)
+type GetApiKeyParams struct {
+	ID     int32 `json:"id"`
+	UserID int64 `json:"userId"`
+}
+
+func (q *Queries) GetApiKey(ctx context.Context, arg GetApiKeyParams) (ApiKey, error) {
+	row := q.db.QueryRow(ctx, getApiKey, arg.ID, arg.UserID)
 	var i ApiKey
 	err := row.Scan(
 		&i.ID,
@@ -33,12 +43,13 @@ func (q *Queries) GetApiKey(ctx context.Context, id int32) (ApiKey, error) {
 		&i.Disabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const getApiKeyByKey = `-- name: GetApiKeyByKey :one
-SELECT id, name, annotations, key, disabled, created_at, updated_at FROM api_key WHERE key = $1 LIMIT 1
+SELECT id, name, annotations, key, disabled, created_at, updated_at, user_id FROM api_key WHERE key = $1 LIMIT 1
 `
 
 func (q *Queries) GetApiKeyByKey(ctx context.Context, key string) (ApiKey, error) {
@@ -52,14 +63,15 @@ func (q *Queries) GetApiKeyByKey(ctx context.Context, key string) (ApiKey, error
 		&i.Disabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const insertApiKey = `-- name: InsertApiKey :one
-INSERT INTO api_key (name, key, disabled, annotations)
-VALUES ($1, $2, $3, $4)
-RETURNING id, name, annotations, key, disabled, created_at, updated_at
+INSERT INTO api_key (name, key, disabled, annotations, user_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, name, annotations, key, disabled, created_at, updated_at, user_id
 `
 
 type InsertApiKeyParams struct {
@@ -67,6 +79,7 @@ type InsertApiKeyParams struct {
 	Key         string `json:"key"`
 	Disabled    bool   `json:"disabled"`
 	Annotations []byte `json:"annotations"`
+	UserID      int64  `json:"userId"`
 }
 
 func (q *Queries) InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (ApiKey, error) {
@@ -75,6 +88,7 @@ func (q *Queries) InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (Api
 		arg.Key,
 		arg.Disabled,
 		arg.Annotations,
+		arg.UserID,
 	)
 	var i ApiKey
 	err := row.Scan(
@@ -85,16 +99,17 @@ func (q *Queries) InsertApiKey(ctx context.Context, arg InsertApiKeyParams) (Api
 		&i.Disabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const listApiKeys = `-- name: ListApiKeys :many
-SELECT id, name, annotations, key, disabled, created_at, updated_at FROM api_key ORDER BY created_at DESC, id DESC
+SELECT id, name, annotations, key, disabled, created_at, updated_at, user_id FROM api_key WHERE user_id = $1 ORDER BY created_at DESC, id DESC
 `
 
-func (q *Queries) ListApiKeys(ctx context.Context) ([]ApiKey, error) {
-	rows, err := q.db.Query(ctx, listApiKeys)
+func (q *Queries) ListApiKeys(ctx context.Context, userID int64) ([]ApiKey, error) {
+	rows, err := q.db.Query(ctx, listApiKeys, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +125,7 @@ func (q *Queries) ListApiKeys(ctx context.Context) ([]ApiKey, error) {
 			&i.Disabled,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -124,8 +140,8 @@ func (q *Queries) ListApiKeys(ctx context.Context) ([]ApiKey, error) {
 const updateApiKey = `-- name: UpdateApiKey :one
 UPDATE api_key
 SET name = $2, key = $3, disabled = $4, annotations = $5, updated_at = now()
-WHERE id = $1
-RETURNING id, name, annotations, key, disabled, created_at, updated_at
+WHERE id = $1 AND user_id = $6
+RETURNING id, name, annotations, key, disabled, created_at, updated_at, user_id
 `
 
 type UpdateApiKeyParams struct {
@@ -134,6 +150,7 @@ type UpdateApiKeyParams struct {
 	Key         string `json:"key"`
 	Disabled    bool   `json:"disabled"`
 	Annotations []byte `json:"annotations"`
+	UserID      int64  `json:"userId"`
 }
 
 func (q *Queries) UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (ApiKey, error) {
@@ -143,6 +160,7 @@ func (q *Queries) UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (Api
 		arg.Key,
 		arg.Disabled,
 		arg.Annotations,
+		arg.UserID,
 	)
 	var i ApiKey
 	err := row.Scan(
@@ -153,6 +171,7 @@ func (q *Queries) UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (Api
 		&i.Disabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UserID,
 	)
 	return i, err
 }

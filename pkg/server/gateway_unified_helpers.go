@@ -274,6 +274,7 @@ type unifiedStreamArgs struct {
 	upstreamStartTime time.Time
 	metaLogs          []artifacts.LogEntry
 	apiKeyID          pgtype.Int4
+	userID            pgtype.Int8
 	wsCtx             *webSearchContext
 }
 
@@ -289,7 +290,8 @@ func unifiedStreamArgsFromSuccess(input successInput) unifiedStreamArgs {
 		metaEndpointPath: input.Flow.config.Endpoint.Path, upstreamPath: input.Sidecar.EndpointPath,
 		upstreamStartTime: input.UpstreamStartTime,
 		metaLogs:          input.Flow.collectLogs(), apiKeyID: input.Flow.auth.APIKeyID,
-		wsCtx: input.Prepared.WebSearch,
+		userID: input.Flow.auth.UserID,
+		wsCtx:  input.Prepared.WebSearch,
 	}
 }
 
@@ -323,6 +325,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		UpstreamModel: pgtype.Text{String: a.upstreamModel, Valid: a.upstreamModel != ""},
 		EndpointPath:  pgtype.Text{String: a.metaEndpointPath, Valid: a.metaEndpointPath != ""},
 		ApiKeyID:      a.apiKeyID,
+		UserID:        a.userID,
 		Status:        db.RequestStatusHeaderReceived,
 		CreatedAt:     pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
@@ -333,6 +336,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		UpstreamModel: pgtype.Text{String: a.upstreamModel, Valid: a.upstreamModel != ""},
 		EndpointPath:  pgtype.Text{String: a.upstreamPath, Valid: a.upstreamPath != ""},
 		ApiKeyID:      a.apiKeyID,
+		UserID:        a.userID,
 		Status:        db.RequestStatusHeaderReceived,
 		CreatedAt:     pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})

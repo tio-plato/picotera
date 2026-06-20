@@ -226,6 +226,30 @@ func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolv
 			code:    errorx.Forbidden.Error(),
 		}
 	}
+	// Reject keys whose owning user has been disabled.
+	user, err := s.queries.GetUserByID(ctx, row.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, &gatewayError{
+				status:  http.StatusForbidden,
+				message: "api key owner not found",
+				code:    errorx.Forbidden.Error(),
+			}
+		}
+		logx.WithContext(ctx).WithError(err).Error("api key owner lookup failed")
+		return nil, &gatewayError{
+			status:  http.StatusInternalServerError,
+			message: "failed to query api key owner",
+			code:    errorx.InternalError.Error(),
+		}
+	}
+	if user.Disabled {
+		return nil, &gatewayError{
+			status:  http.StatusForbidden,
+			message: "user disabled",
+			code:    errorx.Forbidden.Error(),
+		}
+	}
 	return &row, nil
 }
 
@@ -583,7 +607,7 @@ func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) 
 		return time.Now().UTC()
 	}
 	insertedAt := createdAt.Time.UTC()
-	s.upsertTrace(ctx, arg.ParentSpanID, insertedAt)
+	s.upsertTrace(ctx, arg.ParentSpanID, arg.UserID, insertedAt)
 	return insertedAt
 }
 
@@ -619,13 +643,19 @@ func (s *Server) upsertProjectSeen(ctx context.Context, projectID int32, seenAt 
 	}
 }
 
-func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, requestCreatedAt time.Time) {
+func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, userID pgtype.Int8, requestCreatedAt time.Time) {
 	if !parentSpanID.Valid || parentSpanID.String == "" {
+		return
+	}
+	// Traces are keyed by (parent_span_id, user_id); without a known user there
+	// is no trace to upsert (the meta row before auth hits this path).
+	if !userID.Valid {
 		return
 	}
 	_, err := s.queries.UpsertTrace(ctx, db.UpsertTraceParams{
 		ID:             xid.New().String(),
 		ParentSpanID:   parentSpanID.String,
+		UserID:         userID.Int64,
 		FirstRequestAt: pgtype.Timestamp{Time: requestCreatedAt.UTC(), Valid: true},
 	})
 	if err != nil {
