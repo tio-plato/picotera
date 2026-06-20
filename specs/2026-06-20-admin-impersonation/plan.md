@@ -1,4 +1,4 @@
-# 执行计划：管理员冒充用户
+# 执行计划：管理员扮演用户
 
 ## 服务端
 
@@ -25,12 +25,12 @@
 
 ### 6. `src/views/UsersView.vue`
 - 引入 `useRouter`、`useImpersonationStore`、`useMe`。
-- 每行操作区新增“冒充”`IconButton`（`Icon name="mask"`），`u.id === me?.id` 时禁用，`title`/`aria-label` 为“冒充此用户”。
+- 每行操作区新增“扮演”`IconButton`（`Icon name="mask"`），`u.id === me?.id` 时禁用，`title`/`aria-label` 为“扮演此用户”。
 - 点击处理：`impersonation.start({ id, displayName })` → `await router.push({ name: 'overview' })` → `await queryClient.invalidateQueries()`。
 
 ### 7. `src/components/AppSidebar.vue`
 - 引入 `useImpersonationStore` 与 `Tag`、`IconButton`、`Icon`。
-- 用户名区域：`isImpersonating` 时显示 `target.displayName` + `Tag`（accent，“冒充中”）+ “还原身份”`IconButton`（`arrow-left`）；否则维持现状显示 `me.displayName`。
+- 用户名区域：`isImpersonating` 时显示 `target.displayName` + `Tag`（accent，“扮演中”）+ “还原身份”`IconButton`（`arrow-left`）；否则维持现状显示 `me.displayName`。
 - 还原点击：`impersonation.stop()` → `await queryClient.invalidateQueries()`。
 
 ## 验证
@@ -38,8 +38,8 @@
 - `go build ./...` 通过。
 - `pnpm --dir dashboard type-check` 与 `pnpm --dir dashboard lint` 通过。
 - 手动验证（http-header 鉴权 + 管理员）：
-  1. 用户页点击冒充普通用户 → 跳转 overview，用户名变为该用户，出现“冒充中”标识与还原按钮，管理员导航消失，数据（请求/概览/项目）为该用户范围。
+  1. 用户页点击扮演普通用户 → 跳转 overview，用户名变为该用户，出现“扮演中”标识与还原按钮，管理员导航消失，数据（请求/概览/项目）为该用户范围。
   2. 点击还原 → 用户名恢复管理员，管理员导航恢复，数据恢复。
-  3. 冒充期间“测试”请求不带 Header（抓包/服务端确认按真实管理员处理）。
+  3. 扮演期间“测试”请求不带 Header（抓包/服务端确认按真实管理员处理）。
   4. 直接对管理接口伪造非管理员 + Header → 403。
 - 无需 `mise run openapi` / `generate-openapi`（无 contract 改动）。

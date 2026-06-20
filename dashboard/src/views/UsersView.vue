@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useConfirm } from '@/composables/useConfirm'
 import { useSidePanel } from '@/composables/useSidePanel'
+import { useMe } from '@/composables/useMe'
+import { useImpersonationStore } from '@/stores/impersonation'
 import type { UserView } from '@/api'
 import { deleteUser, invalidateUsers, listUsers, updateUser } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
@@ -13,6 +16,9 @@ import { Button, IconButton, DataCard, DataTable, Th, Td, Tr, StateText, Tag, Ic
 const panel = useSidePanel()
 const confirm = useConfirm()
 const queryClient = useQueryClient()
+const router = useRouter()
+const impersonation = useImpersonationStore()
+const { me } = useMe()
 
 const usersQuery = useQuery({
   queryKey: queryKeys.users.all,
@@ -57,6 +63,13 @@ function toggleIdentities(u: UserView) {
 
 async function toggleDisabled(u: UserView) {
   await updateUserMutation.mutateAsync(u)
+}
+
+async function impersonate(u: UserView) {
+  impersonation.start({ id: u.id, displayName: u.displayName })
+  // Leave admin pages the impersonated user can't access before me flips.
+  await router.push({ name: 'overview' })
+  await queryClient.invalidateQueries()
 }
 
 function confirmDelete(_event: Event, u: UserView) {
@@ -119,6 +132,14 @@ function rowSelected(id: number) {
                   @click="toggleDisabled(u)"
                 >
                   <Icon :name="u.disabled ? 'puzzle-off' : 'puzzle'" :size="13" />
+                </IconButton>
+                <IconButton
+                  :disabled="u.id === me?.id"
+                  title="扮演此用户"
+                  aria-label="扮演此用户"
+                  @click="impersonate(u)"
+                >
+                  <Icon name="mask" :size="13" />
                 </IconButton>
                 <IconButton
                   :active="panel.isActive(identitiesKey(u.id))"

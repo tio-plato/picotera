@@ -24,6 +24,7 @@ import {
   IconLink,
   IconList,
   IconLoader2,
+  IconMask,
   IconPlug,
   IconPlus,
   IconPuzzle,
@@ -82,6 +83,7 @@ export type IconName =
   | 'flask'
   | 'users'
   | 'shield-check'
+  | 'mask'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -124,4 +126,5 @@ export const iconComponents: Record<IconName, Component> = {
   flask: IconFlask,
   users: IconUsers,
   'shield-check': IconShieldCheck,
+  mask: IconMask,
 }

@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"picotera/pkg/configx"
 	"picotera/pkg/db"
@@ -18,6 +19,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// ImpersonationHeader carries the target user id when an admin impersonates
+// another user. It is read in the chi middleware (below Huma) and only honored
+// when the real, server-resolved identity is an admin.
+const ImpersonationHeader = "X-PicoTera-Impersonation-User-Id"
 
 // Identity provider names persisted in user_identity.provider.
 const (
@@ -45,6 +51,19 @@ func UserFromContext(ctx context.Context) *db.AppUser {
 
 // ErrUnauthorized is returned by Resolve when no user could be identified.
 var ErrUnauthorized = errors.New("unauthorized")
+
+// Impersonation errors returned by ResolveWithImpersonation.
+var (
+	// ErrImpersonationForbidden is returned when a non-admin real user sends
+	// the impersonation header.
+	ErrImpersonationForbidden = errors.New("impersonation forbidden")
+	// ErrImpersonationBadID is returned when the impersonation header value is
+	// not a valid integer.
+	ErrImpersonationBadID = errors.New("invalid impersonation user id")
+	// ErrImpersonationTargetNotFound is returned when the impersonation target
+	// user does not exist.
+	ErrImpersonationTargetNotFound = errors.New("impersonation target not found")
+)
 
 // Resolver maps an incoming request to an application user.
 type Resolver struct {
@@ -78,6 +97,36 @@ func (r *Resolver) Resolve(ctx context.Context, req *http.Request) (*db.AppUser,
 
 	// No identity provider configured: never implicitly authenticate.
 	return nil, ErrUnauthorized
+}
+
+// ResolveWithImpersonation resolves the real user via Resolve, then applies
+// impersonation when the request carries ImpersonationHeader. Impersonation is
+// honored only for a real admin; the target user is returned as-is (a disabled
+// target is allowed so admins can inspect disabled users' data).
+func (r *Resolver) ResolveWithImpersonation(ctx context.Context, req *http.Request) (*db.AppUser, error) {
+	user, err := r.Resolve(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	raw := req.Header.Get(ImpersonationHeader)
+	if raw == "" {
+		return user, nil
+	}
+	if !user.IsAdmin {
+		return nil, ErrImpersonationForbidden
+	}
+	id, perr := strconv.ParseInt(raw, 10, 64)
+	if perr != nil {
+		return nil, ErrImpersonationBadID
+	}
+	target, gerr := r.queries.GetUserByID(ctx, id)
+	if gerr != nil {
+		if errors.Is(gerr, pgx.ErrNoRows) {
+			return nil, ErrImpersonationTargetNotFound
+		}
+		return nil, gerr
+	}
+	return &target, nil
 }
 
 // resolveOrCreate looks up the user by identity, creating it when autoCreate is

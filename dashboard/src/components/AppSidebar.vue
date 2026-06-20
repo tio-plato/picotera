@@ -5,7 +5,9 @@ import { useQueryClient } from '@tanstack/vue-query'
 import PreferencesMenu from '@/components/PreferencesMenu.vue'
 import { useAppTitle } from '@/composables/useAppTitle'
 import { useMe } from '@/composables/useMe'
+import { useImpersonationStore } from '@/stores/impersonation'
 import Icon from '@/ui/icons/Icon.vue'
+import { IconButton, Tag } from '@/ui'
 import type { IconName } from '@/ui/icons/paths'
 
 const route = useRoute()
@@ -13,6 +15,12 @@ const queryClient = useQueryClient()
 const { appTitle } = useAppTitle()
 
 const { me, isAdmin } = useMe()
+const impersonation = useImpersonationStore()
+
+async function stopImpersonating() {
+  impersonation.stop()
+  await queryClient.invalidateQueries()
+}
 const refreshing = ref(false)
 const activeRouteName = computed(() => {
   if (route.name === 'requestDetail') return 'requests'
@@ -142,11 +150,28 @@ const adminNav: NavItem[] = [
     </nav>
 
     <div class="px-3.5 pt-2.5 pb-3 border-t border-line flex items-center gap-2">
-      <span
-        class="flex-1 min-w-0 truncate text-sm text-ink-muted"
-        :title="me?.displayName ?? ''"
-        >{{ me?.displayName ?? '' }}</span
+      <div class="flex-1 min-w-0 flex items-center gap-1.5">
+        <span
+          class="min-w-0 truncate text-sm text-ink-muted"
+          :title="
+            (impersonation.isImpersonating ? impersonation.target?.displayName : me?.displayName) ??
+            ''
+          "
+          >{{
+            (impersonation.isImpersonating ? impersonation.target?.displayName : me?.displayName) ??
+            ''
+          }}</span
+        >
+        <Tag v-if="impersonation.isImpersonating" variant="accent" class="shrink-0">扮演中</Tag>
+      </div>
+      <IconButton
+        v-if="impersonation.isImpersonating"
+        title="还原身份"
+        aria-label="还原身份"
+        @click="stopImpersonating"
       >
+        <Icon name="arrow-left" :size="14" />
+      </IconButton>
       <PreferencesMenu />
       <button
         type="button"
