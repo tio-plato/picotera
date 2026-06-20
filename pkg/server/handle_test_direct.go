@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"picotera/pkg/auth"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/logx"
@@ -34,6 +35,20 @@ type testDirectRequest struct {
 // errors, which pass through verbatim) are reported as JSON.
 func (s *Server) handleTestDirect(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	// Short-circuit testing exposes routing internals (provider credentials,
+	// resolver selection), so it is an admin-only capability. The auth
+	// middleware guards this route, so a missing user is a wiring bug (500),
+	// matching handleGetMe; a non-admin user is rejected with 403.
+	u := auth.UserFromContext(ctx)
+	if u == nil {
+		writeTestError(w, http.StatusInternalServerError, "no user in context")
+		return
+	}
+	if !u.IsAdmin {
+		writeTestError(w, http.StatusForbidden, "admin required")
+		return
+	}
 
 	var in testDirectRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {

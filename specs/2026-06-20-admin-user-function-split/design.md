@@ -20,14 +20,15 @@
 | 用户 | 追踪 | request list-traces（已按 user 隔离） |
 | 用户 | 测试·网关测试 | 经 API Key 走 `/api/unified` 与网关 catch-all（非管理 API） |
 | 用户 | `/me` | get-me |
-| 用户 | 标签（新增） | label providers/models/endpoints/projects |
+| 用户 | 汇率（读） | exchange-rate list（货币换算依赖，用户功能可读） |
+| 用户 | 标签（新增） | label providers/models/endpoints/projects/upstream-models |
 | 管理 | 渠道 | provider list/get/create/upsert/update-models/delete、fetch-models |
 | 管理 | 模型 | model list/get/put/delete |
 | 管理 | 端点 | endpoint list/upsert/delete、provider-endpoint list/upsert/delete |
 | 管理 | 项目 | project list/get/upsert/delete/merge |
 | 管理 | 脚本 | script list/get/create/update/delete |
 | 管理 | 缓存 | kv list/get/upsert/delete |
-| 管理 | 汇率 | exchange-rate list/get/put/delete、match-pricing |
+| 管理 | 汇率（写） | exchange-rate get/put/delete、match-pricing（list 见用户组） |
 | 管理 | 用户 | user list/get/create/update/delete、user-identity 全部 |
 | 管理 | 设置 | global-setting list/get/upsert/delete |
 | 管理 | 模拟 | simulate-dispatch |

@@ -4,8 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { useProvidersMap } from '@/composables/useProvidersMap'
 import { useProjectsMap } from '@/composables/useProjectsMap'
-import type { RequestView, EndpointView, ModelView } from '@/api'
-import { listEndpoints, listModels, listRequests } from '@/api/client'
+import type { RequestView, EndpointLabel, ModelLabel } from '@/api'
+import {
+  listEndpointLabels,
+  listModelLabels,
+  listRequests,
+  listUpstreamModelLabels,
+} from '@/api/client'
 import { queryKeys, type RequestsFilters } from '@/api/queryKeys'
 import RequestDetailsPanel from '@/components/RequestDetailsPanel.vue'
 import { useSidePanel } from '@/composables/useSidePanel'
@@ -61,15 +66,20 @@ const pageCursors = ref<string[]>(initialCursor ? ['', initialCursor] : [''])
 const hasPaginationHistory = ref(!initialCursor)
 
 const endpointsQuery = useQuery({
-  queryKey: queryKeys.endpoints.all,
-  queryFn: listEndpoints,
+  queryKey: queryKeys.labels.endpoints,
+  queryFn: listEndpointLabels,
 })
 const modelsQuery = useQuery({
-  queryKey: queryKeys.models.all,
-  queryFn: listModels,
+  queryKey: queryKeys.labels.models,
+  queryFn: listModelLabels,
 })
-const endpoints = computed<EndpointView[]>(() => endpointsQuery.data.value ?? [])
-const models = computed<ModelView[]>(() => modelsQuery.data.value ?? [])
+const upstreamModelsQuery = useQuery({
+  queryKey: queryKeys.labels.upstreamModels,
+  queryFn: listUpstreamModelLabels,
+})
+const endpoints = computed<EndpointLabel[]>(() => endpointsQuery.data.value ?? [])
+const models = computed<ModelLabel[]>(() => modelsQuery.data.value ?? [])
+const upstreamModels = computed<string[]>(() => upstreamModelsQuery.data.value ?? [])
 
 const requestFilters = computed<RequestsFilters>(() => {
   const out: {
@@ -317,17 +327,10 @@ const upstreamModelOptions = computed<ColumnFilterOption<string>[]>(() => {
       opts.push({ value: r.upstreamModel, label: r.upstreamModel })
     }
   }
-  for (const p of providers.value) {
-    if (!p.providerModels) continue
-    for (const m of p.providerModels) {
-      if (m.upstreamModelName && !seen.has(m.upstreamModelName)) {
-        seen.add(m.upstreamModelName)
-        opts.push({ value: m.upstreamModelName, label: m.upstreamModelName })
-      }
-      if (!m.upstreamModelName && m.model && !seen.has(m.model)) {
-        seen.add(m.model)
-        opts.push({ value: m.model, label: m.model })
-      }
+  for (const name of upstreamModels.value) {
+    if (name && !seen.has(name)) {
+      seen.add(name)
+      opts.push({ value: name, label: name })
     }
   }
   return opts

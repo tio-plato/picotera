@@ -275,6 +275,31 @@ components:
       required:
         - id
       type: object
+    EndpointLabel:
+      additionalProperties: false
+      properties:
+        endpointType:
+          enum:
+            - general
+            - openaiChatCompletions
+            - openaiResponses
+            - anthropicMessages
+            - anthropicCountTokens
+            - geminiGenerateContent
+            - geminiStreamGenerateContent
+            - exaSearch
+            - modelList
+            - unknown
+          type: string
+        name:
+          type: string
+        path:
+          type: string
+      required:
+        - path
+        - name
+        - endpointType
+      type: object
     EndpointView:
       additionalProperties: false
       properties:
@@ -524,6 +549,14 @@ components:
       required:
         - sourceId
         - targetId
+      type: object
+    ModelLabel:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+      required:
+        - name
       type: object
     ModelView:
       additionalProperties: false
@@ -1023,6 +1056,18 @@ components:
         - cacheWrite1h
         - implicitCacheRead
       type: object
+    ProjectLabel:
+      additionalProperties: false
+      properties:
+        id:
+          format: int32
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
+      type: object
     ProjectView:
       additionalProperties: false
       properties:
@@ -1089,6 +1134,18 @@ components:
         - providerId
         - endpointPath
         - upstreamUrl
+      type: object
+    ProviderLabel:
+      additionalProperties: false
+      properties:
+        id:
+          format: int32
+          type: integer
+        name:
+          type: string
+      required:
+        - id
+        - name
       type: object
     ProviderModelEntry:
       additionalProperties: false
@@ -2181,6 +2238,116 @@ paths:
                 $ref: "#/components/schemas/PicoTeraError"
           description: Error
       summary: Create or update a KV entry
+  /api/picotera/labels/endpoints:
+    get:
+      operationId: listEndpointLabels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/EndpointLabel"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List endpoint labels (path + name + endpointType)
+      tags:
+        - Label
+  /api/picotera/labels/models:
+    get:
+      operationId: listModelLabels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ModelLabel"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List model labels (name)
+      tags:
+        - Label
+  /api/picotera/labels/projects:
+    get:
+      operationId: listProjectLabels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ProjectLabel"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List project labels (id + name)
+      tags:
+        - Label
+  /api/picotera/labels/providers:
+    get:
+      operationId: listProviderLabels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ProviderLabel"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List provider labels (id + name)
+      tags:
+        - Label
+  /api/picotera/labels/upstream-models:
+    get:
+      operationId: listUpstreamModelLabels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  type: string
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: List distinct upstream model names across providers
+      tags:
+        - Label
   /api/picotera/me:
     get:
       operationId: getMe

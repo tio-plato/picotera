@@ -12,6 +12,10 @@ import type {
   KvMutateBody,
   MeView,
   ModelView,
+  ProviderLabel,
+  ModelLabel,
+  EndpointLabel,
+  ProjectLabel,
   OverviewDimension,
   OverviewDistributionView,
   OverviewSpeedBoxplotView,
@@ -518,6 +522,43 @@ export async function fetchMe(): Promise<MeView> {
   const { data, error } = await api.GET('/api/picotera/me')
   if (error) fail(error, '加载用户信息失败')
   return data
+}
+
+// --- Label fetchers ---
+//
+// Lightweight, read-only projections of the shared config resources, open to
+// every authenticated user. Used by the user-facing views (overview, requests,
+// traces, gateway test) which only need id→name / path / endpointType and must
+// not read full config (notably provider credentials, which are admin-only).
+
+export async function listProviderLabels(): Promise<ProviderLabel[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/providers')
+  if (error) fail(error, '加载渠道失败')
+  return data ?? []
+}
+
+export async function listModelLabels(): Promise<ModelLabel[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/models')
+  if (error) fail(error, '加载模型失败')
+  return data ?? []
+}
+
+export async function listEndpointLabels(): Promise<EndpointLabel[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/endpoints')
+  if (error) fail(error, '加载端点失败')
+  return data ?? []
+}
+
+export async function listProjectLabels(): Promise<ProjectLabel[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/projects')
+  if (error) fail(error, '加载项目失败')
+  return data ?? []
+}
+
+export async function listUpstreamModelLabels(): Promise<string[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/upstream-models')
+  if (error) fail(error, '加载上游模型失败')
+  return data ?? []
 }
 
 function overviewQuery(filters: OverviewFilters) {

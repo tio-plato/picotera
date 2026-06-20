@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
-import type { RequestView, ProviderView, RequestLiveView } from '@/api'
+import type { RequestView, ProviderLabel, RequestLiveView } from '@/api'
 import { listRequestSpans, getRequestLive, interruptRequest } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay, Button } from '@/ui'
@@ -11,7 +11,7 @@ import ConversationArtifactView from './ConversationArtifactView.vue'
 import TimedRawView from './TimedRawView.vue'
 import { useRequestDetailUiState, type DetailTab } from '@/composables/useRequestDetailUiState'
 
-const props = defineProps<{ requestId: string; providers?: ProviderView[] }>()
+const props = defineProps<{ requestId: string; providers?: ProviderLabel[] }>()
 const emit = defineEmits<{ selectedRequest: [requestId: string] }>()
 
 const selectedId = ref<string>('')
@@ -34,7 +34,7 @@ const loading = computed(() => spansQuery.isLoading.value)
 const error = computed(() => spansQuery.error.value?.message ?? '')
 
 const providersMap = computed(() => {
-  const m = new Map<number, ProviderView>()
+  const m = new Map<number, ProviderLabel>()
   for (const p of props.providers ?? []) m.set(p.id, p)
   return m
 })

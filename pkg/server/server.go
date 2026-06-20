@@ -206,74 +206,112 @@ func NewHuma() huma.API {
 	return s.api
 }
 
+// requireAdmin is a Huma middleware that rejects non-admin users. It runs after
+// the chi-level auth middleware (which writes the resolved user onto the request
+// context), so a missing user is a wiring bug rather than an unauthenticated
+// request — surfaced as 500, matching handleGetMe.
+func (s *Server) requireAdmin(ctx huma.Context, next func(huma.Context)) {
+	u := auth.UserFromContext(ctx.Context())
+	if u == nil {
+		_ = huma.WriteErr(s.api, ctx, http.StatusInternalServerError, "no user in context")
+		return
+	}
+	if !u.IsAdmin {
+		_ = huma.WriteErr(s.api, ctx, http.StatusForbidden, "admin required")
+		return
+	}
+	next(ctx)
+}
+
 func (s *Server) registerOperations() {
 	mgmt := huma.NewGroup(s.api, "/api/picotera")
-	huma.Register(mgmt, contract.OperationListProviders, s.handleListProviders)
-	huma.Register(mgmt, contract.OperationGetProvider, s.handleGetProvider)
-	huma.Register(mgmt, contract.OperationCreateProvider, s.handleCreateProvider)
-	huma.Register(mgmt, contract.OperationUpsertProvider, s.handleUpsertProvider)
-	huma.Register(mgmt, contract.OperationUpdateProviderModels, s.handleUpdateProviderModels)
-	huma.Register(mgmt, contract.OperationDeleteProvider, s.handleDeleteProvider)
-	huma.Register(mgmt, contract.OperationListModels, s.handleListModels)
-	huma.Register(mgmt, contract.OperationGetModel, s.handleGetModel)
-	huma.Register(mgmt, contract.OperationPutModel, s.handlePutModel)
-	huma.Register(mgmt, contract.OperationDeleteModel, s.handleDeleteModel)
-	huma.Register(mgmt, contract.OperationListEndpoints, s.handleListEndpoints)
-	huma.Register(mgmt, contract.OperationUpsertEndpoint, s.handleUpsertEndpoint)
-	huma.Register(mgmt, contract.OperationDeleteEndpoint, s.handleDeleteEndpoint)
-	huma.Register(mgmt, contract.OperationListProviderEndpoints, s.handleListProviderEndpoints)
-	huma.Register(mgmt, contract.OperationUpsertProviderEndpoint, s.handleUpsertProviderEndpoint)
-	huma.Register(mgmt, contract.OperationDeleteProviderEndpoint, s.handleDeleteProviderEndpoint)
-	huma.Register(mgmt, contract.OperationFetchModels, s.handleFetchModels)
+	admin := huma.NewGroup(s.api, "/api/picotera")
+	admin.UseMiddleware(s.requireAdmin)
+	s.register(mgmt, admin)
+}
+
+// register wires every management operation onto one of two groups sharing the
+// /api/picotera prefix: mgmt (all authenticated users) and admin (is_admin only,
+// via the requireAdmin middleware). Both registerOperations and NewHuma call it
+// so the live server and the openapi generator never drift apart.
+func (s *Server) register(mgmt, admin *huma.Group) {
+	// --- User group: every authenticated user ---
+	huma.Register(mgmt, contract.OperationGetMe, s.handleGetMe)
+	huma.Register(mgmt, contract.OperationGetOverviewSummary, s.handleGetOverviewSummary)
+	huma.Register(mgmt, contract.OperationGetOverviewDistribution, s.handleGetOverviewDistribution)
+	huma.Register(mgmt, contract.OperationGetOverviewSeries, s.handleGetOverviewSeries)
+	huma.Register(mgmt, contract.OperationGetOverviewSpeedBoxplot, s.handleGetOverviewSpeedBoxplot)
+	huma.Register(mgmt, contract.OperationListApiKeys, s.handleListApiKeys)
+	huma.Register(mgmt, contract.OperationGetApiKey, s.handleGetApiKey)
+	huma.Register(mgmt, contract.OperationCreateApiKey, s.handleCreateApiKey)
+	huma.Register(mgmt, contract.OperationUpdateApiKey, s.handleUpdateApiKey)
+	huma.Register(mgmt, contract.OperationDeleteApiKey, s.handleDeleteApiKey)
 	huma.Register(mgmt, contract.OperationListRequests, s.handleListRequests)
 	huma.Register(mgmt, contract.OperationListRequestTraces, s.handleListRequestTraces)
 	huma.Register(mgmt, contract.OperationGetRequest, s.handleGetRequest)
 	huma.Register(mgmt, contract.OperationListRequestSpans, s.handleListRequestSpans)
 	huma.Register(mgmt, contract.OperationInterruptRequest, s.handleInterruptRequest)
 	huma.Register(mgmt, contract.OperationGetRequestLive, s.handleGetRequestLive)
+	huma.Register(mgmt, contract.OperationListProviderLabels, s.handleListProviderLabels)
+	huma.Register(mgmt, contract.OperationListModelLabels, s.handleListModelLabels)
+	huma.Register(mgmt, contract.OperationListEndpointLabels, s.handleListEndpointLabels)
+	huma.Register(mgmt, contract.OperationListProjectLabels, s.handleListProjectLabels)
+	huma.Register(mgmt, contract.OperationListUpstreamModelLabels, s.handleListUpstreamModelLabels)
+	// Exchange rates are read by the user-facing currency context (display
+	// currency conversion across overview / requests / traces), so the list is
+	// open to every authenticated user. Writes and pricing matching stay admin.
 	huma.Register(mgmt, contract.OperationListExchangeRates, s.handleListExchangeRates)
-	huma.Register(mgmt, contract.OperationGetExchangeRate, s.handleGetExchangeRate)
-	huma.Register(mgmt, contract.OperationPutExchangeRate, s.handlePutExchangeRate)
-	huma.Register(mgmt, contract.OperationDeleteExchangeRate, s.handleDeleteExchangeRate)
-	huma.Register(mgmt, contract.OperationMatchPricing, s.handleMatchPricing)
-	huma.Register(mgmt, contract.OperationListApiKeys, s.handleListApiKeys)
-	huma.Register(mgmt, contract.OperationGetApiKey, s.handleGetApiKey)
-	huma.Register(mgmt, contract.OperationCreateApiKey, s.handleCreateApiKey)
-	huma.Register(mgmt, contract.OperationUpdateApiKey, s.handleUpdateApiKey)
-	huma.Register(mgmt, contract.OperationDeleteApiKey, s.handleDeleteApiKey)
-	huma.Register(mgmt, contract.OperationGetOverviewSummary, s.handleGetOverviewSummary)
-	huma.Register(mgmt, contract.OperationGetOverviewDistribution, s.handleGetOverviewDistribution)
-	huma.Register(mgmt, contract.OperationGetOverviewSeries, s.handleGetOverviewSeries)
-	huma.Register(mgmt, contract.OperationGetOverviewSpeedBoxplot, s.handleGetOverviewSpeedBoxplot)
-	huma.Register(mgmt, contract.OperationListProjects, s.handleListProjects)
-	huma.Register(mgmt, contract.OperationGetProject, s.handleGetProject)
-	huma.Register(mgmt, contract.OperationUpsertProject, s.handleUpsertProject)
-	huma.Register(mgmt, contract.OperationDeleteProject, s.handleDeleteProject)
-	huma.Register(mgmt, contract.OperationMergeProject, s.handleMergeProject)
-	huma.Register(mgmt, contract.OperationListScripts, s.handleListScripts)
-	huma.Register(mgmt, contract.OperationGetScript, s.handleGetScript)
-	huma.Register(mgmt, contract.OperationCreateScript, s.handleCreateScript)
-	huma.Register(mgmt, contract.OperationUpdateScript, s.handleUpdateScript)
-	huma.Register(mgmt, contract.OperationDeleteScript, s.handleDeleteScript)
-	huma.Register(mgmt, contract.OperationSimulateDispatch, s.handleSimulateDispatch)
-	huma.Register(mgmt, contract.OperationListKvEntries, s.handleListKvEntries)
-	huma.Register(mgmt, contract.OperationGetKvEntry, s.handleGetKvEntry)
-	huma.Register(mgmt, contract.OperationUpsertKvEntry, s.handleUpsertKvEntry)
-	huma.Register(mgmt, contract.OperationDeleteKvEntry, s.handleDeleteKvEntry)
-	huma.Register(mgmt, contract.OperationListGlobalSettings, s.handleListGlobalSettings)
-	huma.Register(mgmt, contract.OperationGetGlobalSetting, s.handleGetGlobalSetting)
-	huma.Register(mgmt, contract.OperationUpsertGlobalSetting, s.handleUpsertGlobalSetting)
-	huma.Register(mgmt, contract.OperationDeleteGlobalSetting, s.handleDeleteGlobalSetting)
-	huma.Register(mgmt, contract.OperationGetMe, s.handleGetMe)
-	huma.Register(mgmt, contract.OperationListUsers, s.handleListUsers)
-	huma.Register(mgmt, contract.OperationGetUser, s.handleGetUser)
-	huma.Register(mgmt, contract.OperationCreateUser, s.handleCreateUser)
-	huma.Register(mgmt, contract.OperationUpdateUser, s.handleUpdateUser)
-	huma.Register(mgmt, contract.OperationDeleteUser, s.handleDeleteUser)
-	huma.Register(mgmt, contract.OperationListUserIdentities, s.handleListUserIdentities)
-	huma.Register(mgmt, contract.OperationCreateUserIdentity, s.handleCreateUserIdentity)
-	huma.Register(mgmt, contract.OperationUpdateUserIdentity, s.handleUpdateUserIdentity)
-	huma.Register(mgmt, contract.OperationDeleteUserIdentity, s.handleDeleteUserIdentity)
+
+	// --- Admin group: is_admin only ---
+	huma.Register(admin, contract.OperationListProviders, s.handleListProviders)
+	huma.Register(admin, contract.OperationGetProvider, s.handleGetProvider)
+	huma.Register(admin, contract.OperationCreateProvider, s.handleCreateProvider)
+	huma.Register(admin, contract.OperationUpsertProvider, s.handleUpsertProvider)
+	huma.Register(admin, contract.OperationUpdateProviderModels, s.handleUpdateProviderModels)
+	huma.Register(admin, contract.OperationDeleteProvider, s.handleDeleteProvider)
+	huma.Register(admin, contract.OperationFetchModels, s.handleFetchModels)
+	huma.Register(admin, contract.OperationListModels, s.handleListModels)
+	huma.Register(admin, contract.OperationGetModel, s.handleGetModel)
+	huma.Register(admin, contract.OperationPutModel, s.handlePutModel)
+	huma.Register(admin, contract.OperationDeleteModel, s.handleDeleteModel)
+	huma.Register(admin, contract.OperationListEndpoints, s.handleListEndpoints)
+	huma.Register(admin, contract.OperationUpsertEndpoint, s.handleUpsertEndpoint)
+	huma.Register(admin, contract.OperationDeleteEndpoint, s.handleDeleteEndpoint)
+	huma.Register(admin, contract.OperationListProviderEndpoints, s.handleListProviderEndpoints)
+	huma.Register(admin, contract.OperationUpsertProviderEndpoint, s.handleUpsertProviderEndpoint)
+	huma.Register(admin, contract.OperationDeleteProviderEndpoint, s.handleDeleteProviderEndpoint)
+	huma.Register(admin, contract.OperationListProjects, s.handleListProjects)
+	huma.Register(admin, contract.OperationGetProject, s.handleGetProject)
+	huma.Register(admin, contract.OperationUpsertProject, s.handleUpsertProject)
+	huma.Register(admin, contract.OperationDeleteProject, s.handleDeleteProject)
+	huma.Register(admin, contract.OperationMergeProject, s.handleMergeProject)
+	huma.Register(admin, contract.OperationListScripts, s.handleListScripts)
+	huma.Register(admin, contract.OperationGetScript, s.handleGetScript)
+	huma.Register(admin, contract.OperationCreateScript, s.handleCreateScript)
+	huma.Register(admin, contract.OperationUpdateScript, s.handleUpdateScript)
+	huma.Register(admin, contract.OperationDeleteScript, s.handleDeleteScript)
+	huma.Register(admin, contract.OperationSimulateDispatch, s.handleSimulateDispatch)
+	huma.Register(admin, contract.OperationListKvEntries, s.handleListKvEntries)
+	huma.Register(admin, contract.OperationGetKvEntry, s.handleGetKvEntry)
+	huma.Register(admin, contract.OperationUpsertKvEntry, s.handleUpsertKvEntry)
+	huma.Register(admin, contract.OperationDeleteKvEntry, s.handleDeleteKvEntry)
+	huma.Register(admin, contract.OperationGetExchangeRate, s.handleGetExchangeRate)
+	huma.Register(admin, contract.OperationPutExchangeRate, s.handlePutExchangeRate)
+	huma.Register(admin, contract.OperationDeleteExchangeRate, s.handleDeleteExchangeRate)
+	huma.Register(admin, contract.OperationMatchPricing, s.handleMatchPricing)
+	huma.Register(admin, contract.OperationListGlobalSettings, s.handleListGlobalSettings)
+	huma.Register(admin, contract.OperationGetGlobalSetting, s.handleGetGlobalSetting)
+	huma.Register(admin, contract.OperationUpsertGlobalSetting, s.handleUpsertGlobalSetting)
+	huma.Register(admin, contract.OperationDeleteGlobalSetting, s.handleDeleteGlobalSetting)
+	huma.Register(admin, contract.OperationListUsers, s.handleListUsers)
+	huma.Register(admin, contract.OperationGetUser, s.handleGetUser)
+	huma.Register(admin, contract.OperationCreateUser, s.handleCreateUser)
+	huma.Register(admin, contract.OperationUpdateUser, s.handleUpdateUser)
+	huma.Register(admin, contract.OperationDeleteUser, s.handleDeleteUser)
+	huma.Register(admin, contract.OperationListUserIdentities, s.handleListUserIdentities)
+	huma.Register(admin, contract.OperationCreateUserIdentity, s.handleCreateUserIdentity)
+	huma.Register(admin, contract.OperationUpdateUserIdentity, s.handleUpdateUserIdentity)
+	huma.Register(admin, contract.OperationDeleteUserIdentity, s.handleDeleteUserIdentity)
 }
 
 func (s *Server) registerEndpoints() {

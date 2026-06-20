@@ -19,7 +19,7 @@ providerEndpoint list/upsert/delete
 project  list/get/upsert/delete/merge
 script   list/get/create/update/delete
 kv       list/get/upsert/delete
-exchangeRate list/get/put/delete, matchPricing
+exchangeRate get/put/delete, matchPricing   (list 见用户 group)
 user     list/get/create/update/delete
 userIdentity list/create/update/delete
 globalSetting list/get/upsert/delete
@@ -33,7 +33,8 @@ getMe
 overview summary/distribution/series/speed-boxplot
 apiKey   list/get/create/update/delete
 request  list/get/list-by-span/list-traces/get-live/interrupt
-label    providers/models/endpoints/projects   (新增，见下)
+exchangeRate list   (货币换算依赖，用户功能可读)
+label    providers/models/endpoints/projects/upstream-models   (新增，见下)
 ```
 
 ## 新增：标签接口（只读，用户 group）

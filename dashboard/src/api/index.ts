@@ -46,6 +46,10 @@ export type UserView = components['schemas']['UserView']
 export type UserMutateBody = components['schemas']['UserMutateBody']
 export type UserIdentityView = components['schemas']['UserIdentityView']
 export type UserIdentityMutateBody = components['schemas']['UserIdentityMutateBody']
+export type ProviderLabel = components['schemas']['ProviderLabel']
+export type ModelLabel = components['schemas']['ModelLabel']
+export type EndpointLabel = components['schemas']['EndpointLabel']
+export type ProjectLabel = components['schemas']['ProjectLabel']
 
 export type OverviewRange = '1d' | '7d' | '1m'
 export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider' | 'project'

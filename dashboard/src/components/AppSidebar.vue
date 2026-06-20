@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
-import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useQueryClient } from '@tanstack/vue-query'
 import PreferencesMenu from '@/components/PreferencesMenu.vue'
 import { useAppTitle } from '@/composables/useAppTitle'
-import { fetchMe } from '@/api/client'
-import { queryKeys } from '@/api/queryKeys'
+import { useMe } from '@/composables/useMe'
 import Icon from '@/ui/icons/Icon.vue'
 import type { IconName } from '@/ui/icons/paths'
 
@@ -13,28 +12,35 @@ const route = useRoute()
 const queryClient = useQueryClient()
 const { appTitle } = useAppTitle()
 
-const { data: me } = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe })
+const { me, isAdmin } = useMe()
 const refreshing = ref(false)
 const activeRouteName = computed(() => {
   if (route.name === 'requestDetail') return 'requests'
   return route.name
 })
 
-const nav: { name: string; label: string; icon: IconName }[] = [
+type NavItem = { name: string; label: string; icon: IconName }
+
+// User features: available to every authenticated user.
+const userNav: NavItem[] = [
   { name: 'overview', label: '概览', icon: 'chart-pie' },
+  { name: 'apiKeys', label: '密钥', icon: 'key' },
+  { name: 'requests', label: '请求', icon: 'activity' },
+  { name: 'traces', label: '追踪', icon: 'route' },
+  { name: 'test', label: '测试', icon: 'flask' },
+]
+
+// Admin features: hidden entirely for non-admins (also guarded by the router).
+const adminNav: NavItem[] = [
   { name: 'providers', label: '渠道', icon: 'cloud-fog' },
   { name: 'models', label: '模型', icon: 'cpu' },
   { name: 'endpoints', label: '端点', icon: 'plug' },
-  { name: 'requests', label: '请求', icon: 'activity' },
-  { name: 'traces', label: '追踪', icon: 'route' },
-  { name: 'apiKeys', label: '密钥', icon: 'key' },
-  { name: 'users', label: '用户', icon: 'users' },
   { name: 'projects', label: '项目', icon: 'folder' },
   { name: 'scripts', label: '脚本', icon: 'braces' },
-  { name: 'simulate', label: '模拟', icon: 'geometry' },
-  { name: 'test', label: '测试', icon: 'flask' },
   { name: 'kv', label: '缓存', icon: 'db' },
   { name: 'rates', label: '汇率', icon: 'currency-dollar' },
+  { name: 'users', label: '用户', icon: 'users' },
+  { name: 'simulate', label: '模拟', icon: 'geometry' },
   { name: 'settings', label: '设置', icon: 'settings' },
 ]
 </script>
@@ -74,10 +80,10 @@ const nav: { name: string; label: string; icon: IconName }[] = [
       <div
         class="px-2.5 pt-3 pb-1.5 text-2xs font-medium text-ink-faint uppercase tracking-[0.06em]"
       >
-        配置
+        用户
       </div>
       <RouterLink
-        v-for="item in nav"
+        v-for="item in userNav"
         :key="item.name"
         :to="{ name: item.name }"
         class="group relative flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm font-normal text-sidebar-text no-underline transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-active"
@@ -100,6 +106,38 @@ const nav: { name: string; label: string; icon: IconName }[] = [
         </span>
         <span>{{ item.label }}</span>
       </RouterLink>
+
+      <template v-if="isAdmin">
+        <div
+          class="px-2.5 pt-3 pb-1.5 text-2xs font-medium text-ink-faint uppercase tracking-[0.06em]"
+        >
+          全局
+        </div>
+        <RouterLink
+          v-for="item in adminNav"
+          :key="item.name"
+          :to="{ name: item.name }"
+          class="group relative flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm font-normal text-sidebar-text no-underline transition-colors hover:bg-sidebar-hover hover:text-sidebar-text-active"
+          :class="
+            activeRouteName === item.name
+              ? 'bg-sidebar-active-bg text-sidebar-active-text font-medium'
+              : ''
+          "
+        >
+          <span
+            class="inline-flex w-[1.125rem] h-[1.125rem] items-center justify-center transition-colors"
+            :class="
+              activeRouteName === item.name
+                ? 'text-accent'
+                : 'text-ink-faint group-hover:text-ink-muted'
+            "
+            aria-hidden="true"
+          >
+            <Icon :name="item.icon" :size="15" :stroke-width="1.6" />
+          </span>
+          <span>{{ item.label }}</span>
+        </RouterLink>
+      </template>
     </nav>
 
     <div class="px-3.5 pt-2.5 pb-3 border-t border-line flex items-center gap-2">

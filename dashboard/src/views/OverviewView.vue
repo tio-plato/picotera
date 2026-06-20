@@ -7,9 +7,10 @@ import {
   getOverviewSpeedBoxplot,
   getOverviewSummary,
   listApiKeys,
-  listModels,
-  listProjects,
-  listProviders,
+  listModelLabels,
+  listProjectLabels,
+  listProviderLabels,
+  listUpstreamModelLabels,
 } from '@/api/client'
 import { OPERATIONAL_STALE_TIME } from '@/api/queryClient'
 import { queryKeys, type OverviewFilters } from '@/api/queryKeys'
@@ -195,9 +196,16 @@ const overviewFilters = computed<OverviewFilters>(() => {
 })
 
 const apiKeysQuery = useQuery({ queryKey: queryKeys.apiKeys.all, queryFn: listApiKeys })
-const providersQuery = useQuery({ queryKey: queryKeys.providers.all, queryFn: listProviders })
-const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listModels })
-const projectsQuery = useQuery({ queryKey: queryKeys.projects.all, queryFn: listProjects })
+const providersQuery = useQuery({
+  queryKey: queryKeys.labels.providers,
+  queryFn: listProviderLabels,
+})
+const modelsQuery = useQuery({ queryKey: queryKeys.labels.models, queryFn: listModelLabels })
+const projectsQuery = useQuery({ queryKey: queryKeys.labels.projects, queryFn: listProjectLabels })
+const upstreamModelsQuery = useQuery({
+  queryKey: queryKeys.labels.upstreamModels,
+  queryFn: listUpstreamModelLabels,
+})
 
 const apiKeys = computed(() => apiKeysQuery.data.value ?? [])
 const providers = computed(() => providersQuery.data.value ?? [])
@@ -226,16 +234,9 @@ const modelOptions = computed(() => {
   return Array.from(set).sort()
 })
 
-const upstreamModelOptions = computed(() => {
-  const set = new Set<string>()
-  for (const p of providers.value) {
-    for (const pm of p.providerModels ?? []) {
-      if (pm.upstreamModelName) set.add(pm.upstreamModelName)
-      else if (pm.model) set.add(pm.model)
-    }
-  }
-  return Array.from(set).sort()
-})
+const upstreamModelOptions = computed(() =>
+  [...(upstreamModelsQuery.data.value ?? [])].sort(),
+)
 
 const summaryQuery = useQuery({
   queryKey: computed(() => queryKeys.overview.summary(overviewFilters.value)),

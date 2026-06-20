@@ -28,6 +28,13 @@ export type RequestListFilters = RequestsFilters & Partial<CursorFilters>
 
 export const queryKeys = {
   me: ['me'] as const,
+  labels: {
+    providers: ['labels', 'providers'] as const,
+    models: ['labels', 'models'] as const,
+    endpoints: ['labels', 'endpoints'] as const,
+    projects: ['labels', 'projects'] as const,
+    upstreamModels: ['labels', 'upstreamModels'] as const,
+  },
   providers: {
     all: ['providers'] as const,
     detail: (id: number) => ['providers', id] as const,

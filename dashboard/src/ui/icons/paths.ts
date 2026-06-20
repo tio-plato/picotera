@@ -15,8 +15,6 @@ import {
   IconCurrencyDollar,
   IconDatabase,
   IconEdit,
-  IconEye,
-  IconEyeOff,
   IconFolder,
   IconGitBranch,
   IconGitMerge,

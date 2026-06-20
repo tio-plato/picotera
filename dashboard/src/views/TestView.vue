@@ -16,14 +16,15 @@ import {
 } from '@/ui'
 import {
   listApiKeys,
-  listEndpoints,
-  listModels,
+  listEndpointLabels,
+  listModelLabels,
   listProviderEndpoints,
   listProviders,
   postGatewayTest,
   postTestDirect,
 } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
+import { useMe } from '@/composables/useMe'
 import {
   buildTestBody,
   endpointTypeToFormat,
@@ -37,10 +38,18 @@ import { renderMarkdown } from '@/composables/useSSEParser'
 type Mode = 'direct' | 'gateway'
 type GatewayTargetKind = 'unified' | 'path'
 
-const modeOptions = [
-  { value: 'direct', label: '短路测试' },
-  { value: 'gateway', label: '网关测试' },
-]
+const { isAdmin } = useMe()
+
+// Short-circuit (direct) test is an admin-only capability — it exposes provider
+// credentials and routing internals. Non-admins only see the gateway test.
+const modeOptions = computed(() =>
+  isAdmin.value
+    ? [
+        { value: 'direct', label: '短路测试' },
+        { value: 'gateway', label: '网关测试' },
+      ]
+    : [{ value: 'gateway', label: '网关测试' }],
+)
 
 const UNIFIED_FORMATS: { value: TestFormat; label: string }[] = [
   { value: 'anthropicMessages', label: 'Anthropic Messages' },
@@ -123,17 +132,29 @@ const manualOverride = ref(false)
 const bodyError = ref('')
 
 // --- queries ---
-const providersQuery = useQuery({ queryKey: queryKeys.providers.all, queryFn: listProviders })
-const endpointsQuery = useQuery({ queryKey: queryKeys.endpoints.all, queryFn: listEndpoints })
+// Direct mode needs full provider data (providerModels, credentials-bearing
+// provider rows) and provider-endpoint bindings, both admin-only. They load only
+// for an admin in direct mode so a non-admin never triggers a 403. The gateway
+// mode relies solely on the open label/api-key endpoints.
+const directEnabled = computed(() => isAdmin.value && mode.value === 'direct')
+const providersQuery = useQuery({
+  queryKey: queryKeys.providers.all,
+  queryFn: listProviders,
+  enabled: directEnabled,
+})
+const endpointsQuery = useQuery({
+  queryKey: queryKeys.labels.endpoints,
+  queryFn: listEndpointLabels,
+})
 const apiKeysQuery = useQuery({ queryKey: queryKeys.apiKeys.all, queryFn: listApiKeys })
-const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listModels })
+const modelsQuery = useQuery({ queryKey: queryKeys.labels.models, queryFn: listModelLabels })
 
 const providerEndpointsQuery = useQuery({
   queryKey: computed(() =>
     queryKeys.providerEndpoints.list({ providerId: directProviderId.value }),
   ),
   queryFn: () => listProviderEndpoints(directProviderId.value),
-  enabled: computed(() => directProviderId.value !== undefined),
+  enabled: computed(() => directEnabled.value && directProviderId.value !== 0),
 })
 
 const providers = computed(() => providersQuery.data.value ?? [])
@@ -438,6 +459,14 @@ watch(directProviderId, () => {
 watch(mode, () => {
   resetResponse()
 })
+// Non-admins cannot use direct mode; force gateway once permission resolves.
+watch(
+  isAdmin,
+  (admin) => {
+    if (!admin && mode.value === 'direct') mode.value = 'gateway'
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
