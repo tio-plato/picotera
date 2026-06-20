@@ -277,6 +277,10 @@ func (s *Server) register(mgmt, admin *huma.Group) {
 	huma.Register(mgmt, contract.OperationListExchangeRates, s.handleListExchangeRates)
 
 	// --- Admin group: is_admin only ---
+	huma.Register(admin, contract.OperationGetAdminOverviewSummary, s.handleGetAdminOverviewSummary)
+	huma.Register(admin, contract.OperationGetAdminOverviewDistribution, s.handleGetAdminOverviewDistribution)
+	huma.Register(admin, contract.OperationGetAdminOverviewSeries, s.handleGetAdminOverviewSeries)
+	huma.Register(admin, contract.OperationGetAdminOverviewSpeedBoxplot, s.handleGetAdminOverviewSpeedBoxplot)
 	huma.Register(admin, contract.OperationListProviders, s.handleListProviders)
 	huma.Register(admin, contract.OperationGetProvider, s.handleGetProvider)
 	huma.Register(admin, contract.OperationCreateProvider, s.handleCreateProvider)

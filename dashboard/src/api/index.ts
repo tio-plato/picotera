@@ -33,6 +33,8 @@ export type OverviewSpeedBoxplotItemView = components['schemas']['OverviewSpeedB
 export type OverviewWindowView = components['schemas']['OverviewWindowView']
 export type OverviewCostView = components['schemas']['OverviewCostView']
 export type OverviewBreakdownRowView = components['schemas']['OverviewBreakdownRowView']
+export type AdminOverviewSummaryView = components['schemas']['AdminOverviewSummaryView']
+export type AdminOverviewBreakdownRowView = components['schemas']['AdminOverviewBreakdownRowView']
 export type KvEntryView = components['schemas']['KvEntryView']
 export type KvMutateBody = components['schemas']['KvMutateBody']
 export type SimulateDispatchRequestBody = components['schemas']['SimulateDispatchRequestBody']
@@ -56,6 +58,8 @@ export type OverviewRange = '1d' | '7d' | '1m'
 export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider' | 'project'
 export type OverviewSeriesDimension = 'none' | OverviewDimension
 export type OverviewMetric = 'tokens' | 'cost' | 'requests' | 'traces'
+export type AdminOverviewDimension = 'user' | 'model' | 'upstreamModel' | 'provider'
+export type AdminOverviewSeriesDimension = 'none' | AdminOverviewDimension
 
 export type EndpointType = NonNullable<EndpointView['endpointType']>
 export const ENDPOINT_TYPES_MODEL_ROUTED: EndpointType[] = [

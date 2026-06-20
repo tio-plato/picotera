@@ -34,6 +34,7 @@ const userNav: NavItem[] = [
 
 // Admin features: hidden entirely for non-admins (also guarded by the router).
 const adminNav: NavItem[] = [
+  { name: 'adminOverview', label: '全览', icon: 'chart-pie' },
   { name: 'providers', label: '渠道', icon: 'cloud-fog' },
   { name: 'models', label: '模型', icon: 'cpu' },
   { name: 'endpoints', label: '端点', icon: 'plug' },

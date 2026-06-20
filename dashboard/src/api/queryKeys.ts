@@ -1,4 +1,9 @@
-import type { OverviewDimension, OverviewSeriesDimension } from './index'
+import type {
+  OverviewDimension,
+  OverviewSeriesDimension,
+  AdminOverviewDimension,
+  AdminOverviewSeriesDimension,
+} from './index'
 
 export type ProviderEndpointFilters = Readonly<{ providerId?: number }>
 
@@ -9,6 +14,14 @@ export type OverviewFilters = Readonly<{
   upstreamModel?: string
   providerId?: number
   projectId?: number
+}>
+
+export type AdminOverviewFilters = Readonly<{
+  range: '1d' | '7d' | '1m'
+  userId?: number
+  model?: string
+  upstreamModel?: string
+  providerId?: number
 }>
 
 export type RequestsFilters = Readonly<{
@@ -123,5 +136,19 @@ export const queryKeys = {
       ['overview', 'speedBoxplot', dim, { ...f }] as const,
     cacheHitRate: (f: OverviewFilters, dim: OverviewSeriesDimension) =>
       ['overview', 'cacheHitRate', dim, { ...f }] as const,
+  },
+  adminOverview: {
+    all: ['adminOverview'] as const,
+    summary: (f: AdminOverviewFilters) => ['adminOverview', 'summary', { ...f }] as const,
+    distribution: (f: AdminOverviewFilters, dim: AdminOverviewDimension) =>
+      ['adminOverview', 'distribution', dim, { ...f }] as const,
+    series: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension) =>
+      ['adminOverview', 'series', dim, { ...f }] as const,
+    speed: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension) =>
+      ['adminOverview', 'speed', dim, { ...f }] as const,
+    speedBoxplot: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension) =>
+      ['adminOverview', 'speedBoxplot', dim, { ...f }] as const,
+    cacheHitRate: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension) =>
+      ['adminOverview', 'cacheHitRate', dim, { ...f }] as const,
   },
 }

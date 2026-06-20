@@ -16,6 +16,7 @@ provideCurrencyContext(computed(() => prefs.displayCurrency ?? null))
 const pageMeta = computed(() => {
   const map: Record<string, { title: string; hint: string }> = {
     overview: { title: '概览', hint: '今天蹬了多少刀' },
+    adminOverview: { title: '全局概览', hint: '众生皆蹬刀' },
     providers: { title: '渠道', hint: '词元从四面八方来' },
     models: { title: '模型', hint: '统统流口水' },
     endpoints: { title: '端点', hint: '跪求秦始皇统一接口格式' },

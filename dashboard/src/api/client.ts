@@ -23,6 +23,9 @@ import type {
   OverviewSeriesDimension,
   OverviewSeriesView,
   OverviewSummaryView,
+  AdminOverviewDimension,
+  AdminOverviewSeriesDimension,
+  AdminOverviewSummaryView,
   PricingMatchCandidate,
   ProjectView,
   ProviderEndpointView,
@@ -44,6 +47,7 @@ import {
   queryKeys,
   type KvListFilters,
   type OverviewFilters,
+  type AdminOverviewFilters,
   type RequestsFilters,
 } from '@/api/queryKeys'
 
@@ -621,6 +625,62 @@ export async function getOverviewSpeedBoxplot(
 
 export function invalidateOverview(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.overview.all })
+}
+
+function adminOverviewQuery(filters: AdminOverviewFilters) {
+  const query: Record<string, unknown> = { range: filters.range }
+  if (filters.userId !== undefined) query.userId = filters.userId
+  if (filters.model !== undefined) query.model = filters.model
+  if (filters.upstreamModel !== undefined) query.upstreamModel = filters.upstreamModel
+  if (filters.providerId !== undefined) query.providerId = filters.providerId
+  return query
+}
+
+export async function getAdminOverviewSummary(
+  filters: AdminOverviewFilters,
+): Promise<AdminOverviewSummaryView> {
+  const { data, error } = await api.GET('/api/picotera/admin/overview/summary', {
+    params: { query: adminOverviewQuery(filters) as never },
+  })
+  if (error) fail(error, '加载概览失败')
+  return data
+}
+
+export async function getAdminOverviewDistribution(
+  filters: AdminOverviewFilters,
+  dimension: AdminOverviewDimension,
+): Promise<OverviewDistributionView> {
+  const { data, error } = await api.GET('/api/picotera/admin/overview/distribution', {
+    params: { query: { ...adminOverviewQuery(filters), dimension } as never },
+  })
+  if (error) fail(error, '加载分布失败')
+  return data
+}
+
+export async function getAdminOverviewSeries(
+  filters: AdminOverviewFilters,
+  dimension: AdminOverviewSeriesDimension,
+): Promise<OverviewSeriesView> {
+  const { data, error } = await api.GET('/api/picotera/admin/overview/series', {
+    params: { query: { ...adminOverviewQuery(filters), dimension } as never },
+  })
+  if (error) fail(error, '加载趋势失败')
+  return data
+}
+
+export async function getAdminOverviewSpeedBoxplot(
+  filters: AdminOverviewFilters,
+  dimension: AdminOverviewSeriesDimension,
+): Promise<OverviewSpeedBoxplotView> {
+  const { data, error } = await api.GET('/api/picotera/admin/overview/speed-boxplot', {
+    params: { query: { ...adminOverviewQuery(filters), dimension } as never },
+  })
+  if (error) fail(error, '加载速度分布失败')
+  return data
+}
+
+export function invalidateAdminOverview(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.adminOverview.all })
 }
 
 export async function simulateDispatch(

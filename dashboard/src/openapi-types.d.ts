@@ -4,6 +4,74 @@
  */
 
 export interface paths {
+    "/api/picotera/admin/overview/distribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get global overview distribution for a dimension (admin) */
+        get: operations["getAdminOverviewDistribution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/admin/overview/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get hourly global overview series for a dimension (admin) */
+        get: operations["getAdminOverviewSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/admin/overview/speed-boxplot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get global decode speed box plot statistics for a dimension (admin) */
+        get: operations["getAdminOverviewSpeedBoxplot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/admin/overview/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get global overview summary totals (admin) */
+        get: operations["getAdminOverviewSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/api-keys": {
         parameters: {
             query?: never;
@@ -960,6 +1028,35 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AdminOverviewBreakdownRowView: {
+            costs: components["schemas"]["OverviewCostView"][] | null;
+            model: string;
+            /** Format: int32 */
+            providerId: number;
+            /** Format: int64 */
+            totalTokens: number;
+            upstreamModel: string;
+            /** Format: int32 */
+            userId: number;
+        };
+        AdminOverviewSummaryView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AdminOverviewSummaryView.json
+             */
+            readonly $schema?: string;
+            breakdown: components["schemas"]["AdminOverviewBreakdownRowView"][] | null;
+            costs: components["schemas"]["OverviewCostView"][] | null;
+            tokenBreakdown: components["schemas"]["OverviewTokenBreakdownView"];
+            /** Format: int64 */
+            totalRequests: number;
+            /** Format: int64 */
+            totalTokens: number;
+            /** Format: int64 */
+            totalTraceCount: number;
+            window: components["schemas"]["OverviewWindowView"];
+        };
         ApiKeyMutateBody: {
             /**
              * Format: uri
@@ -1910,6 +2007,149 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getAdminOverviewDistribution: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m";
+                userId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+                dimension: "user" | "model" | "upstreamModel" | "provider";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewDistributionView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getAdminOverviewSeries: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m";
+                userId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+                dimension: "none" | "user" | "model" | "upstreamModel" | "provider";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewSeriesView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getAdminOverviewSpeedBoxplot: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m";
+                userId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+                dimension: "none" | "user" | "model" | "upstreamModel" | "provider";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewSpeedBoxplotView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
+    getAdminOverviewSummary: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m";
+                userId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOverviewSummaryView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     listApiKeys: {
         parameters: {
             query?: never;

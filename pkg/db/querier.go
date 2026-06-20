@@ -12,6 +12,8 @@ import (
 
 type Querier interface {
 	BackfillTrace(ctx context.Context, arg BackfillTraceParams) error
+	CountAdminTraces(ctx context.Context, arg CountAdminTracesParams) (int64, error)
+	CountAdminTracesFiltered(ctx context.Context, arg CountAdminTracesFilteredParams) (int64, error)
 	CountTraces(ctx context.Context, arg CountTracesParams) (int64, error)
 	CountTracesFiltered(ctx context.Context, arg CountTracesFilteredParams) (int64, error)
 	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
@@ -28,6 +30,9 @@ type Querier interface {
 	DeleteUserIdentitiesByUser(ctx context.Context, userID int64) error
 	DeleteUserIdentity(ctx context.Context, id int64) error
 	DeleteUserSetting(ctx context.Context, arg DeleteUserSettingParams) (int64, error)
+	GetAdminOverviewSpeedBoxplot(ctx context.Context, arg GetAdminOverviewSpeedBoxplotParams) ([]GetAdminOverviewSpeedBoxplotRow, error)
+	GetAdminOverviewTokenBreakdown(ctx context.Context, arg GetAdminOverviewTokenBreakdownParams) (GetAdminOverviewTokenBreakdownRow, error)
+	GetAdminOverviewTotals(ctx context.Context, arg GetAdminOverviewTotalsParams) (GetAdminOverviewTotalsRow, error)
 	GetApiKey(ctx context.Context, arg GetApiKeyParams) (ApiKey, error)
 	GetApiKeyByKey(ctx context.Context, key string) (ApiKey, error)
 	GetEndpointByPath(ctx context.Context, path string) (Endpoint, error)
@@ -72,6 +77,15 @@ type Querier interface {
 	InsertScript(ctx context.Context, arg InsertScriptParams) (Script, error)
 	InsertUser(ctx context.Context, arg InsertUserParams) (AppUser, error)
 	InsertUserIdentity(ctx context.Context, arg InsertUserIdentityParams) (UserIdentity, error)
+	ListAdminOverviewBreakdownCosts(ctx context.Context, arg ListAdminOverviewBreakdownCostsParams) ([]ListAdminOverviewBreakdownCostsRow, error)
+	ListAdminOverviewBreakdownTokens(ctx context.Context, arg ListAdminOverviewBreakdownTokensParams) ([]ListAdminOverviewBreakdownTokensRow, error)
+	ListAdminOverviewCacheHitRateSeries(ctx context.Context, arg ListAdminOverviewCacheHitRateSeriesParams) ([]ListAdminOverviewCacheHitRateSeriesRow, error)
+	ListAdminOverviewDistribution(ctx context.Context, arg ListAdminOverviewDistributionParams) ([]ListAdminOverviewDistributionRow, error)
+	ListAdminOverviewDistributionCosts(ctx context.Context, arg ListAdminOverviewDistributionCostsParams) ([]ListAdminOverviewDistributionCostsRow, error)
+	ListAdminOverviewSeriesMetrics(ctx context.Context, arg ListAdminOverviewSeriesMetricsParams) ([]ListAdminOverviewSeriesMetricsRow, error)
+	ListAdminOverviewSeriesTraces(ctx context.Context, arg ListAdminOverviewSeriesTracesParams) ([]ListAdminOverviewSeriesTracesRow, error)
+	ListAdminOverviewSpeedSeries(ctx context.Context, arg ListAdminOverviewSpeedSeriesParams) ([]ListAdminOverviewSpeedSeriesRow, error)
+	ListAdminOverviewTraceCountsByDimension(ctx context.Context, arg ListAdminOverviewTraceCountsByDimensionParams) ([]ListAdminOverviewTraceCountsByDimensionRow, error)
 	ListApiKeys(ctx context.Context, userID int64) ([]ApiKey, error)
 	ListAvailableModelNames(ctx context.Context) ([]string, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)

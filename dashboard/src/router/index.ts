@@ -7,6 +7,7 @@ import { fetchMe } from '@/api/client'
 // redirects non-admins to /overview; the backend stays the sole authority, so
 // any admin API a non-admin reaches anyway returns 403.
 const ADMIN_ROUTES = new Set([
+  'adminOverview',
   'providers',
   'models',
   'endpoints',
@@ -22,6 +23,11 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/overview' },
     { path: '/overview', name: 'overview', component: () => import('@/views/OverviewView.vue') },
+    {
+      path: '/admin/overview',
+      name: 'adminOverview',
+      component: () => import('@/views/AdminOverviewView.vue'),
+    },
     { path: '/providers', name: 'providers', component: () => import('@/views/ProvidersView.vue') },
     { path: '/models', name: 'models', component: () => import('@/views/ModelsView.vue') },
     { path: '/endpoints', name: 'endpoints', component: () => import('@/views/EndpointsView.vue') },

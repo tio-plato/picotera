@@ -1,5 +1,75 @@
 components:
   schemas:
+    AdminOverviewBreakdownRowView:
+      additionalProperties: false
+      properties:
+        costs:
+          items:
+            $ref: "#/components/schemas/OverviewCostView"
+          nullable: true
+          type: array
+        model:
+          type: string
+        providerId:
+          format: int32
+          type: integer
+        totalTokens:
+          format: int64
+          type: integer
+        upstreamModel:
+          type: string
+        userId:
+          format: int32
+          type: integer
+      required:
+        - userId
+        - model
+        - upstreamModel
+        - providerId
+        - totalTokens
+        - costs
+      type: object
+    AdminOverviewSummaryView:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: https://example.com/schemas/AdminOverviewSummaryView.json
+          format: uri
+          readOnly: true
+          type: string
+        breakdown:
+          items:
+            $ref: "#/components/schemas/AdminOverviewBreakdownRowView"
+          nullable: true
+          type: array
+        costs:
+          items:
+            $ref: "#/components/schemas/OverviewCostView"
+          nullable: true
+          type: array
+        tokenBreakdown:
+          $ref: "#/components/schemas/OverviewTokenBreakdownView"
+        totalRequests:
+          format: int64
+          type: integer
+        totalTokens:
+          format: int64
+          type: integer
+        totalTraceCount:
+          format: int64
+          type: integer
+        window:
+          $ref: "#/components/schemas/OverviewWindowView"
+      required:
+        - window
+        - totalTokens
+        - totalRequests
+        - totalTraceCount
+        - costs
+        - tokenBreakdown
+        - breakdown
+      type: object
     ApiKeyMutateBody:
       additionalProperties: false
       properties:
@@ -1891,6 +1961,257 @@ info:
   version: 1.0.0
 openapi: 3.0.3
 paths:
+  /api/picotera/admin/overview/distribution:
+    get:
+      operationId: getAdminOverviewDistribution
+      parameters:
+        - explode: false
+          in: query
+          name: range
+          required: true
+          schema:
+            enum:
+              - 1d
+              - 7d
+              - 1m
+            type: string
+        - explode: false
+          in: query
+          name: userId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: model
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: dimension
+          required: true
+          schema:
+            enum:
+              - user
+              - model
+              - upstreamModel
+              - provider
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewDistributionView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get global overview distribution for a dimension (admin)
+  /api/picotera/admin/overview/series:
+    get:
+      operationId: getAdminOverviewSeries
+      parameters:
+        - explode: false
+          in: query
+          name: range
+          required: true
+          schema:
+            enum:
+              - 1d
+              - 7d
+              - 1m
+            type: string
+        - explode: false
+          in: query
+          name: userId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: model
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: dimension
+          required: true
+          schema:
+            enum:
+              - none
+              - user
+              - model
+              - upstreamModel
+              - provider
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewSeriesView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get hourly global overview series for a dimension (admin)
+  /api/picotera/admin/overview/speed-boxplot:
+    get:
+      operationId: getAdminOverviewSpeedBoxplot
+      parameters:
+        - explode: false
+          in: query
+          name: range
+          required: true
+          schema:
+            enum:
+              - 1d
+              - 7d
+              - 1m
+            type: string
+        - explode: false
+          in: query
+          name: userId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: model
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: dimension
+          required: true
+          schema:
+            enum:
+              - none
+              - user
+              - model
+              - upstreamModel
+              - provider
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewSpeedBoxplotView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get global decode speed box plot statistics for a dimension (admin)
+  /api/picotera/admin/overview/summary:
+    get:
+      operationId: getAdminOverviewSummary
+      parameters:
+        - explode: false
+          in: query
+          name: range
+          required: true
+          schema:
+            enum:
+              - 1d
+              - 7d
+              - 1m
+            type: string
+        - explode: false
+          in: query
+          name: userId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: model
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: upstreamModel
+          schema:
+            minLength: 1
+            type: string
+        - explode: false
+          in: query
+          name: providerId
+          schema:
+            format: int32
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOverviewSummaryView"
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicoTeraError"
+          description: Error
+      summary: Get global overview summary totals (admin)
   /api/picotera/api-keys:
     get:
       operationId: listApiKeys
