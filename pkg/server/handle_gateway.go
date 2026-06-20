@@ -29,6 +29,13 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		handleGatewayErr(w, err)
 		return
 	}
+	// Matched a real gateway endpoint: emit CORS headers and answer preflight.
+	// Done after the static-fallback branch so SPA assets stay header-free.
+	writeCORSHeaders(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if endpoint.EndpointType == contract.EndpointType_ModelList {
 		h.handleModelList(w, r, endpoint)
 		return

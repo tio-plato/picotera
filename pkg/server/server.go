@@ -327,11 +327,22 @@ func (s *Server) registerEndpoints() {
 	// Unified generation routes. Registered BEFORE the catch-all gateway
 	// mount so chi resolves them as exact-match handlers, never reaching
 	// endpointRouter.Match. They route to handle_unified_gateway.go.
-	s.router.Post("/api/unified/v1/messages", s.handleUnifiedGenerate(llmbridge.FormatAnthropicMessages))
-	s.router.Post("/api/unified/v1/responses", s.handleUnifiedGenerate(llmbridge.FormatOpenAIResponses))
-	s.router.Post("/api/unified/v1/chat/completions", s.handleUnifiedGenerate(llmbridge.FormatOpenAIChatCompletions))
-	s.router.Post("/api/unified/v1beta/models/{model}:generateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiGenerateContent))
-	s.router.Post("/api/unified/v1beta/models/{model}:streamGenerateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiStreamGenerateContent))
+	// Grouped under corsMiddleware so browsers can call them cross-origin;
+	// each route also registers OPTIONS so chi routes the preflight into the
+	// group (the middleware answers it with 204 before reaching the handler).
+	s.router.Group(func(r chi.Router) {
+		r.Use(corsMiddleware)
+		unified := func(pattern string, format llmbridge.Format) {
+			h := s.handleUnifiedGenerate(format)
+			r.Post(pattern, h)
+			r.Options(pattern, h)
+		}
+		unified("/api/unified/v1/messages", llmbridge.FormatAnthropicMessages)
+		unified("/api/unified/v1/responses", llmbridge.FormatOpenAIResponses)
+		unified("/api/unified/v1/chat/completions", llmbridge.FormatOpenAIChatCompletions)
+		unified("/api/unified/v1beta/models/{model}:generateContent", llmbridge.FormatGeminiGenerateContent)
+		unified("/api/unified/v1beta/models/{model}:streamGenerateContent", llmbridge.FormatGeminiStreamGenerateContent)
+	})
 
 	// Short-circuit test route: forwards a caller-supplied body straight to a
 	// provider's upstream, bypassing the entire gateway pipeline (no scripts,

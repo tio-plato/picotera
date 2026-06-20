@@ -727,6 +727,10 @@ export function postGatewayTest(
 ): Promise<Response> {
   return fetch(targetUrl, {
     method: 'POST',
+    // Omit cookies: the gateway authenticates via the API key Bearer token, so
+    // the request should mirror a real external client and not leak the
+    // dashboard session.
+    credentials: 'omit',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
