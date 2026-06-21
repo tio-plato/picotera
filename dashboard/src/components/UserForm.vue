@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
+import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import { SidePanel, Button, Input, Field } from '@/ui'
 import type { UserView } from '@/api'
 import { createUser, invalidateUsers, updateUser } from '@/api/client'
@@ -14,12 +15,17 @@ const form = ref({
   displayName: props.user?.displayName ?? '',
   isAdmin: props.user?.isAdmin ?? false,
   disabled: props.user?.disabled ?? false,
+  annotations: { ...props.user?.annotations } as Record<string, string>,
 })
 const saving = ref(false)
 const error = ref('')
 const saveMutation = useMutation({
-  mutationFn: (body: { displayName: string; isAdmin: boolean; disabled: boolean }) =>
-    isEdit ? updateUser(props.user!.id, body) : createUser(body),
+  mutationFn: (body: {
+    displayName: string
+    isAdmin: boolean
+    disabled: boolean
+    annotations: Record<string, string>
+  }) => (isEdit ? updateUser(props.user!.id, body) : createUser(body)),
   onSuccess: () => invalidateUsers(queryClient),
 })
 
@@ -31,6 +37,7 @@ async function submit() {
       displayName: form.value.displayName,
       isAdmin: form.value.isAdmin,
       disabled: form.value.disabled,
+      annotations: form.value.annotations,
     })
     props.onSave?.()
     emit('close')
@@ -60,8 +67,11 @@ async function submit() {
       <Field label="状态" as="div">
         <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
           <input v-model="form.disabled" type="checkbox" class="cursor-pointer" />
-          <span>禁用此用户（无法通过鉴权）</span>
+          <span>禁用</span>
         </label>
+      </Field>
+      <Field label="标注" as="div">
+        <AnnotationsEditor v-model="form.annotations" />
       </Field>
     </form>
 

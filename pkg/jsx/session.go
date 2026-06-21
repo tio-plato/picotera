@@ -121,6 +121,7 @@ const ctxInit = `globalThis.ctx = {
 	routedModel: null,
 	request: null,
 	apiKey: null,
+	user: null,
 	provider: null,
 	providerModel: null,
 	attempt: null,

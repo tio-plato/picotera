@@ -47,6 +47,16 @@ type ApiKeySummary struct {
 	Disabled    bool              `json:"disabled"`
 }
 
+// UserSummary is the JS-visible shape of the authenticated user that owns the
+// API key (ctx.user). Constant for the lifetime of the request. Credentials and
+// other sensitive fields are intentionally omitted.
+type UserSummary struct {
+	ID          int64             `json:"id"`
+	Name        string            `json:"name"`
+	Annotations map[string]string `json:"annotations"`
+	IsAdmin     bool              `json:"isAdmin"`
+}
+
 // ProviderSummary is the JS-visible shape of a provider (ctx.provider and
 // CandidateView.Provider). Credentials are intentionally omitted for security.
 type ProviderSummary struct {
@@ -167,6 +177,7 @@ type ContextPatch struct {
 	RoutedModel      *ModelSummary      `json:"routedModel,omitempty"`
 	Request          *RequestShape      `json:"request,omitempty"`
 	ApiKey           *ApiKeySummary     `json:"apiKey,omitempty"`
+	User             *UserSummary       `json:"user,omitempty"`
 	Provider         *ProviderSummary   `json:"provider,omitempty"`
 	ProviderModel    *ProviderModel     `json:"providerModel,omitempty"`
 	Attempt          *AttemptState      `json:"attempt,omitempty"`

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"picotera/pkg/contract"
@@ -10,6 +11,16 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 )
+
+// encodeAnnotations marshals an annotation map into JSONB bytes, writing a
+// nil/empty map as "{}" so the column never falls through to its DEFAULT on
+// update (matching FromModelView).
+func encodeAnnotations(anno map[string]string) ([]byte, error) {
+	if anno == nil {
+		anno = map[string]string{}
+	}
+	return json.Marshal(anno)
+}
 
 func (s *Server) handleListUsers(ctx context.Context, _ *struct{}) (*contract.ListUsersResponse, error) {
 	rows, err := s.queries.ListUsers(ctx)
@@ -38,9 +49,14 @@ func (s *Server) handleCreateUser(ctx context.Context, in *contract.CreateUserRe
 	if in.Body.DisplayName == "" {
 		return nil, huma.Error400BadRequest("displayName is required")
 	}
+	annoBytes, err := encodeAnnotations(in.Body.Annotations)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to encode annotations", err)
+	}
 	u, err := s.queries.InsertUser(ctx, db.InsertUserParams{
 		DisplayName: in.Body.DisplayName,
 		IsAdmin:     in.Body.IsAdmin,
+		Annotations: annoBytes,
 	})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to create user", err)
@@ -52,6 +68,7 @@ func (s *Server) handleCreateUser(ctx context.Context, in *contract.CreateUserRe
 			DisplayName: u.DisplayName,
 			IsAdmin:     u.IsAdmin,
 			Disabled:    true,
+			Annotations: annoBytes,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create user", err)
@@ -64,11 +81,16 @@ func (s *Server) handleUpdateUser(ctx context.Context, in *contract.UpdateUserRe
 	if in.Body.DisplayName == "" {
 		return nil, huma.Error400BadRequest("displayName is required")
 	}
+	annoBytes, err := encodeAnnotations(in.Body.Annotations)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to encode annotations", err)
+	}
 	u, err := s.queries.UpdateUser(ctx, db.UpdateUserParams{
 		ID:          in.ID,
 		DisplayName: in.Body.DisplayName,
 		IsAdmin:     in.Body.IsAdmin,
 		Disabled:    in.Body.Disabled,
+		Annotations: annoBytes,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -1864,6 +1864,9 @@ export interface components {
              * @example https://example.com/schemas/UserMutateBody.json
              */
             readonly $schema?: string;
+            annotations?: {
+                [key: string]: string;
+            };
             disabled?: boolean;
             displayName: string;
             isAdmin?: boolean;
@@ -1885,6 +1888,9 @@ export interface components {
              * @example https://example.com/schemas/UserView.json
              */
             readonly $schema?: string;
+            annotations: {
+                [key: string]: string;
+            };
             createdAt: string;
             disabled: boolean;
             displayName: string;

@@ -191,13 +191,15 @@ func mergeClientQuery(upstreamURL *url.URL, clientRawQuery string) {
 }
 
 // authenticateClient extracts the client token (per resolver), looks up the
-// matching api_key row, and returns it. The returned *db.ApiKey is the
-// authenticated identity; callers persist `ApiKeyID` from `ID` and feed
-// metadata into JS hooks.
-func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolver int32) (*db.ApiKey, error) {
+// matching api_key row, and returns it alongside its owning user. The returned
+// *db.ApiKey is the authenticated identity; callers persist `ApiKeyID` from `ID`
+// and feed metadata into JS hooks. The *db.AppUser is the already-fetched owner
+// row (used for the disabled check) — returned so callers reuse it for ctx.user
+// and the user annotation layer without a second query.
+func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolver int32) (*db.ApiKey, *db.AppUser, error) {
 	token := extractClientToken(r, resolver)
 	if token == "" {
-		return nil, &gatewayError{
+		return nil, nil, &gatewayError{
 			status:  http.StatusUnauthorized,
 			message: "missing credentials",
 			code:    errorx.Unauthorized.Error(),
@@ -206,21 +208,21 @@ func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolv
 	row, err := s.queries.GetApiKeyByKey(ctx, token)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, &gatewayError{
+			return nil, nil, &gatewayError{
 				status:  http.StatusUnauthorized,
 				message: "invalid api key",
 				code:    errorx.Unauthorized.Error(),
 			}
 		}
 		logx.WithContext(ctx).WithError(err).Error("api key lookup failed")
-		return nil, &gatewayError{
+		return nil, nil, &gatewayError{
 			status:  http.StatusInternalServerError,
 			message: "failed to query api key",
 			code:    errorx.InternalError.Error(),
 		}
 	}
 	if row.Disabled {
-		return nil, &gatewayError{
+		return nil, nil, &gatewayError{
 			status:  http.StatusForbidden,
 			message: "api key disabled",
 			code:    errorx.Forbidden.Error(),
@@ -230,27 +232,27 @@ func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolv
 	user, err := s.queries.GetUserByID(ctx, row.UserID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, &gatewayError{
+			return nil, nil, &gatewayError{
 				status:  http.StatusForbidden,
 				message: "api key owner not found",
 				code:    errorx.Forbidden.Error(),
 			}
 		}
 		logx.WithContext(ctx).WithError(err).Error("api key owner lookup failed")
-		return nil, &gatewayError{
+		return nil, nil, &gatewayError{
 			status:  http.StatusInternalServerError,
 			message: "failed to query api key owner",
 			code:    errorx.InternalError.Error(),
 		}
 	}
 	if user.Disabled {
-		return nil, &gatewayError{
+		return nil, nil, &gatewayError{
 			status:  http.StatusForbidden,
 			message: "user disabled",
 			code:    errorx.Forbidden.Error(),
 		}
 	}
-	return &row, nil
+	return &row, &user, nil
 }
 
 // apiKeySummaryFromRow converts a db.ApiKey row into the JS-visible summary.
@@ -266,6 +268,23 @@ func apiKeySummaryFromRow(row *db.ApiKey) *jsx.ApiKeySummary {
 		Name:        row.Name,
 		Annotations: annotations,
 		Disabled:    row.Disabled,
+	}
+}
+
+// userSummaryFromRow converts a db.AppUser row into the JS-visible summary
+// (ctx.user). Annotations is decoded from JSONB; on decode failure, returns an
+// empty map rather than nil so scripts always see an object. Name is the user's
+// display_name.
+func userSummaryFromRow(row *db.AppUser) *jsx.UserSummary {
+	anno := map[string]string{}
+	if len(row.Annotations) > 0 {
+		_ = json.Unmarshal(row.Annotations, &anno)
+	}
+	return &jsx.UserSummary{
+		ID:          row.ID,
+		Name:        row.DisplayName,
+		Annotations: anno,
+		IsAdmin:     row.IsAdmin,
 	}
 }
 

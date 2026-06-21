@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"picotera/pkg/annotations"
 	"picotera/pkg/db"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -40,21 +41,27 @@ var OperationGetMe = huma.Operation{
 
 // UserView is an application user as exposed by the management API.
 type UserView struct {
-	ID          int64  `json:"id"`
-	DisplayName string `json:"displayName"`
-	IsAdmin     bool   `json:"isAdmin"`
-	Disabled    bool   `json:"disabled"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	ID          int64             `json:"id"`
+	DisplayName string            `json:"displayName"`
+	IsAdmin     bool              `json:"isAdmin"`
+	Disabled    bool              `json:"disabled"`
+	Annotations map[string]string `json:"annotations"`
+	CreatedAt   string            `json:"createdAt"`
+	UpdatedAt   string            `json:"updatedAt"`
 }
 
 // ToUserView converts a db.AppUser to the API view.
 func ToUserView(u *db.AppUser) UserView {
+	anno, err := annotations.Decode(u.Annotations)
+	if err != nil {
+		anno = map[string]string{}
+	}
 	v := UserView{
 		ID:          u.ID,
 		DisplayName: u.DisplayName,
 		IsAdmin:     u.IsAdmin,
 		Disabled:    u.Disabled,
+		Annotations: anno,
 	}
 	if u.CreatedAt.Valid {
 		v.CreatedAt = u.CreatedAt.Time.UTC().Format(time.RFC3339)
@@ -100,9 +107,10 @@ type GetUserRequest struct {
 type GetUserResponse struct{ Body UserView }
 
 type UserMutateBody struct {
-	DisplayName string `json:"displayName"`
-	IsAdmin     bool   `json:"isAdmin,omitempty"`
-	Disabled    bool   `json:"disabled,omitempty"`
+	DisplayName string            `json:"displayName"`
+	IsAdmin     bool              `json:"isAdmin,omitempty"`
+	Disabled    bool              `json:"disabled,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 type CreateUserRequest struct {

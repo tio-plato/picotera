@@ -44,7 +44,7 @@ func (h *gatewayHandler) newUnifiedGatewayFlowConfig(srcFormat llmbridge.Format,
 			if err != nil {
 				return candidateSet{}, err
 			}
-			return buildUnifiedCandidateSet(providers, auth.APIKeyAnno, nil, virtualEndpoint)
+			return buildUnifiedCandidateSet(providers, auth.UserAnno, auth.APIKeyAnno, nil, virtualEndpoint)
 		},
 		PrepareAttempt: prepareUnifiedAttempt,
 		HandleSuccess: func(input successInput) {

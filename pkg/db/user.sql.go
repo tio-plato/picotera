@@ -62,7 +62,7 @@ func (q *Queries) DeleteUserIdentity(ctx context.Context, id int64) error {
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, display_name, is_admin, created_at, updated_at, disabled FROM app_user WHERE id = $1 LIMIT 1
+SELECT id, display_name, is_admin, created_at, updated_at, disabled, annotations FROM app_user WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (AppUser, error) {
@@ -75,12 +75,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (AppUser, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Disabled,
+		&i.Annotations,
 	)
 	return i, err
 }
 
 const getUserByIdentity = `-- name: GetUserByIdentity :one
-SELECT u.id, u.display_name, u.is_admin, u.created_at, u.updated_at, u.disabled FROM app_user u
+SELECT u.id, u.display_name, u.is_admin, u.created_at, u.updated_at, u.disabled, u.annotations FROM app_user u
 JOIN user_identity i ON i.user_id = u.id
 WHERE i.provider = $1 AND i.identity = $2
 LIMIT 1
@@ -101,6 +102,7 @@ func (q *Queries) GetUserByIdentity(ctx context.Context, arg GetUserByIdentityPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Disabled,
+		&i.Annotations,
 	)
 	return i, err
 }
@@ -145,16 +147,17 @@ func (q *Queries) GetUserIdentityByID(ctx context.Context, id int64) (UserIdenti
 }
 
 const insertUser = `-- name: InsertUser :one
-INSERT INTO app_user (display_name, is_admin) VALUES ($1, $2) RETURNING id, display_name, is_admin, created_at, updated_at, disabled
+INSERT INTO app_user (display_name, is_admin, annotations) VALUES ($1, $2, $3) RETURNING id, display_name, is_admin, created_at, updated_at, disabled, annotations
 `
 
 type InsertUserParams struct {
 	DisplayName string `json:"displayName"`
 	IsAdmin     bool   `json:"isAdmin"`
+	Annotations []byte `json:"annotations"`
 }
 
 func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (AppUser, error) {
-	row := q.db.QueryRow(ctx, insertUser, arg.DisplayName, arg.IsAdmin)
+	row := q.db.QueryRow(ctx, insertUser, arg.DisplayName, arg.IsAdmin, arg.Annotations)
 	var i AppUser
 	err := row.Scan(
 		&i.ID,
@@ -163,6 +166,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (AppUser
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Disabled,
+		&i.Annotations,
 	)
 	return i, err
 }
@@ -224,7 +228,7 @@ func (q *Queries) ListUserIdentities(ctx context.Context, userID int64) ([]UserI
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, display_name, is_admin, created_at, updated_at, disabled FROM app_user ORDER BY id
+SELECT id, display_name, is_admin, created_at, updated_at, disabled, annotations FROM app_user ORDER BY id
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]AppUser, error) {
@@ -243,6 +247,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]AppUser, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Disabled,
+			&i.Annotations,
 		); err != nil {
 			return nil, err
 		}
@@ -256,9 +261,9 @@ func (q *Queries) ListUsers(ctx context.Context) ([]AppUser, error) {
 
 const updateUser = `-- name: UpdateUser :one
 UPDATE app_user
-SET display_name = $2, is_admin = $3, disabled = $4, updated_at = now()
+SET display_name = $2, is_admin = $3, disabled = $4, annotations = $5, updated_at = now()
 WHERE id = $1
-RETURNING id, display_name, is_admin, created_at, updated_at, disabled
+RETURNING id, display_name, is_admin, created_at, updated_at, disabled, annotations
 `
 
 type UpdateUserParams struct {
@@ -266,6 +271,7 @@ type UpdateUserParams struct {
 	DisplayName string `json:"displayName"`
 	IsAdmin     bool   `json:"isAdmin"`
 	Disabled    bool   `json:"disabled"`
+	Annotations []byte `json:"annotations"`
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (AppUser, error) {
@@ -274,6 +280,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (AppUser
 		arg.DisplayName,
 		arg.IsAdmin,
 		arg.Disabled,
+		arg.Annotations,
 	)
 	var i AppUser
 	err := row.Scan(
@@ -283,12 +290,13 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (AppUser
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Disabled,
+		&i.Annotations,
 	)
 	return i, err
 }
 
 const updateUserAdmin = `-- name: UpdateUserAdmin :one
-UPDATE app_user SET is_admin = $2, updated_at = now() WHERE id = $1 RETURNING id, display_name, is_admin, created_at, updated_at, disabled
+UPDATE app_user SET is_admin = $2, updated_at = now() WHERE id = $1 RETURNING id, display_name, is_admin, created_at, updated_at, disabled, annotations
 `
 
 type UpdateUserAdminParams struct {
@@ -306,6 +314,7 @@ func (q *Queries) UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Disabled,
+		&i.Annotations,
 	)
 	return i, err
 }

@@ -34,13 +34,13 @@ type candidateSet struct {
 	ModelAnno map[string]string
 }
 
-func buildPathCandidateSet(providers []providerCandidateRow, apiKeyAnno map[string]string, modelAnno map[string]string, endpoint db.Endpoint) (candidateSet, error) {
+func buildPathCandidateSet(providers []providerCandidateRow, userAnno map[string]string, apiKeyAnno map[string]string, modelAnno map[string]string, endpoint db.Endpoint) (candidateSet, error) {
 	if len(providers) > 0 {
 		if m, err := annotations.Decode(providers[0].ModelAnnotations); err == nil {
 			modelAnno = m
 		}
 	}
-	annoBuilder, err := newCandidateAnnotationsBuilder(nil, apiKeyAnno)
+	annoBuilder, err := newCandidateAnnotationsBuilder(nil, userAnno, apiKeyAnno)
 	if err != nil {
 		return candidateSet{}, err
 	}
@@ -77,13 +77,13 @@ func buildPathCandidateSet(providers []providerCandidateRow, apiKeyAnno map[stri
 	return out, nil
 }
 
-func buildUnifiedCandidateSet(providers []db.GetProvidersByEndpointTypesAndModelRow, apiKeyAnno map[string]string, modelAnno map[string]string, virtualEndpoint db.Endpoint) (candidateSet, error) {
+func buildUnifiedCandidateSet(providers []db.GetProvidersByEndpointTypesAndModelRow, userAnno map[string]string, apiKeyAnno map[string]string, modelAnno map[string]string, virtualEndpoint db.Endpoint) (candidateSet, error) {
 	if len(providers) > 0 {
 		if m, err := annotations.Decode(providers[0].ModelAnnotations); err == nil {
 			modelAnno = m
 		}
 	}
-	annoBuilder, err := newCandidateAnnotationsBuilder(nil, apiKeyAnno)
+	annoBuilder, err := newCandidateAnnotationsBuilder(nil, userAnno, apiKeyAnno)
 	if err != nil {
 		return candidateSet{}, err
 	}

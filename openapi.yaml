@@ -1713,6 +1713,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
         disabled:
           type: boolean
         displayName:
@@ -1747,6 +1751,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        annotations:
+          additionalProperties:
+            type: string
+          type: object
         createdAt:
           type: string
         disabled:
@@ -1765,6 +1773,7 @@ components:
         - displayName
         - isAdmin
         - disabled
+        - annotations
         - createdAt
         - updatedAt
       type: object

@@ -76,6 +76,8 @@ type gatewayAuthState struct {
 	UserID     pgtype.Int8
 	APIKeyJS   *jsx.ApiKeySummary
 	APIKeyAnno map[string]string
+	UserJS     *jsx.UserSummary
+	UserAnno   map[string]string
 }
 
 type gatewayModelState struct {
@@ -262,7 +264,7 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 }
 
 func (f *gatewayFlow) authenticateAndBackfill() bool {
-	apiKey, err := f.h.authenticateClient(f.ctxs.Request, f.r, f.config.Credentials)
+	apiKey, user, err := f.h.authenticateClient(f.ctxs.Request, f.r, f.config.Credentials)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
@@ -274,12 +276,15 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 		return false
 	}
 	apiKeyJS := apiKeySummaryFromRow(apiKey)
+	userJS := userSummaryFromRow(user)
 	f.auth = gatewayAuthState{
 		APIKey:     apiKey,
 		APIKeyID:   pgtype.Int4{Int32: apiKey.ID, Valid: true},
 		UserID:     pgtype.Int8{Int64: apiKey.UserID, Valid: true},
 		APIKeyJS:   apiKeyJS,
 		APIKeyAnno: apiKeyJS.Annotations,
+		UserJS:     userJS,
+		UserAnno:   userJS.Annotations,
 	}
 	// The effective OTR mode is now resolvable: a valid request header overrides
 	// the user's default setting. It gates the request artifact and preview below
@@ -351,7 +356,7 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 	}
 	epSummary := endpointSummaryFromRow(f.config.Endpoint)
 	clientReq := serializeClientRequest(f.r, mode.RoutedModel, f.config.PathVars)
-	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.UserAnno, f.auth.APIKeyAnno)
 	streaming := mode.Streaming
 	srcFormat := f.config.SourceFormat.String()
 	if err := f.session.PatchContext(jsx.ContextPatch{
@@ -360,6 +365,7 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		RequestModel: &mode.OriginalModel,
 		Request:      &clientReq,
 		ApiKey:       f.auth.APIKeyJS,
+		User:         f.auth.UserJS,
 		Annotations:  &mergedAnno,
 		Stream:       &streaming,
 		SourceFormat: &srcFormat,
@@ -399,7 +405,7 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 	// updated request/annotations) onto the persistent ctx.
 	routed := jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations}
 	finalReq := serializeClientRequest(f.r, f.model.Routed, f.config.PathVars)
-	finalAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	finalAnno := annotations.Merge(f.model.Annotations, f.auth.UserAnno, f.auth.APIKeyAnno)
 	if err := f.session.PatchContext(jsx.ContextPatch{
 		RoutedModel: &routed,
 		Request:     &finalReq,
@@ -434,7 +440,7 @@ func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.CandidateView, map[strin
 	// Candidate resolution may have refined the model annotations; reflect the
 	// final routedModel + merged annotations onto ctx before sortProviders.
 	routed := jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations}
-	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.UserAnno, f.auth.APIKeyAnno)
 	if err := f.session.PatchContext(jsx.ContextPatch{
 		RoutedModel: &routed,
 		Annotations: &mergedAnno,

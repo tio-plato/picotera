@@ -8,7 +8,7 @@ WHERE i.provider = $1 AND i.identity = $2
 LIMIT 1;
 
 -- name: InsertUser :one
-INSERT INTO app_user (display_name, is_admin) VALUES ($1, $2) RETURNING *;
+INSERT INTO app_user (display_name, is_admin, annotations) VALUES ($1, $2, $3) RETURNING *;
 
 -- name: InsertUserIdentity :one
 INSERT INTO user_identity (user_id, provider, identity)
@@ -30,7 +30,7 @@ SELECT * FROM app_user ORDER BY id;
 
 -- name: UpdateUser :one
 UPDATE app_user
-SET display_name = $2, is_admin = $3, disabled = $4, updated_at = now()
+SET display_name = $2, is_admin = $3, disabled = $4, annotations = $5, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

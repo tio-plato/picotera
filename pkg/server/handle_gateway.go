@@ -65,7 +65,7 @@ func (h *gatewayHandler) newPathGatewayFlowConfig(endpoint db.Endpoint, pathVars
 			if err != nil {
 				return candidateSet{}, err
 			}
-			return buildPathCandidateSet(providers, auth.APIKeyAnno, nil, endpoint)
+			return buildPathCandidateSet(providers, auth.UserAnno, auth.APIKeyAnno, nil, endpoint)
 		},
 		PrepareAttempt: identityPrepareAttempt,
 		HandleSuccess: func(input successInput) {

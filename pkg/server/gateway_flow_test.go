@@ -86,16 +86,22 @@ func TestBuildPathCandidateSetAnnotations(t *testing.T) {
 		ProxyURL:                pgtype.Text{String: "direct", Valid: true},
 		ProviderAnnotations:     []byte(`{"k":"provider","providerOnly":"1"}`),
 		ModelAnnotations:        []byte(`{"k":"model","modelOnly":"1"}`),
-		EntryAnnotations:        []byte(`{"k":"entry","entryOnly":"1"}`),
+		EntryAnnotations:        []byte(`{"k":"entry","entryOnly":"1","u":"entry"}`),
 		EndpointPath:            "/v1/messages",
 	}}
-	set, err := buildPathCandidateSet(rows, map[string]string{"k": "api", "apiOnly": "1"}, nil, db.Endpoint{Path: "/v1/messages"})
+	userAnno := map[string]string{"k": "user", "u": "user", "userOnly": "1"}
+	set, err := buildPathCandidateSet(rows, userAnno, map[string]string{"k": "api", "apiOnly": "1"}, nil, db.Endpoint{Path: "/v1/messages"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	anno := set.Items[0].Candidate.Annotations
+	// Order: model < provider < entry < user < apiKey.
 	if anno["k"] != "api" || anno["modelOnly"] != "1" || anno["providerOnly"] != "1" || anno["entryOnly"] != "1" || anno["apiOnly"] != "1" {
 		t.Fatalf("unexpected merged annotations: %+v", anno)
+	}
+	// user overrides entry on shared key "u"; user-only key survives.
+	if anno["u"] != "user" || anno["userOnly"] != "1" {
+		t.Fatalf("user layer not applied between entry and apiKey: %+v", anno)
 	}
 }
 
@@ -114,7 +120,7 @@ func TestBuildUnifiedCandidateSetAnnotationsAndFormat(t *testing.T) {
 		Annotations:             []byte(`{"k":"entry"}`),
 		SupportsNativeWebSearch: true,
 	}}
-	set, err := buildUnifiedCandidateSet(rows, map[string]string{"k": "api"}, nil, db.Endpoint{})
+	set, err := buildUnifiedCandidateSet(rows, map[string]string{"k": "user"}, map[string]string{"k": "api"}, nil, db.Endpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
