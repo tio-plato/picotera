@@ -474,160 +474,140 @@ func (q *Queries) ListRequestsBySpan(ctx context.Context, arg ListRequestsBySpan
 	return items, nil
 }
 
-const updateRequestMetrics = `-- name: UpdateRequestMetrics :exec
-UPDATE request
-SET ttft_ms = $2, input_tokens = $3, output_tokens = $4,
-    cache_read_tokens = $5, cache_write_tokens = $6, cache_write_1h_tokens = $7
-WHERE id = $1 AND created_at = $8::timestamp
+const updateRequest = `-- name: UpdateRequest :exec
+UPDATE request SET
+  provider_id = CASE WHEN $1::bool THEN $2::int ELSE provider_id END,
+  model = CASE WHEN $3::bool THEN $4::text ELSE model END,
+  upstream_model = CASE WHEN $5::bool THEN $6::text ELSE upstream_model END,
+  endpoint_path = CASE WHEN $7::bool THEN $8::text ELSE endpoint_path END,
+  api_key_id = CASE WHEN $9::bool THEN $10::int ELSE api_key_id END,
+  user_id = CASE WHEN $11::bool THEN $12::bigint ELSE user_id END,
+  project_id = CASE WHEN $13::bool THEN $14::int ELSE project_id END,
+  status = CASE WHEN $15::bool THEN $16::int ELSE status END,
+  status_code = CASE WHEN $17::bool THEN $18::int ELSE status_code END,
+  error_message = CASE WHEN $19::bool THEN $20::text ELSE error_message END,
+  time_spent_ms = CASE WHEN $21::bool THEN $22::int ELSE time_spent_ms END,
+  ttft_ms = CASE WHEN $23::bool THEN $24::int ELSE ttft_ms END,
+  input_tokens = CASE WHEN $25::bool THEN $26::int ELSE input_tokens END,
+  output_tokens = CASE WHEN $27::bool THEN $28::int ELSE output_tokens END,
+  cache_read_tokens = CASE WHEN $29::bool THEN $30::int ELSE cache_read_tokens END,
+  cache_write_tokens = CASE WHEN $31::bool THEN $32::int ELSE cache_write_tokens END,
+  cache_write_1h_tokens = CASE WHEN $33::bool THEN $34::int ELSE cache_write_1h_tokens END,
+  model_cost = CASE WHEN $35::bool THEN $36::numeric ELSE model_cost END,
+  model_cost_currency = CASE WHEN $37::bool THEN $38::text ELSE model_cost_currency END,
+  finish_reason = CASE WHEN $39::bool THEN $40::int ELSE finish_reason END,
+  inferred_provider = CASE WHEN $41::bool THEN $42::text ELSE inferred_provider END,
+  inferred_model = CASE WHEN $43::bool THEN $44::text ELSE inferred_model END,
+  inferred_model_source = CASE WHEN $45::bool THEN $46::smallint ELSE inferred_model_source END,
+  user_message_preview = CASE WHEN $47::bool THEN $48::text ELSE user_message_preview END
+WHERE id = $49::text AND created_at = $50::timestamp
 `
 
-type UpdateRequestMetricsParams struct {
-	ID                 string           `json:"id"`
-	TtftMs             pgtype.Int4      `json:"ttftMs"`
-	InputTokens        pgtype.Int4      `json:"inputTokens"`
-	OutputTokens       pgtype.Int4      `json:"outputTokens"`
-	CacheReadTokens    pgtype.Int4      `json:"cacheReadTokens"`
-	CacheWriteTokens   pgtype.Int4      `json:"cacheWriteTokens"`
-	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
-	CreatedAt          pgtype.Timestamp `json:"createdAt"`
+type UpdateRequestParams struct {
+	SetProviderID          bool             `json:"setProviderId"`
+	ProviderID             pgtype.Int4      `json:"providerId"`
+	SetModel               bool             `json:"setModel"`
+	Model                  pgtype.Text      `json:"model"`
+	SetUpstreamModel       bool             `json:"setUpstreamModel"`
+	UpstreamModel          pgtype.Text      `json:"upstreamModel"`
+	SetEndpointPath        bool             `json:"setEndpointPath"`
+	EndpointPath           pgtype.Text      `json:"endpointPath"`
+	SetApiKeyID            bool             `json:"setApiKeyId"`
+	ApiKeyID               pgtype.Int4      `json:"apiKeyId"`
+	SetUserID              bool             `json:"setUserId"`
+	UserID                 pgtype.Int8      `json:"userId"`
+	SetProjectID           bool             `json:"setProjectId"`
+	ProjectID              pgtype.Int4      `json:"projectId"`
+	SetStatus              bool             `json:"setStatus"`
+	Status                 int32            `json:"status"`
+	SetStatusCode          bool             `json:"setStatusCode"`
+	StatusCode             pgtype.Int4      `json:"statusCode"`
+	SetErrorMessage        bool             `json:"setErrorMessage"`
+	ErrorMessage           pgtype.Text      `json:"errorMessage"`
+	SetTimeSpentMs         bool             `json:"setTimeSpentMs"`
+	TimeSpentMs            pgtype.Int4      `json:"timeSpentMs"`
+	SetTtftMs              bool             `json:"setTtftMs"`
+	TtftMs                 pgtype.Int4      `json:"ttftMs"`
+	SetInputTokens         bool             `json:"setInputTokens"`
+	InputTokens            pgtype.Int4      `json:"inputTokens"`
+	SetOutputTokens        bool             `json:"setOutputTokens"`
+	OutputTokens           pgtype.Int4      `json:"outputTokens"`
+	SetCacheReadTokens     bool             `json:"setCacheReadTokens"`
+	CacheReadTokens        pgtype.Int4      `json:"cacheReadTokens"`
+	SetCacheWriteTokens    bool             `json:"setCacheWriteTokens"`
+	CacheWriteTokens       pgtype.Int4      `json:"cacheWriteTokens"`
+	SetCacheWrite1hTokens  bool             `json:"setCacheWrite1hTokens"`
+	CacheWrite1hTokens     pgtype.Int4      `json:"cacheWrite1hTokens"`
+	SetModelCost           bool             `json:"setModelCost"`
+	ModelCost              pgtype.Numeric   `json:"modelCost"`
+	SetModelCostCurrency   bool             `json:"setModelCostCurrency"`
+	ModelCostCurrency      pgtype.Text      `json:"modelCostCurrency"`
+	SetFinishReason        bool             `json:"setFinishReason"`
+	FinishReason           pgtype.Int4      `json:"finishReason"`
+	SetInferredProvider    bool             `json:"setInferredProvider"`
+	InferredProvider       pgtype.Text      `json:"inferredProvider"`
+	SetInferredModel       bool             `json:"setInferredModel"`
+	InferredModel          pgtype.Text      `json:"inferredModel"`
+	SetInferredModelSource bool             `json:"setInferredModelSource"`
+	InferredModelSource    int16            `json:"inferredModelSource"`
+	SetUserMessagePreview  bool             `json:"setUserMessagePreview"`
+	UserMessagePreview     pgtype.Text      `json:"userMessagePreview"`
+	ID                     string           `json:"id"`
+	CreatedAt              pgtype.Timestamp `json:"createdAt"`
 }
 
-func (q *Queries) UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error {
-	_, err := q.db.Exec(ctx, updateRequestMetrics,
-		arg.ID,
-		arg.TtftMs,
-		arg.InputTokens,
-		arg.OutputTokens,
-		arg.CacheReadTokens,
-		arg.CacheWriteTokens,
-		arg.CacheWrite1hTokens,
-		arg.CreatedAt,
-	)
-	return err
-}
-
-const updateRequestModel = `-- name: UpdateRequestModel :exec
-UPDATE request SET model = $2 WHERE id = $1 AND created_at = $3::timestamp
-`
-
-type UpdateRequestModelParams struct {
-	ID        string           `json:"id"`
-	Model     pgtype.Text      `json:"model"`
-	CreatedAt pgtype.Timestamp `json:"createdAt"`
-}
-
-func (q *Queries) UpdateRequestModel(ctx context.Context, arg UpdateRequestModelParams) error {
-	_, err := q.db.Exec(ctx, updateRequestModel, arg.ID, arg.Model, arg.CreatedAt)
-	return err
-}
-
-const updateRequestOnComplete = `-- name: UpdateRequestOnComplete :exec
-UPDATE request
-SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
-    ttft_ms = $6, input_tokens = $7, output_tokens = $8,
-    cache_read_tokens = $9, cache_write_tokens = $10,
-    cache_write_1h_tokens = $11,
-    model_cost = $12, model_cost_currency = $13,
-    finish_reason = $14,
-    inferred_provider = $15, inferred_model = $16,
-    inferred_model_source = $17
-WHERE id = $1 AND created_at = $18::timestamp
-`
-
-type UpdateRequestOnCompleteParams struct {
-	ID                  string           `json:"id"`
-	StatusCode          pgtype.Int4      `json:"statusCode"`
-	ErrorMessage        pgtype.Text      `json:"errorMessage"`
-	TimeSpentMs         pgtype.Int4      `json:"timeSpentMs"`
-	Status              int32            `json:"status"`
-	TtftMs              pgtype.Int4      `json:"ttftMs"`
-	InputTokens         pgtype.Int4      `json:"inputTokens"`
-	OutputTokens        pgtype.Int4      `json:"outputTokens"`
-	CacheReadTokens     pgtype.Int4      `json:"cacheReadTokens"`
-	CacheWriteTokens    pgtype.Int4      `json:"cacheWriteTokens"`
-	CacheWrite1hTokens  pgtype.Int4      `json:"cacheWrite1hTokens"`
-	ModelCost           pgtype.Numeric   `json:"modelCost"`
-	ModelCostCurrency   pgtype.Text      `json:"modelCostCurrency"`
-	FinishReason        pgtype.Int4      `json:"finishReason"`
-	InferredProvider    pgtype.Text      `json:"inferredProvider"`
-	InferredModel       pgtype.Text      `json:"inferredModel"`
-	InferredModelSource int16            `json:"inferredModelSource"`
-	CreatedAt           pgtype.Timestamp `json:"createdAt"`
-}
-
-func (q *Queries) UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error {
-	_, err := q.db.Exec(ctx, updateRequestOnComplete,
-		arg.ID,
-		arg.StatusCode,
-		arg.ErrorMessage,
-		arg.TimeSpentMs,
-		arg.Status,
-		arg.TtftMs,
-		arg.InputTokens,
-		arg.OutputTokens,
-		arg.CacheReadTokens,
-		arg.CacheWriteTokens,
-		arg.CacheWrite1hTokens,
-		arg.ModelCost,
-		arg.ModelCostCurrency,
-		arg.FinishReason,
-		arg.InferredProvider,
-		arg.InferredModel,
-		arg.InferredModelSource,
-		arg.CreatedAt,
-	)
-	return err
-}
-
-const updateRequestOnHeader = `-- name: UpdateRequestOnHeader :exec
-UPDATE request
-SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7,
-    user_id = $8::bigint,
-    project_id = $9::int
-WHERE id = $1 AND created_at = $10::timestamp
-`
-
-type UpdateRequestOnHeaderParams struct {
-	ID            string           `json:"id"`
-	ProviderID    pgtype.Int4      `json:"providerId"`
-	Model         pgtype.Text      `json:"model"`
-	UpstreamModel pgtype.Text      `json:"upstreamModel"`
-	EndpointPath  pgtype.Text      `json:"endpointPath"`
-	ApiKeyID      pgtype.Int4      `json:"apiKeyId"`
-	Status        int32            `json:"status"`
-	UserID        pgtype.Int8      `json:"userId"`
-	ProjectID     pgtype.Int4      `json:"projectId"`
-	CreatedAt     pgtype.Timestamp `json:"createdAt"`
-}
-
-func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error {
-	_, err := q.db.Exec(ctx, updateRequestOnHeader,
-		arg.ID,
+func (q *Queries) UpdateRequest(ctx context.Context, arg UpdateRequestParams) error {
+	_, err := q.db.Exec(ctx, updateRequest,
+		arg.SetProviderID,
 		arg.ProviderID,
+		arg.SetModel,
 		arg.Model,
+		arg.SetUpstreamModel,
 		arg.UpstreamModel,
+		arg.SetEndpointPath,
 		arg.EndpointPath,
+		arg.SetApiKeyID,
 		arg.ApiKeyID,
-		arg.Status,
+		arg.SetUserID,
 		arg.UserID,
+		arg.SetProjectID,
 		arg.ProjectID,
+		arg.SetStatus,
+		arg.Status,
+		arg.SetStatusCode,
+		arg.StatusCode,
+		arg.SetErrorMessage,
+		arg.ErrorMessage,
+		arg.SetTimeSpentMs,
+		arg.TimeSpentMs,
+		arg.SetTtftMs,
+		arg.TtftMs,
+		arg.SetInputTokens,
+		arg.InputTokens,
+		arg.SetOutputTokens,
+		arg.OutputTokens,
+		arg.SetCacheReadTokens,
+		arg.CacheReadTokens,
+		arg.SetCacheWriteTokens,
+		arg.CacheWriteTokens,
+		arg.SetCacheWrite1hTokens,
+		arg.CacheWrite1hTokens,
+		arg.SetModelCost,
+		arg.ModelCost,
+		arg.SetModelCostCurrency,
+		arg.ModelCostCurrency,
+		arg.SetFinishReason,
+		arg.FinishReason,
+		arg.SetInferredProvider,
+		arg.InferredProvider,
+		arg.SetInferredModel,
+		arg.InferredModel,
+		arg.SetInferredModelSource,
+		arg.InferredModelSource,
+		arg.SetUserMessagePreview,
+		arg.UserMessagePreview,
+		arg.ID,
 		arg.CreatedAt,
 	)
-	return err
-}
-
-const updateRequestUserMessagePreview = `-- name: UpdateRequestUserMessagePreview :exec
-UPDATE request SET user_message_preview = $2
-WHERE id = $1 AND created_at = $3::timestamp
-`
-
-type UpdateRequestUserMessagePreviewParams struct {
-	ID                 string           `json:"id"`
-	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
-	IDCreatedAt        pgtype.Timestamp `json:"idCreatedAt"`
-}
-
-func (q *Queries) UpdateRequestUserMessagePreview(ctx context.Context, arg UpdateRequestUserMessagePreviewParams) error {
-	_, err := q.db.Exec(ctx, updateRequestUserMessagePreview, arg.ID, arg.UserMessagePreview, arg.IDCreatedAt)
 	return err
 }

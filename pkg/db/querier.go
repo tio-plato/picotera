@@ -114,11 +114,7 @@ type Querier interface {
 	UpdateApiKey(ctx context.Context, arg UpdateApiKeyParams) (ApiKey, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
-	UpdateRequestMetrics(ctx context.Context, arg UpdateRequestMetricsParams) error
-	UpdateRequestModel(ctx context.Context, arg UpdateRequestModelParams) error
-	UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error
-	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
-	UpdateRequestUserMessagePreview(ctx context.Context, arg UpdateRequestUserMessagePreviewParams) error
+	UpdateRequest(ctx context.Context, arg UpdateRequestParams) error
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (AppUser, error)
 	UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams) (AppUser, error)

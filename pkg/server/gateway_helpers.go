@@ -707,36 +707,6 @@ func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, user
 	}
 }
 
-// updateRequestOnHeader backfills provider and request metadata. Errors are logged but do not affect the response.
-func (s *Server) updateRequestOnHeader(ctx context.Context, arg db.UpdateRequestOnHeaderParams) {
-	if err := s.queries.UpdateRequestOnHeader(ctx, arg); err != nil {
-		logx.WithContext(ctx).WithError(err).Error("failed to update request on header")
-	}
-}
-
-// updateRequestModel backfills the model field early. Errors are logged but do not affect the response.
-func (s *Server) updateRequestModel(ctx context.Context, arg db.UpdateRequestModelParams) {
-	if err := s.queries.UpdateRequestModel(ctx, arg); err != nil {
-		logx.WithContext(ctx).WithError(err).Error("failed to update request model")
-	}
-}
-
-// updateRequestUserMessagePreview backfills the user_message_preview field
-// post-auth (it depends on the resolved OTR mode). Errors are logged but do not
-// affect the response.
-func (s *Server) updateRequestUserMessagePreview(ctx context.Context, arg db.UpdateRequestUserMessagePreviewParams) {
-	if err := s.queries.UpdateRequestUserMessagePreview(ctx, arg); err != nil {
-		logx.WithContext(ctx).WithError(err).Error("failed to update request user message preview")
-	}
-}
-
-// updateRequestOnComplete backfills result fields. Errors are logged but do not affect the response.
-func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateRequestOnCompleteParams) {
-	if err := s.queries.UpdateRequestOnComplete(ctx, arg); err != nil {
-		logx.WithContext(ctx).WithError(err).Error("failed to update request on complete")
-	}
-}
-
 // costsFor computes the per-request cost snapshot from model.pricing.
 // model is the post-rewrite model name — the same name used to resolve the
 // MPE row, i.e. the value that actually matches the `model` table.
@@ -886,15 +856,12 @@ func buildRequestFromPending(ctx context.Context, p jsx.PendingRequestShape, fal
 // completeFailedAttemptWithReason closes out an upstream attempt in the retry
 // loop's error path.
 func (s *Server) completeFailedAttemptWithReason(ctx context.Context, upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time, statusCode int32, errMsg string, finishReason int32) {
-	s.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
-		ID:           upstreamID,
-		StatusCode:   pgtype.Int4{Int32: statusCode, Valid: true},
-		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
-		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true},
-		Status:       db.RequestStatusFailed,
-		FinishReason: pgtype.Int4{Int32: finishReason, Valid: true},
-		CreatedAt:    pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
-	})
+	s.updateRequest(ctx, newRequestUpdate(upstreamID, upstreamCreatedAt).
+		StatusCode(pgtype.Int4{Int32: statusCode, Valid: true}).
+		ErrorMessage(pgtype.Text{String: errMsg, Valid: true}).
+		TimeSpentMs(pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true}).
+		Status(db.RequestStatusFailed).
+		FinishReason(pgtype.Int4{Int32: finishReason, Valid: true}))
 }
 
 func classifyForwardError(err error, reqCtx context.Context) int32 {

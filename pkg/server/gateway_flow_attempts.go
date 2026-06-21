@@ -325,15 +325,12 @@ func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInpu
 	defer pcancel()
 	f.h.uploadResponseArtifact(pctx, input.UpstreamID, input.UpstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), f.artifactBody(respBody), nil)
 	errMsg := string(respBody)
-	f.h.updateRequestOnComplete(pctx, db.UpdateRequestOnCompleteParams{
-		ID:           input.UpstreamID,
-		StatusCode:   pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
-		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(input.AttemptStart).Milliseconds()), Valid: true},
-		Status:       db.RequestStatusFailed,
-		FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
-		CreatedAt:    pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
-	})
+	f.h.updateRequest(pctx, newRequestUpdate(input.UpstreamID, input.UpstreamCreatedAt).
+		StatusCode(pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true}).
+		ErrorMessage(pgtype.Text{String: errMsg, Valid: true}).
+		TimeSpentMs(pgtype.Int4{Int32: int32(time.Since(input.AttemptStart).Milliseconds()), Valid: true}).
+		Status(db.RequestStatusFailed).
+		FinishReason(pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true}))
 	updateAttemptState(state, providerID, resp.StatusCode, errMsg, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg))
 	if hookDec, brk := f.runAfterUpstreamError(state, false); brk {
 		f.respondUpstreamErrorBreak(hookDec, resp.StatusCode, respBody, resp.Header)

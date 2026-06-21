@@ -110,32 +110,23 @@ func (h *gatewayHandler) markPathHeadersReceived(input successInput) {
 	bgCtx, cancel := input.Flow.ctxs.Persist()
 	defer cancel()
 	apiKeyID := input.Flow.auth.APIKeyID
-	userID := input.Flow.auth.UserID
-	projectID := input.Flow.meta.ProjectID
-	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
-		ID:            metaID,
-		ProviderID:    pgtype.Int4{Int32: input.ProviderID, Valid: true},
-		Model:         pgtype.Text{String: input.RoutedModel, Valid: input.RoutedModel != ""},
-		UpstreamModel: pgtype.Text{String: input.UpstreamModel, Valid: input.UpstreamModel != ""},
-		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
-		ApiKeyID:      apiKeyID,
-		UserID:        userID,
-		ProjectID:     projectID,
-		Status:        db.RequestStatusHeaderReceived,
-		CreatedAt:     pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
-	})
-	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
-		ID:            input.UpstreamID,
-		ProviderID:    pgtype.Int4{Int32: input.ProviderID, Valid: true},
-		Model:         pgtype.Text{String: input.RoutedModel, Valid: input.RoutedModel != ""},
-		UpstreamModel: pgtype.Text{String: input.UpstreamModel, Valid: input.UpstreamModel != ""},
-		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
-		ApiKeyID:      apiKeyID,
-		UserID:        userID,
-		ProjectID:     projectID,
-		Status:        db.RequestStatusHeaderReceived,
-		CreatedAt:     pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
-	})
+	// user_id / project_id are intentionally NOT touched here: they were
+	// backfilled post-auth on the meta row and must survive the header update.
+	// The header update only sets provider/model/endpoint/status.
+	h.updateRequest(bgCtx, newRequestUpdate(metaID, metaCreatedAt).
+		ProviderID(pgtype.Int4{Int32: input.ProviderID, Valid: true}).
+		Model(pgtype.Text{String: input.RoutedModel, Valid: input.RoutedModel != ""}).
+		UpstreamModel(pgtype.Text{String: input.UpstreamModel, Valid: input.UpstreamModel != ""}).
+		EndpointPath(pgtype.Text{String: endpointPath, Valid: true}).
+		ApiKeyID(apiKeyID).
+		Status(db.RequestStatusHeaderReceived))
+	h.updateRequest(bgCtx, newRequestUpdate(input.UpstreamID, input.UpstreamCreatedAt).
+		ProviderID(pgtype.Int4{Int32: input.ProviderID, Valid: true}).
+		Model(pgtype.Text{String: input.RoutedModel, Valid: input.RoutedModel != ""}).
+		UpstreamModel(pgtype.Text{String: input.UpstreamModel, Valid: input.UpstreamModel != ""}).
+		EndpointPath(pgtype.Text{String: endpointPath, Valid: true}).
+		ApiKeyID(apiKeyID).
+		Status(db.RequestStatusHeaderReceived))
 }
 
 func copyPathSuccessHeaders(w http.ResponseWriter, resp *http.Response) {
@@ -160,15 +151,12 @@ func (h *gatewayHandler) openPathInternalReader(input successInput) (*lockedResp
 		metaID, metaCreatedAt := input.Flow.meta.ID, input.Flow.meta.CreatedAt
 		h.completeFailedAttemptWithReason(bgCtx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, int32(resp.StatusCode), "decode upstream response: "+derr.Error(), db.FinishReasonInternal)
 		respBody := writeGatewayError(w, http.StatusBadGateway, "decode upstream response: "+derr.Error(), errorx.UpstreamError.Error())
-		h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-			ID:           metaID,
-			StatusCode:   pgtype.Int4{Int32: http.StatusBadGateway, Valid: true},
-			ErrorMessage: pgtype.Text{String: "decode upstream response: " + derr.Error(), Valid: true},
-			TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(input.Flow.startedAt).Milliseconds()), Valid: true},
-			Status:       db.RequestStatusFailed,
-			FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
-			CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
-		})
+		h.updateRequest(bgCtx, newRequestUpdate(metaID, metaCreatedAt).
+			StatusCode(pgtype.Int4{Int32: http.StatusBadGateway, Valid: true}).
+			ErrorMessage(pgtype.Text{String: "decode upstream response: " + derr.Error(), Valid: true}).
+			TimeSpentMs(pgtype.Int4{Int32: int32(time.Since(input.Flow.startedAt).Milliseconds()), Valid: true}).
+			Status(db.RequestStatusFailed).
+			FinishReason(pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true}))
 		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), input.Flow.artifactBody(respBody), input.Flow.collectLogs(), nil)
 		_ = resp.Body.Close()
 		return nil, nil, false
@@ -269,47 +257,41 @@ func (h *gatewayHandler) completeGatewaySuccess(input successInput, m ResponseMe
 	upstreamFr := input.Flow.finishReasonFor(input.UpstreamID, fr)
 	metaFr := input.Flow.finishReasonFor(input.Flow.meta.ID, fr)
 	upstreamTimeSpent := int32(time.Since(input.AttemptStart).Milliseconds())
-	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-		ID:                  input.UpstreamID,
-		StatusCode:          pgtype.Int4{Int32: int32(statusCode), Valid: true},
-		ErrorMessage:        errMsg,
-		TimeSpentMs:         pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
-		Status:              status,
-		TtftMs:              ttftMs,
-		InputTokens:         inputTokens,
-		OutputTokens:        outputTokens,
-		CacheReadTokens:     cacheReadTokens,
-		CacheWriteTokens:    cacheWriteTokens,
-		CacheWrite1hTokens:  cacheWrite1hTokens,
-		ModelCost:           modelCost,
-		ModelCostCurrency:   modelCcy,
-		FinishReason:        pgtype.Int4{Int32: upstreamFr, Valid: true},
-		InferredProvider:    pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""},
-		InferredModel:       pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""},
-		InferredModelSource: int16(m.InferredModelSource),
-		CreatedAt:           pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
-	})
+	h.updateRequest(bgCtx, newRequestUpdate(input.UpstreamID, input.UpstreamCreatedAt).
+		StatusCode(pgtype.Int4{Int32: int32(statusCode), Valid: true}).
+		ErrorMessage(errMsg).
+		TimeSpentMs(pgtype.Int4{Int32: upstreamTimeSpent, Valid: true}).
+		Status(status).
+		TtftMs(ttftMs).
+		InputTokens(inputTokens).
+		OutputTokens(outputTokens).
+		CacheReadTokens(cacheReadTokens).
+		CacheWriteTokens(cacheWriteTokens).
+		CacheWrite1hTokens(cacheWrite1hTokens).
+		ModelCost(modelCost).
+		ModelCostCurrency(modelCcy).
+		FinishReason(pgtype.Int4{Int32: upstreamFr, Valid: true}).
+		InferredProvider(pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""}).
+		InferredModel(pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""}).
+		InferredModelSource(int16(m.InferredModelSource)))
 	metaTimeSpent := int32(time.Since(input.Flow.startedAt).Milliseconds())
-	h.updateRequestOnComplete(bgCtx, db.UpdateRequestOnCompleteParams{
-		ID:                  input.Flow.meta.ID,
-		StatusCode:          pgtype.Int4{Int32: int32(statusCode), Valid: true},
-		ErrorMessage:        errMsg,
-		TimeSpentMs:         pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-		Status:              status,
-		TtftMs:              ttftMs,
-		InputTokens:         inputTokens,
-		OutputTokens:        outputTokens,
-		CacheReadTokens:     cacheReadTokens,
-		CacheWriteTokens:    cacheWriteTokens,
-		CacheWrite1hTokens:  cacheWrite1hTokens,
-		ModelCost:           modelCost,
-		ModelCostCurrency:   modelCcy,
-		FinishReason:        pgtype.Int4{Int32: metaFr, Valid: true},
-		InferredProvider:    pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""},
-		InferredModel:       pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""},
-		InferredModelSource: int16(m.InferredModelSource),
-		CreatedAt:           pgtype.Timestamp{Time: input.Flow.meta.CreatedAt, Valid: true},
-	})
+	h.updateRequest(bgCtx, newRequestUpdate(input.Flow.meta.ID, input.Flow.meta.CreatedAt).
+		StatusCode(pgtype.Int4{Int32: int32(statusCode), Valid: true}).
+		ErrorMessage(errMsg).
+		TimeSpentMs(pgtype.Int4{Int32: metaTimeSpent, Valid: true}).
+		Status(status).
+		TtftMs(ttftMs).
+		InputTokens(inputTokens).
+		OutputTokens(outputTokens).
+		CacheReadTokens(cacheReadTokens).
+		CacheWriteTokens(cacheWriteTokens).
+		CacheWrite1hTokens(cacheWrite1hTokens).
+		ModelCost(modelCost).
+		ModelCostCurrency(modelCcy).
+		FinishReason(pgtype.Int4{Int32: metaFr, Valid: true}).
+		InferredProvider(pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""}).
+		InferredModel(pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""}).
+		InferredModelSource(int16(m.InferredModelSource)))
 }
 
 func classifyStreamFinishReason(readErr error, reqCtx context.Context) int32 {

@@ -217,23 +217,23 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 	parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
 	// Project identification happens post-auth (in authenticateAndBackfill), once
 	// the user is known — projects are per-user. The meta row starts with no
-	// project; project_id is backfilled by UpdateRequestOnHeader.
+	// project; project_id is backfilled post-auth in authenticateAndBackfill.
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
 	createdAt := f.h.insertRequest(pctx, db.InsertRequestParams{
-		ID:                 metaID,
-		SpanID:             pgtype.Text{String: metaID, Valid: true},
-		ParentSpanID:       parentSpanIDPg,
-		Type:               db.RequestTypeMeta,
-		Status:             db.RequestStatusPending,
-		ProviderID:         pgtype.Int4{Valid: false},
-		EndpointPath:       pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
-		ApiKeyID:           pgtype.Int4{Valid: false},
-		Model:              pgtype.Text{Valid: false},
-		UpstreamModel:      pgtype.Text{Valid: false},
-		StatusCode:         pgtype.Int4{Valid: false},
-		ErrorMessage:       pgtype.Text{Valid: false},
-		TimeSpentMs:        pgtype.Int4{Valid: false},
+		ID:            metaID,
+		SpanID:        pgtype.Text{String: metaID, Valid: true},
+		ParentSpanID:  parentSpanIDPg,
+		Type:          db.RequestTypeMeta,
+		Status:        db.RequestStatusPending,
+		ProviderID:    pgtype.Int4{Valid: false},
+		EndpointPath:  pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
+		ApiKeyID:      pgtype.Int4{Valid: false},
+		Model:         pgtype.Text{Valid: false},
+		UpstreamModel: pgtype.Text{Valid: false},
+		StatusCode:    pgtype.Int4{Valid: false},
+		ErrorMessage:  pgtype.Text{Valid: false},
+		TimeSpentMs:   pgtype.Int4{Valid: false},
 		// user_message_preview depends on the OTR mode, which is only known
 		// post-auth; it is backfilled in authenticateAndBackfill.
 		UserMessagePreview: pgtype.Text{Valid: false},
@@ -296,25 +296,17 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 	f.meta.ProjectID = projectIDPg
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.updateRequestOnHeader(pctx, db.UpdateRequestOnHeaderParams{
-		ID:           f.meta.ID,
-		EndpointPath: pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
-		ApiKeyID:     f.auth.APIKeyID,
-		UserID:       f.auth.UserID,
-		ProjectID:    projectIDPg,
-		Status:       db.RequestStatusPending,
-		CreatedAt:    pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
-	})
+	f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+		ApiKeyID(f.auth.APIKeyID).
+		UserID(f.auth.UserID).
+		ProjectID(projectIDPg))
 	// Backfill user_message_preview unless the OTR mode moves it out of the
-	// record. Done via a dedicated query so it cannot race the UpdateRequestOnHeader
-	// above (which does not touch the preview column).
+	// record. Only the preview column is set, so it cannot clobber the fields
+	// written above.
 	if f.otr.recordPreview() {
 		if preview := extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType); preview.Valid {
-			f.h.updateRequestUserMessagePreview(pctx, db.UpdateRequestUserMessagePreviewParams{
-				ID:                 f.meta.ID,
-				UserMessagePreview: preview,
-				IDCreatedAt:        pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
-			})
+			f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+				UserMessagePreview(preview))
 		}
 	}
 	// Upload the request artifact now (deferred from insertMetaRequest); the body
@@ -461,9 +453,6 @@ func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.CandidateView, map[strin
 func (f *gatewayFlow) updateMetaModel(model string) {
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.updateRequestModel(pctx, db.UpdateRequestModelParams{
-		ID:        f.meta.ID,
-		Model:     pgtype.Text{String: model, Valid: model != ""},
-		CreatedAt: pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
-	})
+	f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+		Model(pgtype.Text{String: model, Valid: model != ""}))
 }
