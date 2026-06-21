@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getUserSetting, upsertUserSetting, invalidateUserSettings } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
@@ -9,15 +9,32 @@ const queryClient = useQueryClient()
 
 type OtrMode = 'none' | 'body' | 'body-and-message'
 
-const otrOptions: { value: OtrMode; label: string }[] = [
-  { value: 'none', label: '完整记录' },
-  { value: 'body', label: '不记录 body' },
-  { value: 'body-and-message', label: '仅元数据' },
+const otrOptions: { value: OtrMode; label: string; description: string }[] = [
+  {
+    value: 'none',
+    label: '完整记录',
+    description: '记录请求体、响应体与用户消息梗概。',
+  },
+  {
+    value: 'body',
+    label: '不记录内容',
+    description:
+      '记录各类元数据与用户消息梗概，但不记录请求体与响应体。',
+  },
+  {
+    value: 'body-and-message',
+    label: '不记录内容和梗概',
+    description: '仅记录各类元数据。',
+  },
 ]
 
 const autoCreateProjects = ref(false)
 const otr = ref<OtrMode>('none')
 const saved = ref(false)
+
+const otrDescription = computed(
+  () => otrOptions.find((o) => o.value === otr.value)?.description ?? '',
+)
 
 const autoCreateQuery = useQuery({
   queryKey: queryKeys.userSettings.detail('project.autoCreate'),
@@ -86,15 +103,13 @@ const saveMutation = useMutation({
           <span>允许自动创建项目</span>
         </label>
         <p class="text-xs text-ink-faint mt-1">
-          启用后，当你的网关请求的工作目录未匹配到你名下任何项目时，将以该路径自动创建一个项目。
+          当请求的工作目录未匹配到任何项目时，以该路径自动创建一个项目。
         </p>
       </Field>
-      <Field label="数据记录">
+      <Field label="数据记录" as="div">
         <SegmentedControl v-model="otr" :options="otrOptions" />
         <p class="text-xs text-ink-faint mt-1">
-          控制网关记录哪些数据。完整记录：记录请求体、响应体与用户消息预览。不记录
-          body：保留请求头、状态码与各项指标（耗时、token、费用等），但清空请求体、响应体、聚合内容与逐行时序。仅元数据：在「不记录
-          body」基础上，额外不记录用户消息预览。可通过请求头 <code>X-PicoTera-OTR</code> 临时覆盖此设置。
+          {{ otrDescription }}在请求头中传入 <code>X-PicoTera-OTR: {{ otr }}</code> 可使单个请求覆盖该设置。
         </p>
       </Field>
       <div class="flex items-center gap-3">
