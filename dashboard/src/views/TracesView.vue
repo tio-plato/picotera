@@ -8,6 +8,7 @@ import { listRequestTraces } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import type { RequestTraceView, TraceCostView } from '@/api'
 import { AutoDataTable, Button, DataCard, Icon, IconButton, type AutoDataTableColumn } from '@/ui'
+import { formatDuration } from '@/utils/duration'
 
 const router = useRouter()
 const route = useRoute()
@@ -53,6 +54,7 @@ watch(
 const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'lastRequestAt', header: '最近请求' },
   { key: 'firstRequestAt', header: '首次请求' },
+  { key: 'duration', header: '持续时间', align: 'right' },
   { key: 'userMessagePreview', header: '用户消息' },
   { key: 'projectId', header: '项目' },
   { key: 'id', header: 'Trace ID' },
@@ -209,6 +211,18 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
               formatTimeParts(row.firstRequestAt).date
             }}</span>
           </div>
+        </template>
+        <template #cell-duration="{ row }">
+          <span
+            class="font-mono tabular-nums"
+            :class="
+              formatDuration(row.firstRequestAt, row.lastRequestAt) === '—'
+                ? 'text-ink-faint'
+                : 'text-ink'
+            "
+          >
+            {{ formatDuration(row.firstRequestAt, row.lastRequestAt) }}
+          </span>
         </template>
         <template #cell-userMessagePreview="{ row }">
           <span
