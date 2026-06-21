@@ -23,6 +23,7 @@ import {
   postGatewayTest,
   postTestDirect,
 } from '@/api/client'
+import AnnotationsEditor from '@/components/AnnotationsEditor.vue'
 import { queryKeys } from '@/api/queryKeys'
 import { useMe } from '@/composables/useMe'
 import {
@@ -86,6 +87,28 @@ const gatewayApiKeyId = ref(0)
 const gatewayTargetKind = ref<GatewayTargetKind>('unified')
 const gatewayUnifiedFormat = ref<TestFormat>('anthropicMessages')
 const gatewayEndpointPath = ref('')
+
+// OTR override sent as X-PicoTera-OTR; '' means follow the user's setting (no header).
+type OtrOverride = '' | 'none' | 'body' | 'body-and-message'
+const otrOverride = ref<OtrOverride>('')
+const otrOptions: { value: OtrOverride; label: string }[] = [
+  { value: '', label: '跟随设置' },
+  { value: 'none', label: '完整记录' },
+  { value: 'body', label: '不记录内容' },
+  { value: 'body-and-message', label: '不记录内容和梗概' },
+]
+
+// --- gateway request headers (advanced) ---
+// Generated from the structured form above (currently just the OTR option) and
+// kept in sync with the editable map unless the user takes over, mirroring rawBody.
+const gatewayHeaders = ref<Record<string, string>>({})
+const headersManualOverride = ref(false)
+
+const generatedHeaders = computed<Record<string, string>>(() => {
+  const h: Record<string, string> = {}
+  if (otrOverride.value) h['X-PicoTera-OTR'] = otrOverride.value
+  return h
+})
 
 const providerOptions = computed(() => [
   { value: 0, label: '请选择渠道', disabled: true },
@@ -253,6 +276,26 @@ function rebuildBody() {
   rawBody.value = generatedBody.value ? JSON.stringify(generatedBody.value, null, 2) : ''
 }
 
+// Keep the headers editor in sync with generated headers unless the user took over.
+watch(
+  generatedHeaders,
+  (h) => {
+    if (headersManualOverride.value) return
+    gatewayHeaders.value = { ...h }
+  },
+  { immediate: true, deep: true },
+)
+
+function onHeadersInput(v: Record<string, string>) {
+  gatewayHeaders.value = v
+  headersManualOverride.value = true
+}
+
+function rebuildHeaders() {
+  headersManualOverride.value = false
+  gatewayHeaders.value = { ...generatedHeaders.value }
+}
+
 // --- path variable placeholders ---
 const activePath = computed(() => {
   if (mode.value === 'direct') return directEndpointPath.value
@@ -418,6 +461,7 @@ async function send() {
         substitutePath(targetPath),
         selectedApiKey.value!.key,
         body,
+        gatewayHeaders.value,
         controller.signal,
       )
     }
@@ -512,6 +556,14 @@ watch(
         <Field v-else label="端点路径">
           <Select v-model="gatewayEndpointPath" :options="endpointPathOptions" />
         </Field>
+
+        <Field label="数据记录（OTR）" as="div">
+          <SegmentedControl v-model="otrOverride" :options="otrOptions" />
+          <p class="text-2xs text-ink-faint mt-1.5">
+            选择「跟随设置」时使用用户默认的数据记录模式；其它选项通过
+            <code>X-PicoTera-OTR</code> 头覆盖本次请求。
+          </p>
+        </Field>
       </template>
 
       <!-- path variables -->
@@ -580,6 +632,20 @@ watch(
           <div class="flex items-center gap-2">
             <Button v-if="hasSupportedFormat" type="button" variant="ghost" size="sm" @click="rebuildBody">由字段重建</Button>
             <span v-if="manualOverride" class="text-2xs text-warn">已手动覆盖</span>
+          </div>
+        </div>
+      </Field>
+
+      <!-- custom request headers (advanced, gateway only) -->
+      <Field v-if="mode === 'gateway'" label="自定义请求头（高级）" as="div">
+        <div class="flex flex-col gap-1.5">
+          <AnnotationsEditor
+            :model-value="gatewayHeaders"
+            @update:model-value="onHeadersInput"
+          />
+          <div class="flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" @click="rebuildHeaders">由字段重建</Button>
+            <span v-if="headersManualOverride" class="text-2xs text-warn">已手动覆盖</span>
           </div>
         </div>
       </Field>

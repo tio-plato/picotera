@@ -713,6 +713,7 @@ export function postGatewayTest(
   targetUrl: string,
   apiKey: string,
   body: unknown,
+  headers?: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<Response> {
   return fetch(targetUrl, {
@@ -721,8 +722,11 @@ export function postGatewayTest(
     // the request should mirror a real external client and not leak the
     // dashboard session.
     credentials: 'omit',
+    // Content-Type is a default the caller may override; Authorization is forced
+    // last so a custom header can never break API-key authentication.
     headers: {
       'Content-Type': 'application/json',
+      ...headers,
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
