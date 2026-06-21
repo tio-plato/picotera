@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"picotera/pkg/auth"
-	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/logx"
 
@@ -21,6 +20,7 @@ type testDirectRequest struct {
 	EndpointPath string            `json:"endpointPath"`
 	Stream       bool              `json:"stream"`
 	PathVars     map[string]string `json:"pathVars"`
+	Headers      map[string]string `json:"headers"`
 	Body         json.RawMessage   `json:"body"`
 }
 
@@ -106,15 +106,15 @@ func (s *Server) handleTestDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// Anthropic's API requires the anthropic-version header; the normal gateway
-	// path injects it via llmbridge, but this short-circuit route bypasses the
-	// bridge and must supply it directly.
-	if endpoint.EndpointType == contract.EndpointType_AnthropicMessages {
-		req.Header.Set("anthropic-version", "2023-06-01")
+	// Forward the dashboard's custom headers (e.g. anthropic-version, generated
+	// by the test page from the structured form). Credentials are applied last
+	// below so a custom header can never break upstream authentication.
+	for k, v := range in.Headers {
+		req.Header.Set(k, v)
 	}
-	// No client headers are copied: the dashboard initiates this, there is no
-	// upstream LLM client request to forward. applyCredentials with a nil
-	// source request writes credentials per the resolver.
+	// No LLM-client headers are copied — the dashboard initiates this, there is
+	// no upstream client request to forward. applyCredentials with a nil source
+	// request writes credentials per the resolver, forced last.
 	applyCredentials(req, provider.Credentials, sendResolver, nil)
 
 	resp, err := s.forwardRequest(req, provider.ProxyUrl.String, in.Stream)

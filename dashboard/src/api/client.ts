@@ -693,6 +693,7 @@ export interface TestDirectPayload {
   endpointPath: string
   stream: boolean
   pathVars?: Record<string, string>
+  headers?: Record<string, string>
   body: unknown
 }
 

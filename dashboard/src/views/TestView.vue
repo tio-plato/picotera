@@ -98,15 +98,18 @@ const otrOptions: { value: OtrOverride; label: string }[] = [
   { value: 'body-and-message', label: '不记录内容和梗概' },
 ]
 
-// --- gateway request headers (advanced) ---
-// Generated from the structured form above (currently just the OTR option) and
-// kept in sync with the editable map unless the user takes over, mirroring rawBody.
-const gatewayHeaders = ref<Record<string, string>>({})
+// --- custom request headers (advanced) ---
+// Generated from the structured form above (the Anthropic version header for
+// Anthropic targets, plus the OTR option in gateway mode) and kept in sync with
+// the editable map unless the user takes over, mirroring rawBody. Applies to
+// both modes — direct test forwards these headers too.
+const customHeaders = ref<Record<string, string>>({})
 const headersManualOverride = ref(false)
 
 const generatedHeaders = computed<Record<string, string>>(() => {
   const h: Record<string, string> = {}
-  if (otrOverride.value) h['X-PicoTera-OTR'] = otrOverride.value
+  if (baseFormat.value === 'anthropicMessages') h['anthropic-version'] = '2023-06-01'
+  if (mode.value === 'gateway' && otrOverride.value) h['X-PicoTera-OTR'] = otrOverride.value
   return h
 })
 
@@ -281,19 +284,19 @@ watch(
   generatedHeaders,
   (h) => {
     if (headersManualOverride.value) return
-    gatewayHeaders.value = { ...h }
+    customHeaders.value = { ...h }
   },
   { immediate: true, deep: true },
 )
 
 function onHeadersInput(v: Record<string, string>) {
-  gatewayHeaders.value = v
+  customHeaders.value = v
   headersManualOverride.value = true
 }
 
 function rebuildHeaders() {
   headersManualOverride.value = false
-  gatewayHeaders.value = { ...generatedHeaders.value }
+  customHeaders.value = { ...generatedHeaders.value }
 }
 
 // --- path variable placeholders ---
@@ -448,6 +451,7 @@ async function send() {
           endpointPath: directEndpointPath.value,
           stream: effectiveStream.value,
           pathVars: effectivePathVars(),
+          headers: customHeaders.value,
           body,
         },
         controller.signal,
@@ -461,7 +465,7 @@ async function send() {
         substitutePath(targetPath),
         selectedApiKey.value!.key,
         body,
-        gatewayHeaders.value,
+        customHeaders.value,
         controller.signal,
       )
     }
@@ -636,11 +640,11 @@ watch(
         </div>
       </Field>
 
-      <!-- custom request headers (advanced, gateway only) -->
-      <Field v-if="mode === 'gateway'" label="自定义请求头（高级）" as="div">
+      <!-- custom request headers (advanced) -->
+      <Field label="自定义请求头（高级）" as="div">
         <div class="flex flex-col gap-1.5">
           <AnnotationsEditor
-            :model-value="gatewayHeaders"
+            :model-value="customHeaders"
             @update:model-value="onHeadersInput"
           />
           <div class="flex items-center gap-2">
