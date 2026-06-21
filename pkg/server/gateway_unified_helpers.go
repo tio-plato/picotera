@@ -320,6 +320,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	hdrCtx, hdrCancel := input.Flow.ctxs.Persist()
 	defer hdrCancel()
 
+	projectID := input.Flow.meta.ProjectID
 	h.updateRequestOnHeader(hdrCtx, db.UpdateRequestOnHeaderParams{
 		ID:            a.metaID,
 		ProviderID:    pgtype.Int4{Int32: a.providerID, Valid: true},
@@ -328,6 +329,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		EndpointPath:  pgtype.Text{String: a.metaEndpointPath, Valid: a.metaEndpointPath != ""},
 		ApiKeyID:      a.apiKeyID,
 		UserID:        a.userID,
+		ProjectID:     projectID,
 		Status:        db.RequestStatusHeaderReceived,
 		CreatedAt:     pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
@@ -339,6 +341,7 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		EndpointPath:  pgtype.Text{String: a.upstreamPath, Valid: a.upstreamPath != ""},
 		ApiKeyID:      a.apiKeyID,
 		UserID:        a.userID,
+		ProjectID:     projectID,
 		Status:        db.RequestStatusHeaderReceived,
 		CreatedAt:     pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
 	})

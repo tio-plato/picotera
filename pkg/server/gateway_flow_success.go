@@ -111,6 +111,7 @@ func (h *gatewayHandler) markPathHeadersReceived(input successInput) {
 	defer cancel()
 	apiKeyID := input.Flow.auth.APIKeyID
 	userID := input.Flow.auth.UserID
+	projectID := input.Flow.meta.ProjectID
 	h.updateRequestOnHeader(bgCtx, db.UpdateRequestOnHeaderParams{
 		ID:            metaID,
 		ProviderID:    pgtype.Int4{Int32: input.ProviderID, Valid: true},
@@ -119,6 +120,7 @@ func (h *gatewayHandler) markPathHeadersReceived(input successInput) {
 		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
 		ApiKeyID:      apiKeyID,
 		UserID:        userID,
+		ProjectID:     projectID,
 		Status:        db.RequestStatusHeaderReceived,
 		CreatedAt:     pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 	})
@@ -130,6 +132,7 @@ func (h *gatewayHandler) markPathHeadersReceived(input successInput) {
 		EndpointPath:  pgtype.Text{String: endpointPath, Valid: true},
 		ApiKeyID:      apiKeyID,
 		UserID:        userID,
+		ProjectID:     projectID,
 		Status:        db.RequestStatusHeaderReceived,
 		CreatedAt:     pgtype.Timestamp{Time: input.UpstreamCreatedAt, Valid: true},
 	})
