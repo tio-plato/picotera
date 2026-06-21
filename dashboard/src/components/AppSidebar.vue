@@ -50,7 +50,6 @@ const adminNav: NavItem[] = [
   { name: 'kv', label: '缓存', icon: 'db' },
   { name: 'rates', label: '汇率', icon: 'currency-dollar' },
   { name: 'users', label: '用户', icon: 'users' },
-  { name: 'simulate', label: '模拟', icon: 'geometry' },
 ]
 </script>
 

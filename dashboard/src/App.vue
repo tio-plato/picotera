@@ -27,7 +27,6 @@ const pageMeta = computed(() => {
     users: { title: '用户', hint: '同志们辛苦了' },
     projects: { title: '项目', hint: '开坑不填天理难容' },
     scripts: { title: '脚本', hint: '这是图灵完备的' },
-    simulate: { title: '模拟', hint: '研究研究配成啥了' },
     test: { title: '测试', hint: '不试试咋知道行不行' },
     kv: { title: '缓存', hint: '研究状态科学' },
     rates: { title: '汇率', hint: '掌控国际形势' },

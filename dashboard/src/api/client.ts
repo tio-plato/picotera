@@ -33,8 +33,6 @@ import type {
   RequestLiveView,
   RequestView,
   ScriptView,
-  SimulateDispatchRequestBody,
-  SimulateDispatchResponseBody,
   UpsertUserSettingRequestBody,
   UpsertProjectRequestBody,
   UserView,
@@ -681,14 +679,6 @@ export async function getAdminOverviewSpeedBoxplot(
 
 export function invalidateAdminOverview(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.adminOverview.all })
-}
-
-export async function simulateDispatch(
-  body: SimulateDispatchRequestBody,
-): Promise<SimulateDispatchResponseBody> {
-  const { data, error } = await api.POST('/api/picotera/simulate/dispatch', { body })
-  if (error) fail(error, '模拟调度失败')
-  return data
 }
 
 // --- Endpoint testing (streaming, raw fetch) ---

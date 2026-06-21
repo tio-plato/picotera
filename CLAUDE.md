@@ -149,7 +149,7 @@ Read paths inject the current user as a **mandatory** SQL filter (`WHERE user_id
 **2. `is_admin` capability gate (admin vs user features).** `registerOperations` (`server.go`) registers every Huma op on one of two groups sharing the `/api/picotera` prefix: `mgmt` (all authenticated users) and `admin` (`admin.UseMiddleware(s.requireAdmin)` → 403 for non-admins, 500 if context user is somehow nil). The split — see `register(mgmt, admin)`:
 
 - **mgmt (user):** `me`, `config`, overview ×4, api-key ×5, request/trace ×6, **label** endpoints, **project** CRUD ×5, **user-setting** CRUD, exchange-rate *list* (read).
-- **admin:** providers, models, endpoints, provider-endpoints, scripts, kv, exchange-rate writes + match-pricing, fetch-models, simulate, user/user-identity CRUD, and the **admin overview** endpoints.
+- **admin:** providers, models, endpoints, provider-endpoints, scripts, kv, exchange-rate writes + match-pricing, fetch-models, user/user-identity CRUD, and the **admin overview** endpoints.
 
 The raw chi route `POST /api/picotera/test/direct` is not a Huma op, so it does its own admin check inside `handleTestDirect`. `NewHuma()` (openapi generator) calls the same `register()` so the spec never drifts from the live server. Both groups sit behind the chi-level `auth.Middleware`, so `requireAdmin` always sees a non-nil context user.
 

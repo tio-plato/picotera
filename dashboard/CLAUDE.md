@@ -58,7 +58,7 @@ When building new screens, compose these primitives — don't reach for a third-
 
 When you add a new route, register the route name in `src/App.vue`'s `pageMeta` map (`title` + `hint`). The shell reads it to render header chrome — without an entry the page renders untitled. The map key must match the route's `name` exactly (defined in `src/router/index.ts`). See `src/views/CLAUDE.md`.
 
-Routes: `/overview` (default), `/providers`, `/models`, `/endpoints`, `/requests`, `/requests/:requestId`, `/projects`, `/scripts`, `/simulate`, `/kv`, `/api-keys`, `/rates`, `/traces`.
+Routes: `/overview` (default), `/providers`, `/models`, `/endpoints`, `/requests`, `/requests/:requestId`, `/projects`, `/scripts`, `/kv`, `/api-keys`, `/rates`, `/traces`.
 
 ## Charts
 

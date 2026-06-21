@@ -7,7 +7,6 @@ import "picotera/pkg/llmbridge"
 // directly on the router (see server.go registerEndpoints) — they are NOT rows
 // in the endpoint table — so this list is the single source of truth shared by:
 //   - route registration (server.go),
-//   - the simulator (handle_simulate.go unifiedRoutePath),
 //   - the endpoint label list (handle_label.go), which surfaces them in the
 //     requests page endpoint filter alongside the path-table endpoints.
 var unifiedRoutes = []unifiedRoute{

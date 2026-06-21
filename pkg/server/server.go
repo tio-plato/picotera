@@ -303,7 +303,6 @@ func (s *Server) register(mgmt, admin *huma.Group) {
 	huma.Register(admin, contract.OperationCreateScript, s.handleCreateScript)
 	huma.Register(admin, contract.OperationUpdateScript, s.handleUpdateScript)
 	huma.Register(admin, contract.OperationDeleteScript, s.handleDeleteScript)
-	huma.Register(admin, contract.OperationSimulateDispatch, s.handleSimulateDispatch)
 	huma.Register(admin, contract.OperationListKvEntries, s.handleListKvEntries)
 	huma.Register(admin, contract.OperationGetKvEntry, s.handleGetKvEntry)
 	huma.Register(admin, contract.OperationUpsertKvEntry, s.handleUpsertKvEntry)

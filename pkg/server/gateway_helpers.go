@@ -400,7 +400,7 @@ func substitutePathVars(url string, vars map[string]string) (string, error) {
 }
 
 // providerCandidateRow is the internal unified shape consumed by the path
-// gateway handler (and the simulate path branch). Both the model-routed query
+// gateway handler. Both the model-routed query
 // (GetProvidersByEndpointAndModel) and the no-model query (GetProvidersByEndpoint)
 // are projected onto this type so downstream code only has to think about one
 // row shape.
