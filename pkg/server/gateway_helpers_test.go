@@ -49,6 +49,30 @@ func TestBuildUpstreamRequestSkipsAuthHeader(t *testing.T) {
 	})
 }
 
+func TestBuildUpstreamRequestStripsPicoteraHeaders(t *testing.T) {
+	original, err := http.NewRequest(http.MethodPost, "http://client.example/v1/messages", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	original.Header.Set("X-PicoTera-OTR", "body")
+	original.Header.Set("X-PicoTera-Foo", "bar")
+	original.Header.Set("X-Keep", "keep-me")
+
+	req, _, err := buildUpstreamRequest(context.Background(), original, []byte(`{}`), "http://upstream.example/v1/messages", "", "", 0, nil, "")
+	if err != nil {
+		t.Fatalf("buildUpstreamRequest: %v", err)
+	}
+	if got := req.Header.Get("X-PicoTera-OTR"); got != "" {
+		t.Errorf("X-PicoTera-OTR forwarded upstream: %q", got)
+	}
+	if got := req.Header.Get("X-PicoTera-Foo"); got != "" {
+		t.Errorf("X-PicoTera-Foo forwarded upstream: %q", got)
+	}
+	if got := req.Header.Get("X-Keep"); got != "keep-me" {
+		t.Errorf("non-picotera header dropped: %q", got)
+	}
+}
+
 func TestRedactUpstreamCredentials(t *testing.T) {
 	t.Run("authorization keeps scheme prefix", func(t *testing.T) {
 		h := http.Header{}

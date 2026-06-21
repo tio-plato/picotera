@@ -148,7 +148,7 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 	}
 	reqArtifactCtx, reqArtifactCancel := f.ctxs.Persist()
 	redactedHeader, redactedURL := redactUpstreamCredentials(prepared.Request.Header.Clone(), prepared.Request.URL.String())
-	f.h.uploadRequestArtifact(reqArtifactCtx, input.UpstreamID, input.UpstreamCreatedAt, prepared.Request.Method, redactedURL, redactedHeader, prepared.RequestBody)
+	f.h.uploadRequestArtifact(reqArtifactCtx, input.UpstreamID, input.UpstreamCreatedAt, prepared.Request.Method, redactedURL, redactedHeader, f.artifactBody(prepared.RequestBody))
 	reqArtifactCancel()
 	upstreamStart := time.Now()
 	resp, err := f.h.forwardRequest(prepared.Request, side.ProxyURL, f.model.Mode.Streaming)
@@ -242,7 +242,7 @@ func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.CandidateView, side gateway
 		CreatedAt:          pgtype.Timestamp{Time: upstreamIDCreatedAt, Valid: true},
 		UserID:             f.auth.UserID,
 	})
-	entry := f.h.liveRequests.RegisterUpstream(upstreamID, cancel)
+	entry := f.h.liveRequests.RegisterUpstream(upstreamID, cancel, f.otr.recordBody())
 	return attemptInput{Candidate: cand, Sidecar: side, Annotations: candAnno, Decision: dec, CurrentRetryCount: state.CurrentRetryCount, TotalAttemptCount: state.TotalAttemptCount, AttemptCtx: attemptCtx, UpstreamID: upstreamID, UpstreamCreatedAt: upstreamCreatedAt, AttemptStart: time.Now(), UpstreamModel: upstreamModel, Entry: entry}, cancel, nil
 }
 
@@ -323,7 +323,7 @@ func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInpu
 	}
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.uploadResponseArtifact(pctx, input.UpstreamID, input.UpstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), respBody, nil)
+	f.h.uploadResponseArtifact(pctx, input.UpstreamID, input.UpstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), f.artifactBody(respBody), nil)
 	errMsg := string(respBody)
 	f.h.updateRequestOnComplete(pctx, db.UpdateRequestOnCompleteParams{
 		ID:           input.UpstreamID,
@@ -430,7 +430,7 @@ func (f *gatewayFlow) respondUpstreamErrorBreak(dec jsx.AfterUpstreamErrorDecisi
 	f.failMeta(int32(status), errMsg, db.FinishReasonInternal)
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), body, f.collectLogs(), nil)
+	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), f.artifactBody(body), f.collectLogs(), nil)
 }
 
 // runStreamErrorHook runs the afterUpstreamError waterfall for an in-stream

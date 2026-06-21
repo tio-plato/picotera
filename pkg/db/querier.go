@@ -118,6 +118,7 @@ type Querier interface {
 	UpdateRequestModel(ctx context.Context, arg UpdateRequestModelParams) error
 	UpdateRequestOnComplete(ctx context.Context, arg UpdateRequestOnCompleteParams) error
 	UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOnHeaderParams) error
+	UpdateRequestUserMessagePreview(ctx context.Context, arg UpdateRequestUserMessagePreviewParams) error
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (AppUser, error)
 	UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams) (AppUser, error)

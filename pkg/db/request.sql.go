@@ -615,3 +615,19 @@ func (q *Queries) UpdateRequestOnHeader(ctx context.Context, arg UpdateRequestOn
 	)
 	return err
 }
+
+const updateRequestUserMessagePreview = `-- name: UpdateRequestUserMessagePreview :exec
+UPDATE request SET user_message_preview = $2
+WHERE id = $1 AND created_at = $3::timestamp
+`
+
+type UpdateRequestUserMessagePreviewParams struct {
+	ID                 string           `json:"id"`
+	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
+	IDCreatedAt        pgtype.Timestamp `json:"idCreatedAt"`
+}
+
+func (q *Queries) UpdateRequestUserMessagePreview(ctx context.Context, arg UpdateRequestUserMessagePreviewParams) error {
+	_, err := q.db.Exec(ctx, updateRequestUserMessagePreview, arg.ID, arg.UserMessagePreview, arg.IDCreatedAt)
+	return err
+}

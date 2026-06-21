@@ -38,6 +38,12 @@ type gatewayFlow struct {
 	auth           gatewayAuthState
 	model          gatewayModelState
 	session        jsx.Session
+	// headerOTR carries the X-PicoTera-OTR override parsed pre-auth in run();
+	// headerOTRSet reports whether the header was present and valid. otr is the
+	// effective mode computed post-auth (header override, else user setting).
+	headerOTR    otrMode
+	headerOTRSet bool
+	otr          otrMode
 }
 
 type gatewayFlowConfig struct {
@@ -136,6 +142,9 @@ func (f *gatewayFlow) run() {
 	if !f.readBody() {
 		return
 	}
+	if !f.parseHeaderOTR() {
+		return
+	}
 	if !f.insertMetaRequest() {
 		return
 	}
@@ -173,6 +182,34 @@ func (f *gatewayFlow) readBody() bool {
 	return true
 }
 
+// parseHeaderOTR validates the X-PicoTera-OTR override before any meta row is
+// created. A present-but-invalid value is rejected with 400 (no meta row); a
+// valid value is stashed on the flow and applied post-auth; absence falls
+// through to the user setting.
+func (f *gatewayFlow) parseHeaderOTR() bool {
+	v := f.r.Header.Get(otrHeaderName)
+	if v == "" {
+		return true
+	}
+	mode, ok := parseOTRValue(v)
+	if !ok {
+		writeGatewayError(f.w, http.StatusBadRequest, "invalid "+otrHeaderName+" header", errorx.InvalidRequest.Error())
+		return false
+	}
+	f.headerOTR = mode
+	f.headerOTRSet = true
+	return true
+}
+
+// artifactBody returns b unchanged when the effective OTR mode records bodies,
+// otherwise nil so the artifact keeps headers/status but no body.
+func (f *gatewayFlow) artifactBody(b []byte) []byte {
+	if f.otr.recordBody() {
+		return b
+	}
+	return nil
+}
+
 func (f *gatewayFlow) insertMetaRequest() bool {
 	metaID, metaIDCreatedAt := newRequestID()
 	header := f.r.Header.Clone()
@@ -197,7 +234,9 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		StatusCode:         pgtype.Int4{Valid: false},
 		ErrorMessage:       pgtype.Text{Valid: false},
 		TimeSpentMs:        pgtype.Int4{Valid: false},
-		UserMessagePreview: extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType),
+		// user_message_preview depends on the OTR mode, which is only known
+		// post-auth; it is backfilled in authenticateAndBackfill.
+		UserMessagePreview: pgtype.Text{Valid: false},
 		ProjectID:          pgtype.Int4{Valid: false},
 		CreatedAt:          pgtype.Timestamp{Time: metaIDCreatedAt, Valid: true},
 		// User is unknown until authentication; the trace is created (with the
@@ -216,7 +255,9 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		RequestURL:     f.r.URL.String(),
 	}
 	f.h.liveRequests.RegisterMeta(metaID, f.ctxs.cancelRequest)
-	f.h.uploadRequestArtifact(pctx, metaID, createdAt, f.r.Method, f.r.URL.String(), header, f.body)
+	// The request artifact and user_message_preview both depend on the OTR mode
+	// (taken from the user setting), which is only known post-auth — see
+	// authenticateAndBackfill.
 	return true
 }
 
@@ -240,6 +281,14 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 		APIKeyJS:   apiKeyJS,
 		APIKeyAnno: apiKeyJS.Annotations,
 	}
+	// The effective OTR mode is now resolvable: a valid request header overrides
+	// the user's default setting. It gates the request artifact and preview below
+	// and is read again at every later recording point.
+	if f.headerOTRSet {
+		f.otr = f.headerOTR
+	} else {
+		f.otr = f.h.otrSetting(f.ctxs.Request, apiKey.UserID)
+	}
 	// Project identification is scoped to the authenticated user, so it runs here
 	// rather than at meta-insert time. The result is backfilled onto the meta row
 	// alongside user_id; upstream attempt rows read it from f.meta.ProjectID.
@@ -256,6 +305,21 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 		Status:       db.RequestStatusPending,
 		CreatedAt:    pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
 	})
+	// Backfill user_message_preview unless the OTR mode moves it out of the
+	// record. Done via a dedicated query so it cannot race the UpdateRequestOnHeader
+	// above (which does not touch the preview column).
+	if f.otr.recordPreview() {
+		if preview := extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType); preview.Valid {
+			f.h.updateRequestUserMessagePreview(pctx, db.UpdateRequestUserMessagePreviewParams{
+				ID:                 f.meta.ID,
+				UserMessagePreview: preview,
+				IDCreatedAt:        pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
+			})
+		}
+	}
+	// Upload the request artifact now (deferred from insertMetaRequest); the body
+	// is cleared when the OTR mode moves bodies out of the record.
+	f.h.uploadRequestArtifact(pctx, f.meta.ID, f.meta.CreatedAt, f.meta.RequestMethod, f.meta.RequestURL, f.meta.RequestHeader, f.artifactBody(f.body))
 	// The trace is created now (post-auth, user known) anchored to the meta
 	// row's created_at, so ListRequestTraces' time-window LATERALs still match
 	// the meta row. Subsequent upstream rows extend the window via upsertTrace.

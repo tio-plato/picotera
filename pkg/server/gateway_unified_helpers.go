@@ -276,6 +276,7 @@ type unifiedStreamArgs struct {
 	apiKeyID          pgtype.Int4
 	userID            pgtype.Int8
 	wsCtx             *webSearchContext
+	recordBody        bool
 }
 
 func unifiedStreamArgsFromSuccess(input successInput) unifiedStreamArgs {
@@ -290,8 +291,9 @@ func unifiedStreamArgsFromSuccess(input successInput) unifiedStreamArgs {
 		metaEndpointPath: input.Flow.config.Endpoint.Path, upstreamPath: input.Sidecar.EndpointPath,
 		upstreamStartTime: input.UpstreamStartTime,
 		metaLogs:          input.Flow.collectLogs(), apiKeyID: input.Flow.auth.APIKeyID,
-		userID: input.Flow.auth.UserID,
-		wsCtx:  input.Prepared.WebSearch,
+		userID:     input.Flow.auth.UserID,
+		wsCtx:      input.Prepared.WebSearch,
+		recordBody: input.Flow.otr.recordBody(),
 	}
 }
 
@@ -350,13 +352,13 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		upstreamProgress = input.Entry.progress
 	}
 	if upstreamProgress == nil {
-		upstreamProgress = newLiveProgressWithOrigin(a.upstreamStartTime)
+		upstreamProgress = newLiveProgressWithOrigin(a.upstreamStartTime, a.recordBody)
 	}
 	upstreamProgress.markHeaders(resp.StatusCode, a.upstreamStartTime)
 
 	var metaProgress *liveProgress
 	if transforming {
-		metaProgress = newLiveProgressWithOrigin(a.upstreamStartTime)
+		metaProgress = newLiveProgressWithOrigin(a.upstreamStartTime, a.recordBody)
 		metaProgress.markHeaders(resp.StatusCode, a.upstreamStartTime)
 	}
 	metaLive := upstreamProgress
@@ -542,10 +544,16 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	pctx, pcancel := input.Flow.ctxs.Persist()
 	defer pcancel()
 
-	upstreamAggregated := buildAggregatedArtifact(pctx, h.llmBridge, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
+	// OTR body modes move bodies + aggregation + timings out of the record. The
+	// live records above already returned empty bytes/timings for this case; here
+	// we additionally skip the aggregation builds.
+	var upstreamAggregated *artifacts.AggregatedResponse
 	var metaAggregated *artifacts.AggregatedResponse
-	if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
-		metaAggregated = buildAggregatedArtifact(pctx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
+	if a.recordBody {
+		upstreamAggregated = buildAggregatedArtifact(pctx, h.llmBridge, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
+		if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
+			metaAggregated = buildAggregatedArtifact(pctx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
+		}
 	}
 	h.uploadResponseArtifactWithAggregation(pctx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated, upstreamTimings)
 	h.uploadMetaResponseArtifactWithAggregation(pctx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated, metaTimings)
@@ -641,7 +649,11 @@ func (h *gatewayHandler) failUnifiedSuccess(ctx context.Context, a unifiedStream
 		FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
 		CreatedAt:    pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
 	})
-	h.uploadMetaResponseArtifact(ctx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), respBody, a.metaLogs, nil)
+	artifactBody := respBody
+	if !a.recordBody {
+		artifactBody = nil
+	}
+	h.uploadMetaResponseArtifact(ctx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), artifactBody, a.metaLogs, nil)
 	_ = a.resp.Body.Close()
 }
 

@@ -166,7 +166,7 @@ func (h *gatewayHandler) openPathInternalReader(input successInput) (*lockedResp
 			FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
 			CreatedAt:    pgtype.Timestamp{Time: metaCreatedAt, Valid: true},
 		})
-		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), respBody, input.Flow.collectLogs(), nil)
+		h.uploadMetaResponseArtifact(bgCtx, metaID, metaCreatedAt, http.StatusBadGateway, w.Header().Clone(), input.Flow.artifactBody(respBody), input.Flow.collectLogs(), nil)
 		_ = resp.Body.Close()
 		return nil, nil, false
 	}
@@ -199,7 +199,7 @@ func (h *gatewayHandler) pipePathResponse(input successInput, responseWriter *lo
 		progress = input.Entry.progress
 	}
 	if progress == nil {
-		progress = newLiveProgressWithOrigin(input.UpstreamStartTime)
+		progress = newLiveProgressWithOrigin(input.UpstreamStartTime, input.Flow.otr.recordBody())
 	}
 	flusher, canFlush := w.(http.Flusher)
 	for {
@@ -231,9 +231,14 @@ func (h *gatewayHandler) aggregatePathResponse(input successInput, metaRespHeade
 	pctx, pcancel := input.Flow.ctxs.Persist()
 	defer pcancel()
 	var aggregated *artifacts.AggregatedResponse
-	if format, ok := responseAggregationFormat(input.Flow.config.Endpoint.EndpointType); ok {
-		if profile, ok := defaultAggregationProfile(format); ok {
-			aggregated = buildAggregatedArtifact(pctx, h.llmBridge, format, input.Response.Header.Get("Content-Type"), respBytes, profile)
+	// OTR body modes move bodies + aggregation + timings out of the record;
+	// respBytes/timings are already empty (gated in liveProgress), so we just
+	// skip the aggregation build here.
+	if input.Flow.otr.recordBody() {
+		if format, ok := responseAggregationFormat(input.Flow.config.Endpoint.EndpointType); ok {
+			if profile, ok := defaultAggregationProfile(format); ok {
+				aggregated = buildAggregatedArtifact(pctx, h.llmBridge, format, input.Response.Header.Get("Content-Type"), respBytes, profile)
+			}
 		}
 	}
 	h.uploadResponseArtifactWithAggregation(pctx, input.UpstreamID, input.UpstreamCreatedAt, input.Response.StatusCode, input.Response.Header.Clone(), respBytes, aggregated, timings)

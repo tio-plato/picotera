@@ -174,6 +174,10 @@ WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 -- name: UpdateRequestModel :exec
 UPDATE request SET model = $2 WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
 
+-- name: UpdateRequestUserMessagePreview :exec
+UPDATE request SET user_message_preview = $2
+WHERE id = $1 AND created_at = sqlc.arg('id_created_at')::timestamp;
+
 -- name: UpdateRequestMetrics :exec
 UPDATE request
 SET ttft_ms = $2, input_tokens = $3, output_tokens = $4,

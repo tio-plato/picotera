@@ -568,6 +568,7 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 		lower := strings.ToLower(key)
 		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" ||
 			lower == "host" || lower == "content-length" ||
+			strings.HasPrefix(lower, "x-picotera") ||
 			(authHeaderName != "" && lower == authHeaderName) {
 			continue
 		}
@@ -717,6 +718,15 @@ func (s *Server) updateRequestOnHeader(ctx context.Context, arg db.UpdateRequest
 func (s *Server) updateRequestModel(ctx context.Context, arg db.UpdateRequestModelParams) {
 	if err := s.queries.UpdateRequestModel(ctx, arg); err != nil {
 		logx.WithContext(ctx).WithError(err).Error("failed to update request model")
+	}
+}
+
+// updateRequestUserMessagePreview backfills the user_message_preview field
+// post-auth (it depends on the resolved OTR mode). Errors are logged but do not
+// affect the response.
+func (s *Server) updateRequestUserMessagePreview(ctx context.Context, arg db.UpdateRequestUserMessagePreviewParams) {
+	if err := s.queries.UpdateRequestUserMessagePreview(ctx, arg); err != nil {
+		logx.WithContext(ctx).WithError(err).Error("failed to update request user message preview")
 	}
 }
 
