@@ -249,8 +249,13 @@ func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.CandidateView, side gateway
 func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attemptPrepared, error) {
 	body := f.body
 	upstreamModel := input.UpstreamModel
+	pathVars := f.config.PathVars
 	if f.config.Kind == gatewayRouteUnified {
 		upstreamModel = ""
+		// The upstream URL's {model} token (Gemini endpoints) must carry the
+		// resolved upstream model name, not the inbound chi params — which are
+		// empty for non-Gemini source routes that get bridged to Gemini.
+		pathVars = unifiedUpstreamPathVars(input.UpstreamModel)
 		var err error
 		body, err = setUnifiedModel(f.config.SourceFormat, f.body, input.UpstreamModel)
 		if err != nil {
@@ -261,7 +266,7 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 	if f.h.config.Auth.HeaderEnabled {
 		authHeaderName = f.h.config.Auth.HeaderName
 	}
-	req, reqBody, err := buildUpstreamRequest(input.AttemptCtx, f.r, body, input.Sidecar.UpstreamURL, upstreamModel, input.Sidecar.Credentials, input.Sidecar.SendResolver, f.config.PathVars, authHeaderName)
+	req, reqBody, err := buildUpstreamRequest(input.AttemptCtx, f.r, body, input.Sidecar.UpstreamURL, upstreamModel, input.Sidecar.Credentials, input.Sidecar.SendResolver, pathVars, authHeaderName)
 	if err != nil {
 		return attemptPrepared{}, err
 	}

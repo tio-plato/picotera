@@ -265,6 +265,38 @@ func TestSetUnifiedModel(t *testing.T) {
 	}
 }
 
+// TestUnifiedUpstreamPathVars pins the fix for the unified Gemini upstream URL
+// bug: when a model is configured only on a Gemini endpoint and the inbound
+// request is a unified non-Gemini source (e.g. Anthropic Messages), the inbound
+// route carries no {model} path variable, so the {model} token in the Gemini
+// upstream URL must be filled from the resolved upstream model name instead.
+//
+// Before the fix the unified branch passed chiURLParams(r) (empty for the
+// Anthropic/OpenAI source routes) straight through, leaving {model} unresolved
+// and sending ".../models/%7Bmodel%7D:generateContent" upstream.
+func TestUnifiedUpstreamPathVars(t *testing.T) {
+	if got := unifiedUpstreamPathVars("gemini-2.5-flash"); !reflect.DeepEqual(got, map[string]string{"model": "gemini-2.5-flash"}) {
+		t.Errorf("unifiedUpstreamPathVars(model) = %v, want {model: gemini-2.5-flash}", got)
+	}
+	if got := unifiedUpstreamPathVars(""); got != nil {
+		t.Errorf("unifiedUpstreamPathVars(\"\") = %v, want nil", got)
+	}
+
+	// End-to-end: the Gemini upstream URL token resolves to the upstream model.
+	geminiURL := "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+	resolved, err := substitutePathVars(geminiURL, unifiedUpstreamPathVars("gemini-2.5-flash"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(resolved, "{") {
+		t.Fatalf("upstream URL still has unresolved token: %s", resolved)
+	}
+	want := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+	if resolved != want {
+		t.Fatalf("substituted URL = %s, want %s", resolved, want)
+	}
+}
+
 func TestDedupeUnifiedRows(t *testing.T) {
 	row := func(providerID int32, et int32, path string) db.GetProvidersByEndpointTypesAndModelRow {
 		return db.GetProvidersByEndpointTypesAndModelRow{

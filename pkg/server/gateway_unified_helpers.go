@@ -152,6 +152,19 @@ func chiURLParams(r *http.Request) map[string]string {
 	return out
 }
 
+// unifiedUpstreamPathVars returns the path variables used to fill tokens in a
+// unified upstream URL. The only token a unified upstream URL can carry is the
+// {model} of a Gemini generate/streamGenerate endpoint; it must resolve to the
+// upstream model name — not the inbound requested model — so that
+// format-converted requests whose inbound route carries no {model} (Anthropic /
+// OpenAI sources) still produce a valid Gemini URL.
+func unifiedUpstreamPathVars(upstreamModel string) map[string]string {
+	if upstreamModel == "" {
+		return nil
+	}
+	return map[string]string{"model": upstreamModel}
+}
+
 // resolveProvidersByTypes is the unified handler's analogue of resolveProviders.
 // It runs the new sqlc query and applies the same priority sort and minimum
 // validity filter (upstream URL + credentials non-empty). srcType is the
