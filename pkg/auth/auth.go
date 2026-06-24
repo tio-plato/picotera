@@ -166,6 +166,7 @@ func (r *Resolver) createUserWithIdentity(ctx context.Context, provider, identit
 	user, err := q.InsertUser(ctx, db.InsertUserParams{
 		DisplayName: displayName,
 		IsAdmin:     admin,
+		Annotations: []byte("{}"),
 	})
 	if err != nil {
 		return nil, err
