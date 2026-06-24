@@ -16,6 +16,7 @@ import (
 	"picotera/pkg/logx"
 
 	plugin "github.com/hashicorp/go-plugin"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -49,6 +50,12 @@ func startPlugin(cfg Config, stderr io.Writer) (*plugin.Client, LLMBridgeClient,
 		StartTimeout:     timeout,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 		Stderr:           stderr,
+		GRPCDialOptions: []grpc.DialOption{
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(MaxGRPCMessageSize),
+				grpc.MaxCallSendMsgSize(MaxGRPCMessageSize),
+			),
+		},
 	})
 	rpcClient, err := client.Client()
 	if err != nil {
