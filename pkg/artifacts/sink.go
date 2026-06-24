@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/sirupsen/logrus"
 
 	"picotera/pkg/configx"
@@ -51,13 +54,22 @@ func NewSink(cfg configx.S3Config, logger *logrus.Entry) (Sink, error) {
 	if err != nil {
 		return nil, fmt.Errorf("artifact: create minio client: %w", err)
 	}
-	u, err := url.Parse(cfg.PublicURL)
-	if err != nil {
-		return nil, fmt.Errorf("artifact: parse public url: %w", err)
+	signerEndpoint := cfg.Endpoint
+	signerSecure := cfg.UseSSL
+	if cfg.PublicURL != "" {
+		u, err := url.Parse(cfg.PublicURL)
+		if err != nil {
+			return nil, fmt.Errorf("artifact: parse public url: %w", err)
+		}
+		if u.Scheme == "" || u.Host == "" {
+			return nil, fmt.Errorf("artifact: public url must include scheme and host")
+		}
+		signerEndpoint = u.Host
+		signerSecure = u.Scheme == "https"
 	}
-	urlSignerClient, err := minio.New(u.Host, &minio.Options{
+	urlSignerClient, err := minio.New(signerEndpoint, &minio.Options{
 		Creds:        credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
-		Secure:       u.Scheme == "https",
+		Secure:       signerSecure,
 		Region:       cfg.Region,
 		BucketLookup: lookup,
 	})
@@ -68,7 +80,11 @@ func NewSink(cfg configx.S3Config, logger *logrus.Entry) (Sink, error) {
 		client:          client,
 		urlSignerClient: urlSignerClient,
 		bucket:          cfg.Bucket,
+		accessKey:       cfg.AccessKey,
+		secretKey:       cfg.SecretKey,
+		region:          cfg.Region,
 		publicURL:       cfg.PublicURL,
+		pathStyle:       cfg.PathStyle,
 		logger:          logger,
 		jobs:            make(chan job, 256),
 	}
@@ -96,7 +112,11 @@ type minioSink struct {
 	client          *minio.Client
 	urlSignerClient *minio.Client
 	bucket          string
+	accessKey       string
+	secretKey       string
+	region          string
 	publicURL       string
+	pathStyle       *bool
 	logger          *logrus.Entry
 	jobs            chan job
 }
@@ -130,6 +150,9 @@ func (s *minioSink) upload(j job) {
 }
 
 func (s *minioSink) PresignedGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	if s.publicURL != "" && s.pathStyle != nil && !*s.pathStyle {
+		return s.presignedGetPublicVirtualHosted(key, ttl)
+	}
 	u, err := s.urlSignerClient.PresignedGetObject(ctx, s.bucket, key, ttl, nil)
 	if err != nil {
 		return "", err
@@ -147,4 +170,36 @@ func (s *minioSink) PresignedGet(ctx context.Context, key string, ttl time.Durat
 		u.Path = pub.Path + u.Path
 	}
 	return u.String(), nil
+}
+
+func (s *minioSink) presignedGetPublicVirtualHosted(key string, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		return "", fmt.Errorf("artifact: presign ttl must be positive")
+	}
+	pub, err := url.Parse(s.publicURL)
+	if err != nil {
+		return "", fmt.Errorf("artifact: parse public url: %w", err)
+	}
+	if pub.Scheme == "" || pub.Host == "" {
+		return "", fmt.Errorf("artifact: public url must include scheme and host")
+	}
+	pub.RawQuery = ""
+	pub.Fragment = ""
+	pub.Path = joinURLPath(pub.Path, key)
+	pub.RawPath = ""
+
+	req, err := http.NewRequest(http.MethodGet, pub.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("artifact: create presign request: %w", err)
+	}
+	req.Header.Set("Host", strings.ToLower(pub.Host))
+	req = signer.PreSignV4(*req, s.accessKey, s.secretKey, "", s.region, int64(ttl/time.Second))
+	return req.URL.String(), nil
+}
+
+func joinURLPath(prefix, key string) string {
+	if prefix == "" || prefix == "/" {
+		return "/" + strings.TrimPrefix(key, "/")
+	}
+	return strings.TrimRight(prefix, "/") + "/" + strings.TrimPrefix(key, "/")
 }
