@@ -538,6 +538,15 @@ func bridgeUnifiedRequest(ctx context.Context, f *gatewayFlow, input attemptInpu
 	}
 	resetRequestBody(req, upBody)
 	req.Header.Set("Content-Type", upCT)
+	// 桥接到 Gemini streamGenerateContent 时,客户端(非 Gemini 源)不会携带
+	// alt=sse,Gemini 默认返回 JSON 数组流而非 SSE。强制写入 alt=sse,使上游返回
+	// text/event-stream,供 BridgeStream 正确解析。在 rewriteRequest 钩子前注入,
+	// 脚本可改写或删除。
+	if input.Sidecar.UpstreamFormat == llmbridge.FormatGeminiStreamGenerateContent {
+		q := req.URL.Query()
+		q.Set("alt", "sse")
+		req.URL.RawQuery = q.Encode()
+	}
 	return req, upBody, nil
 }
 

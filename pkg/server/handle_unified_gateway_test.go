@@ -297,6 +297,48 @@ func TestUnifiedUpstreamPathVars(t *testing.T) {
 	}
 }
 
+// TestBridgeUnifiedRequestGeminiStreamAltSSE pins the fix for the unified
+// bridge-to-Gemini-streamGenerateContent case: a non-Gemini source (e.g.
+// Anthropic Messages) never carries alt=sse, so Gemini would return a JSON
+// array stream instead of SSE and BridgeStream would fail to parse it. The
+// bridge path must force alt=sse onto the upstream URL.
+func TestBridgeUnifiedRequestGeminiStreamAltSSE(t *testing.T) {
+	f := &gatewayFlow{
+		h:      &gatewayHandler{&Server{llmBridge: fakeLLMBridge{}}},
+		config: gatewayFlowConfig{SourceFormat: llmbridge.FormatAnthropicMessages},
+	}
+	req := httptest.NewRequest("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent", nil)
+	input := attemptInput{Sidecar: gatewayCandidateSidecar{UpstreamFormat: llmbridge.FormatGeminiStreamGenerateContent}}
+
+	got, _, err := bridgeUnifiedRequest(context.Background(), f, input, req, []byte(`{}`), llmbridge.OutboundProfile{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alt := got.URL.Query().Get("alt"); alt != "sse" {
+		t.Fatalf("bridge to Gemini stream: alt=%q, want \"sse\"", alt)
+	}
+}
+
+// TestBridgeUnifiedRequestIdentityNoAltSSE pins that identity passthrough
+// (source == upstream == Gemini streamGenerateContent) returns early and does
+// NOT inject alt=sse — the client's own query is preserved byte-for-byte.
+func TestBridgeUnifiedRequestIdentityNoAltSSE(t *testing.T) {
+	f := &gatewayFlow{
+		h:      &gatewayHandler{&Server{llmBridge: fakeLLMBridge{}}},
+		config: gatewayFlowConfig{SourceFormat: llmbridge.FormatGeminiStreamGenerateContent},
+	}
+	req := httptest.NewRequest("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent", nil)
+	input := attemptInput{Sidecar: gatewayCandidateSidecar{UpstreamFormat: llmbridge.FormatGeminiStreamGenerateContent}}
+
+	got, _, err := bridgeUnifiedRequest(context.Background(), f, input, req, []byte(`{}`), llmbridge.OutboundProfile{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.URL.RawQuery != "" {
+		t.Fatalf("identity passthrough must not inject query, got %q", got.URL.RawQuery)
+	}
+}
+
 func TestDedupeUnifiedRows(t *testing.T) {
 	row := func(providerID int32, et int32, path string) db.GetProvidersByEndpointTypesAndModelRow {
 		return db.GetProvidersByEndpointTypesAndModelRow{
