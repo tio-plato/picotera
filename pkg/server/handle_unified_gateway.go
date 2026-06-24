@@ -19,8 +19,12 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 
 func (h *gatewayHandler) newUnifiedGatewayFlowConfig(srcFormat llmbridge.Format, r *http.Request) gatewayFlowConfig {
 	virtualEndpoint := db.Endpoint{
-		Name:                "(unified)",
-		Path:                r.URL.Path,
+		Name: "(unified)",
+		// Record the registered route pattern (e.g. .../{model}:generateContent)
+		// rather than r.URL.Path, so the meta row's endpoint_path keeps the
+		// {model} placeholder instead of baking in a concrete model name. The
+		// concrete model still reaches the upstream URL via PathVars below.
+		Path:                unifiedRoutePath(srcFormat),
 		ModelPath:           "",
 		CredentialsResolver: contract.CredentialsResolver_Unknown,
 		EndpointType:        sourceEndpointType(srcFormat),

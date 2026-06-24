@@ -597,7 +597,11 @@ function resetCursorAndReload() {
           <span v-else class="text-ink-faint">—</span>
         </template>
         <template #cell-endpointPath="{ row }">
-          <span class="font-mono text-ink-faint">{{ row.endpointPath }}</span>
+          <span
+            class="block max-w-[16rem] truncate font-mono text-ink-faint"
+            :title="row.endpointPath"
+            >{{ row.endpointPath }}</span
+          >
         </template>
         <template #cell-model="{ row }">
           <div class="flex flex-col leading-tight">

@@ -261,9 +261,11 @@ func betterRow(a, b db.GetProvidersByEndpointTypesAndModelRow, srcType int32) bo
 // unifiedStreamArgs bundles the (many) inputs the unified streaming success
 // path needs. Wrapped so the call site stays readable.
 //
-// metaEndpointPath is the unified route path (`/api/unified/v1/messages` …)
-// — what the meta row should record. upstreamPath is the chosen upstream's
-// configured endpoint.path — what the upstream row should record.
+// metaEndpointPath is the unified route pattern (`/api/unified/v1/messages`,
+// `/api/unified/v1beta/models/{model}:generateContent` …) — what the meta row
+// should record (with the {model} placeholder, not a concrete model name).
+// upstreamPath is the chosen upstream's configured endpoint.path — what the
+// upstream row should record.
 type unifiedStreamArgs struct {
 	w                 http.ResponseWriter
 	r                 *http.Request
