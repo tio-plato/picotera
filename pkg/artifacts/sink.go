@@ -20,6 +20,19 @@ type Sink interface {
 	Enabled() bool
 }
 
+// bucketLookup maps the tri-state PICOTERA_S3_PATH_STYLE setting to a minio
+// BucketLookupType: nil = auto-detect, true = force path style, false = force
+// virtual-hosted (DNS) style.
+func bucketLookup(pathStyle *bool) minio.BucketLookupType {
+	if pathStyle == nil {
+		return minio.BucketLookupAuto
+	}
+	if *pathStyle {
+		return minio.BucketLookupPath
+	}
+	return minio.BucketLookupDNS
+}
+
 func NewSink(cfg configx.S3Config, logger *logrus.Entry) (Sink, error) {
 	if cfg.Endpoint == "" {
 		logger.Info("artifact disabled (PICOTERA_S3_ENDPOINT empty)")
@@ -28,10 +41,12 @@ func NewSink(cfg configx.S3Config, logger *logrus.Entry) (Sink, error) {
 	if cfg.AccessKey == "" || cfg.SecretKey == "" || cfg.Bucket == "" {
 		return nil, fmt.Errorf("artifact: s3 access_key, secret_key, bucket must be set when endpoint is configured")
 	}
+	lookup := bucketLookup(cfg.PathStyle)
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
-		Secure: cfg.UseSSL,
-		Region: cfg.Region,
+		Creds:        credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Secure:       cfg.UseSSL,
+		Region:       cfg.Region,
+		BucketLookup: lookup,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("artifact: create minio client: %w", err)
@@ -41,9 +56,10 @@ func NewSink(cfg configx.S3Config, logger *logrus.Entry) (Sink, error) {
 		return nil, fmt.Errorf("artifact: parse public url: %w", err)
 	}
 	urlSignerClient, err := minio.New(u.Host, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
-		Secure: u.Scheme == "https",
-		Region: cfg.Region,
+		Creds:        credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Secure:       u.Scheme == "https",
+		Region:       cfg.Region,
+		BucketLookup: lookup,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("artifact: create minio url signer client: %w", err)

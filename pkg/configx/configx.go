@@ -56,6 +56,7 @@ type S3Config struct {
 	Bucket    string `mapstructure:"bucket"`
 	UseSSL    bool   `mapstructure:"use_ssl"`
 	PublicURL string `mapstructure:"public_url"`
+	PathStyle *bool  `mapstructure:"path_style"`
 }
 
 func Parse() (*Config, error) {
