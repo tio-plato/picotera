@@ -28,7 +28,7 @@ import {
   type AutoDataTableColumn,
   type ColumnFilterOption,
 } from '@/ui'
-import { finishReasonLabel } from '@/utils/requestLabels'
+import { finishReasonLabel, isUnifiedEndpoint, unifiedEndpointName } from '@/utils/requestLabels'
 
 const panel = useSidePanel()
 const route = useRoute()
@@ -312,8 +312,23 @@ const providerOptions = computed<ColumnFilterOption<number>[]>(() =>
 const projectOptions = computed<ColumnFilterOption<number>[]>(() =>
   projects.value.map((p) => ({ value: p.id, label: p.name })),
 )
+const endpointNameByPath = computed(() => {
+  const m = new Map<string, string>()
+  for (const e of endpoints.value) m.set(e.path, e.name)
+  return m
+})
+
+function endpointDisplay(path: string | undefined | null): { name: string; unified: boolean } {
+  if (!path) return { name: '—', unified: false }
+  if (isUnifiedEndpoint(path)) return { name: unifiedEndpointName(path), unified: true }
+  return { name: endpointNameByPath.value.get(path) || path, unified: false }
+}
+
 const endpointOptions = computed<ColumnFilterOption<string>[]>(() =>
-  endpoints.value.map((e) => ({ value: e.path, label: e.path })),
+  endpoints.value.map((e) => {
+    const d = endpointDisplay(e.path)
+    return { value: e.path, label: d.unified ? `${d.name} [统一网关]` : d.name }
+  }),
 )
 const modelOptions = computed<ColumnFilterOption<string>[]>(() =>
   models.value.map((m) => ({ value: m.name, label: m.name })),
@@ -597,11 +612,12 @@ function resetCursorAndReload() {
           <span v-else class="text-ink-faint">—</span>
         </template>
         <template #cell-endpointPath="{ row }">
-          <span
-            class="block max-w-[16rem] truncate font-mono text-ink-faint"
-            :title="row.endpointPath"
-            >{{ row.endpointPath }}</span
-          >
+          <div class="flex items-center gap-1.5 min-w-0 max-w-[16rem]">
+            <span class="truncate text-ink" :title="row.endpointPath">{{
+              endpointDisplay(row.endpointPath).name
+            }}</span>
+            <Tag v-if="endpointDisplay(row.endpointPath).unified" variant="accent">统一网关</Tag>
+          </div>
         </template>
         <template #cell-model="{ row }">
           <div class="flex flex-col leading-tight">
