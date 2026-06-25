@@ -935,6 +935,126 @@ func TestResponseExtractor_SSE_CRLF_BytesForwardedUnchanged(t *testing.T) {
 	}
 }
 
+func TestResponseExtractor_JSONArray_Gemini_Usage(t *testing.T) {
+	data, err := os.ReadFile("../../fixtures/d8u8kj0s9a291pp7cakg.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	extractor := NewResponseExtractor(strings.NewReader(string(data)), "application/json", time.Now())
+
+	if _, err := io.ReadAll(extractor); err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 9 {
+		t.Errorf("InputTokens: got %v, want 9", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 11 {
+		t.Errorf("OutputTokens: got %v, want 11 (last wins)", m.OutputTokens)
+	}
+	if m.TTFTMs == nil {
+		t.Errorf("TTFTMs: got nil, want recorded")
+	}
+	if m.InferredModel != "gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want gemini-2.5-flash-lite", m.InferredModel)
+	}
+	if m.InferredModelSource != db.InferredModelSourceResponse {
+		t.Errorf("InferredModelSource: got %d, want %d", m.InferredModelSource, db.InferredModelSourceResponse)
+	}
+}
+
+func TestResponseExtractor_JSONArray_Gemini_BytesForwardedUnchanged(t *testing.T) {
+	data, err := os.ReadFile("../../fixtures/d8u8kj0s9a291pp7cakg.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	extractor := NewResponseExtractor(strings.NewReader(string(data)), "application/json", time.Now())
+
+	got, err := io.ReadAll(extractor)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("bytes forwarded unchanged:\ngot:  %q\nwant: %q", string(got), string(data))
+	}
+}
+
+func TestResponseExtractor_JSONArray_Gemini_AcrossReadCalls(t *testing.T) {
+	data, err := os.ReadFile("../../fixtures/d8u8kj0s9a291pp7cakg.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	// Split into single-byte chunks to stress cross-Read state persistence.
+	var chunks []string
+	for _, b := range []byte(data) {
+		chunks = append(chunks, string([]byte{b}))
+	}
+	inner := &chunkReader{chunks: chunks}
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	got, err := io.ReadAll(extractor)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("bytes forwarded unchanged across reads:\ngot:  %q\nwant: %q", string(got), string(data))
+	}
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 9 {
+		t.Errorf("InputTokens: got %v, want 9", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 11 {
+		t.Errorf("OutputTokens: got %v, want 11", m.OutputTokens)
+	}
+	if m.InferredModel != "gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want gemini-2.5-flash-lite", m.InferredModel)
+	}
+}
+
+func TestResponseExtractor_JSONArray_Gemini_StringBraces(t *testing.T) {
+	// Element text contains {, }, ", and ] — must not confuse value delimiting.
+	jsonData := `[{"candidates":[{"content":{"parts":[{"text":"a{b}c,d]e\"f"}],"role":"model"}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":7,"totalTokenCount":12},"modelVersion":"gemini-2.5-flash-lite"}]`
+	extractor := NewResponseExtractor(strings.NewReader(jsonData), "application/json", time.Now())
+
+	got, err := io.ReadAll(extractor)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != jsonData {
+		t.Errorf("bytes forwarded unchanged:\ngot:  %q\nwant: %q", string(got), jsonData)
+	}
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 5 {
+		t.Errorf("InputTokens: got %v, want 5", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 7 {
+		t.Errorf("OutputTokens: got %v, want 7", m.OutputTokens)
+	}
+}
+
+func TestResponseExtractor_JSON_Gemini_SingleObjectStillWorks(t *testing.T) {
+	jsonData := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":11,"totalTokenCount":20},"modelVersion":"gemini-2.5-flash-lite"}`
+	extractor := NewResponseExtractor(strings.NewReader(jsonData), "application/json", time.Now())
+
+	if _, err := io.ReadAll(extractor); err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 9 {
+		t.Errorf("InputTokens: got %v, want 9", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 11 {
+		t.Errorf("OutputTokens: got %v, want 11", m.OutputTokens)
+	}
+	if m.InferredModel != "gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want gemini-2.5-flash-lite", m.InferredModel)
+	}
+}
+
 func buildSignaturePayload(model string) string {
 	// Build a protobuf message whose [2][1][6] path contains `model`.
 	inner := protowire.AppendTag(nil, 6, protowire.BytesType)

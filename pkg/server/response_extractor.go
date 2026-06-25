@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/base64"
 	"io"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"picotera/pkg/db"
 
+	"github.com/go-json-experiment/json/jsontext"
 	"github.com/tidwall/gjson"
 )
 
@@ -42,6 +44,14 @@ type ResponseExtractor struct {
 
 	// JSON: accumulate full body for post-stream parsing
 	jsonBuf []byte
+
+	// JSON shape: 0 = undetermined, '[' = array stream (incremental), '{' =
+	// single object (buffered). Determined from the first non-whitespace byte.
+	jsonShape byte
+
+	// jaBuf holds unconsumed bytes of a JSON array stream (never includes the
+	// leading '['). Mirrors lineBuf: accumulate → delimit elements → discard.
+	jaBuf []byte
 
 	// streamError holds the first in-stream error.message seen in an SSE data
 	// payload (empty means no error). Detected independently of metrics.
@@ -111,10 +121,10 @@ func (e *ResponseExtractor) Read(p []byte) (int, error) {
 			}
 			e.processSSEBuffer()
 		case "json":
-			e.jsonBuf = append(e.jsonBuf, chunk...)
+			e.feedJSON(chunk)
 		}
 	}
-	if err == io.EOF && e.mode == "json" && len(e.jsonBuf) > 0 {
+	if err == io.EOF && e.mode == "json" && e.jsonShape != '[' && len(e.jsonBuf) > 0 {
 		e.extractJSONMetrics()
 	}
 	return n, err
@@ -331,6 +341,102 @@ func (e *ResponseExtractor) extractGeminiSSE(payload string) {
 	// usageMetadata with just trafficType and must be skipped (never written 0).
 	// The last chunk with counts overwrites earlier values (last wins).
 	e.setGeminiUsage(result.Get("usageMetadata"))
+}
+
+// feedJSON dispatches a JSON-mode chunk by shape. The first non-whitespace byte
+// determines the shape: a top-level '[' is a Gemini JSON array stream (processed
+// incrementally), anything else is a single object (buffered for post-stream
+// parsing). A top-level array uniquely identifies the array-stream form —
+// non-streaming generateContent never returns a top-level array — so a byte
+// probe suffices and is provider-agnostic.
+func (e *ResponseExtractor) feedJSON(chunk []byte) {
+	switch e.jsonShape {
+	case '[':
+		e.feedJSONArray(chunk)
+	case '{':
+		e.jsonBuf = append(e.jsonBuf, chunk...)
+	default: // 0: shape not yet determined
+		for i, b := range chunk {
+			if b == ' ' || b == '\t' || b == '\r' || b == '\n' {
+				continue
+			}
+			if b == '[' {
+				e.jsonShape = '['
+				e.feedJSONArray(chunk[i+1:])
+			} else {
+				e.jsonShape = '{'
+				e.jsonBuf = append(e.jsonBuf, chunk...)
+			}
+			return
+		}
+		// Whole chunk was whitespace; keep it (harmless) and wait for more.
+		e.jsonBuf = append(e.jsonBuf, chunk...)
+	}
+}
+
+// feedJSONArray incrementally scans a Gemini JSON array stream. It accumulates
+// bytes into jaBuf and emits each complete top-level element as soon as its
+// bytes have all arrived, then drops the consumed prefix. Element boundaries are
+// detected by jsontext.Decoder.ReadValue (a truncated value returns
+// io.ErrUnexpectedEOF), so string contents (braces, commas, escapes) and nesting
+// are handled by the library, not a hand-rolled state machine. jaBuf never
+// includes the leading '['; its memory bound is a single largest element.
+func (e *ResponseExtractor) feedJSONArray(data []byte) {
+	e.jaBuf = append(e.jaBuf, data...)
+	cur := 0
+	for {
+		// Skip leading whitespace, then an optional single element separator ','.
+		for cur < len(e.jaBuf) && isJSONSpace(e.jaBuf[cur]) {
+			cur++
+		}
+		if cur < len(e.jaBuf) && e.jaBuf[cur] == ',' {
+			cur++
+			for cur < len(e.jaBuf) && isJSONSpace(e.jaBuf[cur]) {
+				cur++
+			}
+		}
+		if cur >= len(e.jaBuf) {
+			break
+		}
+		if e.jaBuf[cur] == ']' {
+			// Array closed; ignore any trailing bytes.
+			e.jaBuf = nil
+			return
+		}
+		dec := jsontext.NewDecoder(bytes.NewReader(e.jaBuf[cur:]))
+		val, err := dec.ReadValue()
+		if err != nil {
+			// io.ErrUnexpectedEOF: element truncated, wait for more bytes.
+			// io.EOF: no more data this round. Other: stop scanning this stream.
+			break
+		}
+		e.processGeminiArrayElement(val)
+		cur += int(dec.InputOffset())
+	}
+	e.jaBuf = append(e.jaBuf[:0], e.jaBuf[cur:]...)
+}
+
+// processGeminiArrayElement extracts metrics from one complete Gemini array
+// element, reusing the same field semantics as the SSE path.
+func (e *ResponseExtractor) processGeminiArrayElement(elem []byte) {
+	result := gjson.ParseBytes(elem)
+	payload := string(elem)
+
+	if !e.ttftRecorded && result.Get("candidates.0.content.parts").Exists() {
+		ttft := time.Since(e.startTime).Milliseconds()
+		e.metrics.TTFTMs = &ttft
+		e.ttftRecorded = true
+	}
+
+	e.setGeminiUsage(result.Get("usageMetadata"))
+	e.inferModelField(payload)
+	e.detectStreamError(payload)
+	e.inferProvider(payload)
+}
+
+// isJSONSpace reports whether b is JSON insignificant whitespace.
+func isJSONSpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
 }
 
 // setGeminiUsage maps Gemini usageMetadata onto metrics. It only assigns fields
