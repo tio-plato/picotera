@@ -205,11 +205,15 @@ func (s *Server) handleGetAdminOverviewDistribution(ctx context.Context, in *con
 }
 
 func (s *Server) handleGetAdminOverviewSeries(ctx context.Context, in *contract.GetAdminOverviewSeriesRequest) (*contract.GetAdminOverviewSeriesResponse, error) {
-	start, end, err := overviewWindow(in.Range, time.Now())
+	bucketInterval, err := overviewSeriesBucketIntervalFor(in.Range, in.Bucket)
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
-	bucketInterval, err := overviewSeriesBucketIntervalFor(in.Range, in.Bucket)
+	align := bucketInterval
+	if align > time.Hour {
+		align = time.Hour
+	}
+	start, end, err := overviewWindowAligned(in.Range, time.Now(), align)
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
@@ -241,6 +245,8 @@ func (s *Server) handleGetAdminOverviewSeries(ctx context.Context, in *contract.
 		return nil, huma.Error500InternalServerError("failed to query speed series", err)
 	}
 	traceRows, err := s.queries.ListAdminOverviewSeriesTraces(ctx, db.ListAdminOverviewSeriesTracesParams{
+		BucketWidth:   overviewBucketWidthPG(bucketInterval),
+		BucketOrigin:  startTS,
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
@@ -328,9 +334,13 @@ func (s *Server) handleGetAdminOverviewSeries(ctx context.Context, in *contract.
 		tracesByBG[tokensReqsKey{bucket: bucket, group: group}] += t.TraceCount
 	}
 
-	prefillSpeedByBG := make(map[tokensReqsKey]float64)
-	decodeSpeedByBG := make(map[tokensReqsKey]float64)
-	avgTtftByBG := make(map[tokensReqsKey]float64)
+	// Speed metrics are non-additive ratios: accumulate raw numerators and
+	// denominators per (bucket, group), then divide once below.
+	prefillTokenSumByBG := make(map[tokensReqsKey]float64)
+	prefillTimeSumByBG := make(map[tokensReqsKey]float64)
+	prefillReqCountByBG := make(map[tokensReqsKey]int64)
+	decodeTokenSumByBG := make(map[tokensReqsKey]float64)
+	decodeTimeSumByBG := make(map[tokensReqsKey]float64)
 	for _, s := range speedRows {
 		if !s.BucketAt.Valid {
 			continue
@@ -339,26 +349,26 @@ func (s *Server) handleGetAdminOverviewSeries(ctx context.Context, in *contract.
 		group := s.GroupKey
 		addGroup(group)
 		bg := tokensReqsKey{bucket: bucket, group: group}
-		if s.PrefillSpeed != 0 {
-			prefillSpeedByBG[bg] = s.PrefillSpeed
-		}
-		if s.DecodeSpeed != 0 {
-			decodeSpeedByBG[bg] = s.DecodeSpeed
-		}
-		if s.AvgTtft != 0 {
-			avgTtftByBG[bg] = s.AvgTtft
-		}
+		prefillTokenSumByBG[bg] += s.PrefillTokenSum
+		prefillTimeSumByBG[bg] += s.PrefillTimeSum
+		prefillReqCountByBG[bg] += s.PrefillRequestCount
+		decodeTokenSumByBG[bg] += s.DecodeTokenSum
+		decodeTimeSumByBG[bg] += s.DecodeTimeSum
 	}
 
-	cacheHitRateByBG := make(map[tokensReqsKey]float64)
+	// Cache hit rate is likewise non-additive: accumulate read/input sums.
+	cacheReadByBG := make(map[tokensReqsKey]float64)
+	cacheInputByBG := make(map[tokensReqsKey]float64)
 	for _, r := range cacheHitRateRows {
-		if !r.BucketAt.Valid || r.InputTokenSum <= 0 {
+		if !r.BucketAt.Valid {
 			continue
 		}
 		bucket := overviewBucketAt(start, r.BucketAt.Time, bucketInterval).Format(time.RFC3339Nano)
 		group := r.GroupKey
 		addGroup(group)
-		cacheHitRateByBG[tokensReqsKey{bucket: bucket, group: group}] = r.CacheReadTokenSum / r.InputTokenSum
+		bg := tokensReqsKey{bucket: bucket, group: group}
+		cacheReadByBG[bg] += r.CacheReadTokenSum
+		cacheInputByBG[bg] += r.InputTokenSum
 	}
 
 	if len(groupKeys) == 0 {
@@ -405,39 +415,39 @@ func (s *Server) handleGetAdminOverviewSeries(ctx context.Context, in *contract.
 				Value:    float64(tracesByBG[bg]),
 				Currency: "",
 			})
-			if v, ok := prefillSpeedByBG[bg]; ok {
+			if t := prefillTimeSumByBG[bg]; t > 0 {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "prefillSpeed",
 					BucketAt: bucket,
 					GroupKey: group,
-					Value:    v,
+					Value:    prefillTokenSumByBG[bg] / (t / 1000.0),
 					Currency: "",
 				})
 			}
-			if v, ok := decodeSpeedByBG[bg]; ok {
+			if t := decodeTimeSumByBG[bg]; t > 0 {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "decodeSpeed",
 					BucketAt: bucket,
 					GroupKey: group,
-					Value:    v,
+					Value:    decodeTokenSumByBG[bg] / (t / 1000.0),
 					Currency: "",
 				})
 			}
-			if v, ok := avgTtftByBG[bg]; ok {
+			if c := prefillReqCountByBG[bg]; c > 0 {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "avgTtft",
 					BucketAt: bucket,
 					GroupKey: group,
-					Value:    v,
+					Value:    prefillTimeSumByBG[bg] / float64(c),
 					Currency: "",
 				})
 			}
-			if v, ok := cacheHitRateByBG[bg]; ok {
+			if in := cacheInputByBG[bg]; in > 0 {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "cacheHitRate",
 					BucketAt: bucket,
 					GroupKey: group,
-					Value:    v,
+					Value:    cacheReadByBG[bg] / in,
 					Currency: "",
 				})
 			}
@@ -453,9 +463,12 @@ func (s *Server) handleGetAdminOverviewSeries(ctx context.Context, in *contract.
 		}
 	}
 
+	window := windowView(in.Range, start, end)
+	window.Bucket = overviewBucketLabel(bucketInterval)
+
 	return &contract.GetAdminOverviewSeriesResponse{
 		Body: contract.OverviewSeriesView{
-			Window:    windowView(in.Range, start, end),
+			Window:    window,
 			Dimension: in.Dimension,
 			Groups:    groups,
 			Buckets:   bucketStrs,

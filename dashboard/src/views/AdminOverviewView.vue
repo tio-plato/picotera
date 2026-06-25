@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import {
   getAdminOverviewDistribution,
@@ -158,13 +158,26 @@ const rangeOptions: { value: OverviewRange; label: string }[] = [
   { value: '7d', label: '7 天' },
   { value: '1m', label: '30 天' },
 ]
-const granularityOptions: { value: OverviewGranularity; label: string }[] = [
-  { value: 'auto', label: '自动' },
-  { value: '1h', label: '1h' },
-  { value: '6h', label: '6h' },
-  { value: '12h', label: '12h' },
-  { value: '24h', label: '24h' },
-]
+// 10m 桶在 30 天范围下数据点过多（4320 个），仅在 24 小时 / 7 天范围提供。
+const granularityOptions = computed<{ value: OverviewGranularity; label: string }[]>(() => {
+  const opts: { value: OverviewGranularity; label: string }[] = [{ value: 'auto', label: '自动' }]
+  if (filters.range !== '1m') opts.push({ value: '10m', label: '10m' })
+  opts.push(
+    { value: '1h', label: '1h' },
+    { value: '6h', label: '6h' },
+    { value: '12h', label: '12h' },
+    { value: '24h', label: '24h' },
+  )
+  return opts
+})
+
+// 切到 30 天且当前为 10m 时回落到自动，避免向后端发送非法组合。
+watch(
+  () => filters.range,
+  (range) => {
+    if (range === '1m' && granularity.value === '10m') granularity.value = 'auto'
+  },
+)
 const distributionDimensionOptions: { value: AdminOverviewDimension; label: string }[] = [
   { value: 'user', label: '用户' },
   { value: 'provider', label: '渠道' },
@@ -845,12 +858,18 @@ function compactNumber(v: number) {
 function formatBucket(iso: string) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
+  const hh = d.getHours().toString().padStart(2, '0')
+  if (granularity.value === '10m') {
+    const mm = d.getMinutes().toString().padStart(2, '0')
+    if (filters.range === '1d') return `${hh}:${mm}`
+    return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
+  }
   const buckets = seriesBuckets.value
   if (buckets.length <= 24) {
-    return `${d.getHours().toString().padStart(2, '0')}:00`
+    return `${hh}:00`
   }
   if (buckets.length <= 24 * 7) {
-    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:00`
+    return `${d.getMonth() + 1}/${d.getDate()} ${hh}:00`
   }
   return `${d.getMonth() + 1}/${d.getDate()}`
 }

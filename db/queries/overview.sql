@@ -9,7 +9,7 @@ WITH filtered AS (
     cache_write_tokens,
     cache_write_1h_tokens,
     cost
-  FROM request_overview_hourly
+  FROM request_overview_bucketed
   WHERE bucket_at >= sqlc.arg('start_at')::timestamp
     AND bucket_at < sqlc.arg('end_at')::timestamp
     AND user_id = sqlc.arg('user_id')::bigint
@@ -88,7 +88,7 @@ SELECT
     input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
   )::bigint AS total_tokens,
   SUM(request_count)::bigint AS request_count
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
   AND user_id = sqlc.arg('user_id')::bigint
@@ -112,7 +112,7 @@ SELECT
   END AS key,
   cost_currency::text AS currency,
   SUM(cost)::float8 AS amount
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
   AND user_id = sqlc.arg('user_id')::bigint
@@ -166,7 +166,7 @@ SELECT
   SUM(input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens)::bigint AS tokens,
   SUM(request_count)::bigint AS requests,
   SUM(cost)::float8 AS cost
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
   AND user_id = sqlc.arg('user_id')::bigint
@@ -180,7 +180,7 @@ ORDER BY bucket_at ASC, group_key ASC, currency ASC;
 
 -- name: ListOverviewSeriesTraces :many
 SELECT
-  time_bucket(INTERVAL '1 hour', r.created_at)::timestamp AS bucket_at,
+  time_bucket(sqlc.arg('bucket_width')::text::interval, r.created_at, sqlc.arg('bucket_origin')::timestamp)::timestamp AS bucket_at,
   CASE sqlc.arg('dimension')::text
     WHEN 'apiKey' THEN COALESCE(r.api_key_id::text, '')
     WHEN 'model' THEN COALESCE(r.model, '')
@@ -218,7 +218,7 @@ SELECT
   END AS group_key,
   SUM(cache_read_tokens)::float8 AS cache_read_token_sum,
   SUM(input_tokens + cache_read_tokens + cache_write_tokens + cache_write_1h_tokens)::float8 AS input_token_sum
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
   AND user_id = sqlc.arg('user_id')::bigint
@@ -238,7 +238,7 @@ SELECT
   COALESCE(SUM(cache_write_tokens), 0)::bigint     AS cache_write_tokens,
   COALESCE(SUM(cache_write_1h_tokens), 0)::bigint  AS cache_write_1h_tokens,
   COALESCE(SUM(output_tokens), 0)::bigint          AS output_tokens
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
   AND user_id = sqlc.arg('user_id')::bigint
@@ -258,7 +258,7 @@ SELECT
   SUM(
     input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
   )::bigint AS total_tokens
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
   AND user_id = sqlc.arg('user_id')::bigint
@@ -281,7 +281,7 @@ SELECT
   COALESCE(project_id, 0)::int          AS project_id,
   cost_currency::text                    AS currency,
   SUM(cost)::float8                      AS amount
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
   AND user_id = sqlc.arg('user_id')::bigint
@@ -305,10 +305,12 @@ SELECT
     WHEN 'project' THEN COALESCE(project_id::text, '')
     ELSE ''
   END AS group_key,
-  COALESCE((SUM(prefill_token_sum) / (SUM(prefill_time_sum) / 1000.0))::float8, 0)::float8 AS prefill_speed,
-  COALESCE((SUM(decode_token_sum) / (SUM(decode_time_sum) / 1000.0))::float8, 0)::float8 AS decode_speed,
-  COALESCE((SUM(prefill_time_sum) / NULLIF(SUM(prefill_request_count), 0))::float8, 0)::float8 AS avg_ttft
-FROM request_speed_hourly
+  COALESCE(SUM(prefill_token_sum), 0)::float8 AS prefill_token_sum,
+  COALESCE(SUM(prefill_time_sum), 0)::float8 AS prefill_time_sum,
+  COALESCE(SUM(prefill_request_count), 0)::bigint AS prefill_request_count,
+  COALESCE(SUM(decode_token_sum), 0)::float8 AS decode_token_sum,
+  COALESCE(SUM(decode_time_sum), 0)::float8 AS decode_time_sum
+FROM request_speed_bucketed
 WHERE bucket_at >= sqlc.arg('start_at')::timestamp
   AND bucket_at < sqlc.arg('end_at')::timestamp
   AND user_id = sqlc.arg('user_id')::bigint

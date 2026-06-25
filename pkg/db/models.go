@@ -116,7 +116,7 @@ type Request struct {
 	UserID              pgtype.Int8      `json:"userId"`
 }
 
-type RequestOverviewHourly struct {
+type RequestOverviewBucketed struct {
 	BucketAt           interface{}    `json:"bucketAt"`
 	ApiKeyID           pgtype.Int4    `json:"apiKeyId"`
 	Model              pgtype.Text    `json:"model"`
@@ -134,7 +134,7 @@ type RequestOverviewHourly struct {
 	Cost               pgtype.Numeric `json:"cost"`
 }
 
-type RequestSpeedHourly struct {
+type RequestSpeedBucketed struct {
 	BucketAt            interface{} `json:"bucketAt"`
 	Model               pgtype.Text `json:"model"`
 	UpstreamModel       pgtype.Text `json:"upstreamModel"`

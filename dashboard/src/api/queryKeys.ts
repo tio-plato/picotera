@@ -7,7 +7,7 @@ import type {
 
 export type ProviderEndpointFilters = Readonly<{ providerId?: number }>
 
-export type OverviewGranularity = 'auto' | '1h' | '6h' | '12h' | '24h'
+export type OverviewGranularity = 'auto' | '10m' | '1h' | '6h' | '12h' | '24h'
 
 export type OverviewFilters = Readonly<{
   range: '1d' | '7d' | '1m'

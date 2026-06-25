@@ -179,7 +179,7 @@ SELECT
   COALESCE(SUM(cache_write_tokens), 0)::bigint     AS cache_write_tokens,
   COALESCE(SUM(cache_write_1h_tokens), 0)::bigint  AS cache_write_1h_tokens,
   COALESCE(SUM(output_tokens), 0)::bigint          AS output_tokens
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= $1::timestamp
   AND bucket_at < $2::timestamp
   AND ($3::bigint IS NULL OR user_id = $3::bigint)
@@ -236,7 +236,7 @@ WITH filtered AS (
     cache_write_tokens,
     cache_write_1h_tokens,
     cost
-  FROM request_overview_hourly
+  FROM request_overview_bucketed
   WHERE bucket_at >= $1::timestamp
     AND bucket_at < $2::timestamp
     AND ($3::bigint IS NULL OR user_id = $3::bigint)
@@ -309,7 +309,7 @@ SELECT
   COALESCE(provider_id, 0)::int         AS provider_id,
   cost_currency::text                    AS currency,
   SUM(cost)::float8                      AS amount
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= $1::timestamp
   AND bucket_at < $2::timestamp
   AND ($3::bigint IS NULL OR user_id = $3::bigint)
@@ -382,7 +382,7 @@ SELECT
   SUM(
     input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
   )::bigint AS total_tokens
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= $1::timestamp
   AND bucket_at < $2::timestamp
   AND ($3::bigint IS NULL OR user_id = $3::bigint)
@@ -457,7 +457,7 @@ SELECT
   END AS group_key,
   SUM(cache_read_tokens)::float8 AS cache_read_token_sum,
   SUM(input_tokens + cache_read_tokens + cache_write_tokens + cache_write_1h_tokens)::float8 AS input_token_sum
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
   AND ($4::bigint IS NULL OR user_id = $4::bigint)
@@ -532,7 +532,7 @@ SELECT
     input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens
   )::bigint AS total_tokens,
   SUM(request_count)::bigint AS request_count
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
   AND ($4::bigint IS NULL OR user_id = $4::bigint)
@@ -598,7 +598,7 @@ SELECT
   END AS key,
   cost_currency::text AS currency,
   SUM(cost)::float8 AS amount
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
   AND ($4::bigint IS NULL OR user_id = $4::bigint)
@@ -669,7 +669,7 @@ SELECT
   SUM(input_tokens + cache_read_tokens + output_tokens + cache_write_tokens + cache_write_1h_tokens)::bigint AS tokens,
   SUM(request_count)::bigint AS requests,
   SUM(cost)::float8 AS cost
-FROM request_overview_hourly
+FROM request_overview_bucketed
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
   AND ($4::bigint IS NULL OR user_id = $4::bigint)
@@ -736,8 +736,8 @@ func (q *Queries) ListAdminOverviewSeriesMetrics(ctx context.Context, arg ListAd
 
 const listAdminOverviewSeriesTraces = `-- name: ListAdminOverviewSeriesTraces :many
 SELECT
-  time_bucket(INTERVAL '1 hour', r.created_at)::timestamp AS bucket_at,
-  CASE $1::text
+  time_bucket($1::text::interval, r.created_at, $2::timestamp)::timestamp AS bucket_at,
+  CASE $3::text
     WHEN 'user' THEN COALESCE(r.user_id::text, '')
     WHEN 'model' THEN COALESCE(r.model, '')
     WHEN 'upstreamModel' THEN COALESCE(r.upstream_model, '')
@@ -746,20 +746,22 @@ SELECT
   END AS group_key,
   COUNT(DISTINCT r.parent_span_id)::bigint AS trace_count
 FROM request r
-WHERE r.created_at >= $2::timestamp
-  AND r.created_at < $3::timestamp
-  AND ($4::bigint IS NULL OR r.user_id = $4::bigint)
+WHERE r.created_at >= $4::timestamp
+  AND r.created_at < $5::timestamp
+  AND ($6::bigint IS NULL OR r.user_id = $6::bigint)
   AND r.type = 1
   AND r.parent_span_id IS NOT NULL
   AND r.parent_span_id <> ''
-  AND ($5::text IS NULL OR r.model = $5::text)
-  AND ($6::text IS NULL OR r.upstream_model = $6::text)
-  AND ($7::int IS NULL OR r.provider_id = $7::int)
+  AND ($7::text IS NULL OR r.model = $7::text)
+  AND ($8::text IS NULL OR r.upstream_model = $8::text)
+  AND ($9::int IS NULL OR r.provider_id = $9::int)
 GROUP BY bucket_at, group_key
 ORDER BY bucket_at ASC, group_key ASC
 `
 
 type ListAdminOverviewSeriesTracesParams struct {
+	BucketWidth   string           `json:"bucketWidth"`
+	BucketOrigin  pgtype.Timestamp `json:"bucketOrigin"`
 	Dimension     string           `json:"dimension"`
 	StartAt       pgtype.Timestamp `json:"startAt"`
 	EndAt         pgtype.Timestamp `json:"endAt"`
@@ -777,6 +779,8 @@ type ListAdminOverviewSeriesTracesRow struct {
 
 func (q *Queries) ListAdminOverviewSeriesTraces(ctx context.Context, arg ListAdminOverviewSeriesTracesParams) ([]ListAdminOverviewSeriesTracesRow, error) {
 	rows, err := q.db.Query(ctx, listAdminOverviewSeriesTraces,
+		arg.BucketWidth,
+		arg.BucketOrigin,
 		arg.Dimension,
 		arg.StartAt,
 		arg.EndAt,
@@ -813,10 +817,12 @@ SELECT
     WHEN 'provider' THEN COALESCE(provider_id::text, '')
     ELSE ''
   END AS group_key,
-  COALESCE((SUM(prefill_token_sum) / (SUM(prefill_time_sum) / 1000.0))::float8, 0)::float8 AS prefill_speed,
-  COALESCE((SUM(decode_token_sum) / (SUM(decode_time_sum) / 1000.0))::float8, 0)::float8 AS decode_speed,
-  COALESCE((SUM(prefill_time_sum) / NULLIF(SUM(prefill_request_count), 0))::float8, 0)::float8 AS avg_ttft
-FROM request_speed_hourly
+  COALESCE(SUM(prefill_token_sum), 0)::float8 AS prefill_token_sum,
+  COALESCE(SUM(prefill_time_sum), 0)::float8 AS prefill_time_sum,
+  COALESCE(SUM(prefill_request_count), 0)::bigint AS prefill_request_count,
+  COALESCE(SUM(decode_token_sum), 0)::float8 AS decode_token_sum,
+  COALESCE(SUM(decode_time_sum), 0)::float8 AS decode_time_sum
+FROM request_speed_bucketed
 WHERE bucket_at >= $2::timestamp
   AND bucket_at < $3::timestamp
   AND ($4::bigint IS NULL OR user_id = $4::bigint)
@@ -839,11 +845,13 @@ type ListAdminOverviewSpeedSeriesParams struct {
 }
 
 type ListAdminOverviewSpeedSeriesRow struct {
-	BucketAt     pgtype.Timestamp `json:"bucketAt"`
-	GroupKey     string           `json:"groupKey"`
-	PrefillSpeed float64          `json:"prefillSpeed"`
-	DecodeSpeed  float64          `json:"decodeSpeed"`
-	AvgTtft      float64          `json:"avgTtft"`
+	BucketAt            pgtype.Timestamp `json:"bucketAt"`
+	GroupKey            string           `json:"groupKey"`
+	PrefillTokenSum     float64          `json:"prefillTokenSum"`
+	PrefillTimeSum      float64          `json:"prefillTimeSum"`
+	PrefillRequestCount int64            `json:"prefillRequestCount"`
+	DecodeTokenSum      float64          `json:"decodeTokenSum"`
+	DecodeTimeSum       float64          `json:"decodeTimeSum"`
 }
 
 func (q *Queries) ListAdminOverviewSpeedSeries(ctx context.Context, arg ListAdminOverviewSpeedSeriesParams) ([]ListAdminOverviewSpeedSeriesRow, error) {
@@ -866,9 +874,11 @@ func (q *Queries) ListAdminOverviewSpeedSeries(ctx context.Context, arg ListAdmi
 		if err := rows.Scan(
 			&i.BucketAt,
 			&i.GroupKey,
-			&i.PrefillSpeed,
-			&i.DecodeSpeed,
-			&i.AvgTtft,
+			&i.PrefillTokenSum,
+			&i.PrefillTimeSum,
+			&i.PrefillRequestCount,
+			&i.DecodeTokenSum,
+			&i.DecodeTimeSum,
 		); err != nil {
 			return nil, err
 		}

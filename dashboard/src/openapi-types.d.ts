@@ -1953,7 +1953,7 @@ export interface operations {
                 upstreamModel?: string;
                 providerId?: number;
                 dimension: "none" | "user" | "model" | "upstreamModel" | "provider";
-                bucket?: "auto" | "1h" | "6h" | "12h" | "24h";
+                bucket?: "auto" | "10m" | "1h" | "6h" | "12h" | "24h";
             };
             header?: never;
             path?: never;
@@ -2931,7 +2931,7 @@ export interface operations {
                 providerId?: number;
                 projectId?: number;
                 dimension: "none" | "apiKey" | "model" | "upstreamModel" | "provider" | "project";
-                bucket?: "auto" | "1h" | "6h" | "12h" | "24h";
+                bucket?: "auto" | "10m" | "1h" | "6h" | "12h" | "24h";
             };
             header?: never;
             path?: never;

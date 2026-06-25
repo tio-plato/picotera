@@ -33,6 +33,11 @@ func overviewSeriesBucketIntervalFor(rangeKey, bucketKey string) (time.Duration,
 	switch bucketKey {
 	case "", "auto":
 		return overviewSeriesBucketInterval(rangeKey)
+	case "10m":
+		if rangeKey == "1m" {
+			return 0, fmt.Errorf("bucket 10m is not allowed for range %q", rangeKey)
+		}
+		return 10 * time.Minute, nil
 	case "1h":
 		return time.Hour, nil
 	case "6h":
@@ -46,7 +51,21 @@ func overviewSeriesBucketIntervalFor(rangeKey, bucketKey string) (time.Duration,
 	}
 }
 
+// overviewBucketWidthPG renders a bucket interval as a Postgres interval
+// literal (seconds) for the time_bucket() call in the traces series query.
+func overviewBucketWidthPG(interval time.Duration) string {
+	return fmt.Sprintf("%d seconds", int64(interval.Seconds()))
+}
+
 func overviewWindow(rangeKey string, now time.Time) (start, end time.Time, err error) {
+	return overviewWindowAligned(rangeKey, now, time.Hour)
+}
+
+// overviewWindowAligned computes the analytics window, aligning the (exclusive)
+// end to the given boundary. Sub-hour buckets align to the bucket width so the
+// most recent partial hour is surfaced; hourly and coarser buckets keep hourly
+// alignment (the existing behavior shared by summary/distribution).
+func overviewWindowAligned(rangeKey string, now time.Time, align time.Duration) (start, end time.Time, err error) {
 	var lookback time.Duration
 	switch rangeKey {
 	case "1d":
@@ -58,7 +77,10 @@ func overviewWindow(rangeKey string, now time.Time) (start, end time.Time, err e
 	default:
 		return time.Time{}, time.Time{}, fmt.Errorf("invalid range %q", rangeKey)
 	}
-	end = now.UTC().Truncate(time.Hour).Add(time.Hour)
+	if align <= 0 {
+		align = time.Hour
+	}
+	end = now.UTC().Truncate(align).Add(align)
 	start = end.Add(-lookback)
 	return start, end, nil
 }
@@ -337,11 +359,15 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 	if err != nil {
 		return nil, err
 	}
-	start, end, err := overviewWindow(in.Range, time.Now())
+	bucketInterval, err := overviewSeriesBucketIntervalFor(in.Range, in.Bucket)
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
-	bucketInterval, err := overviewSeriesBucketIntervalFor(in.Range, in.Bucket)
+	align := bucketInterval
+	if align > time.Hour {
+		align = time.Hour
+	}
+	start, end, err := overviewWindowAligned(in.Range, time.Now(), align)
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
@@ -377,6 +403,8 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		return nil, huma.Error500InternalServerError("failed to query speed series", err)
 	}
 	traceRows, err := s.queries.ListOverviewSeriesTraces(ctx, db.ListOverviewSeriesTracesParams{
+		BucketWidth:   overviewBucketWidthPG(bucketInterval),
+		BucketOrigin:  startTS,
 		Dimension:     in.Dimension,
 		StartAt:       startTS,
 		EndAt:         endTS,
@@ -468,9 +496,15 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		tracesByBG[tokensReqsKey{bucket: bucket, group: group}] += t.TraceCount
 	}
 
-	prefillSpeedByBG := make(map[tokensReqsKey]float64)
-	decodeSpeedByBG := make(map[tokensReqsKey]float64)
-	avgTtftByBG := make(map[tokensReqsKey]float64)
+	// Speed metrics are non-additive ratios: accumulate the raw numerators and
+	// denominators per (bucket, group), then divide once below. This keeps the
+	// result correct when several finer source buckets fold into one display
+	// bucket.
+	prefillTokenSumByBG := make(map[tokensReqsKey]float64)
+	prefillTimeSumByBG := make(map[tokensReqsKey]float64)
+	prefillReqCountByBG := make(map[tokensReqsKey]int64)
+	decodeTokenSumByBG := make(map[tokensReqsKey]float64)
+	decodeTimeSumByBG := make(map[tokensReqsKey]float64)
 	for _, s := range speedRows {
 		if !s.BucketAt.Valid {
 			continue
@@ -479,26 +513,27 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		group := s.GroupKey
 		addGroup(group)
 		bg := tokensReqsKey{bucket: bucket, group: group}
-		if s.PrefillSpeed != 0 {
-			prefillSpeedByBG[bg] = s.PrefillSpeed
-		}
-		if s.DecodeSpeed != 0 {
-			decodeSpeedByBG[bg] = s.DecodeSpeed
-		}
-		if s.AvgTtft != 0 {
-			avgTtftByBG[bg] = s.AvgTtft
-		}
+		prefillTokenSumByBG[bg] += s.PrefillTokenSum
+		prefillTimeSumByBG[bg] += s.PrefillTimeSum
+		prefillReqCountByBG[bg] += s.PrefillRequestCount
+		decodeTokenSumByBG[bg] += s.DecodeTokenSum
+		decodeTimeSumByBG[bg] += s.DecodeTimeSum
 	}
 
-	cacheHitRateByBG := make(map[tokensReqsKey]float64)
+	// Cache hit rate is likewise non-additive: accumulate read/input sums and
+	// divide once below.
+	cacheReadByBG := make(map[tokensReqsKey]float64)
+	cacheInputByBG := make(map[tokensReqsKey]float64)
 	for _, r := range cacheHitRateRows {
-		if !r.BucketAt.Valid || r.InputTokenSum <= 0 {
+		if !r.BucketAt.Valid {
 			continue
 		}
 		bucket := overviewBucketAt(start, r.BucketAt.Time, bucketInterval).Format(time.RFC3339Nano)
 		group := r.GroupKey
 		addGroup(group)
-		cacheHitRateByBG[tokensReqsKey{bucket: bucket, group: group}] = r.CacheReadTokenSum / r.InputTokenSum
+		bg := tokensReqsKey{bucket: bucket, group: group}
+		cacheReadByBG[bg] += r.CacheReadTokenSum
+		cacheInputByBG[bg] += r.InputTokenSum
 	}
 
 	if len(groupKeys) == 0 {
@@ -545,39 +580,39 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 				Value:    float64(tracesByBG[bg]),
 				Currency: "",
 			})
-			if v, ok := prefillSpeedByBG[bg]; ok {
+			if t := prefillTimeSumByBG[bg]; t > 0 {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "prefillSpeed",
 					BucketAt: bucket,
 					GroupKey: group,
-					Value:    v,
+					Value:    prefillTokenSumByBG[bg] / (t / 1000.0),
 					Currency: "",
 				})
 			}
-			if v, ok := decodeSpeedByBG[bg]; ok {
+			if t := decodeTimeSumByBG[bg]; t > 0 {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "decodeSpeed",
 					BucketAt: bucket,
 					GroupKey: group,
-					Value:    v,
+					Value:    decodeTokenSumByBG[bg] / (t / 1000.0),
 					Currency: "",
 				})
 			}
-			if v, ok := avgTtftByBG[bg]; ok {
+			if c := prefillReqCountByBG[bg]; c > 0 {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "avgTtft",
 					BucketAt: bucket,
 					GroupKey: group,
-					Value:    v,
+					Value:    prefillTimeSumByBG[bg] / float64(c),
 					Currency: "",
 				})
 			}
-			if v, ok := cacheHitRateByBG[bg]; ok {
+			if in := cacheInputByBG[bg]; in > 0 {
 				points = append(points, contract.OverviewSeriesPointView{
 					Metric:   "cacheHitRate",
 					BucketAt: bucket,
 					GroupKey: group,
-					Value:    v,
+					Value:    cacheReadByBG[bg] / in,
 					Currency: "",
 				})
 			}
@@ -593,15 +628,27 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 		}
 	}
 
+	window := windowView(in.Range, start, end)
+	window.Bucket = overviewBucketLabel(bucketInterval)
+
 	return &contract.GetOverviewSeriesResponse{
 		Body: contract.OverviewSeriesView{
-			Window:    windowView(in.Range, start, end),
+			Window:    window,
 			Dimension: in.Dimension,
 			Groups:    groups,
 			Buckets:   bucketStrs,
 			Points:    points,
 		},
 	}, nil
+}
+
+// overviewBucketLabel renders the effective bucket width as a short label
+// (e.g. "10m", "1h", "6h") for the series window response.
+func overviewBucketLabel(interval time.Duration) string {
+	if interval < time.Hour {
+		return fmt.Sprintf("%dm", int64(interval.Minutes()))
+	}
+	return fmt.Sprintf("%dh", int64(interval.Hours()))
 }
 
 func (s *Server) handleGetOverviewSpeedBoxplot(ctx context.Context, in *contract.GetOverviewSpeedBoxplotRequest) (*contract.GetOverviewSpeedBoxplotResponse, error) {

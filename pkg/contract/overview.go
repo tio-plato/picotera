@@ -128,7 +128,7 @@ type GetOverviewDistributionResponse struct {
 type GetOverviewSeriesRequest struct {
 	OverviewCommonRequest
 	Dimension string `query:"dimension" enum:"none,apiKey,model,upstreamModel,provider,project" required:"true"`
-	Bucket    string `query:"bucket,omitempty" enum:"auto,1h,6h,12h,24h" default:"auto"`
+	Bucket    string `query:"bucket,omitempty" enum:"auto,10m,1h,6h,12h,24h" default:"auto"`
 }
 
 type GetOverviewSeriesResponse struct {
