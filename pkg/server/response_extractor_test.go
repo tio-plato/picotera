@@ -797,6 +797,144 @@ func TestResponseExtractor_SignatureFixture_File(t *testing.T) {
 	}
 }
 
+func TestResponseExtractor_SSE_Gemini_Usage(t *testing.T) {
+	start := time.Now().Add(-100 * time.Millisecond)
+	events := []string{
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hello\"}]}}],\"usageMetadata\":{\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\",\"responseId\":\"cAY8\"}\n\n",
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" there! How\"}]}}],\"usageMetadata\":{\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\",\"responseId\":\"cAY8\"}\n\n",
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" can I help you today?\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":11,\"totalTokenCount\":19,\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\",\"responseId\":\"cAY8\"}\n\n",
+	}
+	// strings.NewReader, not chunkReader: these events exceed the read buffer
+	// and chunkReader drops the tail of any chunk past the buffer's free space.
+	inner := strings.NewReader(strings.Join(events, ""))
+	extractor := NewResponseExtractor(inner, "text/event-stream", start)
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.TTFTMs == nil {
+		t.Fatal("expected TTFTMs to be set from first content event")
+	}
+	if *m.TTFTMs < 50 {
+		t.Errorf("TTFTMs too low: got %d, expected >= 50", *m.TTFTMs)
+	}
+	if m.InputTokens == nil || *m.InputTokens != 8 {
+		t.Errorf("InputTokens: got %v, want 8", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 11 {
+		t.Errorf("OutputTokens: got %v, want 11", m.OutputTokens)
+	}
+	if m.InferredModel != "google/gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "google/gemini-2.5-flash-lite")
+	}
+	if m.InferredModelSource != db.InferredModelSourceResponse {
+		t.Errorf("InferredModelSource: got %d, want response", m.InferredModelSource)
+	}
+}
+
+func TestResponseExtractor_SSE_Gemini_EarlyUsageMetadataIgnored(t *testing.T) {
+	events := []string{
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hello\"}]}}],\"usageMetadata\":{\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\"}\n\n",
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" there!\"}]}}],\"usageMetadata\":{\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\"}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens != nil {
+		t.Errorf("InputTokens should be nil when usageMetadata has no counts, got %v", m.InputTokens)
+	}
+	if m.OutputTokens != nil {
+		t.Errorf("OutputTokens should be nil when usageMetadata has no counts, got %v", m.OutputTokens)
+	}
+}
+
+func TestResponseExtractor_JSON_Gemini(t *testing.T) {
+	jsonData := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello there!"}]},"finishReason":"STOP","avgLogprobs":-0.0417}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":10,"totalTokenCount":18,"trafficType":"ON_DEMAND"},"modelVersion":"google/gemini-2.5-flash-lite","responseId":"iwY8"}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 8 {
+		t.Errorf("InputTokens: got %v, want 8", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 10 {
+		t.Errorf("OutputTokens: got %v, want 10", m.OutputTokens)
+	}
+	if m.InferredModel != "google/gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "google/gemini-2.5-flash-lite")
+	}
+}
+
+func TestResponseExtractor_SSE_Gemini_CachedAndThoughts(t *testing.T) {
+	events := []string{
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hi\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":100,\"cachedContentTokenCount\":40,\"candidatesTokenCount\":11,\"thoughtsTokenCount\":5,\"totalTokenCount\":116},\"modelVersion\":\"google/gemini-2.5-flash-lite\"}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 60 {
+		t.Errorf("InputTokens: got %v, want 60", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 16 {
+		t.Errorf("OutputTokens: got %v, want 16", m.OutputTokens)
+	}
+	if m.CacheReadTokens == nil || *m.CacheReadTokens != 40 {
+		t.Errorf("CacheReadTokens: got %v, want 40", m.CacheReadTokens)
+	}
+}
+
+func TestResponseExtractor_SSE_Gemini_CRLFFraming(t *testing.T) {
+	// Google's Gemini endpoint frames SSE events with CRLF (\r\n\r\n), not LF.
+	// Every chunk repeats usageMetadata with cumulative counts (last wins).
+	start := time.Now().Add(-100 * time.Millisecond)
+	events := []string{
+		"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello\"}],\"role\":\"model\"},\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":9,\"candidatesTokenCount\":1,\"totalTokenCount\":10},\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"f4U8\"}\r\n\r\n",
+		"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" there!\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":9,\"candidatesTokenCount\":10,\"totalTokenCount\":19},\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"f4U8\"}\r\n\r\n",
+	}
+	inner := strings.NewReader(strings.Join(events, ""))
+	extractor := NewResponseExtractor(inner, "text/event-stream", start)
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.TTFTMs == nil {
+		t.Fatal("expected TTFTMs to be set despite CRLF framing")
+	}
+	if m.InputTokens == nil || *m.InputTokens != 9 {
+		t.Errorf("InputTokens: got %v, want 9", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 10 {
+		t.Errorf("OutputTokens: got %v, want 10", m.OutputTokens)
+	}
+	if m.InferredModel != "gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "gemini-2.5-flash-lite")
+	}
+}
+
+func TestResponseExtractor_SSE_CRLF_BytesForwardedUnchanged(t *testing.T) {
+	// The CR-stripping is parse-only: bytes forwarded to the client must be
+	// byte-for-byte identical, CRs included.
+	sseData := "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\r\n\r\ndata: [DONE]\r\n\r\n"
+	inner := strings.NewReader(sseData)
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	got, err := io.ReadAll(extractor)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != sseData {
+		t.Errorf("bytes forwarded unchanged:\ngot:  %q\nwant: %q", string(got), sseData)
+	}
+}
+
 func buildSignaturePayload(model string) string {
 	// Build a protobuf message whose [2][1][6] path contains `model`.
 	inner := protowire.AppendTag(nil, 6, protowire.BytesType)

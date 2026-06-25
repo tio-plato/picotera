@@ -98,7 +98,17 @@ func (e *ResponseExtractor) Read(p []byte) (int, error) {
 		chunk := p[:n]
 		switch e.mode {
 		case "sse":
-			e.lineBuf = append(e.lineBuf, chunk...)
+			// Strip raw CR so CRLF-framed SSE (Google's Gemini API uses
+			// \r\n\r\n event boundaries) parses identically to LF-framed.
+			// Per the SSE spec, lines are delimited by CR, LF, or CRLF and a
+			// data field value cannot contain a raw CR, so dropping CR from the
+			// parse buffer is lossless. lineBuf is parse-only; the bytes
+			// forwarded to the client (p) are untouched.
+			for _, b := range chunk {
+				if b != '\r' {
+					e.lineBuf = append(e.lineBuf, b)
+				}
+			}
 			e.processSSEBuffer()
 		case "json":
 			e.jsonBuf = append(e.jsonBuf, chunk...)
@@ -156,6 +166,8 @@ func (e *ResponseExtractor) processSSEEvent(eventBytes []byte) {
 	e.extractOpenAIResponsesSSE(payload)
 	// Try Anthropic format
 	e.extractAnthropicSSE(payload)
+	// Try Gemini format
+	e.extractGeminiSSE(payload)
 
 	// Infer provider/model from this payload.
 	e.inferProvider(payload)
@@ -305,6 +317,49 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 	}
 }
 
+func (e *ResponseExtractor) extractGeminiSSE(payload string) {
+	result := gjson.Parse(payload)
+
+	// TTFT: first chunk carrying generated content parts.
+	if !e.ttftRecorded && result.Get("candidates.0.content.parts").Exists() {
+		ttft := time.Since(e.startTime).Milliseconds()
+		e.metrics.TTFTMs = &ttft
+		e.ttftRecorded = true
+	}
+
+	// Usage: only the final chunk carries token counts; early chunks have a
+	// usageMetadata with just trafficType and must be skipped (never written 0).
+	// The last chunk with counts overwrites earlier values (last wins).
+	e.setGeminiUsage(result.Get("usageMetadata"))
+}
+
+// setGeminiUsage maps Gemini usageMetadata onto metrics. It only assigns fields
+// that actually exist, so an early chunk's count-less usageMetadata is a no-op.
+// Shared by the SSE and JSON paths.
+func (e *ResponseExtractor) setGeminiUsage(usage gjson.Result) {
+	if !usage.Exists() {
+		return
+	}
+
+	cached := usage.Get("cachedContentTokenCount")
+	if prompt := usage.Get("promptTokenCount"); prompt.Exists() {
+		in := prompt.Int()
+		if cached.Exists() && cached.Int() > 0 {
+			in -= cached.Int()
+			c := cached.Int()
+			e.metrics.CacheReadTokens = &c
+		}
+		e.metrics.InputTokens = &in
+	}
+	if candidates := usage.Get("candidatesTokenCount"); candidates.Exists() {
+		out := candidates.Int()
+		if thoughts := usage.Get("thoughtsTokenCount"); thoughts.Exists() {
+			out += thoughts.Int()
+		}
+		e.metrics.OutputTokens = &out
+	}
+}
+
 // extractJSONMetrics parses the accumulated JSON body and extracts usage metrics.
 func (e *ResponseExtractor) extractJSONMetrics() {
 	result := gjson.ParseBytes(e.jsonBuf)
@@ -365,6 +420,34 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 	if e.metrics.CacheWriteTokens == nil {
 		e.extractAnthropicCacheCreation(result.Get("usage"))
 	}
+
+	// Try Gemini format (only fills metrics the formats above didn't set).
+	geminiUsage := result.Get("usageMetadata")
+	cached := geminiUsage.Get("cachedContentTokenCount")
+	if e.metrics.InputTokens == nil {
+		if v := geminiUsage.Get("promptTokenCount"); v.Exists() {
+			in := v.Int()
+			if cached.Exists() && cached.Int() > 0 {
+				in -= cached.Int()
+			}
+			e.metrics.InputTokens = &in
+		}
+	}
+	if e.metrics.OutputTokens == nil {
+		if v := geminiUsage.Get("candidatesTokenCount"); v.Exists() {
+			out := v.Int()
+			if thoughts := geminiUsage.Get("thoughtsTokenCount"); thoughts.Exists() {
+				out += thoughts.Int()
+			}
+			e.metrics.OutputTokens = &out
+		}
+	}
+	if e.metrics.CacheReadTokens == nil {
+		if cached.Exists() && cached.Int() > 0 {
+			c := cached.Int()
+			e.metrics.CacheReadTokens = &c
+		}
+	}
 }
 
 // inferProvider extracts the upstream provider identity from a payload.
@@ -399,7 +482,7 @@ func (e *ResponseExtractor) inferModelField(payload string) {
 	if e.respModel != "" {
 		return
 	}
-	for _, path := range []string{"model", "message.model"} {
+	for _, path := range []string{"model", "message.model", "modelVersion"} {
 		if v := gjson.Get(payload, path); v.Exists() && v.Type == gjson.String && v.String() != "" {
 			e.respModel = v.String()
 			return

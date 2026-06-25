@@ -47,6 +47,16 @@
 
 `inferModelField` 的路径数组改为 `[]string{"model", "message.model", "modelVersion"}`。
 
+## 步骤 4.5：修 CRLF 事件分隔（根因 B，线上请求暴露）
+
+> 此步在用线上请求 `d8u8avgs9a2fohr5kevg` 验证时新增：仅做步骤 1–4，该请求仍提取不到 token，因 Google Gemini 用 CRLF（`\r\n\r\n`）框架，`processSSEBuffer` 只认 `"\n\n"`，事件永远切不出来。
+
+在 `Read` 的 `case "sse"` 分支，把 `chunk` 写入 `lineBuf` 时剥除裸 `\r`（逐字节过滤，仅作用于解析缓冲；转发给客户端的 `p` 不动）。`processSSEBuffer` / `processSSEEvent` 不改。
+
+新增回归测试：
+- `TestResponseExtractor_SSE_Gemini_CRLFFraming`：CRLF 框架 Gemini 流，断言 token / TTFT / 模型提取成功。
+- `TestResponseExtractor_SSE_CRLF_BytesForwardedUnchanged`：断言转发字节含 CR 原样不变。
+
 ## 步骤 5：验证
 
 - `go test ./pkg/server/ -run TestResponseExtractor -v`：步骤 1 的 Gemini 用例转绿，既有 OpenAI/Anthropic 用例全绿（无回归）。
