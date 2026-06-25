@@ -12,7 +12,11 @@ import {
   listUsers,
 } from '@/api/client'
 import { OPERATIONAL_STALE_TIME } from '@/api/queryClient'
-import { queryKeys, type AdminOverviewFilters } from '@/api/queryKeys'
+import {
+  queryKeys,
+  type AdminOverviewFilters,
+  type OverviewGranularity,
+} from '@/api/queryKeys'
 import type {
   AdminOverviewBreakdownRowView,
   AdminOverviewDimension,
@@ -41,6 +45,7 @@ const filters = reactive({
   upstreamModel: '',
   providerId: 0,
 })
+const granularity = ref<OverviewGranularity>('auto')
 const distributionDimension = ref<AdminOverviewDimension>('user')
 const seriesDimension = ref<AdminOverviewSeriesDimension>('none')
 const speedDimension = ref<AdminOverviewSeriesDimension>('model')
@@ -153,6 +158,13 @@ const rangeOptions: { value: OverviewRange; label: string }[] = [
   { value: '7d', label: '7 天' },
   { value: '1m', label: '30 天' },
 ]
+const granularityOptions: { value: OverviewGranularity; label: string }[] = [
+  { value: 'auto', label: '自动' },
+  { value: '1h', label: '1h' },
+  { value: '6h', label: '6h' },
+  { value: '12h', label: '12h' },
+  { value: '24h', label: '24h' },
+]
 const distributionDimensionOptions: { value: AdminOverviewDimension; label: string }[] = [
   { value: 'user', label: '用户' },
   { value: 'provider', label: '渠道' },
@@ -234,17 +246,19 @@ const distributionQuery = useQuery({
 
 const seriesQuery = useQuery({
   queryKey: computed(() =>
-    queryKeys.adminOverview.series(overviewFilters.value, seriesDimension.value),
+    queryKeys.adminOverview.series(overviewFilters.value, seriesDimension.value, granularity.value),
   ),
-  queryFn: () => getAdminOverviewSeries(overviewFilters.value, seriesDimension.value),
+  queryFn: () =>
+    getAdminOverviewSeries(overviewFilters.value, seriesDimension.value, granularity.value),
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
 const speedSeriesQuery = useQuery({
   queryKey: computed(() =>
-    queryKeys.adminOverview.speed(overviewFilters.value, speedDimension.value),
+    queryKeys.adminOverview.speed(overviewFilters.value, speedDimension.value, granularity.value),
   ),
-  queryFn: () => getAdminOverviewSeries(overviewFilters.value, speedDimension.value),
+  queryFn: () =>
+    getAdminOverviewSeries(overviewFilters.value, speedDimension.value, granularity.value),
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
@@ -258,9 +272,14 @@ const speedBoxplotQuery = useQuery({
 
 const cacheHitRateSeriesQuery = useQuery({
   queryKey: computed(() =>
-    queryKeys.adminOverview.cacheHitRate(overviewFilters.value, cacheHitRateDimension.value),
+    queryKeys.adminOverview.cacheHitRate(
+      overviewFilters.value,
+      cacheHitRateDimension.value,
+      granularity.value,
+    ),
   ),
-  queryFn: () => getAdminOverviewSeries(overviewFilters.value, cacheHitRateDimension.value),
+  queryFn: () =>
+    getAdminOverviewSeries(overviewFilters.value, cacheHitRateDimension.value, granularity.value),
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
@@ -865,6 +884,12 @@ function formatCurrencyCompact(v: number, code: string) {
           >时间范围</span
         >
         <SegmentedControl v-model="filters.range" :options="rangeOptions" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >统计粒度</span
+        >
+        <SegmentedControl v-model="granularity" :options="granularityOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">货币</span>

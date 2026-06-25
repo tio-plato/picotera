@@ -1899,6 +1899,18 @@ paths:
               - upstreamModel
               - provider
             type: string
+        - explode: false
+          in: query
+          name: bucket
+          schema:
+            default: auto
+            enum:
+              - auto
+              - 1h
+              - 6h
+              - 12h
+              - 24h
+            type: string
       responses:
         "200":
           content:
@@ -2757,6 +2769,18 @@ paths:
               - upstreamModel
               - provider
               - project
+            type: string
+        - explode: false
+          in: query
+          name: bucket
+          schema:
+            default: auto
+            enum:
+              - auto
+              - 1h
+              - 6h
+              - 12h
+              - 24h
             type: string
       responses:
         "200":

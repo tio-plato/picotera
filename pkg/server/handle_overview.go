@@ -29,6 +29,23 @@ func overviewSeriesBucketInterval(rangeKey string) (time.Duration, error) {
 	}
 }
 
+func overviewSeriesBucketIntervalFor(rangeKey, bucketKey string) (time.Duration, error) {
+	switch bucketKey {
+	case "", "auto":
+		return overviewSeriesBucketInterval(rangeKey)
+	case "1h":
+		return time.Hour, nil
+	case "6h":
+		return 6 * time.Hour, nil
+	case "12h":
+		return 12 * time.Hour, nil
+	case "24h":
+		return 24 * time.Hour, nil
+	default:
+		return 0, fmt.Errorf("invalid bucket %q", bucketKey)
+	}
+}
+
 func overviewWindow(rangeKey string, now time.Time) (start, end time.Time, err error) {
 	var lookback time.Duration
 	switch rangeKey {
@@ -324,7 +341,7 @@ func (s *Server) handleGetOverviewSeries(ctx context.Context, in *contract.GetOv
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
-	bucketInterval, err := overviewSeriesBucketInterval(in.Range)
+	bucketInterval, err := overviewSeriesBucketIntervalFor(in.Range, in.Bucket)
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}

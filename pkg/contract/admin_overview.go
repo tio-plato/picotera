@@ -53,6 +53,7 @@ type GetAdminOverviewDistributionResponse struct {
 type GetAdminOverviewSeriesRequest struct {
 	AdminOverviewCommonRequest
 	Dimension string `query:"dimension" enum:"none,user,model,upstreamModel,provider" required:"true"`
+	Bucket    string `query:"bucket,omitempty" enum:"auto,1h,6h,12h,24h" default:"auto"`
 }
 
 type GetAdminOverviewSeriesResponse struct {

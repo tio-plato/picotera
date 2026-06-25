@@ -7,6 +7,8 @@ import type {
 
 export type ProviderEndpointFilters = Readonly<{ providerId?: number }>
 
+export type OverviewGranularity = 'auto' | '1h' | '6h' | '12h' | '24h'
+
 export type OverviewFilters = Readonly<{
   range: '1d' | '7d' | '1m'
   apiKeyId?: number
@@ -128,27 +130,27 @@ export const queryKeys = {
     summary: (f: OverviewFilters) => ['overview', 'summary', { ...f }] as const,
     distribution: (f: OverviewFilters, dim: OverviewDimension) =>
       ['overview', 'distribution', dim, { ...f }] as const,
-    series: (f: OverviewFilters, dim: OverviewSeriesDimension) =>
-      ['overview', 'series', dim, { ...f }] as const,
-    speed: (f: OverviewFilters, dim: OverviewSeriesDimension) =>
-      ['overview', 'speed', dim, { ...f }] as const,
+    series: (f: OverviewFilters, dim: OverviewSeriesDimension, bucket: OverviewGranularity) =>
+      ['overview', 'series', dim, bucket, { ...f }] as const,
+    speed: (f: OverviewFilters, dim: OverviewSeriesDimension, bucket: OverviewGranularity) =>
+      ['overview', 'speed', dim, bucket, { ...f }] as const,
     speedBoxplot: (f: OverviewFilters, dim: OverviewSeriesDimension) =>
       ['overview', 'speedBoxplot', dim, { ...f }] as const,
-    cacheHitRate: (f: OverviewFilters, dim: OverviewSeriesDimension) =>
-      ['overview', 'cacheHitRate', dim, { ...f }] as const,
+    cacheHitRate: (f: OverviewFilters, dim: OverviewSeriesDimension, bucket: OverviewGranularity) =>
+      ['overview', 'cacheHitRate', dim, bucket, { ...f }] as const,
   },
   adminOverview: {
     all: ['adminOverview'] as const,
     summary: (f: AdminOverviewFilters) => ['adminOverview', 'summary', { ...f }] as const,
     distribution: (f: AdminOverviewFilters, dim: AdminOverviewDimension) =>
       ['adminOverview', 'distribution', dim, { ...f }] as const,
-    series: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension) =>
-      ['adminOverview', 'series', dim, { ...f }] as const,
-    speed: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension) =>
-      ['adminOverview', 'speed', dim, { ...f }] as const,
+    series: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension, bucket: OverviewGranularity) =>
+      ['adminOverview', 'series', dim, bucket, { ...f }] as const,
+    speed: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension, bucket: OverviewGranularity) =>
+      ['adminOverview', 'speed', dim, bucket, { ...f }] as const,
     speedBoxplot: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension) =>
       ['adminOverview', 'speedBoxplot', dim, { ...f }] as const,
-    cacheHitRate: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension) =>
-      ['adminOverview', 'cacheHitRate', dim, { ...f }] as const,
+    cacheHitRate: (f: AdminOverviewFilters, dim: AdminOverviewSeriesDimension, bucket: OverviewGranularity) =>
+      ['adminOverview', 'cacheHitRate', dim, bucket, { ...f }] as const,
   },
 }

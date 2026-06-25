@@ -209,7 +209,7 @@ func (s *Server) handleGetAdminOverviewSeries(ctx context.Context, in *contract.
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
-	bucketInterval, err := overviewSeriesBucketInterval(in.Range)
+	bucketInterval, err := overviewSeriesBucketIntervalFor(in.Range, in.Bucket)
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}

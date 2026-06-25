@@ -46,6 +46,7 @@ import {
   type KvListFilters,
   type OverviewFilters,
   type AdminOverviewFilters,
+  type OverviewGranularity,
   type RequestsFilters,
 } from '@/api/queryKeys'
 
@@ -602,9 +603,10 @@ export async function getOverviewDistribution(
 export async function getOverviewSeries(
   filters: OverviewFilters,
   dimension: OverviewSeriesDimension,
+  bucket: OverviewGranularity,
 ): Promise<OverviewSeriesView> {
   const { data, error } = await api.GET('/api/picotera/overview/series', {
-    params: { query: { ...overviewQuery(filters), dimension } as never },
+    params: { query: { ...overviewQuery(filters), dimension, bucket } as never },
   })
   if (error) fail(error, '加载趋势失败')
   return data
@@ -658,9 +660,10 @@ export async function getAdminOverviewDistribution(
 export async function getAdminOverviewSeries(
   filters: AdminOverviewFilters,
   dimension: AdminOverviewSeriesDimension,
+  bucket: OverviewGranularity,
 ): Promise<OverviewSeriesView> {
   const { data, error } = await api.GET('/api/picotera/admin/overview/series', {
-    params: { query: { ...adminOverviewQuery(filters), dimension } as never },
+    params: { query: { ...adminOverviewQuery(filters), dimension, bucket } as never },
   })
   if (error) fail(error, '加载趋势失败')
   return data
