@@ -16,7 +16,7 @@ type Resolver = NonNullable<ProviderEndpointView['credentialsResolver']>
 
 const RESOLVER_OPTIONS: ReadonlyArray<{ value: Resolver; label: string }> = [
   { value: 'unknown', label: '继承端点设置' },
-  { value: 'generalApiKey', label: '通用密钥' },
+  { value: 'followRequest', label: '跟随请求' },
   { value: 'bearerToken', label: 'Bearer Token' },
   { value: 'xApiKey', label: 'X-Api-Key' },
   { value: 'searchKey', label: 'Search Key (?key=)' },

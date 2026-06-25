@@ -1096,7 +1096,7 @@ export interface components {
             credentials: string;
             disabled: boolean;
             /** @enum {string} */
-            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointResolver?: "unknown" | "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
             modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */
@@ -1225,7 +1225,7 @@ export interface components {
              */
             readonly $schema?: string;
             /** @enum {string} */
-            credentialsResolver: "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey" | "unknown";
+            credentialsResolver: "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey" | "unknown";
             /** @enum {string} */
             endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "exaSearch" | "modelList" | "unknown";
             modelPath: string;
@@ -1598,7 +1598,7 @@ export interface components {
              */
             readonly $schema?: string;
             /** @enum {string} */
-            credentialsResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            credentialsResolver?: "unknown" | "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
             endpointPath: string;
             /** Format: int32 */
             providerId: number;
@@ -1635,7 +1635,7 @@ export interface components {
             /** Format: int32 */
             id: number;
             /** @enum {string} */
-            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointResolver?: "unknown" | "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
             modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */
@@ -1813,7 +1813,7 @@ export interface components {
             /** Format: int32 */
             id?: number;
             /** @enum {string} */
-            modelsEndpointResolver?: "unknown" | "generalApiKey" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
+            modelsEndpointResolver?: "unknown" | "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
             modelsEndpointUrl?: string;
             name: string;
             /** Format: int32 */

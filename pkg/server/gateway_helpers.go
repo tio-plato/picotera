@@ -114,11 +114,11 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 }
 
 // extractClientToken pulls the client-supplied API key/token from the
-// inbound request. The endpoint's resolver names the preferred position; if
-// that position is empty we fall back to scanning all four locations in a
-// fixed order. GeneralApiKey/Unknown go straight to the fallback.
-// Empty string means no acceptable position was filled.
-func extractClientToken(r *http.Request, resolver int32) string {
+// inbound request. It scans all four known locations in a fixed order and
+// returns the first non-empty value — credential resolution is independent of
+// any endpoint resolver setting (that field now governs only how credentials
+// are sent upstream). Empty string means no acceptable position was filled.
+func extractClientToken(r *http.Request) string {
 	bearer := ""
 	if v := r.Header.Get("Authorization"); strings.HasPrefix(v, "Bearer ") {
 		bearer = strings.TrimPrefix(v, "Bearer ")
@@ -135,27 +135,7 @@ func extractClientToken(r *http.Request, resolver int32) string {
 		}
 		return ""
 	}
-	fallback := pickFirst(bearer, xApi, query, goog)
-
-	switch resolver {
-	case contract.CredentialsResolver_BearerToken:
-		if bearer != "" {
-			return bearer
-		}
-	case contract.CredentialsResolver_XApiKey:
-		if xApi != "" {
-			return xApi
-		}
-	case contract.CredentialsResolver_SearchKey:
-		if query != "" {
-			return query
-		}
-	case contract.CredentialsResolver_GoogApiKey:
-		if goog != "" {
-			return goog
-		}
-	}
-	return fallback
+	return pickFirst(bearer, xApi, query, goog)
 }
 
 // effectiveSendResolver picks which resolver to use when writing credentials
@@ -190,14 +170,14 @@ func mergeClientQuery(upstreamURL *url.URL, clientRawQuery string) {
 	upstreamURL.RawQuery = clientValues.Encode()
 }
 
-// authenticateClient extracts the client token (per resolver), looks up the
+// authenticateClient extracts the client token, looks up the
 // matching api_key row, and returns it alongside its owning user. The returned
 // *db.ApiKey is the authenticated identity; callers persist `ApiKeyID` from `ID`
 // and feed metadata into JS hooks. The *db.AppUser is the already-fetched owner
 // row (used for the disabled check) — returned so callers reuse it for ctx.user
 // and the user annotation layer without a second query.
-func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolver int32) (*db.ApiKey, *db.AppUser, error) {
-	token := extractClientToken(r, resolver)
+func (s *Server) authenticateClient(ctx context.Context, r *http.Request) (*db.ApiKey, *db.AppUser, error) {
+	token := extractClientToken(r)
 	if token == "" {
 		return nil, nil, &gatewayError{
 			status:  http.StatusUnauthorized,
@@ -306,7 +286,7 @@ func applyCredentials(req *http.Request, credentials string, resolver int32, sou
 		req.URL.RawQuery = q.Encode()
 	case contract.CredentialsResolver_GoogApiKey:
 		req.Header.Set("X-Goog-Api-Key", credentials)
-	default: // GeneralApiKey / Unknown / others
+	default: // FollowRequest / Unknown / others
 		if sourceRequest != nil {
 			if strings.HasPrefix(sourceRequest.Header.Get("Authorization"), "Bearer ") {
 				req.Header.Set("Authorization", "Bearer "+credentials)

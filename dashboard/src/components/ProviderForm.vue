@@ -13,7 +13,7 @@ const queryClient = useQueryClient()
 const isEdit = !!props.provider
 
 const modelsEndpointResolverOptions = [
-  { value: 'generalApiKey', label: '通用 API Key' },
+  { value: 'followRequest', label: '跟随请求' },
   { value: 'bearerToken', label: 'Bearer Token' },
   { value: 'xApiKey', label: 'x-api-key' },
   { value: 'searchKey', label: 'Search Key' },
@@ -28,7 +28,7 @@ const form = ref({
   disabled: props.provider?.disabled ?? false,
   proxyUrl: props.provider?.proxyUrl ?? '',
   modelsEndpointUrl: props.provider?.modelsEndpointUrl ?? '',
-  modelsEndpointResolver: props.provider?.modelsEndpointResolver ?? 'generalApiKey',
+  modelsEndpointResolver: props.provider?.modelsEndpointResolver ?? 'followRequest',
   supportsNativeWebSearch: props.provider?.supportsNativeWebSearch ?? false,
 })
 const saving = ref(false)
@@ -96,7 +96,7 @@ async function submit() {
       <Field label="模型列表 URL">
         <Input v-model="form.modelsEndpointUrl" placeholder="https://api.openai.com/v1/models" />
       </Field>
-      <Field label="模型列表凭证解析">
+      <Field label="模型列表凭证发送">
         <Select v-model="form.modelsEndpointResolver" :options="modelsEndpointResolverOptions" />
       </Field>
       <Field label="Web 搜索" as="div">

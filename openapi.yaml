@@ -165,7 +165,7 @@ components:
         modelsEndpointResolver:
           enum:
             - unknown
-            - generalApiKey
+            - followRequest
             - bearerToken
             - xApiKey
             - searchKey
@@ -395,7 +395,7 @@ components:
           type: string
         credentialsResolver:
           enum:
-            - generalApiKey
+            - followRequest
             - bearerToken
             - xApiKey
             - searchKey
@@ -1185,7 +1185,7 @@ components:
         credentialsResolver:
           enum:
             - unknown
-            - generalApiKey
+            - followRequest
             - bearerToken
             - xApiKey
             - searchKey
@@ -1262,7 +1262,7 @@ components:
         modelsEndpointResolver:
           enum:
             - unknown
-            - generalApiKey
+            - followRequest
             - bearerToken
             - xApiKey
             - searchKey
@@ -1612,7 +1612,7 @@ components:
         modelsEndpointResolver:
           enum:
             - unknown
-            - generalApiKey
+            - followRequest
             - bearerToken
             - xApiKey
             - searchKey

@@ -16,7 +16,7 @@ const form = ref({
   name: props.endpoint?.name ?? '',
   path: props.endpoint?.path ?? '',
   modelPath: props.endpoint?.modelPath ?? '',
-  credentialsResolver: props.endpoint?.credentialsResolver ?? ('generalApiKey' as const),
+  credentialsResolver: props.endpoint?.credentialsResolver ?? ('followRequest' as const),
   endpointType: (props.endpoint?.endpointType ?? 'general') as EndpointType,
 })
 const saving = ref(false)
@@ -46,7 +46,7 @@ const endpointTypeOptions = computed(() => {
 })
 
 const credentialsResolverOptions = [
-  { value: 'generalApiKey', label: '通用密钥' },
+  { value: 'followRequest', label: '跟随请求' },
   { value: 'bearerToken', label: 'Bearer Token' },
   { value: 'xApiKey', label: 'X-Api-Key' },
   { value: 'searchKey', label: 'Search Key (?key=)' },
@@ -101,7 +101,7 @@ async function submit() {
           "
         />
       </Field>
-      <Field label="凭证解析">
+      <Field label="凭证发送">
         <Select v-model="form.credentialsResolver" :options="credentialsResolverOptions" />
       </Field>
     </form>

@@ -51,7 +51,6 @@ type gatewayFlowConfig struct {
 	Endpoint          db.Endpoint
 	PathVars          map[string]string
 	SourceFormat      llmbridge.Format
-	Credentials       int32
 	ExtractModel      func(*http.Request, []byte, map[string]string) (gatewayModelMode, error)
 	SetBodyModel      func([]byte, string) ([]byte, error)
 	ResolveCandidates func(context.Context, gatewayModelMode, gatewayAuthState) (candidateSet, error)
@@ -100,9 +99,6 @@ type gatewayModelMode struct {
 }
 
 func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, startedAt time.Time, cfg gatewayFlowConfig) *gatewayFlow {
-	if cfg.Credentials == 0 {
-		cfg.Credentials = cfg.Endpoint.CredentialsResolver
-	}
 	return &gatewayFlow{
 		h:         h,
 		w:         w,
@@ -264,7 +260,7 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 }
 
 func (f *gatewayFlow) authenticateAndBackfill() bool {
-	apiKey, user, err := f.h.authenticateClient(f.ctxs.Request, f.r, f.config.Credentials)
+	apiKey, user, err := f.h.authenticateClient(f.ctxs.Request, f.r)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {

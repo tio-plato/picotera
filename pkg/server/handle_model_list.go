@@ -21,7 +21,7 @@ func (h *gatewayHandler) handleModelList(w http.ResponseWriter, r *http.Request,
 	r.Body.Close()
 
 	// 3. Authenticate client.
-	_, _, err := h.authenticateClient(r.Context(), r, endpoint.CredentialsResolver)
+	_, _, err := h.authenticateClient(r.Context(), r)
 	if err != nil {
 		handleGatewayErr(w, err)
 		return
