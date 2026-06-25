@@ -429,17 +429,17 @@ watch(detailTabs, (tabs) => {
                 </span>
               </Field>
               <Field label="渠道" as="div">
-                <span class="font-mono text-sm">{{ providerLabel(selected.providerId) }}</span>
+                <span class="font-mono text-sm break-all">{{ providerLabel(selected.providerId) }}</span>
               </Field>
               <Field label="推测渠道" as="div">
-                <span class="font-mono text-sm">{{ selected.inferredProvider || '—' }}</span>
+                <span class="font-mono text-sm break-all">{{ selected.inferredProvider || '—' }}</span>
               </Field>
               <Field label="模型" as="div">
-                <span class="font-mono text-sm">{{ selected.model || '—' }}</span>
+                <span class="font-mono text-sm break-all">{{ selected.model || '—' }}</span>
               </Field>
               <Field label="推测模型" as="div">
-                <span class="inline-flex items-center gap-1.5">
-                  <span class="font-mono text-sm">{{ selected.inferredModel || '—' }}</span>
+                <span class="inline-flex items-center gap-1.5 min-w-0">
+                  <span class="font-mono text-sm break-all">{{ selected.inferredModel || '—' }}</span>
                   <Tag
                     v-if="inferredModelSourceLabel(selected.inferredModelSource)"
                     variant="muted"
@@ -448,7 +448,7 @@ watch(detailTabs, (tabs) => {
                 </span>
               </Field>
               <Field label="端点" as="div">
-                <span class="font-mono text-sm">{{ selected.endpointPath || '—' }}</span>
+                <span class="font-mono text-sm break-all">{{ selected.endpointPath || '—' }}</span>
               </Field>
               <Field label="状态码" as="div">
                 <span
