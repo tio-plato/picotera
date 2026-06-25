@@ -612,11 +612,11 @@ function resetCursorAndReload() {
           <span v-else class="text-ink-faint">—</span>
         </template>
         <template #cell-endpointPath="{ row }">
-          <div class="flex items-center gap-1.5 min-w-0 max-w-[16rem]">
+          <div class="flex items-center gap-1.5 min-w-0 max-w-2xs">
             <span class="truncate text-ink" :title="row.endpointPath">{{
               endpointDisplay(row.endpointPath).name
             }}</span>
-            <Tag v-if="endpointDisplay(row.endpointPath).unified" variant="accent">统一网关</Tag>
+            <Tag v-if="endpointDisplay(row.endpointPath).unified" variant="accent" title="统一网关">U</Tag>
           </div>
         </template>
         <template #cell-model="{ row }">
