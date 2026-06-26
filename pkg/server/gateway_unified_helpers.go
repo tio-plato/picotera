@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -194,21 +195,16 @@ func (s *Server) resolveProvidersByTypes(ctx context.Context, model string, type
 	valid = dedupeUnifiedRows(valid, srcType)
 	// Sort by combined priority (provider + per-model-entry) descending,
 	// with higher provider IDs first when priorities tie.
-	for i := 1; i < len(valid); i++ {
-		for j := i; j > 0; j-- {
-			if !candidateComesBefore(
-				valid[j].ProviderID,
-				valid[j].Priority,
-				valid[j].ProviderPriority,
-				valid[j-1].ProviderID,
-				valid[j-1].Priority,
-				valid[j-1].ProviderPriority,
-			) {
-				break
-			}
-			valid[j], valid[j-1] = valid[j-1], valid[j]
-		}
-	}
+	slices.SortFunc(valid, func(a, b db.GetProvidersByEndpointTypesAndModelRow) int {
+		return compareCandidateOrder(
+			a.ProviderID,
+			a.Priority,
+			a.ProviderPriority,
+			b.ProviderID,
+			b.Priority,
+			b.ProviderPriority,
+		)
+	})
 	return valid, nil
 }
 

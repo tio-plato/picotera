@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -526,25 +526,25 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 }
 
 func sortProviderCandidates(rows []providerCandidateRow) {
-	sort.Slice(rows, func(i, j int) bool {
-		return candidateComesBefore(
-			rows[i].ProviderID,
-			rows[i].EntryPriority,
-			rows[i].ProviderPriority,
-			rows[j].ProviderID,
-			rows[j].EntryPriority,
-			rows[j].ProviderPriority,
+	slices.SortFunc(rows, func(a, b providerCandidateRow) int {
+		return compareCandidateOrder(
+			a.ProviderID,
+			a.EntryPriority,
+			a.ProviderPriority,
+			b.ProviderID,
+			b.EntryPriority,
+			b.ProviderPriority,
 		)
 	})
 }
 
-func candidateComesBefore(leftProviderID, leftEntryPriority, leftProviderPriority, rightProviderID, rightEntryPriority, rightProviderPriority int32) bool {
+func compareCandidateOrder(leftProviderID, leftEntryPriority, leftProviderPriority, rightProviderID, rightEntryPriority, rightProviderPriority int32) int {
 	left := int(leftEntryPriority) + int(leftProviderPriority)
 	right := int(rightEntryPriority) + int(rightProviderPriority)
 	if left != right {
-		return left > right
+		return right - left
 	}
-	return leftProviderID > rightProviderID
+	return int(rightProviderID - leftProviderID)
 }
 
 // buildUpstreamRequest constructs the upstream HTTP request.
