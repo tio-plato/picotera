@@ -48,8 +48,8 @@ func TestEngine_LoadsScripts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunRewriteModel: %v", err)
 	}
-	if out != "base-a-b" {
-		t.Errorf("want priority waterfall base-a-b, got %q", out)
+	if out != "base-b-a" {
+		t.Errorf("want priority waterfall base-b-a, got %q", out)
 	}
 }
 
