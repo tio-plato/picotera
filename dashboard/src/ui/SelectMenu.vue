@@ -254,46 +254,50 @@ defineExpose({ open, show, close, toggle, focusInput })
         </div>
         <slot name="header" :close="close" />
         <div class="flex-1 overflow-y-auto py-1">
-          <button
-            v-for="(opt, i) in filteredOptions"
-            :id="`${listboxId}-opt-${i}`"
-            :key="String(opt.value)"
-            type="button"
-            role="option"
-            :data-index="i"
-            :aria-selected="opt.value === modelValue"
-            :disabled="opt.disabled"
-            class="flex items-center justify-between gap-2 w-full px-2.5 py-1.5 border-0 text-left text-sm cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            :class="[
-              opt.value === modelValue ? 'text-accent-ink font-medium' : 'text-ink',
-              activeIndex === i
-                ? 'bg-surface-100'
-                : opt.value === modelValue
-                  ? 'bg-accent-faint'
-                  : 'bg-transparent',
-              activeIndex === i && activeByKeyboard ? 'ring-1 ring-inset ring-accent rounded-md' : '',
-            ]"
-            @mouseenter="onOptionHover(i)"
-            @click="pick(opt.value)"
-          >
-            <span class="flex flex-col min-w-0 leading-tight">
-              <span class="truncate">{{ opt.label }}</span>
-              <span v-if="opt.hint" class="font-mono text-2xs text-ink-faint truncate">{{
-                opt.hint
-              }}</span>
-            </span>
-            <span
-              v-if="opt.value === modelValue"
-              class="inline-block w-1.5 h-1.5 rounded-full bg-accent flex-none"
-              aria-hidden="true"
-            />
-          </button>
-          <div
-            v-if="filteredOptions.length === 0"
-            class="px-2.5 py-3 text-center text-xs text-ink-faint"
-          >
-            无匹配项
-          </div>
+          <slot name="options">
+            <button
+              v-for="(opt, i) in filteredOptions"
+              :id="`${listboxId}-opt-${i}`"
+              :key="String(opt.value)"
+              type="button"
+              role="option"
+              :data-index="i"
+              :aria-selected="opt.value === modelValue"
+              :disabled="opt.disabled"
+              class="flex items-center justify-between gap-2 w-full px-2.5 py-1.5 border-0 text-left text-sm cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :class="[
+                opt.value === modelValue ? 'text-accent-ink font-medium' : 'text-ink',
+                activeIndex === i
+                  ? 'bg-surface-100'
+                  : opt.value === modelValue
+                    ? 'bg-accent-faint'
+                    : 'bg-transparent',
+                activeIndex === i && activeByKeyboard
+                  ? 'ring-1 ring-inset ring-accent rounded-md'
+                  : '',
+              ]"
+              @mouseenter="onOptionHover(i)"
+              @click="pick(opt.value)"
+            >
+              <span class="flex flex-col min-w-0 leading-tight">
+                <span class="truncate">{{ opt.label }}</span>
+                <span v-if="opt.hint" class="font-mono text-2xs text-ink-faint truncate">{{
+                  opt.hint
+                }}</span>
+              </span>
+              <span
+                v-if="opt.value === modelValue"
+                class="inline-block w-1.5 h-1.5 rounded-full bg-accent flex-none"
+                aria-hidden="true"
+              />
+            </button>
+            <div
+              v-if="filteredOptions.length === 0"
+              class="px-2.5 py-3 text-center text-xs text-ink-faint"
+            >
+              无匹配项
+            </div>
+          </slot>
         </div>
       </div>
     </Teleport>
