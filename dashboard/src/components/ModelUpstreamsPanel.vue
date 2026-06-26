@@ -106,7 +106,7 @@ const mergedUpstreams = computed(() =>
             <Tag v-if="u.providerDisabled" variant="muted">渠道已禁用</Tag>
             <Icon name="chevron-down" :size="12" class="-rotate-90 text-ink-faint" />
             <Tag variant="accent">{{ u.upstreamModelName }}</Tag>
-            <Tag v-if="u.providerPriority + u.priority > 0" variant="more">
+            <Tag v-if="u.providerPriority + u.priority != 0" variant="more">
               P{{ u.providerPriority + u.priority }}
             </Tag>
             <Tag v-if="u.entryDisabled" variant="muted">上游已禁用</Tag>
@@ -171,7 +171,7 @@ const mergedUpstreams = computed(() =>
                 <Tag v-if="u.providerDisabled" variant="muted">渠道已禁用</Tag>
                 <Icon name="chevron-down" :size="12" class="-rotate-90 text-ink-faint" />
                 <Tag variant="accent">{{ u.upstreamModelName }}</Tag>
-                <Tag v-if="u.providerPriority > 0 || u.priority > 0" variant="more">
+                <Tag v-if="u.providerPriority + u.priority != 0" variant="more">
                   P{{ u.providerPriority + u.priority }}
                 </Tag>
                 <Tag v-if="u.entryDisabled" variant="muted">上游已禁用</Tag>
