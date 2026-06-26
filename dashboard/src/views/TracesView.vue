@@ -57,7 +57,6 @@ const columns = computed<AutoDataTableColumn<RequestTraceView>[]>(() => [
   { key: 'duration', header: '持续时间', align: 'right' },
   { key: 'userMessagePreview', header: '用户消息' },
   { key: 'projectId', header: '项目' },
-  { key: 'id', header: 'Trace ID' },
   { key: 'metaRequestCount', header: '请求', align: 'right' },
   { key: 'totalTokens', header: 'Token', align: 'right' },
   { key: 'cacheHitRate', header: '缓存命中', align: 'right' },
@@ -70,6 +69,10 @@ function rowKey(row: RequestTraceView) {
 
 function openTrace(row: RequestTraceView) {
   router.push({ name: 'requests', query: { traceId: row.id } })
+}
+
+function traceHref(row: RequestTraceView) {
+  return router.resolve({ name: 'requests', query: { traceId: row.id } }).href
 }
 
 function openProject(event: Event, projectId: number) {
@@ -191,7 +194,13 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
     </div>
 
     <DataCard>
-      <AutoDataTable :columns="columns" :items="traces" :row-key="rowKey" :on-row-click="openTrace">
+      <AutoDataTable
+        :columns="columns"
+        :items="traces"
+        :row-key="rowKey"
+        :row-href="traceHref"
+        :on-row-click="openTrace"
+      >
         <template #cell-lastRequestAt="{ row }">
           <div class="flex flex-col leading-tight">
             <span class="font-mono tabular-nums text-ink">{{
@@ -237,20 +246,12 @@ function formatCosts(costs: TraceCostView[] | null): { text: string; title?: str
           <button
             v-if="row.projectId"
             type="button"
-            class="font-medium text-ink hover:text-accent transition-colors bg-transparent border-0 p-0 cursor-pointer"
+            class="pointer-events-auto font-medium text-ink hover:text-accent transition-colors bg-transparent border-0 p-0 cursor-pointer"
             @click="(ev: Event) => openProject(ev, row.projectId!)"
           >
             {{ projectLabel(row.projectId) }}
           </button>
           <span v-else class="text-ink-faint">—</span>
-        </template>
-        <template #cell-id="{ row }">
-          <div class="flex max-w-[13rem] flex-col leading-tight">
-            <span class="truncate font-mono text-xs text-ink" :title="row.id">{{ row.id }}</span>
-            <span class="truncate font-mono text-2xs text-ink-faint" :title="row.parentSpanId">
-              {{ row.parentSpanId }}
-            </span>
-          </div>
         </template>
         <template #cell-metaRequestCount="{ row }">
           <div class="flex flex-col items-end leading-tight">

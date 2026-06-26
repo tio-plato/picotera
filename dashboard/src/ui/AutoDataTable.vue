@@ -21,6 +21,7 @@ const props = defineProps<{
   selected?: (row: Row) => boolean
   dimmed?: (row: Row) => boolean
   newRowKeys?: Set<string | number>
+  rowHref?: (row: Row) => string
   onRowClick?: (row: Row, event: MouseEvent) => void
 }>()
 
@@ -50,7 +51,17 @@ function defaultFormat(value: unknown): string {
 }
 
 function handleRowClick(row: Row, event: MouseEvent) {
+  if (props.rowHref && props.onRowClick) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return
+    }
+    event.preventDefault()
+  }
   props.onRowClick?.(row, event)
+}
+
+function rowLabel(rowKeyValue: string | number): string {
+  return `打开 ${rowKeyValue}`
 }
 </script>
 
@@ -70,18 +81,31 @@ function handleRowClick(row: Row, event: MouseEvent) {
         :selected="selected?.(row)"
         :dimmed="dimmed?.(row)"
         :is-new="newRowKeys?.has(rowKey(row, i))"
-        :class="onRowClick ? 'cursor-pointer' : ''"
+        :class="onRowClick || rowHref ? 'relative cursor-pointer' : ''"
         @click="(event: MouseEvent) => handleRowClick(row, event)"
       >
         <Td
           v-for="col in columns"
           :key="col.key"
           :actions="col.actions"
-          :class="[col.align === 'right' ? 'text-right' : '', col.cellClass]"
+          :class="[
+            col.align === 'right' ? 'text-right' : '',
+            rowHref ? 'relative' : '',
+            col.cellClass,
+          ]"
         >
-          <slot :name="`cell-${col.key}`" :row="row" :value="get(row, col.field)" :index="i">{{
-            defaultFormat(get(row, col.field))
-          }}</slot>
+          <a
+            v-if="rowHref"
+            class="absolute inset-0 z-10"
+            :href="rowHref(row)"
+            :aria-label="rowLabel(rowKey(row, i))"
+            tabindex="-1"
+          />
+          <div :class="rowHref ? 'relative z-20 pointer-events-none' : ''">
+            <slot :name="`cell-${col.key}`" :row="row" :value="get(row, col.field)" :index="i">{{
+              defaultFormat(get(row, col.field))
+            }}</slot>
+          </div>
         </Td>
       </Tr>
       <tr v-if="items.length === 0">

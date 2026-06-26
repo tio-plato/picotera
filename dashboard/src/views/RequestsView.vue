@@ -258,6 +258,10 @@ function openDetails(r: RequestView) {
   replaceRequestDetailUrl(r.id)
 }
 
+function requestHref(r: RequestView) {
+  return router.resolve({ name: 'requestDetail', params: { requestId: r.id } }).href
+}
+
 function rowSelected(r: RequestView) {
   return panel.isActive(`request:${r.id}`)
 }
@@ -537,6 +541,7 @@ function resetCursorAndReload() {
         :row-key="rowKey"
         :selected="rowSelected"
         :new-row-keys="newRowKeys"
+        :row-href="requestHref"
         :on-row-click="(r) => openDetails(r)"
       >
         <template #header-projectId>
