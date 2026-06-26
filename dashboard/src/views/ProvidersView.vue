@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useConfirm } from '@/composables/useConfirm'
 import type { ProviderView } from '@/api'
-import { deleteProvider, invalidateProviders, upsertProvider } from '@/api/client'
-import { listProviders } from '@/api/client'
+import {
+  deleteProvider,
+  invalidateProviderEndpoints,
+  invalidateProviders,
+  listProviderEndpoints,
+  listProviders,
+  upsertProvider,
+  upsertProviderEndpoint,
+} from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import ProviderForm from '@/components/ProviderForm.vue'
 import ProviderEndpointsPanel from '@/components/ProviderEndpointsPanel.vue'
@@ -28,6 +35,8 @@ import {
 const panel = useSidePanel()
 const confirm = useConfirm()
 const queryClient = useQueryClient()
+const error = ref('')
+const duplicatingProviderId = ref<number | null>(null)
 
 const providersQuery = useQuery({
   queryKey: queryKeys.providers.all,
@@ -51,6 +60,10 @@ const deleteProviderMutation = useMutation({
   mutationFn: deleteProvider,
   onSuccess: () => invalidateProviders(queryClient),
 })
+const duplicateProviderMutation = useMutation({
+  mutationFn: upsertProvider,
+  onSuccess: () => invalidateProviders(queryClient),
+})
 
 function editKey(id: number) {
   return `provider:${id}:edit`
@@ -65,6 +78,14 @@ function modelsKey(id: number) {
 function modelNames(p: ProviderView): string[] {
   const list = (p.providerModels ?? []) as { model?: string }[]
   return Array.from(new Set(list.map((e) => e.model).filter((m): m is string => !!m)))
+}
+
+function nextDuplicatedProviderName(sourceName: string) {
+  const names = new Set(providers.value.map((p) => p.name))
+  for (let i = 1; ; i += 1) {
+    const candidate = `${sourceName} (${i})`
+    if (!names.has(candidate)) return candidate
+  }
 }
 
 function openCreate() {
@@ -93,6 +114,43 @@ function toggleModels(p: ProviderView) {
 
 async function toggleDisabled(p: ProviderView) {
   await updateProviderMutation.mutateAsync({ ...p, disabled: !p.disabled })
+}
+
+async function duplicateProvider(p: ProviderView) {
+  error.value = ''
+  duplicatingProviderId.value = p.id
+
+  try {
+    const created = await duplicateProviderMutation.mutateAsync({
+      ...p,
+      id: 0,
+      name: nextDuplicatedProviderName(p.name),
+    })
+
+    try {
+      const bindings = await listProviderEndpoints(p.id)
+      await Promise.all(
+        bindings.map((binding) =>
+          upsertProviderEndpoint({
+            ...binding,
+            providerId: created.id,
+          }),
+        ),
+      )
+      await invalidateProviderEndpoints(queryClient)
+    } catch (e: unknown) {
+      error.value =
+        e instanceof Error
+          ? `渠道已创建，但端点绑定复制失败：${e.message}`
+          : '渠道已创建，但端点绑定复制失败'
+    }
+
+    panel.open(ProviderForm, { provider: created }, { key: editKey(created.id) })
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : '复制渠道失败'
+  } finally {
+    duplicatingProviderId.value = null
+  }
 }
 
 function confirmDelete(_event: Event, p: ProviderView) {
@@ -128,6 +186,7 @@ function rowSelected(id: number) {
         </Button>
       </div>
     </div>
+    <StateText v-if="error" :dashed="false">{{ error }}</StateText>
     <StateText v-if="loading">加载中…</StateText>
     <DataCard v-else-if="providers.length">
       <DataTable>
@@ -186,6 +245,14 @@ function rowSelected(id: number) {
                   @click="toggleBindings(p)"
                 >
                   <Icon name="link" :size="13" />
+                </IconButton>
+                <IconButton
+                  title="复制渠道"
+                  aria-label="复制渠道"
+                  :disabled="duplicatingProviderId === p.id"
+                  @click="duplicateProvider(p)"
+                >
+                  <Icon name="copy" :size="13" />
                 </IconButton>
                 <IconButton
                   :active="panel.isActive(editKey(p.id))"
