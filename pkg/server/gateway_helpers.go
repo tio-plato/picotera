@@ -459,7 +459,8 @@ func fromNoModelRow(r db.GetProvidersByEndpointRow) providerCandidateRow {
 }
 
 // resolveProviders gets providers for the given endpoint and model, filters out
-// those without upstream URLs, and sorts by combined priority (descending).
+// those without upstream URLs, and sorts by combined priority (descending),
+// with higher provider IDs first when priorities tie.
 // When model == "" the endpoint is a no-model endpoint (endpoint.model_path = "")
 // and every non-disabled provider bound to the path is considered, independent
 // of model / model_provider_endpoint configuration.
@@ -519,13 +520,31 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 		}
 	}
 
-	sort.Slice(valid, func(i, j int) bool {
-		pi := int(valid[i].EntryPriority) + int(valid[i].ProviderPriority)
-		pj := int(valid[j].EntryPriority) + int(valid[j].ProviderPriority)
-		return pi > pj
-	})
+	sortProviderCandidates(valid)
 
 	return valid, nil
+}
+
+func sortProviderCandidates(rows []providerCandidateRow) {
+	sort.Slice(rows, func(i, j int) bool {
+		return candidateComesBefore(
+			rows[i].ProviderID,
+			rows[i].EntryPriority,
+			rows[i].ProviderPriority,
+			rows[j].ProviderID,
+			rows[j].EntryPriority,
+			rows[j].ProviderPriority,
+		)
+	})
+}
+
+func candidateComesBefore(leftProviderID, leftEntryPriority, leftProviderPriority, rightProviderID, rightEntryPriority, rightProviderPriority int32) bool {
+	left := int(leftEntryPriority) + int(leftProviderPriority)
+	right := int(rightEntryPriority) + int(rightProviderPriority)
+	if left != right {
+		return left > right
+	}
+	return leftProviderID > rightProviderID
 }
 
 // buildUpstreamRequest constructs the upstream HTTP request.

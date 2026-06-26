@@ -192,12 +192,18 @@ func (s *Server) resolveProvidersByTypes(ctx context.Context, model string, type
 		return nil, &gatewayError{status: http.StatusNotFound, message: "no provider available for model", code: errorx.NoProviderAvailable.Error()}
 	}
 	valid = dedupeUnifiedRows(valid, srcType)
-	// Sort by combined priority (provider + per-model-entry) descending.
+	// Sort by combined priority (provider + per-model-entry) descending,
+	// with higher provider IDs first when priorities tie.
 	for i := 1; i < len(valid); i++ {
 		for j := i; j > 0; j-- {
-			pi := int(valid[j].Priority) + int(valid[j].ProviderPriority)
-			pj := int(valid[j-1].Priority) + int(valid[j-1].ProviderPriority)
-			if pi <= pj {
+			if !candidateComesBefore(
+				valid[j].ProviderID,
+				valid[j].Priority,
+				valid[j].ProviderPriority,
+				valid[j-1].ProviderID,
+				valid[j-1].Priority,
+				valid[j-1].ProviderPriority,
+			) {
 				break
 			}
 			valid[j], valid[j-1] = valid[j-1], valid[j]

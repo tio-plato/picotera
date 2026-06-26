@@ -75,6 +75,25 @@ func TestGatewayHookErrorStatusMapping(t *testing.T) {
 	}
 }
 
+func TestSortProviderCandidatesTiesByProviderIDDesc(t *testing.T) {
+	rows := []providerCandidateRow{
+		{ProviderID: 1, ProviderPriority: 10, EntryPriority: 5},
+		{ProviderID: 3, ProviderPriority: 12, EntryPriority: 3},
+		{ProviderID: 2, ProviderPriority: 20, EntryPriority: 1},
+		{ProviderID: 4, ProviderPriority: 1, EntryPriority: 1},
+	}
+
+	sortProviderCandidates(rows)
+
+	got := []int32{rows[0].ProviderID, rows[1].ProviderID, rows[2].ProviderID, rows[3].ProviderID}
+	want := []int32{2, 3, 1, 4}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("provider order = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestBuildPathCandidateSetAnnotations(t *testing.T) {
 	rows := []providerCandidateRow{{
 		ProviderID:              1,

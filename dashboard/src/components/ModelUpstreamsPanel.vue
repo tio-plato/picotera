@@ -28,7 +28,7 @@ function sortUpstreams(list: Upstream[]): Upstream[] {
   return [...list].sort((a, b) => {
     const score = b.priority + b.providerPriority - (a.priority + a.providerPriority)
     if (score !== 0) return score
-    if (a.providerId !== b.providerId) return a.providerId - b.providerId
+    if (a.providerId !== b.providerId) return b.providerId - a.providerId
     return a.upstreamModelName.localeCompare(b.upstreamModelName)
   })
 }
@@ -80,7 +80,8 @@ const mergedUpstreams = computed(() =>
   [...props.upstreams].sort((a, b) => {
     const score = b.priority + b.providerPriority - (a.priority + a.providerPriority)
     if (score !== 0) return score
-    return a.providerId - b.providerId
+    if (a.providerId !== b.providerId) return b.providerId - a.providerId
+    return a.upstreamModelName.localeCompare(b.upstreamModelName)
   }),
 )
 </script>

@@ -33,7 +33,13 @@ const providersQuery = useQuery({
   queryKey: queryKeys.providers.all,
   queryFn: listProviders,
 })
-const providers = computed(() => providersQuery.data.value ?? [])
+const providers = computed(() =>
+  [...(providersQuery.data.value ?? [])].sort((a, b) => {
+    const priority = b.priority - a.priority
+    if (priority !== 0) return priority
+    return b.id - a.id
+  }),
+)
 const loading = computed(() => providersQuery.isLoading.value)
 const count = computed(() => providers.value.length)
 
