@@ -23,8 +23,10 @@ type ModelSummary struct {
 }
 
 // RequestShape is the JS-visible shape of the incoming client request
-// (ctx.request). Body is included as a parsed JSON value only when the
-// content-type is application/json and the body parses; otherwise omitted.
+// (ctx.request). It carries no body field: ctx.request.body is installed
+// separately by the session as a lazy Proxy over the Go-side body tree (see
+// Session.SetClientBody), so a large body a hook never reads never crosses into
+// QuickJS.
 type RequestShape struct {
 	Path    string              `json:"path"`
 	Method  string              `json:"method"`
@@ -34,7 +36,6 @@ type RequestShape struct {
 	// (e.g. {model} in /v1beta/models/{model}:generateContent). Omitted when
 	// the endpoint has no variables.
 	PathVars map[string]string `json:"pathVars,omitempty"`
-	Body     json.RawMessage   `json:"body,omitempty"`
 }
 
 // ApiKeySummary is the JS-visible shape of the API key that authorized the
@@ -44,6 +45,16 @@ type ApiKeySummary struct {
 	Name        string            `json:"name"`
 	Annotations map[string]string `json:"annotations"`
 	Disabled    bool              `json:"disabled"`
+}
+
+// UserSummary is the JS-visible shape of the authenticated user that owns the
+// API key (ctx.user). Constant for the lifetime of the request. Credentials and
+// other sensitive fields are intentionally omitted.
+type UserSummary struct {
+	ID          int64             `json:"id"`
+	Name        string            `json:"name"`
+	Annotations map[string]string `json:"annotations"`
+	IsAdmin     bool              `json:"isAdmin"`
 }
 
 // ProviderSummary is the JS-visible shape of a provider (ctx.provider and
@@ -103,14 +114,37 @@ type BeforeRequestDecision struct {
 }
 
 // PendingRequestShape is the waterfall value for the rewriteRequest hook: the
-// upstream request about to be sent. Body carries a JSON string token only
-// when content-type is application/json; otherwise omitted and the Go side
-// keeps the pre-hook bytes verbatim.
+// upstream request about to be sent. Body never crosses the JSON boundary
+// (json:"-"): on input it is always nil — the session installs pending.body as
+// a lazy Proxy over the Go-side body tree — and on output it carries the final
+// upstream body bytes directly (nil means "fall back to the pre-hook bytes").
 type PendingRequestShape struct {
 	URL     string              `json:"url"`
 	Method  string              `json:"method"`
 	Headers map[string][]string `json:"headers"`
-	Body    json.RawMessage     `json:"body,omitempty"`
+	Body    []byte              `json:"-"`
+}
+
+// UpstreamErrorView is the waterfall input for the afterUpstreamError hook. It
+// describes an upstream attempt that just failed. StatusCode is the upstream's
+// original HTTP status (0 for connection/build failures with no response).
+// Streamed is true when the client response already started streaming (an
+// in-stream SSE error), in which case Break in the decision is ignored.
+type UpstreamErrorView struct {
+	Break      bool   `json:"break"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	Streamed   bool   `json:"streamed"`
+}
+
+// AfterUpstreamErrorDecision is the waterfall output for the afterUpstreamError
+// hook. Break (only honored when streamed=false) interrupts the gateway request
+// and writes a downstream response: StatusCode<=0 follows the upstream's
+// original status; Message=="" follows the upstream's original body.
+type AfterUpstreamErrorDecision struct {
+	Break      bool   `json:"break"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
 }
 
 // OutboundProfile is the waterfall value for the beforeTransform hook: the
@@ -143,11 +177,13 @@ type ContextPatch struct {
 	RoutedModel      *ModelSummary      `json:"routedModel,omitempty"`
 	Request          *RequestShape      `json:"request,omitempty"`
 	ApiKey           *ApiKeySummary     `json:"apiKey,omitempty"`
+	User             *UserSummary       `json:"user,omitempty"`
 	Provider         *ProviderSummary   `json:"provider,omitempty"`
 	ProviderModel    *ProviderModel     `json:"providerModel,omitempty"`
 	Attempt          *AttemptState      `json:"attempt,omitempty"`
 	Annotations      *map[string]string `json:"annotations,omitempty"`
 	Stream           *bool              `json:"stream,omitempty"`
 	SourceFormat     *string            `json:"sourceFormat,omitempty"`
+	Format           *string            `json:"format,omitempty"`
 	UpstreamResponse json.RawMessage    `json:"upstreamResponse,omitempty"` // only rewriteProviderModels
 }

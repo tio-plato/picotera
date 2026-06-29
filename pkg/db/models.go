@@ -16,6 +16,17 @@ type ApiKey struct {
 	Disabled    bool               `json:"disabled"`
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+	UserID      int64              `json:"userId"`
+}
+
+type AppUser struct {
+	ID          int64              `json:"id"`
+	DisplayName string             `json:"displayName"`
+	IsAdmin     bool               `json:"isAdmin"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+	Disabled    bool               `json:"disabled"`
+	Annotations []byte             `json:"annotations"`
 }
 
 type Endpoint struct {
@@ -31,12 +42,6 @@ type ExchangeRate struct {
 	Name        string         `json:"name"`
 	Symbol      string         `json:"symbol"`
 	UnitsPerUsd pgtype.Numeric `json:"unitsPerUsd"`
-}
-
-type GlobalSetting struct {
-	Key       string             `json:"key"`
-	Value     []byte             `json:"value"`
-	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
 }
 
 type Model struct {
@@ -55,6 +60,7 @@ type Project struct {
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
 	AutoCreated bool               `json:"autoCreated"`
+	UserID      int64              `json:"userId"`
 }
 
 type Provider struct {
@@ -79,40 +85,45 @@ type ProviderEndpoint struct {
 }
 
 type Request struct {
-	ID                 string           `json:"id"`
-	SpanID             pgtype.Text      `json:"spanId"`
-	ParentSpanID       pgtype.Text      `json:"parentSpanId"`
-	ProviderID         pgtype.Int4      `json:"providerId"`
-	EndpointPath       pgtype.Text      `json:"endpointPath"`
-	ApiKeyID           pgtype.Int4      `json:"apiKeyId"`
-	Model              pgtype.Text      `json:"model"`
-	InputTokens        pgtype.Int4      `json:"inputTokens"`
-	CacheReadTokens    pgtype.Int4      `json:"cacheReadTokens"`
-	OutputTokens       pgtype.Int4      `json:"outputTokens"`
-	CacheWriteTokens   pgtype.Int4      `json:"cacheWriteTokens"`
-	StatusCode         pgtype.Int4      `json:"statusCode"`
-	ErrorMessage       pgtype.Text      `json:"errorMessage"`
-	TtftMs             pgtype.Int4      `json:"ttftMs"`
-	TimeSpentMs        pgtype.Int4      `json:"timeSpentMs"`
-	CreatedAt          pgtype.Timestamp `json:"createdAt"`
-	Type               int32            `json:"type"`
-	Status             int32            `json:"status"`
-	UpstreamModel      pgtype.Text      `json:"upstreamModel"`
-	ModelCost          pgtype.Numeric   `json:"modelCost"`
-	ModelCostCurrency  pgtype.Text      `json:"modelCostCurrency"`
-	UserMessagePreview pgtype.Text      `json:"userMessagePreview"`
-	CacheWrite1hTokens pgtype.Int4      `json:"cacheWrite1hTokens"`
-	ProjectID          pgtype.Int4      `json:"projectId"`
-	FinishReason       pgtype.Int4      `json:"finishReason"`
+	ID                  string           `json:"id"`
+	SpanID              pgtype.Text      `json:"spanId"`
+	ParentSpanID        pgtype.Text      `json:"parentSpanId"`
+	ProviderID          pgtype.Int4      `json:"providerId"`
+	EndpointPath        pgtype.Text      `json:"endpointPath"`
+	ApiKeyID            pgtype.Int4      `json:"apiKeyId"`
+	Model               pgtype.Text      `json:"model"`
+	InputTokens         pgtype.Int4      `json:"inputTokens"`
+	CacheReadTokens     pgtype.Int4      `json:"cacheReadTokens"`
+	OutputTokens        pgtype.Int4      `json:"outputTokens"`
+	CacheWriteTokens    pgtype.Int4      `json:"cacheWriteTokens"`
+	StatusCode          pgtype.Int4      `json:"statusCode"`
+	ErrorMessage        pgtype.Text      `json:"errorMessage"`
+	TtftMs              pgtype.Int4      `json:"ttftMs"`
+	TimeSpentMs         pgtype.Int4      `json:"timeSpentMs"`
+	CreatedAt           pgtype.Timestamp `json:"createdAt"`
+	Type                int32            `json:"type"`
+	Status              int32            `json:"status"`
+	UpstreamModel       pgtype.Text      `json:"upstreamModel"`
+	ModelCost           pgtype.Numeric   `json:"modelCost"`
+	ModelCostCurrency   pgtype.Text      `json:"modelCostCurrency"`
+	UserMessagePreview  pgtype.Text      `json:"userMessagePreview"`
+	CacheWrite1hTokens  pgtype.Int4      `json:"cacheWrite1hTokens"`
+	ProjectID           pgtype.Int4      `json:"projectId"`
+	FinishReason        pgtype.Int4      `json:"finishReason"`
+	InferredProvider    pgtype.Text      `json:"inferredProvider"`
+	InferredModel       pgtype.Text      `json:"inferredModel"`
+	InferredModelSource int16            `json:"inferredModelSource"`
+	UserID              pgtype.Int8      `json:"userId"`
 }
 
-type RequestOverviewHourly struct {
+type RequestOverviewBucketed struct {
 	BucketAt           interface{}    `json:"bucketAt"`
 	ApiKeyID           pgtype.Int4    `json:"apiKeyId"`
 	Model              pgtype.Text    `json:"model"`
 	UpstreamModel      pgtype.Text    `json:"upstreamModel"`
 	ProviderID         pgtype.Int4    `json:"providerId"`
 	ProjectID          pgtype.Int4    `json:"projectId"`
+	UserID             pgtype.Int8    `json:"userId"`
 	CostCurrency       interface{}    `json:"costCurrency"`
 	RequestCount       int64          `json:"requestCount"`
 	InputTokens        int64          `json:"inputTokens"`
@@ -123,13 +134,14 @@ type RequestOverviewHourly struct {
 	Cost               pgtype.Numeric `json:"cost"`
 }
 
-type RequestSpeedHourly struct {
+type RequestSpeedBucketed struct {
 	BucketAt            interface{} `json:"bucketAt"`
 	Model               pgtype.Text `json:"model"`
 	UpstreamModel       pgtype.Text `json:"upstreamModel"`
 	ProviderID          pgtype.Int4 `json:"providerId"`
 	ApiKeyID            pgtype.Int4 `json:"apiKeyId"`
 	ProjectID           pgtype.Int4 `json:"projectId"`
+	UserID              pgtype.Int8 `json:"userId"`
 	PrefillTokenSum     int64       `json:"prefillTokenSum"`
 	PrefillTimeSum      int64       `json:"prefillTimeSum"`
 	PrefillRequestCount int64       `json:"prefillRequestCount"`
@@ -152,4 +164,20 @@ type Trace struct {
 	FirstRequestAt pgtype.Timestamp `json:"firstRequestAt"`
 	LastRequestAt  pgtype.Timestamp `json:"lastRequestAt"`
 	UpdatedAt      pgtype.Timestamp `json:"updatedAt"`
+	UserID         int64            `json:"userId"`
+}
+
+type UserIdentity struct {
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"userId"`
+	Provider  string             `json:"provider"`
+	Identity  string             `json:"identity"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+}
+
+type UserSetting struct {
+	UserID    int64              `json:"userId"`
+	Key       string             `json:"key"`
+	Value     []byte             `json:"value"`
+	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
 }

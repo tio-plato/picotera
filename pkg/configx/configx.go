@@ -37,7 +37,16 @@ type Config struct {
 	// the main router so profiling endpoints are never reachable through the
 	// gateway/ingress — only via an explicit debug port (port-forward in k8s).
 	// Empty (the default) disables pprof entirely.
-	PprofAddr string `mapstructure:"pprof_addr"`
+	PprofAddr string     `mapstructure:"pprof_addr"`
+	AppTitle  string     `mapstructure:"app_title"`
+	Auth      AuthConfig `mapstructure:"auth"`
+}
+
+type AuthConfig struct {
+	HeaderEnabled  bool   `mapstructure:"header_enabled"`
+	HeaderName     string `mapstructure:"header_name"`
+	AutoCreateUser bool   `mapstructure:"auto_create_user"`
+	SingleUserMode bool   `mapstructure:"single_user_mode"`
 }
 
 type KVConfig struct {
@@ -53,6 +62,7 @@ type S3Config struct {
 	Bucket    string `mapstructure:"bucket"`
 	UseSSL    bool   `mapstructure:"use_ssl"`
 	PublicURL string `mapstructure:"public_url"`
+	PathStyle *bool  `mapstructure:"path_style"`
 }
 
 func Parse() (*Config, error) {
@@ -92,11 +102,17 @@ func Parse() (*Config, error) {
 	viper.SetDefault("kv.redis_url", "localhost:6379")
 	viper.SetDefault("llmbridge_plugin_start_timeout", 10*time.Second)
 	viper.SetDefault("heap_dump_dir", os.TempDir())
+	viper.SetDefault("app_title", "PicoTera")
 
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	bindEnvs(Config{})
 	viper.Unmarshal(&config)
+
+	if config.Auth.HeaderEnabled && config.Auth.HeaderName == "" {
+		return nil, errors.New("auth.header_enabled is set but auth.header_name is empty")
+	}
+
 	return &config, nil
 }
 

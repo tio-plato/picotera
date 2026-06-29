@@ -1,11 +1,16 @@
 package server
 
 import (
+	"encoding/base64"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"picotera/pkg/db"
+
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // chunkReader delivers pre-defined chunks sequentially.
@@ -547,4 +552,516 @@ func TestResponseExtractor_SSE_StreamError_FirstWins(t *testing.T) {
 	if got := extractor.StreamError(); got != "first error" {
 		t.Errorf("StreamError() = %q, want %q", got, "first error")
 	}
+}
+
+func TestResponseExtractor_SSE_InferredProvider_OpenRouter(t *testing.T) {
+	events := []string{
+		"data: {\"id\":\"gen-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"nvidia/nemotron-3-ultra-550b-a55b-20260604:free\",\"provider\":\"Nvidia\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"}}]}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "Nvidia" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "Nvidia")
+	}
+	if m.InferredModel != "nvidia/nemotron-3-ultra-550b-a55b-20260604:free" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "nvidia/nemotron-3-ultra-550b-a55b-20260604:free")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredProvider_BedrockMessageStart(t *testing.T) {
+	events := []string{
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_bdrk_7xxvzn3y5guhlrkyxno2katnow5gsvlkk7hu3x3ddo6nwhily4ra\",\"model\":\"claude-opus-4-7\",\"role\":\"assistant\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "Amazon Bedrock" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "Amazon Bedrock")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredProvider_BedrockInvocationMetrics(t *testing.T) {
+	events := []string{
+		"event: message_stop\ndata: {\"type\":\"message_stop\",\"amazon-bedrock-invocationMetrics\":{\"inputTokenCount\":100,\"outputTokenCount\":91}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "Amazon Bedrock" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "Amazon Bedrock")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredProvider_FirstHitWins(t *testing.T) {
+	// provider field appears first and should lock; later invocationMetrics is ignored.
+	events := []string{
+		"data: {\"provider\":\"OpenRouter\"}\n\n",
+		"event: message_stop\ndata: {\"type\":\"message_stop\",\"amazon-bedrock-invocationMetrics\":{}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "OpenRouter" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "OpenRouter")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_SignatureDecodes(t *testing.T) {
+	model := "claude-opus-4-5-20251101"
+	sig := buildSignaturePayload(model)
+	events := []string{
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"" + sig + "\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != model {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, model)
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_SignaturePriorityOverModelField(t *testing.T) {
+	model := "from-signature"
+	sig := buildSignaturePayload(model)
+	events := []string{
+		"data: {\"model\":\"from-model\"}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"" + sig + "\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != model {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, model)
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_FallsBackToModelField(t *testing.T) {
+	events := []string{
+		"data: {\"model\":\"fallback-model\"}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "fallback-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "fallback-model")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_MessageModelField(t *testing.T) {
+	events := []string{
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-4-8\",\"id\":\"msg_01Pfr7Jo77eNMGoFEumXYh9t\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "claude-opus-4-8" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "claude-opus-4-8")
+	}
+	if m.InferredModelSource != db.InferredModelSourceResponse {
+		t.Errorf("InferredModelSource: got %d, want response", m.InferredModelSource)
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_TopLevelModelWins(t *testing.T) {
+	events := []string{
+		"data: {\"model\":\"top-level-model\"}\n\n",
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"message-model\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "top-level-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "top-level-model")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_BadSignatureFallsBack(t *testing.T) {
+	events := []string{
+		"data: {\"model\":\"fallback-model\"}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"not-base64!!!\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "fallback-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "fallback-model")
+	}
+}
+
+func TestResponseExtractor_SSE_InferredModel_SignatureNonASCIIFallsBack(t *testing.T) {
+	model := "claude-opus-4\xff"
+	sig := buildSignaturePayload(model)
+	events := []string{
+		"data: {\"model\":\"fallback-model\"}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"" + sig + "\"}}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "fallback-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "fallback-model")
+	}
+}
+
+func TestResponseExtractor_JSON_InferredModel_SignatureDecodes(t *testing.T) {
+	model := "claude-sonnet-4-20251101"
+	sig := buildSignaturePayload(model)
+	jsonData := `{"id":"msg_1","type":"message","model":"json-model","content":[{"type":"thinking","thinking":"...","signature":"` + sig + `"},{"type":"text","text":"Hi"}],"usage":{"input_tokens":10,"output_tokens":5}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != model {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, model)
+	}
+}
+
+func TestResponseExtractor_JSON_InferredModel_FallsBackToModelField(t *testing.T) {
+	jsonData := `{"id":"msg_1","type":"message","model":"json-model","content":[{"type":"text","text":"Hi"}],"usage":{"input_tokens":10,"output_tokens":5}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredModel != "json-model" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "json-model")
+	}
+}
+
+func TestResponseExtractor_JSON_InferredProvider_BedrockTopLevelID(t *testing.T) {
+	jsonData := `{"id":"msg_bdrk_abc123","type":"message","model":"claude-opus-4-7","content":[{"type":"text","text":"Hi"}],"usage":{"input_tokens":10,"output_tokens":5}}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InferredProvider != "Amazon Bedrock" {
+		t.Errorf("InferredProvider: got %q, want %q", m.InferredProvider, "Amazon Bedrock")
+	}
+}
+
+func TestResponseExtractor_SignatureFixture_File(t *testing.T) {
+	data, err := os.ReadFile("../../fixtures/signature.txt")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	sig := strings.TrimSpace(string(data))
+
+	extractor := &ResponseExtractor{}
+	extractor.inferSignatureModel(sig)
+
+	if extractor.sigModel == "" {
+		t.Fatal("expected model to be inferred from fixture signature, got empty")
+	}
+	want := "claude-opus-4-8"
+	if extractor.sigModel != want {
+		t.Errorf("InferredModel from fixture: got %q, want %q", extractor.sigModel, want)
+	}
+}
+
+func TestResponseExtractor_SSE_Gemini_Usage(t *testing.T) {
+	start := time.Now().Add(-100 * time.Millisecond)
+	events := []string{
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hello\"}]}}],\"usageMetadata\":{\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\",\"responseId\":\"cAY8\"}\n\n",
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" there! How\"}]}}],\"usageMetadata\":{\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\",\"responseId\":\"cAY8\"}\n\n",
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" can I help you today?\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":11,\"totalTokenCount\":19,\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\",\"responseId\":\"cAY8\"}\n\n",
+	}
+	// strings.NewReader, not chunkReader: these events exceed the read buffer
+	// and chunkReader drops the tail of any chunk past the buffer's free space.
+	inner := strings.NewReader(strings.Join(events, ""))
+	extractor := NewResponseExtractor(inner, "text/event-stream", start)
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.TTFTMs == nil {
+		t.Fatal("expected TTFTMs to be set from first content event")
+	}
+	if *m.TTFTMs < 50 {
+		t.Errorf("TTFTMs too low: got %d, expected >= 50", *m.TTFTMs)
+	}
+	if m.InputTokens == nil || *m.InputTokens != 8 {
+		t.Errorf("InputTokens: got %v, want 8", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 11 {
+		t.Errorf("OutputTokens: got %v, want 11", m.OutputTokens)
+	}
+	if m.InferredModel != "google/gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "google/gemini-2.5-flash-lite")
+	}
+	if m.InferredModelSource != db.InferredModelSourceResponse {
+		t.Errorf("InferredModelSource: got %d, want response", m.InferredModelSource)
+	}
+}
+
+func TestResponseExtractor_SSE_Gemini_EarlyUsageMetadataIgnored(t *testing.T) {
+	events := []string{
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hello\"}]}}],\"usageMetadata\":{\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\"}\n\n",
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" there!\"}]}}],\"usageMetadata\":{\"trafficType\":\"ON_DEMAND\"},\"modelVersion\":\"google/gemini-2.5-flash-lite\"}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens != nil {
+		t.Errorf("InputTokens should be nil when usageMetadata has no counts, got %v", m.InputTokens)
+	}
+	if m.OutputTokens != nil {
+		t.Errorf("OutputTokens should be nil when usageMetadata has no counts, got %v", m.OutputTokens)
+	}
+}
+
+func TestResponseExtractor_JSON_Gemini(t *testing.T) {
+	jsonData := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello there!"}]},"finishReason":"STOP","avgLogprobs":-0.0417}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":10,"totalTokenCount":18,"trafficType":"ON_DEMAND"},"modelVersion":"google/gemini-2.5-flash-lite","responseId":"iwY8"}`
+	inner := strings.NewReader(jsonData)
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 8 {
+		t.Errorf("InputTokens: got %v, want 8", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 10 {
+		t.Errorf("OutputTokens: got %v, want 10", m.OutputTokens)
+	}
+	if m.InferredModel != "google/gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "google/gemini-2.5-flash-lite")
+	}
+}
+
+func TestResponseExtractor_SSE_Gemini_CachedAndThoughts(t *testing.T) {
+	events := []string{
+		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Hi\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":100,\"cachedContentTokenCount\":40,\"candidatesTokenCount\":11,\"thoughtsTokenCount\":5,\"totalTokenCount\":116},\"modelVersion\":\"google/gemini-2.5-flash-lite\"}\n\n",
+	}
+	inner := &chunkReader{chunks: []string{strings.Join(events, "")}}
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 60 {
+		t.Errorf("InputTokens: got %v, want 60", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 16 {
+		t.Errorf("OutputTokens: got %v, want 16", m.OutputTokens)
+	}
+	if m.CacheReadTokens == nil || *m.CacheReadTokens != 40 {
+		t.Errorf("CacheReadTokens: got %v, want 40", m.CacheReadTokens)
+	}
+}
+
+func TestResponseExtractor_SSE_Gemini_CRLFFraming(t *testing.T) {
+	// Google's Gemini endpoint frames SSE events with CRLF (\r\n\r\n), not LF.
+	// Every chunk repeats usageMetadata with cumulative counts (last wins).
+	start := time.Now().Add(-100 * time.Millisecond)
+	events := []string{
+		"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello\"}],\"role\":\"model\"},\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":9,\"candidatesTokenCount\":1,\"totalTokenCount\":10},\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"f4U8\"}\r\n\r\n",
+		"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" there!\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":9,\"candidatesTokenCount\":10,\"totalTokenCount\":19},\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"f4U8\"}\r\n\r\n",
+	}
+	inner := strings.NewReader(strings.Join(events, ""))
+	extractor := NewResponseExtractor(inner, "text/event-stream", start)
+
+	_, _ = io.ReadAll(extractor)
+
+	m := extractor.Metrics()
+	if m.TTFTMs == nil {
+		t.Fatal("expected TTFTMs to be set despite CRLF framing")
+	}
+	if m.InputTokens == nil || *m.InputTokens != 9 {
+		t.Errorf("InputTokens: got %v, want 9", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 10 {
+		t.Errorf("OutputTokens: got %v, want 10", m.OutputTokens)
+	}
+	if m.InferredModel != "gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want %q", m.InferredModel, "gemini-2.5-flash-lite")
+	}
+}
+
+func TestResponseExtractor_SSE_CRLF_BytesForwardedUnchanged(t *testing.T) {
+	// The CR-stripping is parse-only: bytes forwarded to the client must be
+	// byte-for-byte identical, CRs included.
+	sseData := "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\r\n\r\ndata: [DONE]\r\n\r\n"
+	inner := strings.NewReader(sseData)
+	extractor := NewResponseExtractor(inner, "text/event-stream", time.Now())
+
+	got, err := io.ReadAll(extractor)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != sseData {
+		t.Errorf("bytes forwarded unchanged:\ngot:  %q\nwant: %q", string(got), sseData)
+	}
+}
+
+func TestResponseExtractor_JSONArray_Gemini_Usage(t *testing.T) {
+	data, err := os.ReadFile("../../fixtures/d8u8kj0s9a291pp7cakg.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	extractor := NewResponseExtractor(strings.NewReader(string(data)), "application/json", time.Now())
+
+	if _, err := io.ReadAll(extractor); err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 9 {
+		t.Errorf("InputTokens: got %v, want 9", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 11 {
+		t.Errorf("OutputTokens: got %v, want 11 (last wins)", m.OutputTokens)
+	}
+	if m.TTFTMs == nil {
+		t.Errorf("TTFTMs: got nil, want recorded")
+	}
+	if m.InferredModel != "gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want gemini-2.5-flash-lite", m.InferredModel)
+	}
+	if m.InferredModelSource != db.InferredModelSourceResponse {
+		t.Errorf("InferredModelSource: got %d, want %d", m.InferredModelSource, db.InferredModelSourceResponse)
+	}
+}
+
+func TestResponseExtractor_JSONArray_Gemini_BytesForwardedUnchanged(t *testing.T) {
+	data, err := os.ReadFile("../../fixtures/d8u8kj0s9a291pp7cakg.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	extractor := NewResponseExtractor(strings.NewReader(string(data)), "application/json", time.Now())
+
+	got, err := io.ReadAll(extractor)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("bytes forwarded unchanged:\ngot:  %q\nwant: %q", string(got), string(data))
+	}
+}
+
+func TestResponseExtractor_JSONArray_Gemini_AcrossReadCalls(t *testing.T) {
+	data, err := os.ReadFile("../../fixtures/d8u8kj0s9a291pp7cakg.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	// Split into single-byte chunks to stress cross-Read state persistence.
+	var chunks []string
+	for _, b := range []byte(data) {
+		chunks = append(chunks, string([]byte{b}))
+	}
+	inner := &chunkReader{chunks: chunks}
+	extractor := NewResponseExtractor(inner, "application/json", time.Now())
+
+	got, err := io.ReadAll(extractor)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("bytes forwarded unchanged across reads:\ngot:  %q\nwant: %q", string(got), string(data))
+	}
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 9 {
+		t.Errorf("InputTokens: got %v, want 9", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 11 {
+		t.Errorf("OutputTokens: got %v, want 11", m.OutputTokens)
+	}
+	if m.InferredModel != "gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want gemini-2.5-flash-lite", m.InferredModel)
+	}
+}
+
+func TestResponseExtractor_JSONArray_Gemini_StringBraces(t *testing.T) {
+	// Element text contains {, }, ", and ] — must not confuse value delimiting.
+	jsonData := `[{"candidates":[{"content":{"parts":[{"text":"a{b}c,d]e\"f"}],"role":"model"}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":7,"totalTokenCount":12},"modelVersion":"gemini-2.5-flash-lite"}]`
+	extractor := NewResponseExtractor(strings.NewReader(jsonData), "application/json", time.Now())
+
+	got, err := io.ReadAll(extractor)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if string(got) != jsonData {
+		t.Errorf("bytes forwarded unchanged:\ngot:  %q\nwant: %q", string(got), jsonData)
+	}
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 5 {
+		t.Errorf("InputTokens: got %v, want 5", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 7 {
+		t.Errorf("OutputTokens: got %v, want 7", m.OutputTokens)
+	}
+}
+
+func TestResponseExtractor_JSON_Gemini_SingleObjectStillWorks(t *testing.T) {
+	jsonData := `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":11,"totalTokenCount":20},"modelVersion":"gemini-2.5-flash-lite"}`
+	extractor := NewResponseExtractor(strings.NewReader(jsonData), "application/json", time.Now())
+
+	if _, err := io.ReadAll(extractor); err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+
+	m := extractor.Metrics()
+	if m.InputTokens == nil || *m.InputTokens != 9 {
+		t.Errorf("InputTokens: got %v, want 9", m.InputTokens)
+	}
+	if m.OutputTokens == nil || *m.OutputTokens != 11 {
+		t.Errorf("OutputTokens: got %v, want 11", m.OutputTokens)
+	}
+	if m.InferredModel != "gemini-2.5-flash-lite" {
+		t.Errorf("InferredModel: got %q, want gemini-2.5-flash-lite", m.InferredModel)
+	}
+}
+
+func buildSignaturePayload(model string) string {
+	// Build a protobuf message whose [2][1][6] path contains `model`.
+	inner := protowire.AppendTag(nil, 6, protowire.BytesType)
+	inner = protowire.AppendBytes(inner, []byte(model))
+	middle := protowire.AppendTag(nil, 1, protowire.BytesType)
+	middle = protowire.AppendBytes(middle, inner)
+	outer := protowire.AppendTag(nil, 2, protowire.BytesType)
+	outer = protowire.AppendBytes(outer, middle)
+	return base64.StdEncoding.EncodeToString(outer)
 }

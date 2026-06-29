@@ -35,6 +35,13 @@ const requestBodyOptions = computed(() => {
   ]
 })
 
+const bodyViewForControl = computed({
+  get: () => bodyView.value as 'raw' | 'json',
+  set: (v) => {
+    bodyView.value = v
+  },
+})
+
 function headerEntries(headers: Record<string, string[]> | undefined) {
   if (!headers) return []
   return Object.entries(headers).map(([k, v]) => ({ key: k, value: v.join(', ') }))
@@ -67,8 +74,6 @@ async function copyAsCurl() {
     // clipboard unavailable — silently ignore
   }
 }
-
-
 </script>
 
 <template>
@@ -141,9 +146,8 @@ async function copyAsCurl() {
             >
             <SegmentedControl
               v-if="payload.bodyEncoding !== 'base64' && requestBodyOptions.length > 1"
-              :model-value="(bodyView as 'raw' | 'json')"
+              v-model="bodyViewForControl"
               :options="requestBodyOptions"
-              @update:model-value="bodyView = ($event as 'raw' | 'json')"
             />
           </div>
           <div

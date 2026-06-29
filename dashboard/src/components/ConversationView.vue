@@ -8,7 +8,11 @@ import {
   watch,
   type ComponentPublicInstance,
 } from 'vue'
-import type { ConversationMessage, ConversationPart, ConversationRole } from '@/composables/conversation'
+import type {
+  ConversationMessage,
+  ConversationPart,
+  ConversationRole,
+} from '@/composables/conversation'
 import { renderMarkdown } from '@/composables/useSSEParser'
 import { Button, Icon, Tag } from '@/ui'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
@@ -191,9 +195,7 @@ onBeforeUnmount(() => {
               v-else-if="part.kind === 'toolCall' || part.kind === 'toolResult'"
               class="group rounded-md border bg-surface-0"
               :class="
-                part.kind === 'toolResult' && part.isError
-                  ? 'border-err'
-                  : 'border-line-soft'
+                part.kind === 'toolResult' && part.isError ? 'border-err' : 'border-line-soft'
               "
             >
               <summary

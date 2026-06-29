@@ -16,7 +16,7 @@ type Resolver = NonNullable<ProviderEndpointView['credentialsResolver']>
 
 const RESOLVER_OPTIONS: ReadonlyArray<{ value: Resolver; label: string }> = [
   { value: 'unknown', label: '继承端点设置' },
-  { value: 'generalApiKey', label: '通用密钥' },
+  { value: 'followRequest', label: '跟随请求' },
   { value: 'bearerToken', label: 'Bearer Token' },
   { value: 'xApiKey', label: 'X-Api-Key' },
   { value: 'searchKey', label: 'Search Key (?key=)' },
@@ -74,6 +74,19 @@ const availableEndpoints = computed(() =>
   ),
 )
 
+const endpointPathOptions = computed(() => [
+  {
+    value: '',
+    label: availableEndpoints.value.length ? '选择端点' : '该渠道暂无可绑定端点',
+    disabled: true,
+  },
+  ...availableEndpoints.value.map((e) => ({
+    value: e.path,
+    label: e.name || e.path,
+    hint: e.name ? e.path : undefined,
+  })),
+])
+
 function guessUpstreamUrl(endpointPath: string) {
   if (!endpointPath) return ''
 
@@ -88,10 +101,6 @@ function guessUpstreamUrl(endpointPath: string) {
     shortestMatchedBinding.upstreamUrl.length - shortestMatchedBinding.endpointPath.length,
   )
   return `${prefix}${endpointPath}`
-}
-
-function onAddEndpointPathChange() {
-  form.value.upstreamUrl = guessUpstreamUrl(form.value.endpointPath)
 }
 
 const upsertMutation = useMutation({
@@ -110,6 +119,13 @@ watch(
     form.value.upstreamUrl = ''
     form.value.credentialsResolver = 'unknown'
     editingPath.value = null
+  },
+)
+
+watch(
+  () => form.value.endpointPath,
+  (path) => {
+    form.value.upstreamUrl = guessUpstreamUrl(path)
   },
 )
 
@@ -164,8 +180,7 @@ async function saveEdit(pe: ProviderEndpointView) {
   error.value = ''
   try {
     await upsertMutation.mutateAsync({
-      providerId: props.providerId,
-      endpointPath: pe.endpointPath,
+      ...pe,
       upstreamUrl: editDraft.value.upstreamUrl,
       credentialsResolver: editDraft.value.credentialsResolver,
     })
@@ -295,12 +310,9 @@ function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
                 <Select
                   v-model="editDraft.credentialsResolver"
                   size="sm"
+                  :options="RESOLVER_OPTIONS"
                   @keydown="onEditKeydown($event, pe)"
-                >
-                  <option v-for="opt in RESOLVER_OPTIONS" :key="opt.value" :value="opt.value">
-                    {{ opt.label }}
-                  </option>
-                </Select>
+                />
               </Field>
             </div>
           </template>
@@ -317,16 +329,9 @@ function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
           <Select
             v-model="form.endpointPath"
             size="sm"
+            :options="endpointPathOptions"
             :disabled="!availableEndpoints.length"
-            @change="onAddEndpointPathChange"
-          >
-            <option value="" disabled>
-              {{ availableEndpoints.length ? '选择端点' : '该渠道暂无可绑定端点' }}
-            </option>
-            <option v-for="e in availableEndpoints" :key="e.path" :value="e.path">
-              {{ e.path }} — {{ e.name }}
-            </option>
-          </Select>
+          />
         </Field>
         <Field label="上游 URL">
           <Input
@@ -340,12 +345,9 @@ function onEditKeydown(e: KeyboardEvent, pe: ProviderEndpointView) {
           <Select
             v-model="form.credentialsResolver"
             size="sm"
+            :options="RESOLVER_OPTIONS"
             :disabled="!availableEndpoints.length"
-          >
-            <option v-for="opt in RESOLVER_OPTIONS" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </option>
-          </Select>
+          />
         </Field>
         <div class="flex justify-end">
           <Button

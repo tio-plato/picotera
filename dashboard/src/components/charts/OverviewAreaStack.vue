@@ -105,7 +105,12 @@ function escape(s: string) {
 
 const prefs = usePreferencesStore()
 const themeVersion = ref(0)
-watch(() => prefs.theme, () => { themeVersion.value++ })
+watch(
+  () => prefs.theme,
+  () => {
+    themeVersion.value++
+  },
+)
 
 const option = computed<EChartsOption>(() => {
   void themeVersion.value
@@ -175,7 +180,7 @@ const option = computed<EChartsOption>(() => {
         itemStyle: { color: chartColors[originalIdx] },
         emphasis: { focus: 'series' },
         blur: {
-          areaStyle: { opacity: 0.25 }
+          areaStyle: { opacity: 0.25 },
         },
       }
     }),

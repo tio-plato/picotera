@@ -8,6 +8,7 @@ import (
 	netpprof "net/http/pprof"
 	"picotera/db/migrations"
 	"picotera/pkg/artifacts"
+	"picotera/pkg/auth"
 	"picotera/pkg/configx"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
@@ -18,6 +19,7 @@ import (
 	"picotera/pkg/logx"
 	"picotera/pkg/server/static"
 	"syscall"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -33,6 +35,7 @@ type Server struct {
 	queries          *db.Queries
 	db               *pgxpool.Pool
 	router           *chi.Mux
+	mgmtRouter       chi.Router
 	api              huma.API
 	config           *configx.Config
 	httpClient       *http.Client
@@ -45,6 +48,34 @@ type Server struct {
 	projectExtractor *projectExtractor
 	llmBridge        llmbridge.Bridge
 	liveRequests     *liveRequestRegistry
+}
+
+// newGatewayTransport builds an HTTP transport for upstream gateway requests
+// with its own http2.ConfigureTransports call so that responseHeaderTimeout is
+// bound to this exact transport (the HTTP/2 transport reads it from its bound
+// *http.Transport — see the nonStreamBase comment in NewServer). HTTP/2
+// keepalive PINGs are enabled so dead connections — especially silently dropped
+// CONNECT proxy tunnels — are detected and evicted instead of being reused,
+// which otherwise surfaces as "http2: timeout awaiting response headers".
+func newGatewayTransport(config *configx.Config, responseHeaderTimeout time.Duration) *http.Transport {
+	t := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   config.GatewayDialTimeout,
+			KeepAlive: config.GatewayDialKeepAlive,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       config.GatewayIdleConnTimeout,
+		TLSHandshakeTimeout:   config.GatewayTLSHandshakeTimeout,
+		ExpectContinueTimeout: config.GatewayExpectContinueTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
+	}
+	if h2, err := http2.ConfigureTransports(t); err == nil {
+		h2.ReadIdleTimeout = config.GatewayHTTP2ReadIdleTimeout
+		h2.PingTimeout = config.GatewayHTTP2PingTimeout
+	}
+	return t
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -82,37 +113,23 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	logx.WithContext(ctx).Info("connected to database")
 
-	baseTransport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   config.GatewayDialTimeout,
-			KeepAlive: config.GatewayDialKeepAlive,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       config.GatewayIdleConnTimeout,
-		TLSHandshakeTimeout:   config.GatewayTLSHandshakeTimeout,
-		ExpectContinueTimeout: config.GatewayExpectContinueTimeout,
-		ResponseHeaderTimeout: config.GatewayResponseHeaderTimeout,
-	}
-	// Enable HTTP/2 keepalive PINGs so dead connections — especially silently
-	// dropped CONNECT proxy tunnels — are detected and evicted instead of being
-	// reused, which otherwise surfaces as "http2: timeout awaiting response
-	// headers". Without ReadIdleTimeout the implicit h2 transport sends no PINGs.
-	if h2, err := http2.ConfigureTransports(baseTransport); err == nil {
-		h2.ReadIdleTimeout = config.GatewayHTTP2ReadIdleTimeout
-		h2.PingTimeout = config.GatewayHTTP2PingTimeout
-	}
+	baseTransport := newGatewayTransport(config, config.GatewayResponseHeaderTimeout)
 	httpClient := &http.Client{Transport: baseTransport}
 	// Non-streaming requests get a more lenient header timeout: the upstream
-	// may buffer the whole response and return headers late. Clone after
-	// ConfigureTransports so the clone inherits the HTTP/2 config, then raise
-	// the header timeout to the global read timeout (a hard upper bound, not
-	// unlimited). ResponseHeaderTimeout is a connection-level transport field
-	// and cannot be overridden per request, so the cache keys on the streaming
-	// flag and keeps both bases.
-	nonStreamBase := baseTransport.Clone()
-	nonStreamBase.ResponseHeaderTimeout = config.GatewayReadTimeout
+	// may buffer the whole response and return headers late, so raise the header
+	// timeout to the global read timeout (a hard upper bound, not unlimited).
+	//
+	// This MUST be a transport built by its own http2.ConfigureTransports call,
+	// not baseTransport.Clone(): under HTTP/2 the response-header timeout is read
+	// from the *http.Transport bound to the *http2.Transport at ConfigureTransports
+	// time (see x/net/http2 responseHeaderTimeout -> cc.t.t1.ResponseHeaderTimeout).
+	// Clone() only shallow-copies TLSNextProto, whose "h2" entry still points at
+	// baseTransport's http2.Transport — so a cloned transport's raised
+	// ResponseHeaderTimeout is ignored for h2 upstreams and they'd still trip the
+	// 91s header timeout. ResponseHeaderTimeout is a connection-level transport
+	// field and cannot be overridden per request, so the cache keys on the
+	// streaming flag and keeps both bases.
+	nonStreamBase := newGatewayTransport(config, config.GatewayReadTimeout)
 	proxyCache := newProxyTransportCache(baseTransport, nonStreamBase)
 
 	sink, err := artifacts.NewSink(config.S3, logx.WithContext(ctx))
@@ -123,7 +140,14 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	router := chi.NewMux()
 	router.Use(decompressRequest)
-	api := humachi.New(router, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
+	// The user-auth middleware guards only the internal management API. Instead
+	// of matching a path prefix inside the middleware, we derive a sub-router
+	// that carries it and register every /api/picotera route on that sub-router
+	// (the Huma management operations below, plus the raw test/direct route in
+	// registerEndpoints). The gateway catch-all and /api/unified stay on the
+	// bare router and authenticate via API key.
+	mgmtRouter := router.With(auth.Middleware(auth.NewResolver(conn, queries, config.Auth)))
+	api := humachi.New(mgmtRouter, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
 
 	kvStore, err := kv.New(config.KV.Driver, kv.WithRedisURL(config.KV.RedisURL))
 	if err != nil {
@@ -156,6 +180,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		queries:          queries,
 		db:               conn,
 		router:           router,
+		mgmtRouter:       mgmtRouter,
 		api:              api,
 		httpClient:       httpClient,
 		proxyCache:       proxyCache,
@@ -182,75 +207,145 @@ func NewHuma() huma.API {
 	return s.api
 }
 
+// requireAdmin is a Huma middleware that rejects non-admin users. It runs after
+// the chi-level auth middleware (which writes the resolved user onto the request
+// context), so a missing user is a wiring bug rather than an unauthenticated
+// request — surfaced as 500, matching handleGetMe.
+func (s *Server) requireAdmin(ctx huma.Context, next func(huma.Context)) {
+	u := auth.UserFromContext(ctx.Context())
+	if u == nil {
+		_ = huma.WriteErr(s.api, ctx, http.StatusInternalServerError, "no user in context")
+		return
+	}
+	if !u.IsAdmin {
+		_ = huma.WriteErr(s.api, ctx, http.StatusForbidden, "admin required")
+		return
+	}
+	next(ctx)
+}
+
 func (s *Server) registerOperations() {
 	mgmt := huma.NewGroup(s.api, "/api/picotera")
-	huma.Register(mgmt, contract.OperationListProviders, s.handleListProviders)
-	huma.Register(mgmt, contract.OperationGetProvider, s.handleGetProvider)
-	huma.Register(mgmt, contract.OperationCreateProvider, s.handleCreateProvider)
-	huma.Register(mgmt, contract.OperationUpsertProvider, s.handleUpsertProvider)
-	huma.Register(mgmt, contract.OperationUpdateProviderModels, s.handleUpdateProviderModels)
-	huma.Register(mgmt, contract.OperationDeleteProvider, s.handleDeleteProvider)
-	huma.Register(mgmt, contract.OperationListModels, s.handleListModels)
-	huma.Register(mgmt, contract.OperationGetModel, s.handleGetModel)
-	huma.Register(mgmt, contract.OperationPutModel, s.handlePutModel)
-	huma.Register(mgmt, contract.OperationDeleteModel, s.handleDeleteModel)
-	huma.Register(mgmt, contract.OperationListEndpoints, s.handleListEndpoints)
-	huma.Register(mgmt, contract.OperationUpsertEndpoint, s.handleUpsertEndpoint)
-	huma.Register(mgmt, contract.OperationDeleteEndpoint, s.handleDeleteEndpoint)
-	huma.Register(mgmt, contract.OperationListProviderEndpoints, s.handleListProviderEndpoints)
-	huma.Register(mgmt, contract.OperationUpsertProviderEndpoint, s.handleUpsertProviderEndpoint)
-	huma.Register(mgmt, contract.OperationDeleteProviderEndpoint, s.handleDeleteProviderEndpoint)
-	huma.Register(mgmt, contract.OperationFetchModels, s.handleFetchModels)
+	admin := huma.NewGroup(s.api, "/api/picotera")
+	admin.UseMiddleware(s.requireAdmin)
+	s.register(mgmt, admin)
+}
+
+// register wires every management operation onto one of two groups sharing the
+// /api/picotera prefix: mgmt (all authenticated users) and admin (is_admin only,
+// via the requireAdmin middleware). Both registerOperations and NewHuma call it
+// so the live server and the openapi generator never drift apart.
+func (s *Server) register(mgmt, admin *huma.Group) {
+	// --- User group: every authenticated user ---
+	huma.Register(mgmt, contract.OperationGetMe, s.handleGetMe)
+	huma.Register(mgmt, contract.OperationGetOverviewSummary, s.handleGetOverviewSummary)
+	huma.Register(mgmt, contract.OperationGetOverviewDistribution, s.handleGetOverviewDistribution)
+	huma.Register(mgmt, contract.OperationGetOverviewSeries, s.handleGetOverviewSeries)
+	huma.Register(mgmt, contract.OperationGetOverviewSpeedBoxplot, s.handleGetOverviewSpeedBoxplot)
+	huma.Register(mgmt, contract.OperationListApiKeys, s.handleListApiKeys)
+	huma.Register(mgmt, contract.OperationGetApiKey, s.handleGetApiKey)
+	huma.Register(mgmt, contract.OperationCreateApiKey, s.handleCreateApiKey)
+	huma.Register(mgmt, contract.OperationUpdateApiKey, s.handleUpdateApiKey)
+	huma.Register(mgmt, contract.OperationDeleteApiKey, s.handleDeleteApiKey)
 	huma.Register(mgmt, contract.OperationListRequests, s.handleListRequests)
 	huma.Register(mgmt, contract.OperationListRequestTraces, s.handleListRequestTraces)
 	huma.Register(mgmt, contract.OperationGetRequest, s.handleGetRequest)
 	huma.Register(mgmt, contract.OperationListRequestSpans, s.handleListRequestSpans)
 	huma.Register(mgmt, contract.OperationInterruptRequest, s.handleInterruptRequest)
 	huma.Register(mgmt, contract.OperationGetRequestLive, s.handleGetRequestLive)
-	huma.Register(mgmt, contract.OperationListExchangeRates, s.handleListExchangeRates)
-	huma.Register(mgmt, contract.OperationGetExchangeRate, s.handleGetExchangeRate)
-	huma.Register(mgmt, contract.OperationPutExchangeRate, s.handlePutExchangeRate)
-	huma.Register(mgmt, contract.OperationDeleteExchangeRate, s.handleDeleteExchangeRate)
-	huma.Register(mgmt, contract.OperationMatchPricing, s.handleMatchPricing)
-	huma.Register(mgmt, contract.OperationListApiKeys, s.handleListApiKeys)
-	huma.Register(mgmt, contract.OperationGetApiKey, s.handleGetApiKey)
-	huma.Register(mgmt, contract.OperationCreateApiKey, s.handleCreateApiKey)
-	huma.Register(mgmt, contract.OperationUpdateApiKey, s.handleUpdateApiKey)
-	huma.Register(mgmt, contract.OperationDeleteApiKey, s.handleDeleteApiKey)
-	huma.Register(mgmt, contract.OperationGetOverviewSummary, s.handleGetOverviewSummary)
-	huma.Register(mgmt, contract.OperationGetOverviewDistribution, s.handleGetOverviewDistribution)
-	huma.Register(mgmt, contract.OperationGetOverviewSeries, s.handleGetOverviewSeries)
-	huma.Register(mgmt, contract.OperationGetOverviewSpeedBoxplot, s.handleGetOverviewSpeedBoxplot)
+	huma.Register(mgmt, contract.OperationListProviderLabels, s.handleListProviderLabels)
+	huma.Register(mgmt, contract.OperationListModelLabels, s.handleListModelLabels)
+	huma.Register(mgmt, contract.OperationListEndpointLabels, s.handleListEndpointLabels)
+	huma.Register(mgmt, contract.OperationListProjectLabels, s.handleListProjectLabels)
+	huma.Register(mgmt, contract.OperationListUpstreamModelLabels, s.handleListUpstreamModelLabels)
+
+	// Projects are per-user resources: every authenticated user manages their own.
 	huma.Register(mgmt, contract.OperationListProjects, s.handleListProjects)
 	huma.Register(mgmt, contract.OperationGetProject, s.handleGetProject)
 	huma.Register(mgmt, contract.OperationUpsertProject, s.handleUpsertProject)
 	huma.Register(mgmt, contract.OperationDeleteProject, s.handleDeleteProject)
 	huma.Register(mgmt, contract.OperationMergeProject, s.handleMergeProject)
-	huma.Register(mgmt, contract.OperationListScripts, s.handleListScripts)
-	huma.Register(mgmt, contract.OperationGetScript, s.handleGetScript)
-	huma.Register(mgmt, contract.OperationCreateScript, s.handleCreateScript)
-	huma.Register(mgmt, contract.OperationUpdateScript, s.handleUpdateScript)
-	huma.Register(mgmt, contract.OperationDeleteScript, s.handleDeleteScript)
-	huma.Register(mgmt, contract.OperationSimulateDispatch, s.handleSimulateDispatch)
-	huma.Register(mgmt, contract.OperationListKvEntries, s.handleListKvEntries)
-	huma.Register(mgmt, contract.OperationGetKvEntry, s.handleGetKvEntry)
-	huma.Register(mgmt, contract.OperationUpsertKvEntry, s.handleUpsertKvEntry)
-	huma.Register(mgmt, contract.OperationDeleteKvEntry, s.handleDeleteKvEntry)
-	huma.Register(mgmt, contract.OperationListGlobalSettings, s.handleListGlobalSettings)
-	huma.Register(mgmt, contract.OperationGetGlobalSetting, s.handleGetGlobalSetting)
-	huma.Register(mgmt, contract.OperationUpsertGlobalSetting, s.handleUpsertGlobalSetting)
-	huma.Register(mgmt, contract.OperationDeleteGlobalSetting, s.handleDeleteGlobalSetting)
+
+	// Per-user settings and runtime config.
+	huma.Register(mgmt, contract.OperationListUserSettings, s.handleListUserSettings)
+	huma.Register(mgmt, contract.OperationGetUserSetting, s.handleGetUserSetting)
+	huma.Register(mgmt, contract.OperationUpsertUserSetting, s.handleUpsertUserSetting)
+	huma.Register(mgmt, contract.OperationDeleteUserSetting, s.handleDeleteUserSetting)
+	huma.Register(mgmt, contract.OperationGetConfig, s.handleGetConfig)
+	// Exchange rates are read by the user-facing currency context (display
+	// currency conversion across overview / requests / traces), so the list is
+	// open to every authenticated user. Writes and pricing matching stay admin.
+	huma.Register(mgmt, contract.OperationListExchangeRates, s.handleListExchangeRates)
+
+	// --- Admin group: is_admin only ---
+	huma.Register(admin, contract.OperationGetAdminOverviewSummary, s.handleGetAdminOverviewSummary)
+	huma.Register(admin, contract.OperationGetAdminOverviewDistribution, s.handleGetAdminOverviewDistribution)
+	huma.Register(admin, contract.OperationGetAdminOverviewSeries, s.handleGetAdminOverviewSeries)
+	huma.Register(admin, contract.OperationGetAdminOverviewSpeedBoxplot, s.handleGetAdminOverviewSpeedBoxplot)
+	huma.Register(admin, contract.OperationListProviders, s.handleListProviders)
+	huma.Register(admin, contract.OperationGetProvider, s.handleGetProvider)
+	huma.Register(admin, contract.OperationCreateProvider, s.handleCreateProvider)
+	huma.Register(admin, contract.OperationUpsertProvider, s.handleUpsertProvider)
+	huma.Register(admin, contract.OperationUpdateProviderModels, s.handleUpdateProviderModels)
+	huma.Register(admin, contract.OperationDeleteProvider, s.handleDeleteProvider)
+	huma.Register(admin, contract.OperationFetchModels, s.handleFetchModels)
+	huma.Register(admin, contract.OperationListModels, s.handleListModels)
+	huma.Register(admin, contract.OperationGetModel, s.handleGetModel)
+	huma.Register(admin, contract.OperationPutModel, s.handlePutModel)
+	huma.Register(admin, contract.OperationDeleteModel, s.handleDeleteModel)
+	huma.Register(admin, contract.OperationListEndpoints, s.handleListEndpoints)
+	huma.Register(admin, contract.OperationUpsertEndpoint, s.handleUpsertEndpoint)
+	huma.Register(admin, contract.OperationDeleteEndpoint, s.handleDeleteEndpoint)
+	huma.Register(admin, contract.OperationListProviderEndpoints, s.handleListProviderEndpoints)
+	huma.Register(admin, contract.OperationUpsertProviderEndpoint, s.handleUpsertProviderEndpoint)
+	huma.Register(admin, contract.OperationDeleteProviderEndpoint, s.handleDeleteProviderEndpoint)
+	huma.Register(admin, contract.OperationListScripts, s.handleListScripts)
+	huma.Register(admin, contract.OperationGetScript, s.handleGetScript)
+	huma.Register(admin, contract.OperationCreateScript, s.handleCreateScript)
+	huma.Register(admin, contract.OperationUpdateScript, s.handleUpdateScript)
+	huma.Register(admin, contract.OperationDeleteScript, s.handleDeleteScript)
+	huma.Register(admin, contract.OperationListKvEntries, s.handleListKvEntries)
+	huma.Register(admin, contract.OperationGetKvEntry, s.handleGetKvEntry)
+	huma.Register(admin, contract.OperationUpsertKvEntry, s.handleUpsertKvEntry)
+	huma.Register(admin, contract.OperationDeleteKvEntry, s.handleDeleteKvEntry)
+	huma.Register(admin, contract.OperationGetExchangeRate, s.handleGetExchangeRate)
+	huma.Register(admin, contract.OperationPutExchangeRate, s.handlePutExchangeRate)
+	huma.Register(admin, contract.OperationDeleteExchangeRate, s.handleDeleteExchangeRate)
+	huma.Register(admin, contract.OperationMatchPricing, s.handleMatchPricing)
+	huma.Register(admin, contract.OperationListUsers, s.handleListUsers)
+	huma.Register(admin, contract.OperationGetUser, s.handleGetUser)
+	huma.Register(admin, contract.OperationCreateUser, s.handleCreateUser)
+	huma.Register(admin, contract.OperationUpdateUser, s.handleUpdateUser)
+	huma.Register(admin, contract.OperationDeleteUser, s.handleDeleteUser)
+	huma.Register(admin, contract.OperationListUserIdentities, s.handleListUserIdentities)
+	huma.Register(admin, contract.OperationCreateUserIdentity, s.handleCreateUserIdentity)
+	huma.Register(admin, contract.OperationUpdateUserIdentity, s.handleUpdateUserIdentity)
+	huma.Register(admin, contract.OperationDeleteUserIdentity, s.handleDeleteUserIdentity)
 }
 
 func (s *Server) registerEndpoints() {
 	// Unified generation routes. Registered BEFORE the catch-all gateway
 	// mount so chi resolves them as exact-match handlers, never reaching
 	// endpointRouter.Match. They route to handle_unified_gateway.go.
-	s.router.Post("/api/picotera/v1/messages", s.handleUnifiedGenerate(llmbridge.FormatAnthropicMessages))
-	s.router.Post("/api/picotera/v1/responses", s.handleUnifiedGenerate(llmbridge.FormatOpenAIResponses))
-	s.router.Post("/api/picotera/v1/chat/completions", s.handleUnifiedGenerate(llmbridge.FormatOpenAIChatCompletions))
-	s.router.Post("/api/picotera/v1beta/models/{model}:generateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiGenerateContent))
-	s.router.Post("/api/picotera/v1beta/models/{model}:streamGenerateContent", s.handleUnifiedGenerate(llmbridge.FormatGeminiStreamGenerateContent))
+	// Grouped under corsMiddleware so browsers can call them cross-origin;
+	// each route also registers OPTIONS so chi routes the preflight into the
+	// group (the middleware answers it with 204 before reaching the handler).
+	s.router.Group(func(r chi.Router) {
+		r.Use(corsMiddleware)
+		for _, route := range unifiedRoutes {
+			h := s.handleUnifiedGenerate(route.Format)
+			r.Post(route.Path, h)
+			r.Options(route.Path, h)
+		}
+	})
+
+	// Short-circuit test route: forwards a caller-supplied body straight to a
+	// provider's upstream, bypassing the entire gateway pipeline (no scripts,
+	// no MPE, no logging). Registered before the catch-all mount like the
+	// unified routes; not a Huma operation, so it never enters openapi.yaml.
+	// Registered on mgmtRouter so it inherits user auth like the rest of
+	// /api/picotera.
+	s.mgmtRouter.Post("/api/picotera/test/direct", s.handleTestDirect)
 
 	s.router.Mount("/", &gatewayHandler{s})
 }

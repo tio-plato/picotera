@@ -72,7 +72,7 @@ function confirmDeleteEndpoint(_event: Event, path: string) {
             <Th>名称</Th>
             <Th>类型</Th>
             <Th>模型字段</Th>
-            <Th>凭证解析</Th>
+            <Th>凭证发送</Th>
             <Th actions />
           </tr>
         </thead>
@@ -91,7 +91,7 @@ function confirmDeleteEndpoint(_event: Event, path: string) {
               ><span class="font-mono text-ink-faint">{{ e.modelPath || '—' }}</span></Td
             >
             <Td>
-              <Tag :variant="e.credentialsResolver === 'generalApiKey' ? 'ok' : 'muted'">
+              <Tag :variant="e.credentialsResolver === 'followRequest' ? 'ok' : 'muted'">
                 {{ e.credentialsResolver }}
               </Tag>
             </Td>

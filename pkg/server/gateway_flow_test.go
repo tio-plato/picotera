@@ -75,6 +75,25 @@ func TestGatewayHookErrorStatusMapping(t *testing.T) {
 	}
 }
 
+func TestSortProviderCandidatesTiesByProviderIDDesc(t *testing.T) {
+	rows := []providerCandidateRow{
+		{ProviderID: 1, ProviderPriority: 10, EntryPriority: 5},
+		{ProviderID: 3, ProviderPriority: 12, EntryPriority: 3},
+		{ProviderID: 2, ProviderPriority: 20, EntryPriority: 1},
+		{ProviderID: 4, ProviderPriority: 1, EntryPriority: 1},
+	}
+
+	sortProviderCandidates(rows)
+
+	got := []int32{rows[0].ProviderID, rows[1].ProviderID, rows[2].ProviderID, rows[3].ProviderID}
+	want := []int32{2, 3, 1, 4}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("provider order = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestBuildPathCandidateSetAnnotations(t *testing.T) {
 	rows := []providerCandidateRow{{
 		ProviderID:              1,
@@ -86,16 +105,22 @@ func TestBuildPathCandidateSetAnnotations(t *testing.T) {
 		ProxyURL:                pgtype.Text{String: "direct", Valid: true},
 		ProviderAnnotations:     []byte(`{"k":"provider","providerOnly":"1"}`),
 		ModelAnnotations:        []byte(`{"k":"model","modelOnly":"1"}`),
-		EntryAnnotations:        []byte(`{"k":"entry","entryOnly":"1"}`),
+		EntryAnnotations:        []byte(`{"k":"entry","entryOnly":"1","u":"entry"}`),
 		EndpointPath:            "/v1/messages",
 	}}
-	set, err := buildPathCandidateSet(rows, map[string]string{"k": "api", "apiOnly": "1"}, nil, db.Endpoint{Path: "/v1/messages"})
+	userAnno := map[string]string{"k": "user", "u": "user", "userOnly": "1"}
+	set, err := buildPathCandidateSet(rows, userAnno, map[string]string{"k": "api", "apiOnly": "1"}, nil, db.Endpoint{Path: "/v1/messages"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	anno := set.Items[0].Candidate.Annotations
+	// Order: model < provider < entry < user < apiKey.
 	if anno["k"] != "api" || anno["modelOnly"] != "1" || anno["providerOnly"] != "1" || anno["entryOnly"] != "1" || anno["apiOnly"] != "1" {
 		t.Fatalf("unexpected merged annotations: %+v", anno)
+	}
+	// user overrides entry on shared key "u"; user-only key survives.
+	if anno["u"] != "user" || anno["userOnly"] != "1" {
+		t.Fatalf("user layer not applied between entry and apiKey: %+v", anno)
 	}
 }
 
@@ -114,7 +139,7 @@ func TestBuildUnifiedCandidateSetAnnotationsAndFormat(t *testing.T) {
 		Annotations:             []byte(`{"k":"entry"}`),
 		SupportsNativeWebSearch: true,
 	}}
-	set, err := buildUnifiedCandidateSet(rows, map[string]string{"k": "api"}, nil, db.Endpoint{})
+	set, err := buildUnifiedCandidateSet(rows, map[string]string{"k": "user"}, map[string]string{"k": "api"}, nil, db.Endpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}

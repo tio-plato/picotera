@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"picotera/pkg/jsonast"
 	"picotera/pkg/logx"
 
 	"modernc.org/quickjs"
@@ -61,6 +62,10 @@ type qjsSession struct {
 	logs      []LogEntry
 	logsBytes int
 	logsTrunc bool
+
+	// registry backs the JS-visible body Proxies (ctx.request.body and
+	// rewriteRequest's pending.body). See objects.go.
+	registry *objectRegistry
 }
 
 func (s *qjsSession) appendLog(level, message string) {
@@ -116,12 +121,14 @@ const ctxInit = `globalThis.ctx = {
 	routedModel: null,
 	request: null,
 	apiKey: null,
+	user: null,
 	provider: null,
 	providerModel: null,
 	attempt: null,
 	annotations: {},
 	stream: false,
-	sourceFormat: ""
+	sourceFormat: "",
+	format: ""
 };`
 
 func newSession(ctx context.Context, eng *qjsEngine, requestID string) (*qjsSession, error) {
@@ -132,7 +139,7 @@ func newSession(ctx context.Context, eng *qjsEngine, requestID string) (*qjsSess
 	if eng.cfg.MemoryLimit > 0 {
 		vm.SetMemoryLimit(uintptr(eng.cfg.MemoryLimit))
 	}
-	s := &qjsSession{engine: eng, vm: vm, ctx: ctx, requestID: requestID}
+	s := &qjsSession{engine: eng, vm: vm, ctx: ctx, requestID: requestID, registry: newObjectRegistry()}
 	registerHelpers(s)
 
 	if _, err := vm.EvalFile(sdkSource, internalFilename("sdk.js"), quickjs.EvalGlobal); err != nil {
@@ -186,6 +193,9 @@ func (s *qjsSession) timeout() time.Duration {
 }
 
 // PatchContext shallow-merges patch's non-nil fields onto globalThis.ctx.
+// Assigning patch.Request replaces ctx.request with a fresh plain object, so
+// when a client body is registered we (re)install the lazy ctx.request.body
+// Proxy getter afterwards.
 func (s *qjsSession) PatchContext(patch ContextPatch) error {
 	if s.tainted {
 		return ErrHookTimeout
@@ -197,8 +207,33 @@ func (s *qjsSession) PatchContext(patch ContextPatch) error {
 	if string(b) == "{}" {
 		return nil
 	}
-	if _, err := s.vm.EvalFile("Object.assign(globalThis.ctx, "+string(b)+")", internalFilename("patch-context.js"), quickjs.EvalGlobal); err != nil {
+	expr := "Object.assign(globalThis.ctx, " + string(b) + ")"
+	if patch.Request != nil && s.registry.request.hasBody {
+		expr += ";globalThis.__picotera_installRequestBody();"
+	}
+	if _, err := s.vm.EvalFile(expr, internalFilename("patch-context.js"), quickjs.EvalGlobal); err != nil {
 		return fmt.Errorf("jsx: patch context: %w", err)
+	}
+	return nil
+}
+
+// SetClientBody installs the JS-visible client request body. The bytes are
+// parsed lazily on first access; replacing them invalidates any Proxy handed out
+// for the previous body. If ctx.request already exists, the lazy body getter is
+// installed immediately (so SetClientBody and a request PatchContext may run in
+// either order).
+func (s *qjsSession) SetClientBody(body []byte) error {
+	if s.tainted {
+		return ErrHookTimeout
+	}
+	s.registry.setRequestBody(body)
+	if !s.registry.request.hasBody {
+		return nil
+	}
+	if _, err := s.vm.EvalFile(
+		"if (globalThis.ctx && globalThis.ctx.request && typeof globalThis.ctx.request === 'object') { globalThis.__picotera_installRequestBody(); }",
+		internalFilename("set-client-body.js"), quickjs.EvalGlobal); err != nil {
+		return fmt.Errorf("jsx: set client body: %w", err)
 	}
 	return nil
 }
@@ -321,33 +356,162 @@ func (s *qjsSession) RunBeforeRequest(initial BeforeRequestDecision) (BeforeRequ
 	return out, nil
 }
 
-// RunRewriteRequest runs the rewriteRequest waterfall. The hook must return a
-// complete pending request; passthrough keeps the initial. A non-string body
-// is JSON.stringify'd at the JS boundary so Go always receives a JSON string
-// token in Body when the field is present.
-func (s *qjsSession) RunRewriteRequest(initial PendingRequestShape) (PendingRequestShape, error) {
+// RunRewriteRequest runs the rewriteRequest waterfall. initial carries only
+// url/method/headers (its Body MUST be nil); body is the raw upstream body bytes
+// the hook may read/mutate via pending.body (nil = no JS-visible body).
+//
+// pending.body is a lazy Proxy over the Go-side jsonast tree: an untouched body
+// (the common case — hooks usually rewrite only url/headers) is never parsed,
+// serialized, or moved through QuickJS, keeping memory flat for multi-MiB
+// bodies. When a hook does read/mutate it, writes land straight on the Go tree
+// and the result is encoded from there; a fresh object returned by the hook is
+// reconstructed via the marker protocol so any Proxy embedded in it (e.g.
+// {...pending, body: pending.body}) is restored to its tracked content.
+//
+// The returned shape's Body carries the final upstream bytes, or nil to fall
+// back to the caller's pre-hook bytes (untouched, removed, or a byte-identical
+// clean passthrough).
+func (s *qjsSession) RunRewriteRequest(initial PendingRequestShape, body []byte) (PendingRequestShape, error) {
+	if initial.Body != nil {
+		return initial, fmt.Errorf("jsx: RunRewriteRequest: initial.Body must be nil")
+	}
+	s.registry.setPendingBody(body)
+	hasBody := body != nil
+
 	init, err := mustJSON(initial)
 	if err != nil {
 		return initial, err
 	}
+	hasBodyJS := "false"
+	if hasBody {
+		hasBodyJS = "true"
+	}
+
+	// The hook sees pending.body as a lazy Proxy; the final body is handed back
+	// out-of-band through globalThis.__picotera_rr_out so a multi-MiB string is
+	// never re-escaped into the marshaled meta result. markerReplacer turns any
+	// embedded Proxy into a {"__picotera_object":id} marker the Go side restores.
 	expr := `(function () {
 		var initial = ` + init + `;
+		var hasBody = ` + hasBodyJS + `;
+		var touched = false, bodyVal, bodySet = false;
+		if (hasBody) {
+			Object.defineProperty(initial, 'body', {
+				enumerable: true,
+				configurable: true,
+				get: function () {
+					touched = true;
+					if (!bodySet) {
+						var r = globalThis.__picotera_obj_root('pending');
+						if (r[1]) throw new Error(r[1]);
+						bodyVal = globalThis.__picotera_descToValue(JSON.parse(r[0]));
+						bodySet = true;
+					}
+					return bodyVal;
+				},
+				set: function (val) { touched = true; bodySet = true; bodyVal = val; }
+			});
+		}
 		var r = picotera.hooks.rewriteRequest.runWaterfall(globalThis.ctx, initial);
 		var v = (typeof r === 'undefined' || r === null) ? initial : r;
-		if (v && typeof v.body !== 'undefined' && typeof v.body !== 'string') {
-			v.body = JSON.stringify(v.body);
+		var meta = { url: v.url, method: v.method, headers: v.headers };
+		globalThis.__picotera_rr_out = '';
+		var nb;
+		if (v === initial) {
+			if (!hasBody) { meta.bodyState = 'none'; return meta; }
+			if (!touched) { meta.bodyState = 'unchanged'; return meta; }
+			nb = bodyVal;
+		} else {
+			nb = v.body;
 		}
-		return v;
+		if (typeof nb === 'undefined' || nb === null) {
+			meta.bodyState = 'none';
+		} else if (typeof nb === 'string') {
+			meta.bodyState = 'raw';
+			globalThis.__picotera_rr_out = nb;
+		} else {
+			meta.bodyState = 'json';
+			globalThis.__picotera_rr_out = JSON.stringify(nb, globalThis.__picotera_markerReplacer);
+		}
+		return meta;
 	})()`
+
 	data, undef, err := s.evalJSON("rewriteRequest", internalFilename("hook-rewriteRequest.js"), expr)
 	if err != nil || undef {
 		return initial, err
 	}
-	var out PendingRequestShape
-	if err := json.Unmarshal(data, &out); err != nil {
+
+	var meta struct {
+		URL       string              `json:"url"`
+		Method    string              `json:"method"`
+		Headers   map[string][]string `json:"headers"`
+		BodyState string              `json:"bodyState"`
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
 		return initial, fmt.Errorf("jsx: rewriteRequest decode: %w", err)
 	}
+
+	out := PendingRequestShape{URL: meta.URL, Method: meta.Method, Headers: meta.Headers}
+	switch meta.BodyState {
+	case "none", "unchanged":
+		// Body absent / removed / untouched: leave Body nil so the caller falls
+		// back to the original request bytes.
+	case "raw":
+		final, err := s.readGlobalString("__picotera_rr_out")
+		if err != nil {
+			return initial, fmt.Errorf("jsx: rewriteRequest read body: %w", err)
+		}
+		out.Body = []byte(final)
+		if out.Body == nil {
+			out.Body = []byte{}
+		}
+	case "json":
+		final, err := s.readGlobalString("__picotera_rr_out")
+		if err != nil {
+			return initial, fmt.Errorf("jsx: rewriteRequest read body: %w", err)
+		}
+		node, perr := jsonast.Parse([]byte(final))
+		if perr != nil {
+			return initial, fmt.Errorf("jsx: rewriteRequest parse body: %w", perr)
+		}
+		node, perr = s.registry.resolveMarkers(node, false)
+		if perr != nil {
+			return initial, fmt.Errorf("jsx: rewriteRequest resolve markers: %w", perr)
+		}
+		pt := s.registry.pending.tree
+		if pt != nil && node == pt.root && !pt.dirty {
+			// Clean passthrough of the original root: fall back to pre-hook
+			// bytes for a byte-identical send.
+			break
+		}
+		enc, eerr := jsonast.Encode(node)
+		if eerr != nil {
+			return initial, fmt.Errorf("jsx: rewriteRequest encode body: %w", eerr)
+		}
+		out.Body = enc
+	default:
+		return initial, fmt.Errorf("jsx: rewriteRequest: unexpected bodyState %q", meta.BodyState)
+	}
 	return out, nil
+}
+
+// readGlobalString reads globalThis[name] and returns it as a Go string.
+func (s *qjsSession) readGlobalString(name string) (string, error) {
+	g := s.vm.GlobalObject()
+	defer g.Free()
+	atom, err := s.vm.NewAtom(name)
+	if err != nil {
+		return "", err
+	}
+	v, err := s.vm.GetProperty(g, atom)
+	if err != nil {
+		return "", err
+	}
+	str, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("jsx: global %s is not a string (%T)", name, v)
+	}
+	return str, nil
 }
 
 // RunBeforeTransform runs the beforeTransform waterfall. The contract is strict
@@ -415,6 +579,36 @@ func (s *qjsSession) RunRewriteProviderModels(initial []ProviderModelEntry) ([]P
 	var out []ProviderModelEntry
 	if err := json.Unmarshal(data, &out); err != nil {
 		return initial, nil
+	}
+	return out, nil
+}
+
+// RunAfterUpstreamError runs the afterUpstreamError waterfall. Passthrough
+// (undefined / null / returning ctx / returning the unchanged input object)
+// keeps the initial break and carries no statusCode/message override
+// (equivalent to follow-upstream — the seed status/message are readable by the
+// hook but never echoed back as overrides). A returned
+// object is normalized: break is coerced to a boolean, statusCode to an
+// integer, and a non-string message is dropped to "".
+func (s *qjsSession) RunAfterUpstreamError(initial UpstreamErrorView) (AfterUpstreamErrorDecision, error) {
+	zero := AfterUpstreamErrorDecision{Break: initial.Break}
+	init, err := mustJSON(initial)
+	if err != nil {
+		return zero, err
+	}
+	expr := `(function () {
+		var input = ` + init + `;
+		var r = picotera.hooks.afterUpstreamError.runWaterfall(globalThis.ctx, input);
+		if (r === globalThis.ctx || r === input || typeof r === 'undefined' || r === null) return undefined;
+		return { break: !!r.break, statusCode: r.statusCode | 0, message: (typeof r.message === 'string') ? r.message : '' };
+	})()`
+	data, undef, err := s.evalJSON("afterUpstreamError", internalFilename("hook-afterUpstreamError.js"), expr)
+	if err != nil || undef {
+		return zero, err
+	}
+	var out AfterUpstreamErrorDecision
+	if err := json.Unmarshal(data, &out); err != nil {
+		return zero, fmt.Errorf("jsx: afterUpstreamError decode: %w", err)
 	}
 	return out, nil
 }

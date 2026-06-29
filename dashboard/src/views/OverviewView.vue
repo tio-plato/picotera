@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import {
   getOverviewDistribution,
@@ -7,12 +7,13 @@ import {
   getOverviewSpeedBoxplot,
   getOverviewSummary,
   listApiKeys,
-  listModels,
-  listProjects,
-  listProviders,
+  listModelLabels,
+  listProjectLabels,
+  listProviderLabels,
+  listUpstreamModelLabels,
 } from '@/api/client'
 import { OPERATIONAL_STALE_TIME } from '@/api/queryClient'
-import { queryKeys, type OverviewFilters } from '@/api/queryKeys'
+import { queryKeys, type OverviewFilters, type OverviewGranularity } from '@/api/queryKeys'
 import type {
   OverviewBreakdownRowView,
   OverviewDimension,
@@ -42,6 +43,7 @@ const filters = reactive({
   providerId: 0,
   projectId: 0,
 })
+const granularity = ref<OverviewGranularity>('auto')
 const distributionDimension = ref<OverviewDimension>('provider')
 const seriesDimension = ref<OverviewSeriesDimension>('none')
 const speedDimension = ref<OverviewSeriesDimension>('model')
@@ -75,9 +77,7 @@ const sankeyLayerLabels: Record<SankeyVariant, string[]> = {
 }
 
 function getSankeyHiddenForBuild(variant: SankeyVariant): number[] {
-  return sankeyHiddenLayers.value[variant]
-    .filter((i) => i > 0)
-    .map((i) => i - 1)
+  return sankeyHiddenLayers.value[variant].filter((i) => i > 0).map((i) => i - 1)
 }
 
 function toggleSankeyLayer(index: number) {
@@ -121,11 +121,66 @@ const ccy = provideCurrencyContext(overviewTargetCurrency)
 const isOriginalMode = computed(() => ccy.targetCurrency.value == null)
 const overviewCurrencyRates = computed(() => ccy.rates.value)
 
+const overviewCurrencyOptions = computed(() => [
+  { value: '', label: '跟随设置' },
+  { value: 'original', label: '原始货币' },
+  ...overviewCurrencyRates.value.map((r) => ({
+    value: r.code,
+    label: `${r.code} ${r.symbol}`,
+    hint: r.name,
+  })),
+])
+
+const apiKeyOptions = computed(() => [
+  { value: 0, label: '全部' },
+  ...apiKeys.value.map((k) => ({ value: k.id, label: k.name })),
+])
+
+const providerOptions = computed(() => [
+  { value: 0, label: '全部' },
+  ...providers.value.map((p) => ({ value: p.id, label: p.name })),
+])
+
+const projectOptions = computed(() => [
+  { value: 0, label: '全部' },
+  ...projects.value.map((p) => ({ value: p.id, label: p.name })),
+])
+
+const modelSelectOptions = computed(() => [
+  { value: '', label: '全部' },
+  ...modelOptions.value.map((m) => ({ value: m, label: m })),
+])
+
+const upstreamModelSelectOptions = computed(() => [
+  { value: '', label: '全部' },
+  ...upstreamModelOptions.value.map((u) => ({ value: u, label: u })),
+])
+
 const rangeOptions: { value: OverviewRange; label: string }[] = [
   { value: '1d', label: '24 小时' },
   { value: '7d', label: '7 天' },
   { value: '1m', label: '30 天' },
 ]
+// 10m 桶在 30 天范围下数据点过多（4320 个），仅在 24 小时 / 7 天范围提供。
+const granularityOptions = computed<{ value: OverviewGranularity; label: string }[]>(() => {
+  const opts: { value: OverviewGranularity; label: string }[] = [{ value: 'auto', label: '自动' }]
+  if (filters.range !== '1m') opts.push({ value: '10m', label: '10m' })
+  opts.push(
+    { value: '1h', label: '1h' },
+    { value: '6h', label: '6h' },
+    { value: '12h', label: '12h' },
+    { value: '24h', label: '24h' },
+  )
+  return opts
+})
+
+// 切到 30 天且当前为 10m 时回落到自动，避免向后端发送非法组合。
+watch(
+  () => filters.range,
+  (range) => {
+    if (range === '1m' && granularity.value === '10m') granularity.value = 'auto'
+  },
+)
 const distributionDimensionOptions: { value: OverviewDimension; label: string }[] = [
   { value: 'provider', label: '渠道' },
   { value: 'apiKey', label: '密钥' },
@@ -162,9 +217,16 @@ const overviewFilters = computed<OverviewFilters>(() => {
 })
 
 const apiKeysQuery = useQuery({ queryKey: queryKeys.apiKeys.all, queryFn: listApiKeys })
-const providersQuery = useQuery({ queryKey: queryKeys.providers.all, queryFn: listProviders })
-const modelsQuery = useQuery({ queryKey: queryKeys.models.all, queryFn: listModels })
-const projectsQuery = useQuery({ queryKey: queryKeys.projects.all, queryFn: listProjects })
+const providersQuery = useQuery({
+  queryKey: queryKeys.labels.providers,
+  queryFn: listProviderLabels,
+})
+const modelsQuery = useQuery({ queryKey: queryKeys.labels.models, queryFn: listModelLabels })
+const projectsQuery = useQuery({ queryKey: queryKeys.labels.projects, queryFn: listProjectLabels })
+const upstreamModelsQuery = useQuery({
+  queryKey: queryKeys.labels.upstreamModels,
+  queryFn: listUpstreamModelLabels,
+})
 
 const apiKeys = computed(() => apiKeysQuery.data.value ?? [])
 const providers = computed(() => providersQuery.data.value ?? [])
@@ -193,16 +255,9 @@ const modelOptions = computed(() => {
   return Array.from(set).sort()
 })
 
-const upstreamModelOptions = computed(() => {
-  const set = new Set<string>()
-  for (const p of providers.value) {
-    for (const pm of p.providerModels ?? []) {
-      if (pm.upstreamModelName) set.add(pm.upstreamModelName)
-      else if (pm.model) set.add(pm.model)
-    }
-  }
-  return Array.from(set).sort()
-})
+const upstreamModelOptions = computed(() =>
+  [...(upstreamModelsQuery.data.value ?? [])].sort(),
+)
 
 const summaryQuery = useQuery({
   queryKey: computed(() => queryKeys.overview.summary(overviewFilters.value)),
@@ -219,14 +274,18 @@ const distributionQuery = useQuery({
 })
 
 const seriesQuery = useQuery({
-  queryKey: computed(() => queryKeys.overview.series(overviewFilters.value, seriesDimension.value)),
-  queryFn: () => getOverviewSeries(overviewFilters.value, seriesDimension.value),
+  queryKey: computed(() =>
+    queryKeys.overview.series(overviewFilters.value, seriesDimension.value, granularity.value),
+  ),
+  queryFn: () => getOverviewSeries(overviewFilters.value, seriesDimension.value, granularity.value),
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
 const speedSeriesQuery = useQuery({
-  queryKey: computed(() => queryKeys.overview.speed(overviewFilters.value, speedDimension.value)),
-  queryFn: () => getOverviewSeries(overviewFilters.value, speedDimension.value),
+  queryKey: computed(() =>
+    queryKeys.overview.speed(overviewFilters.value, speedDimension.value, granularity.value),
+  ),
+  queryFn: () => getOverviewSeries(overviewFilters.value, speedDimension.value, granularity.value),
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
@@ -240,9 +299,14 @@ const speedBoxplotQuery = useQuery({
 
 const cacheHitRateSeriesQuery = useQuery({
   queryKey: computed(() =>
-    queryKeys.overview.cacheHitRate(overviewFilters.value, cacheHitRateDimension.value),
+    queryKeys.overview.cacheHitRate(
+      overviewFilters.value,
+      cacheHitRateDimension.value,
+      granularity.value,
+    ),
   ),
-  queryFn: () => getOverviewSeries(overviewFilters.value, cacheHitRateDimension.value),
+  queryFn: () =>
+    getOverviewSeries(overviewFilters.value, cacheHitRateDimension.value, granularity.value),
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
@@ -517,7 +581,8 @@ const tokenCompositionSankey = computed<{ nodes: SankeyNode[]; links: SankeyLink
   }
   if (showLayer2) {
     const sourceForDetail = showLayer1 ? 'input' : 'root'
-    if (tb.input > 0) links.push({ source: sourceForDetail, target: 'in_uncached', value: tb.input })
+    if (tb.input > 0)
+      links.push({ source: sourceForDetail, target: 'in_uncached', value: tb.input })
     if (tb.cacheRead > 0)
       links.push({ source: sourceForDetail, target: 'in_cache_read', value: tb.cacheRead })
     if (tb.cacheWrite > 0)
@@ -816,12 +881,18 @@ function compactNumber(v: number) {
 function formatBucket(iso: string) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
+  const hh = d.getHours().toString().padStart(2, '0')
+  if (granularity.value === '10m') {
+    const mm = d.getMinutes().toString().padStart(2, '0')
+    if (filters.range === '1d') return `${hh}:${mm}`
+    return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
+  }
   const buckets = seriesBuckets.value
   if (buckets.length <= 24) {
-    return `${d.getHours().toString().padStart(2, '0')}:00`
+    return `${hh}:00`
   }
   if (buckets.length <= 24 * 7) {
-    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:00`
+    return `${d.getMonth() + 1}/${d.getDate()} ${hh}:00`
   }
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
@@ -857,53 +928,38 @@ function formatCurrencyCompact(v: number, code: string) {
         <SegmentedControl v-model="filters.range" :options="rangeOptions" />
       </div>
       <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >统计粒度</span
+        >
+        <SegmentedControl v-model="granularity" :options="granularityOptions" />
+      </div>
+      <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">货币</span>
-        <Select v-model="overviewCurrencyValue" size="sm">
-          <option value="">跟随设置</option>
-          <option value="original">原始货币</option>
-          <option v-for="r in overviewCurrencyRates" :key="r.code" :value="r.code">
-            {{ r.code }} {{ r.symbol }} · {{ r.name }}
-          </option>
-        </Select>
+        <Select v-model="overviewCurrencyValue" size="sm" :options="overviewCurrencyOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">密钥</span>
-        <Select v-model.number="filters.apiKeyId" size="sm">
-          <option :value="0">全部</option>
-          <option v-for="k in apiKeys" :key="k.id" :value="k.id">{{ k.name }}</option>
-        </Select>
+        <Select v-model="filters.apiKeyId" size="sm" :options="apiKeyOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
           >请求模型</span
         >
-        <Select v-model="filters.model" size="sm">
-          <option value="">全部</option>
-          <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
-        </Select>
+        <Select v-model="filters.model" size="sm" :options="modelSelectOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
           >上游模型</span
         >
-        <Select v-model="filters.upstreamModel" size="sm">
-          <option value="">全部</option>
-          <option v-for="u in upstreamModelOptions" :key="u" :value="u">{{ u }}</option>
-        </Select>
+        <Select v-model="filters.upstreamModel" size="sm" :options="upstreamModelSelectOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">渠道</span>
-        <Select v-model.number="filters.providerId" size="sm">
-          <option :value="0">全部</option>
-          <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </Select>
+        <Select v-model="filters.providerId" size="sm" :options="providerOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">项目</span>
-        <Select v-model.number="filters.projectId" size="sm">
-          <option :value="0">全部</option>
-          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </Select>
+        <Select v-model="filters.projectId" size="sm" :options="projectOptions" />
       </div>
       <Button
         variant="ghost"
@@ -1381,7 +1437,9 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >输入速度</span
           >
-          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
           <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
             (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>
@@ -1400,7 +1458,9 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >输出速度</span
           >
-          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
           <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
             (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>
@@ -1419,7 +1479,9 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >TTFT 平均时间</span
           >
-          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-if="speedSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
           <StateText v-else-if="speedSeriesQuery.isError.value" compact :dashed="false">{{
             (speedSeriesQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>
@@ -1438,7 +1500,9 @@ function formatCurrencyCompact(v: number, code: string) {
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
             >输出速度</span
           >
-          <StateText v-if="speedBoxplotQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-if="speedBoxplotQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
           <StateText v-else-if="speedBoxplotQuery.isError.value" compact :dashed="false">{{
             (speedBoxplotQuery.error.value as Error)?.message ?? '加载失败'
           }}</StateText>

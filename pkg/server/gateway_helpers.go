@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -114,11 +114,11 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 }
 
 // extractClientToken pulls the client-supplied API key/token from the
-// inbound request. The endpoint's resolver names the preferred position; if
-// that position is empty we fall back to scanning all four locations in a
-// fixed order. GeneralApiKey/Unknown go straight to the fallback.
-// Empty string means no acceptable position was filled.
-func extractClientToken(r *http.Request, resolver int32) string {
+// inbound request. It scans all four known locations in a fixed order and
+// returns the first non-empty value — credential resolution is independent of
+// any endpoint resolver setting (that field now governs only how credentials
+// are sent upstream). Empty string means no acceptable position was filled.
+func extractClientToken(r *http.Request) string {
 	bearer := ""
 	if v := r.Header.Get("Authorization"); strings.HasPrefix(v, "Bearer ") {
 		bearer = strings.TrimPrefix(v, "Bearer ")
@@ -135,27 +135,7 @@ func extractClientToken(r *http.Request, resolver int32) string {
 		}
 		return ""
 	}
-	fallback := pickFirst(bearer, xApi, query, goog)
-
-	switch resolver {
-	case contract.CredentialsResolver_BearerToken:
-		if bearer != "" {
-			return bearer
-		}
-	case contract.CredentialsResolver_XApiKey:
-		if xApi != "" {
-			return xApi
-		}
-	case contract.CredentialsResolver_SearchKey:
-		if query != "" {
-			return query
-		}
-	case contract.CredentialsResolver_GoogApiKey:
-		if goog != "" {
-			return goog
-		}
-	}
-	return fallback
+	return pickFirst(bearer, xApi, query, goog)
 }
 
 // effectiveSendResolver picks which resolver to use when writing credentials
@@ -190,14 +170,16 @@ func mergeClientQuery(upstreamURL *url.URL, clientRawQuery string) {
 	upstreamURL.RawQuery = clientValues.Encode()
 }
 
-// authenticateClient extracts the client token (per resolver), looks up the
-// matching api_key row, and returns it. The returned *db.ApiKey is the
-// authenticated identity; callers persist `ApiKeyID` from `ID` and feed
-// metadata into JS hooks.
-func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolver int32) (*db.ApiKey, error) {
-	token := extractClientToken(r, resolver)
+// authenticateClient extracts the client token, looks up the
+// matching api_key row, and returns it alongside its owning user. The returned
+// *db.ApiKey is the authenticated identity; callers persist `ApiKeyID` from `ID`
+// and feed metadata into JS hooks. The *db.AppUser is the already-fetched owner
+// row (used for the disabled check) — returned so callers reuse it for ctx.user
+// and the user annotation layer without a second query.
+func (s *Server) authenticateClient(ctx context.Context, r *http.Request) (*db.ApiKey, *db.AppUser, error) {
+	token := extractClientToken(r)
 	if token == "" {
-		return nil, &gatewayError{
+		return nil, nil, &gatewayError{
 			status:  http.StatusUnauthorized,
 			message: "missing credentials",
 			code:    errorx.Unauthorized.Error(),
@@ -206,27 +188,51 @@ func (s *Server) authenticateClient(ctx context.Context, r *http.Request, resolv
 	row, err := s.queries.GetApiKeyByKey(ctx, token)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, &gatewayError{
+			return nil, nil, &gatewayError{
 				status:  http.StatusUnauthorized,
 				message: "invalid api key",
 				code:    errorx.Unauthorized.Error(),
 			}
 		}
 		logx.WithContext(ctx).WithError(err).Error("api key lookup failed")
-		return nil, &gatewayError{
+		return nil, nil, &gatewayError{
 			status:  http.StatusInternalServerError,
 			message: "failed to query api key",
 			code:    errorx.InternalError.Error(),
 		}
 	}
 	if row.Disabled {
-		return nil, &gatewayError{
+		return nil, nil, &gatewayError{
 			status:  http.StatusForbidden,
 			message: "api key disabled",
 			code:    errorx.Forbidden.Error(),
 		}
 	}
-	return &row, nil
+	// Reject keys whose owning user has been disabled.
+	user, err := s.queries.GetUserByID(ctx, row.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, &gatewayError{
+				status:  http.StatusForbidden,
+				message: "api key owner not found",
+				code:    errorx.Forbidden.Error(),
+			}
+		}
+		logx.WithContext(ctx).WithError(err).Error("api key owner lookup failed")
+		return nil, nil, &gatewayError{
+			status:  http.StatusInternalServerError,
+			message: "failed to query api key owner",
+			code:    errorx.InternalError.Error(),
+		}
+	}
+	if user.Disabled {
+		return nil, nil, &gatewayError{
+			status:  http.StatusForbidden,
+			message: "user disabled",
+			code:    errorx.Forbidden.Error(),
+		}
+	}
+	return &row, &user, nil
 }
 
 // apiKeySummaryFromRow converts a db.ApiKey row into the JS-visible summary.
@@ -242,6 +248,23 @@ func apiKeySummaryFromRow(row *db.ApiKey) *jsx.ApiKeySummary {
 		Name:        row.Name,
 		Annotations: annotations,
 		Disabled:    row.Disabled,
+	}
+}
+
+// userSummaryFromRow converts a db.AppUser row into the JS-visible summary
+// (ctx.user). Annotations is decoded from JSONB; on decode failure, returns an
+// empty map rather than nil so scripts always see an object. Name is the user's
+// display_name.
+func userSummaryFromRow(row *db.AppUser) *jsx.UserSummary {
+	anno := map[string]string{}
+	if len(row.Annotations) > 0 {
+		_ = json.Unmarshal(row.Annotations, &anno)
+	}
+	return &jsx.UserSummary{
+		ID:          row.ID,
+		Name:        row.DisplayName,
+		Annotations: anno,
+		IsAdmin:     row.IsAdmin,
 	}
 }
 
@@ -263,7 +286,7 @@ func applyCredentials(req *http.Request, credentials string, resolver int32, sou
 		req.URL.RawQuery = q.Encode()
 	case contract.CredentialsResolver_GoogApiKey:
 		req.Header.Set("X-Goog-Api-Key", credentials)
-	default: // GeneralApiKey / Unknown / others
+	default: // FollowRequest / Unknown / others
 		if sourceRequest != nil {
 			if strings.HasPrefix(sourceRequest.Header.Get("Authorization"), "Bearer ") {
 				req.Header.Set("Authorization", "Bearer "+credentials)
@@ -299,6 +322,7 @@ func applyCredentials(req *http.Request, credentials string, resolver int32, sou
 //     to bypass http.Header's MIME normalization, which would mangle the
 //     underscore)
 //  3. x-session-affinity
+//  4. x-session-id
 func extractParentSpanID(h http.Header) string {
 	if v := strings.TrimSpace(h.Get("X-Claude-Code-Session-Id")); v != "" {
 		return v
@@ -314,6 +338,9 @@ func extractParentSpanID(h http.Header) string {
 		}
 	}
 	if v := strings.TrimSpace(h.Get("x-session-affinity")); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(h.Get("x-session-id")); v != "" {
 		return v
 	}
 	return ""
@@ -372,7 +399,7 @@ func substitutePathVars(url string, vars map[string]string) (string, error) {
 }
 
 // providerCandidateRow is the internal unified shape consumed by the path
-// gateway handler (and the simulate path branch). Both the model-routed query
+// gateway handler. Both the model-routed query
 // (GetProvidersByEndpointAndModel) and the no-model query (GetProvidersByEndpoint)
 // are projected onto this type so downstream code only has to think about one
 // row shape.
@@ -432,7 +459,8 @@ func fromNoModelRow(r db.GetProvidersByEndpointRow) providerCandidateRow {
 }
 
 // resolveProviders gets providers for the given endpoint and model, filters out
-// those without upstream URLs, and sorts by combined priority (descending).
+// those without upstream URLs, and sorts by combined priority (descending),
+// with higher provider IDs first when priorities tie.
 // When model == "" the endpoint is a no-model endpoint (endpoint.model_path = "")
 // and every non-disabled provider bound to the path is considered, independent
 // of model / model_provider_endpoint configuration.
@@ -492,13 +520,31 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 		}
 	}
 
-	sort.Slice(valid, func(i, j int) bool {
-		pi := int(valid[i].EntryPriority) + int(valid[i].ProviderPriority)
-		pj := int(valid[j].EntryPriority) + int(valid[j].ProviderPriority)
-		return pi > pj
-	})
+	sortProviderCandidates(valid)
 
 	return valid, nil
+}
+
+func sortProviderCandidates(rows []providerCandidateRow) {
+	slices.SortFunc(rows, func(a, b providerCandidateRow) int {
+		return compareCandidateOrder(
+			a.ProviderID,
+			a.EntryPriority,
+			a.ProviderPriority,
+			b.ProviderID,
+			b.EntryPriority,
+			b.ProviderPriority,
+		)
+	})
+}
+
+func compareCandidateOrder(leftProviderID, leftEntryPriority, leftProviderPriority, rightProviderID, rightEntryPriority, rightProviderPriority int32) int {
+	left := int(leftEntryPriority) + int(leftProviderPriority)
+	right := int(rightEntryPriority) + int(rightProviderPriority)
+	if left != right {
+		return right - left
+	}
+	return int(rightProviderID - leftProviderID)
 }
 
 // buildUpstreamRequest constructs the upstream HTTP request.
@@ -507,7 +553,7 @@ func (s *Server) resolveProviders(ctx context.Context, endpointPath, model strin
 // credentials based on the auth type.
 // The provided ctx is used for the request context, enabling cancellation of
 // upstream reads (e.g., by the idle timeout reader).
-func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, sendResolver int32, pathVars map[string]string) (*http.Request, []byte, error) {
+func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, sendResolver int32, pathVars map[string]string, authHeaderName string) (*http.Request, []byte, error) {
 	// Substitute path variables in the upstream URL.
 	var err error
 	upstreamURL, err = substitutePathVars(upstreamURL, pathVars)
@@ -532,10 +578,16 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 	// Forward non-credential client query params, with upstream-defined keys winning on conflict.
 	mergeClientQuery(req.URL, original.URL.RawQuery)
 
-	// Copy headers from original request, excluding auth headers, Host, and Content-Length
+	// Copy headers from original request, excluding auth headers, Host, and Content-Length.
+	// authHeaderName (the local management-API auth header, when configured) is also skipped
+	// so it never leaks to the upstream provider.
+	authHeaderName = strings.ToLower(authHeaderName)
 	for key, values := range original.Header {
 		lower := strings.ToLower(key)
-		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" || lower == "host" || lower == "content-length" {
+		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" ||
+			lower == "host" || lower == "content-length" ||
+			strings.HasPrefix(lower, "x-picotera") ||
+			(authHeaderName != "" && lower == authHeaderName) {
 			continue
 		}
 		for _, value := range values {
@@ -549,6 +601,43 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 	req.ContentLength = int64(len(reqBody))
 
 	return req, reqBody, nil
+}
+
+const redactedPlaceholder = "[REDACTED]"
+
+// redactUpstreamCredentials redacts upstream provider credentials in a cloned
+// header and the raw URL, returning the redacted header and URL. It mutates the
+// provided header in place (the caller passes a clone) and only touches fields
+// that actually carry a credential:
+//   - Authorization: keeps the scheme prefix → "<scheme> [REDACTED]"; a value
+//     with no whitespace is replaced wholesale.
+//   - X-Api-Key / X-Goog-Api-Key: replaced wholesale.
+//   - URL "key" query param: value replaced, leaving other params intact.
+func redactUpstreamCredentials(header http.Header, rawURL string) (http.Header, string) {
+	if auth := header.Get("Authorization"); auth != "" {
+		if scheme, _, found := strings.Cut(auth, " "); found {
+			header.Set("Authorization", scheme+" "+redactedPlaceholder)
+		} else {
+			header.Set("Authorization", redactedPlaceholder)
+		}
+	}
+	if header.Get("X-Api-Key") != "" {
+		header.Set("X-Api-Key", redactedPlaceholder)
+	}
+	if header.Get("X-Goog-Api-Key") != "" {
+		header.Set("X-Goog-Api-Key", redactedPlaceholder)
+	}
+
+	if u, err := url.Parse(rawURL); err == nil {
+		q := u.Query()
+		if q.Has("key") {
+			q.Set("key", redactedPlaceholder)
+			u.RawQuery = q.Encode()
+			rawURL = u.String()
+		}
+	}
+
+	return header, rawURL
 }
 
 // forwardRequest sends the request to the upstream provider using the
@@ -579,17 +668,18 @@ func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) 
 		return time.Now().UTC()
 	}
 	insertedAt := createdAt.Time.UTC()
-	s.upsertTrace(ctx, arg.ParentSpanID, insertedAt)
+	s.upsertTrace(ctx, arg.ParentSpanID, arg.UserID, insertedAt)
 	return insertedAt
 }
 
 // extractProjectID runs the project regexes over body and asks the project
-// router for a match. Errors are logged and treated as "no match".
-func (s *Server) extractProjectID(ctx context.Context, body []byte) pgtype.Int4 {
+// extractor for a match scoped to userID. Errors are logged and treated as
+// "no match".
+func (s *Server) extractProjectID(ctx context.Context, body []byte, userID int64) pgtype.Int4 {
 	if s.projectExtractor == nil {
 		return pgtype.Int4{Valid: false}
 	}
-	id, ok, err := s.projectExtractor.Extract(ctx, body)
+	id, ok, err := s.projectExtractor.Extract(ctx, body, userID)
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).Warn("project extractor failed")
 		return pgtype.Int4{Valid: false}
@@ -615,38 +705,23 @@ func (s *Server) upsertProjectSeen(ctx context.Context, projectID int32, seenAt 
 	}
 }
 
-func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, requestCreatedAt time.Time) {
+func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, userID pgtype.Int8, requestCreatedAt time.Time) {
 	if !parentSpanID.Valid || parentSpanID.String == "" {
+		return
+	}
+	// Traces are keyed by (parent_span_id, user_id); without a known user there
+	// is no trace to upsert (the meta row before auth hits this path).
+	if !userID.Valid {
 		return
 	}
 	_, err := s.queries.UpsertTrace(ctx, db.UpsertTraceParams{
 		ID:             xid.New().String(),
 		ParentSpanID:   parentSpanID.String,
+		UserID:         userID.Int64,
 		FirstRequestAt: pgtype.Timestamp{Time: requestCreatedAt.UTC(), Valid: true},
 	})
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).Error("failed to upsert trace")
-	}
-}
-
-// updateRequestOnHeader backfills provider and request metadata. Errors are logged but do not affect the response.
-func (s *Server) updateRequestOnHeader(ctx context.Context, arg db.UpdateRequestOnHeaderParams) {
-	if err := s.queries.UpdateRequestOnHeader(ctx, arg); err != nil {
-		logx.WithContext(ctx).WithError(err).Error("failed to update request on header")
-	}
-}
-
-// updateRequestModel backfills the model field early. Errors are logged but do not affect the response.
-func (s *Server) updateRequestModel(ctx context.Context, arg db.UpdateRequestModelParams) {
-	if err := s.queries.UpdateRequestModel(ctx, arg); err != nil {
-		logx.WithContext(ctx).WithError(err).Error("failed to update request model")
-	}
-}
-
-// updateRequestOnComplete backfills result fields. Errors are logged but do not affect the response.
-func (s *Server) updateRequestOnComplete(ctx context.Context, arg db.UpdateRequestOnCompleteParams) {
-	if err := s.queries.UpdateRequestOnComplete(ctx, arg); err != nil {
-		logx.WithContext(ctx).WithError(err).Error("failed to update request on complete")
 	}
 }
 
@@ -749,44 +824,38 @@ func jsonBodyOrNil(headers http.Header, body []byte) json.RawMessage {
 }
 
 // serializePendingRequest captures the upstream request as a PendingRequestShape
-// for the rewriteRequest hook. Headers are lower-cased; body follows the
-// content-type rule (only application/json bodies are exposed to JS).
-func serializePendingRequest(req *http.Request, body []byte) jsx.PendingRequestShape {
+// for the rewriteRequest hook. Headers are lower-cased; the body is NOT
+// embedded here — the session installs pending.body as a lazy Proxy so an
+// untouched body never crosses into QuickJS.
+func serializePendingRequest(req *http.Request) jsx.PendingRequestShape {
 	return jsx.PendingRequestShape{
 		URL:     req.URL.String(),
 		Method:  req.Method,
 		Headers: mapLowerKeys(req.Header.Clone()),
-		Body:    jsonBodyOrNil(req.Header, body),
 	}
 }
 
 // serializeClientRequest captures the inbound client request as a RequestShape
-// for the JS hooks. Same body rule as serializePendingRequest.
-func serializeClientRequest(r *http.Request, body []byte, model string, pathVars map[string]string) jsx.RequestShape {
+// for the JS hooks. The body is registered separately via Session.SetClientBody
+// (a lazy Proxy), so it is not part of the shape.
+func serializeClientRequest(r *http.Request, model string, pathVars map[string]string) jsx.RequestShape {
 	return jsx.RequestShape{
 		Path:     r.URL.Path,
 		Method:   r.Method,
 		Headers:  mapLowerKeys(r.Header.Clone()),
 		Model:    model,
 		PathVars: pathVars,
-		Body:     jsonBodyOrNil(r.Header, body),
 	}
 }
 
 // buildRequestFromPending constructs a fresh *http.Request from the rewrite
-// hook's returned PendingRequestShape. fallbackBody is used when p.Body is
-// absent (non-JSON content-type / hidden from JS) — those bytes are sent as
-// the request body verbatim. When p.Body is present it carries a JSON string
-// token (the SDK stringifies object bodies before they reach Go); the inner
-// string contents become the outgoing body bytes.
+// hook's returned PendingRequestShape. fallbackBody is used when p.Body is nil
+// (the hook left the body untouched, removed it, or produced a byte-identical
+// clean passthrough); otherwise p.Body carries the final upstream bytes directly.
 func buildRequestFromPending(ctx context.Context, p jsx.PendingRequestShape, fallbackBody []byte) (*http.Request, []byte, error) {
 	outBody := fallbackBody
 	if p.Body != nil {
-		var s string
-		if err := json.Unmarshal(p.Body, &s); err != nil {
-			return nil, nil, fmt.Errorf("rewriteRequest: decode body: %w", err)
-		}
-		outBody = []byte(s)
+		outBody = p.Body
 	}
 	req, err := http.NewRequestWithContext(ctx, p.Method, p.URL, bytes.NewReader(outBody))
 	if err != nil {
@@ -805,15 +874,12 @@ func buildRequestFromPending(ctx context.Context, p jsx.PendingRequestShape, fal
 // completeFailedAttemptWithReason closes out an upstream attempt in the retry
 // loop's error path.
 func (s *Server) completeFailedAttemptWithReason(ctx context.Context, upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time, statusCode int32, errMsg string, finishReason int32) {
-	s.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
-		ID:           upstreamID,
-		StatusCode:   pgtype.Int4{Int32: statusCode, Valid: true},
-		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
-		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true},
-		Status:       db.RequestStatusFailed,
-		FinishReason: pgtype.Int4{Int32: finishReason, Valid: true},
-		CreatedAt:    pgtype.Timestamp{Time: upstreamCreatedAt, Valid: true},
-	})
+	s.updateRequest(ctx, newRequestUpdate(upstreamID, upstreamCreatedAt).
+		StatusCode(pgtype.Int4{Int32: statusCode, Valid: true}).
+		ErrorMessage(pgtype.Text{String: errMsg, Valid: true}).
+		TimeSpentMs(pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true}).
+		Status(db.RequestStatusFailed).
+		FinishReason(pgtype.Int4{Int32: finishReason, Valid: true}))
 }
 
 func classifyForwardError(err error, reqCtx context.Context) int32 {

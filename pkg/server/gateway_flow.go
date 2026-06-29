@@ -38,6 +38,12 @@ type gatewayFlow struct {
 	auth           gatewayAuthState
 	model          gatewayModelState
 	session        jsx.Session
+	// headerOTR carries the X-PicoTera-OTR override parsed pre-auth in run();
+	// headerOTRSet reports whether the header was present and valid. otr is the
+	// effective mode computed post-auth (header override, else user setting).
+	headerOTR    otrMode
+	headerOTRSet bool
+	otr          otrMode
 }
 
 type gatewayFlowConfig struct {
@@ -45,7 +51,6 @@ type gatewayFlowConfig struct {
 	Endpoint          db.Endpoint
 	PathVars          map[string]string
 	SourceFormat      llmbridge.Format
-	Credentials       int32
 	ExtractModel      func(*http.Request, []byte, map[string]string) (gatewayModelMode, error)
 	SetBodyModel      func([]byte, string) ([]byte, error)
 	ResolveCandidates func(context.Context, gatewayModelMode, gatewayAuthState) (candidateSet, error)
@@ -67,8 +72,11 @@ type gatewayMetaState struct {
 type gatewayAuthState struct {
 	APIKey     *db.ApiKey
 	APIKeyID   pgtype.Int4
+	UserID     pgtype.Int8
 	APIKeyJS   *jsx.ApiKeySummary
 	APIKeyAnno map[string]string
+	UserJS     *jsx.UserSummary
+	UserAnno   map[string]string
 }
 
 type gatewayModelState struct {
@@ -91,10 +99,13 @@ type gatewayModelMode struct {
 }
 
 func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, startedAt time.Time, cfg gatewayFlowConfig) *gatewayFlow {
-	if cfg.Credentials == 0 {
-		cfg.Credentials = cfg.Endpoint.CredentialsResolver
+	return &gatewayFlow{
+		h:         h,
+		w:         w,
+		r:         r,
+		startedAt: startedAt,
+		config:    cfg,
 	}
-	return &gatewayFlow{h: h, w: w, r: r, startedAt: startedAt, config: cfg}
 }
 
 // detectStreaming reports whether the client expects a streaming response,
@@ -127,6 +138,9 @@ func (f *gatewayFlow) run() {
 	defer f.ctxs.cancelBase()
 	defer f.ctxs.cancelRequest()
 	if !f.readBody() {
+		return
+	}
+	if !f.parseHeaderOTR() {
 		return
 	}
 	if !f.insertMetaRequest() {
@@ -178,56 +192,87 @@ func (f *gatewayFlow) readBody() bool {
 	return true
 }
 
+// parseHeaderOTR validates the X-PicoTera-OTR override before any meta row is
+// created. A present-but-invalid value is rejected with 400 (no meta row); a
+// valid value is stashed on the flow and applied post-auth; absence falls
+// through to the user setting.
+func (f *gatewayFlow) parseHeaderOTR() bool {
+	v := f.r.Header.Get(otrHeaderName)
+	if v == "" {
+		return true
+	}
+	mode, ok := parseOTRValue(v)
+	if !ok {
+		writeGatewayError(f.w, http.StatusBadRequest, "invalid "+otrHeaderName+" header", errorx.InvalidRequest.Error())
+		return false
+	}
+	f.headerOTR = mode
+	f.headerOTRSet = true
+	return true
+}
+
+// artifactBody returns b unchanged when the effective OTR mode records bodies,
+// otherwise nil so the artifact keeps headers/status but no body.
+func (f *gatewayFlow) artifactBody(b []byte) []byte {
+	if f.otr.recordBody() {
+		return b
+	}
+	return nil
+}
+
 func (f *gatewayFlow) insertMetaRequest() bool {
 	metaID, metaIDCreatedAt := newRequestID()
 	header := f.r.Header.Clone()
 	parentSpanID := extractParentSpanID(header)
 	parentSpanIDPg := pgtype.Text{String: parentSpanID, Valid: parentSpanID != ""}
-	projectIDPg := f.h.extractProjectID(f.ctxs.Request, f.body)
+	// Project identification happens post-auth (in authenticateAndBackfill), once
+	// the user is known — projects are per-user. The meta row starts with no
+	// project; project_id is backfilled post-auth in authenticateAndBackfill.
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
 	createdAt := f.h.insertRequest(pctx, db.InsertRequestParams{
-		ID:                 metaID,
-		SpanID:             pgtype.Text{String: metaID, Valid: true},
-		ParentSpanID:       parentSpanIDPg,
-		Type:               db.RequestTypeMeta,
-		Status:             db.RequestStatusPending,
-		ProviderID:         pgtype.Int4{Valid: false},
-		EndpointPath:       pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
-		ApiKeyID:           pgtype.Int4{Valid: false},
-		Model:              pgtype.Text{Valid: false},
-		UpstreamModel:      pgtype.Text{Valid: false},
-		StatusCode:         pgtype.Int4{Valid: false},
-		ErrorMessage:       pgtype.Text{Valid: false},
-		TimeSpentMs:        pgtype.Int4{Valid: false},
-		UserMessagePreview: extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType),
-		ProjectID:          projectIDPg,
+		ID:            metaID,
+		SpanID:        pgtype.Text{String: metaID, Valid: true},
+		ParentSpanID:  parentSpanIDPg,
+		Type:          db.RequestTypeMeta,
+		Status:        db.RequestStatusPending,
+		ProviderID:    pgtype.Int4{Valid: false},
+		EndpointPath:  pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
+		ApiKeyID:      pgtype.Int4{Valid: false},
+		Model:         pgtype.Text{Valid: false},
+		UpstreamModel: pgtype.Text{Valid: false},
+		StatusCode:    pgtype.Int4{Valid: false},
+		ErrorMessage:  pgtype.Text{Valid: false},
+		TimeSpentMs:   pgtype.Int4{Valid: false},
+		// user_message_preview depends on the OTR mode, which is only known
+		// post-auth; it is backfilled in authenticateAndBackfill.
+		UserMessagePreview: pgtype.Text{Valid: false},
+		ProjectID:          pgtype.Int4{Valid: false},
 		CreatedAt:          pgtype.Timestamp{Time: metaIDCreatedAt, Valid: true},
+		// User is unknown until authentication; the trace is created (with the
+		// real user_id) in authenticateAndBackfill, so insertRequest's upsertTrace
+		// is skipped for the meta row.
+		UserID: pgtype.Int8{Valid: false},
 	})
 	f.meta = gatewayMetaState{
 		ID:             metaID,
 		CreatedAt:      createdAt,
 		ParentSpanID:   parentSpanID,
 		ParentSpanIDPg: parentSpanIDPg,
-		ProjectID:      projectIDPg,
+		ProjectID:      pgtype.Int4{Valid: false},
 		RequestHeader:  header,
 		RequestMethod:  f.r.Method,
 		RequestURL:     f.r.URL.String(),
 	}
 	f.h.liveRequests.RegisterMeta(metaID, f.ctxs.cancelRequest)
-	f.h.uploadRequestArtifact(pctx, metaID, createdAt, f.r.Method, f.r.URL.String(), header, f.body)
-	if projectIDPg.Valid {
-		seenCtx, seenCancel := f.ctxs.Persist()
-		go func() {
-			defer seenCancel()
-			f.h.upsertProjectSeen(seenCtx, projectIDPg.Int32, createdAt)
-		}()
-	}
+	// The request artifact and user_message_preview both depend on the OTR mode
+	// (taken from the user setting), which is only known post-auth — see
+	// authenticateAndBackfill.
 	return true
 }
 
 func (f *gatewayFlow) authenticateAndBackfill() bool {
-	apiKey, err := f.h.authenticateClient(f.ctxs.Request, f.r, f.config.Credentials)
+	apiKey, user, err := f.h.authenticateClient(f.ctxs.Request, f.r)
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
@@ -239,21 +284,58 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 		return false
 	}
 	apiKeyJS := apiKeySummaryFromRow(apiKey)
+	userJS := userSummaryFromRow(user)
 	f.auth = gatewayAuthState{
 		APIKey:     apiKey,
 		APIKeyID:   pgtype.Int4{Int32: apiKey.ID, Valid: true},
+		UserID:     pgtype.Int8{Int64: apiKey.UserID, Valid: true},
 		APIKeyJS:   apiKeyJS,
 		APIKeyAnno: apiKeyJS.Annotations,
+		UserJS:     userJS,
+		UserAnno:   userJS.Annotations,
 	}
+	// The effective OTR mode is now resolvable: a valid request header overrides
+	// the user's default setting. It gates the request artifact and preview below
+	// and is read again at every later recording point.
+	if f.headerOTRSet {
+		f.otr = f.headerOTR
+	} else {
+		f.otr = f.h.otrSetting(f.ctxs.Request, apiKey.UserID)
+	}
+	// Project identification is scoped to the authenticated user, so it runs here
+	// rather than at meta-insert time. The result is backfilled onto the meta row
+	// alongside user_id; upstream attempt rows read it from f.meta.ProjectID.
+	projectIDPg := f.h.extractProjectID(f.ctxs.Request, f.body, apiKey.UserID)
+	f.meta.ProjectID = projectIDPg
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.updateRequestOnHeader(pctx, db.UpdateRequestOnHeaderParams{
-		ID:           f.meta.ID,
-		EndpointPath: pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
-		ApiKeyID:     f.auth.APIKeyID,
-		Status:       db.RequestStatusPending,
-		CreatedAt:    pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
-	})
+	f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+		ApiKeyID(f.auth.APIKeyID).
+		UserID(f.auth.UserID).
+		ProjectID(projectIDPg))
+	// Backfill user_message_preview unless the OTR mode moves it out of the
+	// record. Only the preview column is set, so it cannot clobber the fields
+	// written above.
+	if f.otr.recordPreview() {
+		if preview := extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType); preview.Valid {
+			f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+				UserMessagePreview(preview))
+		}
+	}
+	// Upload the request artifact now (deferred from insertMetaRequest); the body
+	// is cleared when the OTR mode moves bodies out of the record.
+	f.h.uploadRequestArtifact(pctx, f.meta.ID, f.meta.CreatedAt, f.meta.RequestMethod, f.meta.RequestURL, f.meta.RequestHeader, f.artifactBody(f.body))
+	// The trace is created now (post-auth, user known) anchored to the meta
+	// row's created_at, so ListRequestTraces' time-window LATERALs still match
+	// the meta row. Subsequent upstream rows extend the window via upsertTrace.
+	f.h.upsertTrace(pctx, f.meta.ParentSpanIDPg, f.auth.UserID, f.meta.CreatedAt)
+	if projectIDPg.Valid {
+		seenCtx, seenCancel := f.ctxs.Persist()
+		go func() {
+			defer seenCancel()
+			f.h.upsertProjectSeen(seenCtx, projectIDPg.Int32, f.meta.CreatedAt)
+		}()
+	}
 	return true
 }
 
@@ -281,8 +363,8 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		endpointType = "unified"
 	}
 	epSummary := endpointSummaryFromRow(f.config.Endpoint)
-	clientReq := serializeClientRequest(f.r, f.body, mode.RoutedModel, f.config.PathVars)
-	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	clientReq := serializeClientRequest(f.r, mode.RoutedModel, f.config.PathVars)
+	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.UserAnno, f.auth.APIKeyAnno)
 	streaming := mode.Streaming
 	srcFormat := f.config.SourceFormat.String()
 	if err := f.session.PatchContext(jsx.ContextPatch{
@@ -291,10 +373,15 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		RequestModel: &mode.OriginalModel,
 		Request:      &clientReq,
 		ApiKey:       f.auth.APIKeyJS,
+		User:         f.auth.UserJS,
 		Annotations:  &mergedAnno,
 		Stream:       &streaming,
 		SourceFormat: &srcFormat,
 	}); err != nil {
+		f.failHook(err)
+		return false
+	}
+	if err := f.session.SetClientBody([]byte(jsonBodyOrNil(f.r.Header, f.body))); err != nil {
 		f.failHook(err)
 		return false
 	}
@@ -325,13 +412,20 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 	// Reflect the final routed model (and, if the body/annotations changed, the
 	// updated request/annotations) onto the persistent ctx.
 	routed := jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations}
-	finalReq := serializeClientRequest(f.r, f.body, f.model.Routed, f.config.PathVars)
-	finalAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	finalReq := serializeClientRequest(f.r, f.model.Routed, f.config.PathVars)
+	finalAnno := annotations.Merge(f.model.Annotations, f.auth.UserAnno, f.auth.APIKeyAnno)
 	if err := f.session.PatchContext(jsx.ContextPatch{
 		RoutedModel: &routed,
 		Request:     &finalReq,
 		Annotations: &finalAnno,
 	}); err != nil {
+		f.failHook(err)
+		return false
+	}
+	// The model rewrite may have changed the body bytes; re-register so the
+	// ctx.request.body Proxy reflects the final body (and any prior Proxy is
+	// invalidated).
+	if err := f.session.SetClientBody([]byte(jsonBodyOrNil(f.r.Header, f.body))); err != nil {
 		f.failHook(err)
 		return false
 	}
@@ -354,7 +448,7 @@ func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.CandidateView, map[strin
 	// Candidate resolution may have refined the model annotations; reflect the
 	// final routedModel + merged annotations onto ctx before sortProviders.
 	routed := jsx.ModelSummary{Name: f.model.Routed, Annotations: f.model.Annotations}
-	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.APIKeyAnno)
+	mergedAnno := annotations.Merge(f.model.Annotations, f.auth.UserAnno, f.auth.APIKeyAnno)
 	if err := f.session.PatchContext(jsx.ContextPatch{
 		RoutedModel: &routed,
 		Annotations: &mergedAnno,
@@ -373,9 +467,6 @@ func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.CandidateView, map[strin
 func (f *gatewayFlow) updateMetaModel(model string) {
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.updateRequestModel(pctx, db.UpdateRequestModelParams{
-		ID:        f.meta.ID,
-		Model:     pgtype.Text{String: model, Valid: model != ""},
-		CreatedAt: pgtype.Timestamp{Time: f.meta.CreatedAt, Valid: true},
-	})
+	f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+		Model(pgtype.Text{String: model, Valid: model != ""}))
 }

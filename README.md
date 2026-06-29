@@ -81,7 +81,7 @@ PICOTERA_S3_ACCESS_KEY=picotera
 PICOTERA_S3_SECRET_KEY=picotera-dev
 PICOTERA_S3_USE_SSL=false
 PICOTERA_S3_BUCKET=picotera-artifacts
-PICOTERA_S3_FORCE_PATH_STYLE=true
+PICOTERA_S3_PATH_STYLE=true
 PICOTERA_S3_PUBLIC_URL=http://localhost:34050
 ```
 
@@ -99,6 +99,32 @@ mise run llmbridge-plugin
 
 ```bash
 docker compose exec -it postgres timescaledb-tune --yes -cpus 1 -memory 512MB
+```
+
+## 多用户
+
+### 单用户模式
+
+提供如下环境变量，启动单用户模式：
+
+```env
+PICOTERA_AUTH_SINGLE_USER_MODE=true
+```
+
+单用户模式下，所有管理接口、控制台不做鉴权，默认归属于自动创建的、名为 root 的用户下。
+
+### 多用户模式
+
+TBD
+
+### 通过命令行绑定用户
+
+运行如下命令以绑定提供商到现存用户：
+
+```bash
+mise bind-identity -- <identity_provider> <identity> <user_id>
+# 例如
+mise bind-identity -- http-header root 1
 ```
 
 ## 协议

@@ -142,7 +142,6 @@ async function save() {
           <Tr
             v-for="(candidate, idx) in candidates"
             :key="`${candidate.providerId}:${candidate.modelId}`"
-            hoverable
             :selected="idx === selectedIndex"
             class="cursor-pointer"
             @click="selectedIndex = idx"

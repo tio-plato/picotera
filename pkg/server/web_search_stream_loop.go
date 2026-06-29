@@ -76,7 +76,7 @@ func (d *webSearchSSELoopDriver) run() {
 			return
 		}
 
-		subReq := httptest.NewRequestWithContext(d.ctx, "POST", "/api/picotera/v1/messages", bytes.NewReader(subBody))
+		subReq := httptest.NewRequestWithContext(d.ctx, "POST", "/api/unified/v1/messages", bytes.NewReader(subBody))
 		d.applyHeaders(subReq)
 		subReq.Header.Set("Content-Type", "application/json")
 		subReq.Header.Set("Accept", "text/event-stream")

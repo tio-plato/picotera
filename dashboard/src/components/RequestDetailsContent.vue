@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
-import type { RequestView, ProviderView, RequestLiveView } from '@/api'
+import type { RequestView, ProviderLabel, RequestLiveView } from '@/api'
 import { listRequestSpans, getRequestLive, interruptRequest } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay, Button } from '@/ui'
@@ -9,12 +9,9 @@ import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
 import ConversationArtifactView from './ConversationArtifactView.vue'
 import TimedRawView from './TimedRawView.vue'
-import {
-  useRequestDetailUiState,
-  type DetailTab,
-} from '@/composables/useRequestDetailUiState'
+import { useRequestDetailUiState, type DetailTab } from '@/composables/useRequestDetailUiState'
 
-const props = defineProps<{ requestId: string; providers?: ProviderView[] }>()
+const props = defineProps<{ requestId: string; providers?: ProviderLabel[] }>()
 const emit = defineEmits<{ selectedRequest: [requestId: string] }>()
 
 const selectedId = ref<string>('')
@@ -37,7 +34,7 @@ const loading = computed(() => spansQuery.isLoading.value)
 const error = computed(() => spansQuery.error.value?.message ?? '')
 
 const providersMap = computed(() => {
-  const m = new Map<number, ProviderView>()
+  const m = new Map<number, ProviderLabel>()
   for (const p of props.providers ?? []) m.set(p.id, p)
   return m
 })
@@ -145,6 +142,18 @@ function providerLabel(id: number | undefined | null) {
   return p ? p.name : `#${id}`
 }
 
+// inferredModelSource: 1 = 思维链签名, 2 = 响应结构, 其余/缺省 = 无来源。
+function inferredModelSourceLabel(source: number | undefined | null): string {
+  switch (source) {
+    case 1:
+      return '思维链'
+    case 2:
+      return '响应'
+    default:
+      return ''
+  }
+}
+
 function statusVariantTag(code: number | undefined | null): 'ok' | 'default' | 'muted' | 'accent' {
   if (!code) return 'muted'
   if (code >= 200 && code < 300) return 'ok'
@@ -189,7 +198,9 @@ function statusLabel(s: number) {
 
 import { finishReasonLabel } from '@/utils/requestLabels'
 
-function finishReasonVariant(reason: number | undefined | null): 'ok' | 'default' | 'muted' | 'accent' {
+function finishReasonVariant(
+  reason: number | undefined | null,
+): 'ok' | 'default' | 'muted' | 'accent' {
   if (reason === undefined || reason === null) return 'muted'
   if (reason === 3) return 'ok' // EOF is normal
   return 'default'
@@ -339,7 +350,9 @@ watch(detailTabs, (tabs) => {
               }}</span>
             </Field>
             <Field label="最近更新" as="div">
-              <span class="font-mono tabular-nums text-xs">{{ formatTime(live?.lastChunkAt) }}</span>
+              <span class="font-mono tabular-nums text-xs">{{
+                formatTime(live?.lastChunkAt)
+              }}</span>
             </Field>
           </div>
           <div v-if="live?.body" class="flex flex-col gap-1.5">
@@ -416,13 +429,26 @@ watch(detailTabs, (tabs) => {
                 </span>
               </Field>
               <Field label="渠道" as="div">
-                <span class="font-mono text-sm">{{ providerLabel(selected.providerId) }}</span>
+                <span class="font-mono text-sm break-all">{{ providerLabel(selected.providerId) }}</span>
               </Field>
-              <Field label="端点" as="div">
-                <span class="font-mono text-sm">{{ selected.endpointPath || '—' }}</span>
+              <Field label="推测渠道" as="div">
+                <span class="font-mono text-sm break-all">{{ selected.inferredProvider || '—' }}</span>
               </Field>
               <Field label="模型" as="div">
-                <span class="font-mono text-sm">{{ selected.model || '—' }}</span>
+                <span class="font-mono text-sm break-all">{{ selected.model || '—' }}</span>
+              </Field>
+              <Field label="推测模型" as="div">
+                <span class="inline-flex items-center gap-1.5 min-w-0">
+                  <span class="font-mono text-sm break-all">{{ selected.inferredModel || '—' }}</span>
+                  <Tag
+                    v-if="inferredModelSourceLabel(selected.inferredModelSource)"
+                    variant="muted"
+                    >{{ inferredModelSourceLabel(selected.inferredModelSource) }}</Tag
+                  >
+                </span>
+              </Field>
+              <Field label="端点" as="div">
+                <span class="font-mono text-sm break-all">{{ selected.endpointPath || '—' }}</span>
               </Field>
               <Field label="状态码" as="div">
                 <span

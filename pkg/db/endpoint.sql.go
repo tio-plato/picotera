@@ -66,7 +66,7 @@ func (q *Queries) GetFirstEndpointByType(ctx context.Context, endpointType int32
 }
 
 const upsertEndpoint = `-- name: UpsertEndpoint :one
-INSERT INTO endpoint (name, path, model_path, credentials_resolver, endpoint_type) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (path) DO UPDATE SET model_path = $3, credentials_resolver = $4, endpoint_type = $5 RETURNING path, name, model_path, credentials_resolver, endpoint_type
+INSERT INTO endpoint (name, path, model_path, credentials_resolver, endpoint_type) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (path) DO UPDATE SET name = $1, model_path = $3, credentials_resolver = $4, endpoint_type = $5 RETURNING path, name, model_path, credentials_resolver, endpoint_type
 `
 
 type UpsertEndpointParams struct {

@@ -1,14 +1,20 @@
 package server
 
 import (
+	"bytes"
+	"encoding/base64"
 	"io"
 	"strings"
 	"time"
 
+	"picotera/pkg/db"
+
+	"github.com/go-json-experiment/json/jsontext"
 	"github.com/tidwall/gjson"
 )
 
-// ResponseMetrics holds extracted TTFT and token usage from a provider response.
+// ResponseMetrics holds extracted TTFT, token usage, and inferred provider/model
+// from a provider response.
 type ResponseMetrics struct {
 	TTFTMs             *int64
 	InputTokens        *int64
@@ -16,10 +22,16 @@ type ResponseMetrics struct {
 	CacheReadTokens    *int64
 	CacheWriteTokens   *int64
 	CacheWrite1HTokens *int64
+	InferredProvider   string
+	InferredModel      string
+	// InferredModelSource is a db.InferredModelSource* enum value describing
+	// where InferredModel came from (signature vs response model field).
+	InferredModelSource int32
 }
 
 // ResponseExtractor wraps an io.Reader and inspects bytes as they flow through,
-// extracting TTFT and token usage from SSE or JSON provider responses.
+// extracting TTFT, token usage, and inferred provider/model from SSE or JSON
+// provider responses.
 type ResponseExtractor struct {
 	inner        io.Reader
 	mode         string // "sse" or "json"
@@ -33,9 +45,22 @@ type ResponseExtractor struct {
 	// JSON: accumulate full body for post-stream parsing
 	jsonBuf []byte
 
+	// JSON shape: 0 = undetermined, '[' = array stream (incremental), '{' =
+	// single object (buffered). Determined from the first non-whitespace byte.
+	jsonShape byte
+
+	// jaBuf holds unconsumed bytes of a JSON array stream (never includes the
+	// leading '['). Mirrors lineBuf: accumulate → delimit elements → discard.
+	jaBuf []byte
+
 	// streamError holds the first in-stream error.message seen in an SSE data
 	// payload (empty means no error). Detected independently of metrics.
 	streamError string
+
+	// Inference accumulators. Once non-empty they are locked (first hit wins).
+	inferredProvider string
+	sigModel         string
+	respModel        string
 }
 
 // NewResponseExtractor creates a new extractor. contentType is the upstream
@@ -54,6 +79,17 @@ func NewResponseExtractor(inner io.Reader, contentType string, startTime time.Ti
 
 // Metrics returns the extracted metrics. Call after the Read loop finishes.
 func (e *ResponseExtractor) Metrics() ResponseMetrics {
+	e.metrics.InferredProvider = e.inferredProvider
+	if e.sigModel != "" {
+		e.metrics.InferredModel = e.sigModel
+		e.metrics.InferredModelSource = db.InferredModelSourceSignature
+	} else if e.respModel != "" {
+		e.metrics.InferredModel = e.respModel
+		e.metrics.InferredModelSource = db.InferredModelSourceResponse
+	} else {
+		e.metrics.InferredModel = ""
+		e.metrics.InferredModelSource = db.InferredModelSourceUnknown
+	}
 	return e.metrics
 }
 
@@ -72,13 +108,23 @@ func (e *ResponseExtractor) Read(p []byte) (int, error) {
 		chunk := p[:n]
 		switch e.mode {
 		case "sse":
-			e.lineBuf = append(e.lineBuf, chunk...)
+			// Strip raw CR so CRLF-framed SSE (Google's Gemini API uses
+			// \r\n\r\n event boundaries) parses identically to LF-framed.
+			// Per the SSE spec, lines are delimited by CR, LF, or CRLF and a
+			// data field value cannot contain a raw CR, so dropping CR from the
+			// parse buffer is lossless. lineBuf is parse-only; the bytes
+			// forwarded to the client (p) are untouched.
+			for _, b := range chunk {
+				if b != '\r' {
+					e.lineBuf = append(e.lineBuf, b)
+				}
+			}
 			e.processSSEBuffer()
 		case "json":
-			e.jsonBuf = append(e.jsonBuf, chunk...)
+			e.feedJSON(chunk)
 		}
 	}
-	if err == io.EOF && e.mode == "json" && len(e.jsonBuf) > 0 {
+	if err == io.EOF && e.mode == "json" && e.jsonShape != '[' && len(e.jsonBuf) > 0 {
 		e.extractJSONMetrics()
 	}
 	return n, err
@@ -130,6 +176,31 @@ func (e *ResponseExtractor) processSSEEvent(eventBytes []byte) {
 	e.extractOpenAIResponsesSSE(payload)
 	// Try Anthropic format
 	e.extractAnthropicSSE(payload)
+	// Try Gemini format
+	e.extractGeminiSSE(payload)
+
+	// Infer provider/model from this payload.
+	e.inferProvider(payload)
+	e.inferModelField(payload)
+	e.inferSignatureDeltaFromSSE(payload)
+}
+
+// inferSignatureDeltaFromSSE detects Anthropic signature_delta events and
+// tries to decode the first signature seen.
+func (e *ResponseExtractor) inferSignatureDeltaFromSSE(payload string) {
+	if e.sigModel != "" {
+		return
+	}
+	result := gjson.Parse(payload)
+	if result.Get("type").String() != "content_block_delta" {
+		return
+	}
+	if result.Get("delta.type").String() != "signature_delta" {
+		return
+	}
+	if sig := result.Get("delta.signature").String(); sig != "" {
+		e.inferSignatureModel(sig)
+	}
 }
 
 // detectStreamError records the first non-empty error message found in an SSE
@@ -256,9 +327,153 @@ func (e *ResponseExtractor) extractAnthropicSSE(payload string) {
 	}
 }
 
+func (e *ResponseExtractor) extractGeminiSSE(payload string) {
+	result := gjson.Parse(payload)
+
+	// TTFT: first chunk carrying generated content parts.
+	if !e.ttftRecorded && result.Get("candidates.0.content.parts").Exists() {
+		ttft := time.Since(e.startTime).Milliseconds()
+		e.metrics.TTFTMs = &ttft
+		e.ttftRecorded = true
+	}
+
+	// Usage: only the final chunk carries token counts; early chunks have a
+	// usageMetadata with just trafficType and must be skipped (never written 0).
+	// The last chunk with counts overwrites earlier values (last wins).
+	e.setGeminiUsage(result.Get("usageMetadata"))
+}
+
+// feedJSON dispatches a JSON-mode chunk by shape. The first non-whitespace byte
+// determines the shape: a top-level '[' is a Gemini JSON array stream (processed
+// incrementally), anything else is a single object (buffered for post-stream
+// parsing). A top-level array uniquely identifies the array-stream form —
+// non-streaming generateContent never returns a top-level array — so a byte
+// probe suffices and is provider-agnostic.
+func (e *ResponseExtractor) feedJSON(chunk []byte) {
+	switch e.jsonShape {
+	case '[':
+		e.feedJSONArray(chunk)
+	case '{':
+		e.jsonBuf = append(e.jsonBuf, chunk...)
+	default: // 0: shape not yet determined
+		for i, b := range chunk {
+			if b == ' ' || b == '\t' || b == '\r' || b == '\n' {
+				continue
+			}
+			if b == '[' {
+				e.jsonShape = '['
+				e.feedJSONArray(chunk[i+1:])
+			} else {
+				e.jsonShape = '{'
+				e.jsonBuf = append(e.jsonBuf, chunk...)
+			}
+			return
+		}
+		// Whole chunk was whitespace; keep it (harmless) and wait for more.
+		e.jsonBuf = append(e.jsonBuf, chunk...)
+	}
+}
+
+// feedJSONArray incrementally scans a Gemini JSON array stream. It accumulates
+// bytes into jaBuf and emits each complete top-level element as soon as its
+// bytes have all arrived, then drops the consumed prefix. Element boundaries are
+// detected by jsontext.Decoder.ReadValue (a truncated value returns
+// io.ErrUnexpectedEOF), so string contents (braces, commas, escapes) and nesting
+// are handled by the library, not a hand-rolled state machine. jaBuf never
+// includes the leading '['; its memory bound is a single largest element.
+func (e *ResponseExtractor) feedJSONArray(data []byte) {
+	e.jaBuf = append(e.jaBuf, data...)
+	cur := 0
+	for {
+		// Skip leading whitespace, then an optional single element separator ','.
+		for cur < len(e.jaBuf) && isJSONSpace(e.jaBuf[cur]) {
+			cur++
+		}
+		if cur < len(e.jaBuf) && e.jaBuf[cur] == ',' {
+			cur++
+			for cur < len(e.jaBuf) && isJSONSpace(e.jaBuf[cur]) {
+				cur++
+			}
+		}
+		if cur >= len(e.jaBuf) {
+			break
+		}
+		if e.jaBuf[cur] == ']' {
+			// Array closed; ignore any trailing bytes.
+			e.jaBuf = nil
+			return
+		}
+		dec := jsontext.NewDecoder(bytes.NewReader(e.jaBuf[cur:]))
+		val, err := dec.ReadValue()
+		if err != nil {
+			// io.ErrUnexpectedEOF: element truncated, wait for more bytes.
+			// io.EOF: no more data this round. Other: stop scanning this stream.
+			break
+		}
+		e.processGeminiArrayElement(val)
+		cur += int(dec.InputOffset())
+	}
+	e.jaBuf = append(e.jaBuf[:0], e.jaBuf[cur:]...)
+}
+
+// processGeminiArrayElement extracts metrics from one complete Gemini array
+// element, reusing the same field semantics as the SSE path.
+func (e *ResponseExtractor) processGeminiArrayElement(elem []byte) {
+	result := gjson.ParseBytes(elem)
+	payload := string(elem)
+
+	if !e.ttftRecorded && result.Get("candidates.0.content.parts").Exists() {
+		ttft := time.Since(e.startTime).Milliseconds()
+		e.metrics.TTFTMs = &ttft
+		e.ttftRecorded = true
+	}
+
+	e.setGeminiUsage(result.Get("usageMetadata"))
+	e.inferModelField(payload)
+	e.detectStreamError(payload)
+	e.inferProvider(payload)
+}
+
+// isJSONSpace reports whether b is JSON insignificant whitespace.
+func isJSONSpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
+}
+
+// setGeminiUsage maps Gemini usageMetadata onto metrics. It only assigns fields
+// that actually exist, so an early chunk's count-less usageMetadata is a no-op.
+// Shared by the SSE and JSON paths.
+func (e *ResponseExtractor) setGeminiUsage(usage gjson.Result) {
+	if !usage.Exists() {
+		return
+	}
+
+	cached := usage.Get("cachedContentTokenCount")
+	if prompt := usage.Get("promptTokenCount"); prompt.Exists() {
+		in := prompt.Int()
+		if cached.Exists() && cached.Int() > 0 {
+			in -= cached.Int()
+			c := cached.Int()
+			e.metrics.CacheReadTokens = &c
+		}
+		e.metrics.InputTokens = &in
+	}
+	if candidates := usage.Get("candidatesTokenCount"); candidates.Exists() {
+		out := candidates.Int()
+		if thoughts := usage.Get("thoughtsTokenCount"); thoughts.Exists() {
+			out += thoughts.Int()
+		}
+		e.metrics.OutputTokens = &out
+	}
+}
+
 // extractJSONMetrics parses the accumulated JSON body and extracts usage metrics.
 func (e *ResponseExtractor) extractJSONMetrics() {
 	result := gjson.ParseBytes(e.jsonBuf)
+
+	// Infer provider/model from the accumulated JSON body.
+	e.inferProvider(result.String())
+	e.inferModelField(result.String())
+	e.inferSignatureModelFromJSON(result)
 
 	// Try OpenAI Chat Completions format
 	usage := result.Get("usage")
@@ -311,6 +526,109 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 	if e.metrics.CacheWriteTokens == nil {
 		e.extractAnthropicCacheCreation(result.Get("usage"))
 	}
+
+	// Try Gemini format (only fills metrics the formats above didn't set).
+	geminiUsage := result.Get("usageMetadata")
+	cached := geminiUsage.Get("cachedContentTokenCount")
+	if e.metrics.InputTokens == nil {
+		if v := geminiUsage.Get("promptTokenCount"); v.Exists() {
+			in := v.Int()
+			if cached.Exists() && cached.Int() > 0 {
+				in -= cached.Int()
+			}
+			e.metrics.InputTokens = &in
+		}
+	}
+	if e.metrics.OutputTokens == nil {
+		if v := geminiUsage.Get("candidatesTokenCount"); v.Exists() {
+			out := v.Int()
+			if thoughts := geminiUsage.Get("thoughtsTokenCount"); thoughts.Exists() {
+				out += thoughts.Int()
+			}
+			e.metrics.OutputTokens = &out
+		}
+	}
+	if e.metrics.CacheReadTokens == nil {
+		if cached.Exists() && cached.Int() > 0 {
+			c := cached.Int()
+			e.metrics.CacheReadTokens = &c
+		}
+	}
+}
+
+// inferProvider extracts the upstream provider identity from a payload.
+// Rules, first match wins and locks:
+//  1. top-level "provider" field is a non-empty string;
+//  2. message id (SSE "message.id", JSON "id") starts with "msg_bdrk_";
+//  3. payload contains an "amazon-bedrock-invocationMetrics" field.
+func (e *ResponseExtractor) inferProvider(payload string) {
+	if e.inferredProvider != "" {
+		return
+	}
+	result := gjson.Parse(payload)
+	if v := result.Get("provider"); v.Exists() && v.Type == gjson.String && v.String() != "" {
+		e.inferredProvider = v.String()
+		return
+	}
+	msgID := result.Get("message.id").String()
+	if msgID == "" {
+		msgID = result.Get("id").String()
+	}
+	if strings.HasPrefix(msgID, "msg_bdrk_") {
+		e.inferredProvider = "Amazon Bedrock"
+		return
+	}
+	if result.Get("amazon-bedrock-invocationMetrics").Exists() {
+		e.inferredProvider = "Amazon Bedrock"
+	}
+}
+
+// inferModelField records the first non-empty "model" or "message.model" field seen.
+func (e *ResponseExtractor) inferModelField(payload string) {
+	if e.respModel != "" {
+		return
+	}
+	for _, path := range []string{"model", "message.model", "modelVersion"} {
+		if v := gjson.Get(payload, path); v.Exists() && v.Type == gjson.String && v.String() != "" {
+			e.respModel = v.String()
+			return
+		}
+	}
+}
+
+// inferSignatureModel decodes a base64-encoded thinking signature, navigates
+// the protobuf wire format to field path [2][1][6], and if the bytes are
+// printable ASCII uses them as the inferred model. First valid signature wins.
+func (e *ResponseExtractor) inferSignatureModel(sig string) {
+	if e.sigModel != "" {
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(sig)
+	if err != nil {
+		return
+	}
+	val, ok := protoNavigate(data, []int{2, 1, 6})
+	if !ok || !isPrintableASCII(val) {
+		return
+	}
+	e.sigModel = string(val)
+}
+
+// inferSignatureModelFromJSON scans an Anthropic-style non-streaming JSON body
+// for thinking content blocks and tries to decode the first signature found.
+func (e *ResponseExtractor) inferSignatureModelFromJSON(result gjson.Result) {
+	if e.sigModel != "" {
+		return
+	}
+	result.Get("content").ForEach(func(_, value gjson.Result) bool {
+		if value.Get("type").String() == "thinking" {
+			if sig := value.Get("signature").String(); sig != "" {
+				e.inferSignatureModel(sig)
+				return false
+			}
+		}
+		return true
+	})
 }
 
 func (e *ResponseExtractor) extractAnthropicCacheCreation(usage gjson.Result) {

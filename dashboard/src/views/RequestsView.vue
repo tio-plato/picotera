@@ -4,8 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { useProvidersMap } from '@/composables/useProvidersMap'
 import { useProjectsMap } from '@/composables/useProjectsMap'
-import type { RequestView, EndpointView, ModelView } from '@/api'
-import { listEndpoints, listModels, listRequests } from '@/api/client'
+import type { RequestView, EndpointLabel, ModelLabel } from '@/api'
+import {
+  listEndpointLabels,
+  listModelLabels,
+  listRequests,
+  listUpstreamModelLabels,
+} from '@/api/client'
 import { queryKeys, type RequestsFilters } from '@/api/queryKeys'
 import RequestDetailsPanel from '@/components/RequestDetailsPanel.vue'
 import AutoRefreshSelect from '@/components/AutoRefreshSelect.vue'
@@ -25,7 +30,7 @@ import {
   type AutoDataTableColumn,
   type ColumnFilterOption,
 } from '@/ui'
-import { finishReasonLabel } from '@/utils/requestLabels'
+import { finishReasonLabel, isUnifiedEndpoint, unifiedEndpointName } from '@/utils/requestLabels'
 
 const panel = useSidePanel()
 const route = useRoute()
@@ -64,15 +69,20 @@ const pageCursors = ref<string[]>(initialCursor ? ['', initialCursor] : [''])
 const hasPaginationHistory = ref(!initialCursor)
 
 const endpointsQuery = useQuery({
-  queryKey: queryKeys.endpoints.all,
-  queryFn: listEndpoints,
+  queryKey: queryKeys.labels.endpoints,
+  queryFn: listEndpointLabels,
 })
 const modelsQuery = useQuery({
-  queryKey: queryKeys.models.all,
-  queryFn: listModels,
+  queryKey: queryKeys.labels.models,
+  queryFn: listModelLabels,
 })
-const endpoints = computed<EndpointView[]>(() => endpointsQuery.data.value ?? [])
-const models = computed<ModelView[]>(() => modelsQuery.data.value ?? [])
+const upstreamModelsQuery = useQuery({
+  queryKey: queryKeys.labels.upstreamModels,
+  queryFn: listUpstreamModelLabels,
+})
+const endpoints = computed<EndpointLabel[]>(() => endpointsQuery.data.value ?? [])
+const models = computed<ModelLabel[]>(() => modelsQuery.data.value ?? [])
+const upstreamModels = computed<string[]>(() => upstreamModelsQuery.data.value ?? [])
 
 const requestFilters = computed<RequestsFilters>(() => {
   const out: {
@@ -261,6 +271,10 @@ function openDetails(r: RequestView) {
   replaceRequestDetailUrl(r.id)
 }
 
+function requestHref(r: RequestView) {
+  return router.resolve({ name: 'requestDetail', params: { requestId: r.id } }).href
+}
+
 function rowSelected(r: RequestView) {
   return panel.isActive(`request:${r.id}`)
 }
@@ -315,8 +329,23 @@ const providerOptions = computed<ColumnFilterOption<number>[]>(() =>
 const projectOptions = computed<ColumnFilterOption<number>[]>(() =>
   projects.value.map((p) => ({ value: p.id, label: p.name })),
 )
+const endpointNameByPath = computed(() => {
+  const m = new Map<string, string>()
+  for (const e of endpoints.value) m.set(e.path, e.name)
+  return m
+})
+
+function endpointDisplay(path: string | undefined | null): { name: string; unified: boolean } {
+  if (!path) return { name: '—', unified: false }
+  if (isUnifiedEndpoint(path)) return { name: unifiedEndpointName(path), unified: true }
+  return { name: endpointNameByPath.value.get(path) || path, unified: false }
+}
+
 const endpointOptions = computed<ColumnFilterOption<string>[]>(() =>
-  endpoints.value.map((e) => ({ value: e.path, label: e.path })),
+  endpoints.value.map((e) => {
+    const d = endpointDisplay(e.path)
+    return { value: e.path, label: d.unified ? `${d.name} [统一网关]` : d.name }
+  }),
 )
 const modelOptions = computed<ColumnFilterOption<string>[]>(() =>
   models.value.map((m) => ({ value: m.name, label: m.name })),
@@ -330,17 +359,10 @@ const upstreamModelOptions = computed<ColumnFilterOption<string>[]>(() => {
       opts.push({ value: r.upstreamModel, label: r.upstreamModel })
     }
   }
-  for (const p of providers.value) {
-    if (!p.providerModels) continue
-    for (const m of p.providerModels) {
-      if (m.upstreamModelName && !seen.has(m.upstreamModelName)) {
-        seen.add(m.upstreamModelName)
-        opts.push({ value: m.upstreamModelName, label: m.upstreamModelName })
-      }
-      if (!m.upstreamModelName && m.model && !seen.has(m.model)) {
-        seen.add(m.model)
-        opts.push({ value: m.model, label: m.model })
-      }
+  for (const name of upstreamModels.value) {
+    if (name && !seen.has(name)) {
+      seen.add(name)
+      opts.push({ value: name, label: name })
     }
   }
   return opts
@@ -527,6 +549,7 @@ function cacheHitRate(r: RequestView): number | null {
         :row-key="rowKey"
         :selected="rowSelected"
         :new-row-keys="newRowKeys"
+        :row-href="requestHref"
         :on-row-click="(r) => openDetails(r)"
       >
         <template #header-projectId>
@@ -602,7 +625,12 @@ function cacheHitRate(r: RequestView): number | null {
           <span v-else class="text-ink-faint">—</span>
         </template>
         <template #cell-endpointPath="{ row }">
-          <span class="font-mono text-ink-faint">{{ row.endpointPath }}</span>
+          <div class="flex items-center gap-1.5 min-w-0 max-w-2xs">
+            <span class="truncate text-ink" :title="row.endpointPath">{{
+              endpointDisplay(row.endpointPath).name
+            }}</span>
+            <Tag v-if="endpointDisplay(row.endpointPath).unified" variant="accent" title="统一网关">U</Tag>
+          </div>
         </template>
         <template #cell-model="{ row }">
           <div class="flex flex-col leading-tight">

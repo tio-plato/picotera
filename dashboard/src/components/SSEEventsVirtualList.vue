@@ -85,7 +85,11 @@ watch(
           >
             <span class="font-mono text-xs tabular text-ink">#{{ event.index + 1 }}</span>
             <span v-if="event.timeMs != null" class="font-mono text-2xs tabular text-ink-faint">
-              {{ event.timeMs >= 1000 ? `+${(event.timeMs / 1000).toFixed(1)}s` : `+${Math.round(event.timeMs)}ms` }}
+              {{
+                event.timeMs >= 1000
+                  ? `+${(event.timeMs / 1000).toFixed(1)}s`
+                  : `+${Math.round(event.timeMs)}ms`
+              }}
             </span>
             <span class="font-mono text-2xs text-ink-muted">{{ event.event ?? 'message' }}</span>
             <span

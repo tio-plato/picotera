@@ -17,7 +17,8 @@ const reqQuery = useArtifact(() => props.requestUrl)
 const resQuery = useArtifact(() => props.responseUrl)
 
 function requestMessages(payload: ArtifactPayload | undefined) {
-  if (!payload || payload.bodyEncoding === 'base64' || !isJsonContentType(payload.headers)) return null
+  if (!payload || payload.bodyEncoding === 'base64' || !isJsonContentType(payload.headers))
+    return null
   const parsed = parseJsonBody(payload.body, payload.bodyEncoding)
   if (!parsed.ok) return null
   const messages = parseRequestConversation(parsed.value)

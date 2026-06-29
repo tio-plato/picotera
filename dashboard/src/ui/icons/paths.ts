@@ -5,7 +5,6 @@ import {
   IconArrowLeft,
   IconBolt,
   IconBraces,
-  IconBrush,
   IconChartPie,
   IconCheck,
   IconChevronDown,
@@ -16,16 +15,16 @@ import {
   IconCurrencyDollar,
   IconDatabase,
   IconEdit,
-  IconEye,
-  IconEyeOff,
   IconFolder,
   IconGitBranch,
   IconGitMerge,
   IconKey,
   IconCopy,
+  IconPalette,
   IconLink,
   IconList,
   IconLoader2,
+  IconMask,
   IconPlug,
   IconPlus,
   IconPuzzle,
@@ -38,12 +37,15 @@ import {
   IconX,
   IconCloudFog,
   IconGeometry,
+  IconFlask,
+  IconUsers,
+  IconShieldCheck,
 } from '@tabler/icons-vue'
 
 export type IconName =
   | 'plus'
   | 'arrow-left'
-  | 'brush'
+  | 'palette'
   | 'edit'
   | 'trash'
   | 'close'
@@ -68,8 +70,6 @@ export type IconName =
   | 'cloud-upload'
   | 'loader'
   | 'check'
-  | 'eye'
-  | 'eye-off'
   | 'puzzle'
   | 'puzzle-off'
   | 'currency-dollar'
@@ -80,11 +80,15 @@ export type IconName =
   | 'bolt'
   | 'geometry'
   | 'cloud-fog'
+  | 'flask'
+  | 'users'
+  | 'shield-check'
+  | 'mask'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
   'arrow-left': IconArrowLeft,
-  brush: IconBrush,
+  palette: IconPalette,
   edit: IconEdit,
   trash: IconTrash,
   close: IconX,
@@ -109,8 +113,6 @@ export const iconComponents: Record<IconName, Component> = {
   'cloud-upload': IconCloudUpload,
   loader: IconLoader2,
   check: IconCheck,
-  eye: IconEye,
-  'eye-off': IconEyeOff,
   puzzle: IconPuzzle,
   'puzzle-off': IconPuzzleOff,
   'currency-dollar': IconCurrencyDollar,
@@ -121,4 +123,8 @@ export const iconComponents: Record<IconName, Component> = {
   bolt: IconBolt,
   'cloud-fog': IconCloudFog,
   geometry: IconGeometry,
+  flask: IconFlask,
+  users: IconUsers,
+  'shield-check': IconShieldCheck,
+  mask: IconMask,
 }

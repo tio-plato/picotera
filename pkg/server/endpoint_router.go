@@ -11,7 +11,7 @@
 // Any future writer of the endpoint table must call
 // Server.endpointRouter.Invalidate() at the same site.
 //
-// The five unified generation routes (/api/picotera/v1/messages,
+// The five unified generation routes (/api/unified/v1/messages,
 // /v1/responses, /v1/chat/completions, and the two /v1beta/models/{model}:…
 // Gemini variants) are registered as literal chi handlers in server.go
 // BEFORE the catch-all gateway mount, so they never hit Match. They are not

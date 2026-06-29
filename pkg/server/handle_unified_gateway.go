@@ -19,8 +19,12 @@ func (s *Server) handleUnifiedGenerate(srcFormat llmbridge.Format) http.HandlerF
 
 func (h *gatewayHandler) newUnifiedGatewayFlowConfig(srcFormat llmbridge.Format, r *http.Request) gatewayFlowConfig {
 	virtualEndpoint := db.Endpoint{
-		Name:                "(unified)",
-		Path:                r.URL.Path,
+		Name: "(unified)",
+		// Record the registered route pattern (e.g. .../{model}:generateContent)
+		// rather than r.URL.Path, so the meta row's endpoint_path keeps the
+		// {model} placeholder instead of baking in a concrete model name. The
+		// concrete model still reaches the upstream URL via PathVars below.
+		Path:                unifiedRoutePath(srcFormat),
 		ModelPath:           "",
 		CredentialsResolver: contract.CredentialsResolver_Unknown,
 		EndpointType:        sourceEndpointType(srcFormat),
@@ -30,7 +34,6 @@ func (h *gatewayHandler) newUnifiedGatewayFlowConfig(srcFormat llmbridge.Format,
 		Endpoint:     virtualEndpoint,
 		PathVars:     chiURLParams(r),
 		SourceFormat: srcFormat,
-		Credentials:  contract.CredentialsResolver_Unknown,
 		ExtractModel: func(req *http.Request, body []byte, _ map[string]string) (gatewayModelMode, error) {
 			model, err := extractUnifiedModel(srcFormat, req, body)
 			return gatewayModelMode{OriginalModel: model, HasModel: true}, err
@@ -44,7 +47,7 @@ func (h *gatewayHandler) newUnifiedGatewayFlowConfig(srcFormat llmbridge.Format,
 			if err != nil {
 				return candidateSet{}, err
 			}
-			return buildUnifiedCandidateSet(providers, auth.APIKeyAnno, nil, virtualEndpoint)
+			return buildUnifiedCandidateSet(providers, auth.UserAnno, auth.APIKeyAnno, nil, virtualEndpoint)
 		},
 		PrepareAttempt: prepareUnifiedAttempt,
 		HandleSuccess: func(input successInput) {

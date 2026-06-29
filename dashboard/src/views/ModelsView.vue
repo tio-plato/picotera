@@ -161,13 +161,7 @@ function openPricingMatch(m: ModelView) {
 }
 
 async function toggleDisabled(m: ModelView) {
-  const body = {
-    name: m.name,
-    disabled: !m.disabled,
-    annotations: m.annotations ?? {},
-    ...(m.pricing ? { pricing: m.pricing } : {}),
-  }
-  await upsertModelMutation.mutateAsync(body)
+  await upsertModelMutation.mutateAsync({ ...m, disabled: !m.disabled })
 }
 
 function openCreateFromOrphan(name: string) {
@@ -212,7 +206,7 @@ function confirmDelete(_event: Event, m: ModelView) {
               v-for="m in sortedModels"
               :key="m.name"
               :selected="panel.isActive(`model:${m.name}`)"
-              :class="m.disabled ? 'opacity-55' : ''"
+              :dimmed="m.disabled"
             >
               <Td>
                 <span class="font-mono font-medium">{{ m.name }}</span>
@@ -320,7 +314,7 @@ function confirmDelete(_event: Event, m: ModelView) {
             <li
               v-for="row in orphanRows"
               :key="row.name"
-              class="group flex items-center gap-2 px-3 py-2 border-b border-line last:border-b-0"
+              class="group flex items-center gap-2 px-3 py-2 border-b border-line last:border-b-0 transition-colors hover:bg-surface-50/75"
             >
               <span class="font-mono text-sm text-ink flex-none">{{ row.name }}</span>
               <TagList class="flex-1 min-w-0">

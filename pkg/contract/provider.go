@@ -32,7 +32,7 @@ type ProviderView struct {
 	Disabled                bool                 `json:"disabled"`
 	ProxyUrl                string               `json:"proxyUrl,omitempty"`
 	ModelsEndpointUrl       string               `json:"modelsEndpointUrl,omitempty"`
-	ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+	ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,followRequest,bearerToken,xApiKey,searchKey,googApiKey"`
 	SupportsNativeWebSearch bool                 `json:"supportsNativeWebSearch"`
 }
 
@@ -50,7 +50,7 @@ type CreateProviderRequest struct {
 		Disabled                bool                 `json:"disabled"`
 		ProxyUrl                string               `json:"proxyUrl,omitempty"`
 		ModelsEndpointUrl       string               `json:"modelsEndpointUrl,omitempty"`
-		ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+		ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,followRequest,bearerToken,xApiKey,searchKey,googApiKey"`
 		SupportsNativeWebSearch bool                 `json:"supportsNativeWebSearch"`
 	}
 }
@@ -70,7 +70,7 @@ type UpsertProviderRequest struct {
 		Disabled                bool                 `json:"disabled"`
 		ProxyUrl                string               `json:"proxyUrl,omitempty"`
 		ModelsEndpointUrl       string               `json:"modelsEndpointUrl,omitempty"`
-		ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,generalApiKey,bearerToken,xApiKey,searchKey,googApiKey"`
+		ModelsEndpointResolver  string               `json:"modelsEndpointResolver,omitempty" enum:"unknown,followRequest,bearerToken,xApiKey,searchKey,googApiKey"`
 		SupportsNativeWebSearch bool                 `json:"supportsNativeWebSearch"`
 	}
 }

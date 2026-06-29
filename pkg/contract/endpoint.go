@@ -9,7 +9,7 @@ import (
 
 const (
 	CredentialsResolver_Unknown       int32 = 0
-	CredentialsResolver_GeneralApiKey int32 = 1
+	CredentialsResolver_FollowRequest int32 = 1
 	CredentialsResolver_BearerToken   int32 = 2
 	CredentialsResolver_XApiKey       int32 = 3
 	CredentialsResolver_SearchKey     int32 = 4
@@ -26,7 +26,7 @@ const (
 	EndpointType_GeminiGenerateContent       int32 = 7
 	EndpointType_GeminiStreamGenerateContent int32 = 8
 	EndpointType_ExaSearch                   int32 = 9
-EndpointType_ModelList                   int32 = 10
+	EndpointType_ModelList                   int32 = 10
 )
 
 func ToEndpointType(s string) int32 {
@@ -87,8 +87,8 @@ func ToCredentialsResolver(s string) int32 {
 	switch s {
 	case "unknown":
 		return CredentialsResolver_Unknown
-	case "generalApiKey":
-		return CredentialsResolver_GeneralApiKey
+	case "followRequest":
+		return CredentialsResolver_FollowRequest
 	case "bearerToken":
 		return CredentialsResolver_BearerToken
 	case "xApiKey":
@@ -106,8 +106,8 @@ func FromCredentialsResolver(cr int32) string {
 	switch cr {
 	case CredentialsResolver_Unknown:
 		return "unknown"
-	case CredentialsResolver_GeneralApiKey:
-		return "generalApiKey"
+	case CredentialsResolver_FollowRequest:
+		return "followRequest"
 	case CredentialsResolver_BearerToken:
 		return "bearerToken"
 	case CredentialsResolver_XApiKey:
@@ -125,7 +125,7 @@ type EndpointView struct {
 	Name                string `json:"name"`
 	Path                string `json:"path"`
 	ModelPath           string `json:"modelPath"`
-	CredentialsResolver string `json:"credentialsResolver" enum:"generalApiKey,bearerToken,xApiKey,searchKey,googApiKey,unknown"`
+	CredentialsResolver string `json:"credentialsResolver" enum:"followRequest,bearerToken,xApiKey,searchKey,googApiKey,unknown"`
 	EndpointType        string `json:"endpointType" enum:"general,openaiChatCompletions,openaiResponses,anthropicMessages,anthropicCountTokens,geminiGenerateContent,geminiStreamGenerateContent,exaSearch,modelList,unknown"`
 }
 

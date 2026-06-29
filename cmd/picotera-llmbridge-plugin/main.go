@@ -30,6 +30,8 @@ func main() {
 		Plugins:         llmbridge.PluginMap(&server{}),
 		GRPCServer: func(opts []grpc.ServerOption) *grpc.Server {
 			opts = append(opts,
+				grpc.MaxRecvMsgSize(llmbridge.MaxGRPCMessageSize),
+				grpc.MaxSendMsgSize(llmbridge.MaxGRPCMessageSize),
 				grpc.ChainUnaryInterceptor(recoverUnary),
 				grpc.ChainStreamInterceptor(recoverStream),
 			)

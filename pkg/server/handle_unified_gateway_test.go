@@ -168,7 +168,7 @@ func TestCandidateEndpointTypes(t *testing.T) {
 
 func TestExtractUnifiedModel_BodyFormats(t *testing.T) {
 	body := []byte(`{"model":"claude-3-5-sonnet","stream":true}`)
-	r := httptest.NewRequest("POST", "/api/picotera/v1/messages", nil)
+	r := httptest.NewRequest("POST", "/api/unified/v1/messages", nil)
 	model, err := extractUnifiedModel(llmbridge.FormatAnthropicMessages, r, body)
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestExtractUnifiedModel_GeminiFromPath(t *testing.T) {
 	// {model} into the URL params.
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("model", "gemini-2.5-pro")
-	r := httptest.NewRequest("POST", "/api/picotera/v1beta/models/gemini-2.5-pro:streamGenerateContent", nil)
+	r := httptest.NewRequest("POST", "/api/unified/v1beta/models/gemini-2.5-pro:streamGenerateContent", nil)
 	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 
 	model, err := extractUnifiedModel(llmbridge.FormatGeminiStreamGenerateContent, r, []byte(`{"contents":[]}`))
@@ -211,7 +211,7 @@ func TestExtractUnifiedModel_GeminiFromPath(t *testing.T) {
 
 func TestDetectStreaming(t *testing.T) {
 	newReq := func(accept ...string) *http.Request {
-		r := httptest.NewRequest("POST", "/api/picotera/v1/messages", nil)
+		r := httptest.NewRequest("POST", "/api/unified/v1/messages", nil)
 		for _, a := range accept {
 			r.Header.Add("Accept", a)
 		}
@@ -262,6 +262,80 @@ func TestSetUnifiedModel(t *testing.T) {
 	}
 	if string(out) != string(body) {
 		t.Errorf("expected Gemini body unchanged, got %s", out)
+	}
+}
+
+// TestUnifiedUpstreamPathVars pins the fix for the unified Gemini upstream URL
+// bug: when a model is configured only on a Gemini endpoint and the inbound
+// request is a unified non-Gemini source (e.g. Anthropic Messages), the inbound
+// route carries no {model} path variable, so the {model} token in the Gemini
+// upstream URL must be filled from the resolved upstream model name instead.
+//
+// Before the fix the unified branch passed chiURLParams(r) (empty for the
+// Anthropic/OpenAI source routes) straight through, leaving {model} unresolved
+// and sending ".../models/%7Bmodel%7D:generateContent" upstream.
+func TestUnifiedUpstreamPathVars(t *testing.T) {
+	if got := unifiedUpstreamPathVars("gemini-2.5-flash"); !reflect.DeepEqual(got, map[string]string{"model": "gemini-2.5-flash"}) {
+		t.Errorf("unifiedUpstreamPathVars(model) = %v, want {model: gemini-2.5-flash}", got)
+	}
+	if got := unifiedUpstreamPathVars(""); got != nil {
+		t.Errorf("unifiedUpstreamPathVars(\"\") = %v, want nil", got)
+	}
+
+	// End-to-end: the Gemini upstream URL token resolves to the upstream model.
+	geminiURL := "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+	resolved, err := substitutePathVars(geminiURL, unifiedUpstreamPathVars("gemini-2.5-flash"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(resolved, "{") {
+		t.Fatalf("upstream URL still has unresolved token: %s", resolved)
+	}
+	want := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+	if resolved != want {
+		t.Fatalf("substituted URL = %s, want %s", resolved, want)
+	}
+}
+
+// TestBridgeUnifiedRequestGeminiStreamAltSSE pins the fix for the unified
+// bridge-to-Gemini-streamGenerateContent case: a non-Gemini source (e.g.
+// Anthropic Messages) never carries alt=sse, so Gemini would return a JSON
+// array stream instead of SSE and BridgeStream would fail to parse it. The
+// bridge path must force alt=sse onto the upstream URL.
+func TestBridgeUnifiedRequestGeminiStreamAltSSE(t *testing.T) {
+	f := &gatewayFlow{
+		h:      &gatewayHandler{&Server{llmBridge: fakeLLMBridge{}}},
+		config: gatewayFlowConfig{SourceFormat: llmbridge.FormatAnthropicMessages},
+	}
+	req := httptest.NewRequest("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent", nil)
+	input := attemptInput{Sidecar: gatewayCandidateSidecar{UpstreamFormat: llmbridge.FormatGeminiStreamGenerateContent}}
+
+	got, _, err := bridgeUnifiedRequest(context.Background(), f, input, req, []byte(`{}`), llmbridge.OutboundProfile{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alt := got.URL.Query().Get("alt"); alt != "sse" {
+		t.Fatalf("bridge to Gemini stream: alt=%q, want \"sse\"", alt)
+	}
+}
+
+// TestBridgeUnifiedRequestIdentityNoAltSSE pins that identity passthrough
+// (source == upstream == Gemini streamGenerateContent) returns early and does
+// NOT inject alt=sse — the client's own query is preserved byte-for-byte.
+func TestBridgeUnifiedRequestIdentityNoAltSSE(t *testing.T) {
+	f := &gatewayFlow{
+		h:      &gatewayHandler{&Server{llmBridge: fakeLLMBridge{}}},
+		config: gatewayFlowConfig{SourceFormat: llmbridge.FormatGeminiStreamGenerateContent},
+	}
+	req := httptest.NewRequest("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent", nil)
+	input := attemptInput{Sidecar: gatewayCandidateSidecar{UpstreamFormat: llmbridge.FormatGeminiStreamGenerateContent}}
+
+	got, _, err := bridgeUnifiedRequest(context.Background(), f, input, req, []byte(`{}`), llmbridge.OutboundProfile{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.URL.RawQuery != "" {
+		t.Fatalf("identity passthrough must not inject query, got %q", got.URL.RawQuery)
 	}
 }
 

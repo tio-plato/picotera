@@ -16,7 +16,7 @@ const form = ref({
   name: props.endpoint?.name ?? '',
   path: props.endpoint?.path ?? '',
   modelPath: props.endpoint?.modelPath ?? '',
-  credentialsResolver: props.endpoint?.credentialsResolver ?? ('generalApiKey' as const),
+  credentialsResolver: props.endpoint?.credentialsResolver ?? ('followRequest' as const),
   endpointType: (props.endpoint?.endpointType ?? 'general') as EndpointType,
 })
 const saving = ref(false)
@@ -42,8 +42,16 @@ const endpointTypeOptions = computed(() => {
     string,
   ][]
   if (form.value.endpointType === 'unknown') entries.push(['unknown', ENDPOINT_TYPE_LABELS.unknown])
-  return entries
+  return entries.map(([value, label]) => ({ value, label }))
 })
+
+const credentialsResolverOptions = [
+  { value: 'followRequest', label: '跟随请求' },
+  { value: 'bearerToken', label: 'Bearer Token' },
+  { value: 'xApiKey', label: 'X-Api-Key' },
+  { value: 'searchKey', label: 'Search Key (?key=)' },
+  { value: 'googApiKey', label: 'X-Goog-Api-Key' },
+]
 
 async function submit() {
   saving.value = true
@@ -78,11 +86,7 @@ async function submit() {
         <Input v-model="form.name" required placeholder="例如 Chat Completions" />
       </Field>
       <Field label="类型">
-        <Select v-model="form.endpointType">
-          <option v-for="[value, label] in endpointTypeOptions" :key="value" :value="value">
-            {{ label }}
-          </option>
-        </Select>
+        <Select v-model="form.endpointType" :options="endpointTypeOptions" />
       </Field>
       <Field label="模型字段路径">
         <Input
@@ -97,14 +101,8 @@ async function submit() {
           "
         />
       </Field>
-      <Field label="凭证解析">
-        <Select v-model="form.credentialsResolver">
-          <option value="generalApiKey">通用密钥</option>
-          <option value="bearerToken">Bearer Token</option>
-          <option value="xApiKey">X-Api-Key</option>
-          <option value="searchKey">Search Key (?key=)</option>
-          <option value="googApiKey">X-Goog-Api-Key</option>
-        </Select>
+      <Field label="凭证发送">
+        <Select v-model="form.credentialsResolver" :options="credentialsResolverOptions" />
       </Field>
     </form>
 

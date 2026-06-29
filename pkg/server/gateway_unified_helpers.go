@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -152,6 +153,19 @@ func chiURLParams(r *http.Request) map[string]string {
 	return out
 }
 
+// unifiedUpstreamPathVars returns the path variables used to fill tokens in a
+// unified upstream URL. The only token a unified upstream URL can carry is the
+// {model} of a Gemini generate/streamGenerate endpoint; it must resolve to the
+// upstream model name — not the inbound requested model — so that
+// format-converted requests whose inbound route carries no {model} (Anthropic /
+// OpenAI sources) still produce a valid Gemini URL.
+func unifiedUpstreamPathVars(upstreamModel string) map[string]string {
+	if upstreamModel == "" {
+		return nil
+	}
+	return map[string]string{"model": upstreamModel}
+}
+
 // resolveProvidersByTypes is the unified handler's analogue of resolveProviders.
 // It runs the new sqlc query and applies the same priority sort and minimum
 // validity filter (upstream URL + credentials non-empty). srcType is the
@@ -179,17 +193,18 @@ func (s *Server) resolveProvidersByTypes(ctx context.Context, model string, type
 		return nil, &gatewayError{status: http.StatusNotFound, message: "no provider available for model", code: errorx.NoProviderAvailable.Error()}
 	}
 	valid = dedupeUnifiedRows(valid, srcType)
-	// Sort by combined priority (provider + per-model-entry) descending.
-	for i := 1; i < len(valid); i++ {
-		for j := i; j > 0; j-- {
-			pi := int(valid[j].Priority) + int(valid[j].ProviderPriority)
-			pj := int(valid[j-1].Priority) + int(valid[j-1].ProviderPriority)
-			if pi <= pj {
-				break
-			}
-			valid[j], valid[j-1] = valid[j-1], valid[j]
-		}
-	}
+	// Sort by combined priority (provider + per-model-entry) descending,
+	// with higher provider IDs first when priorities tie.
+	slices.SortFunc(valid, func(a, b db.GetProvidersByEndpointTypesAndModelRow) int {
+		return compareCandidateOrder(
+			a.ProviderID,
+			a.Priority,
+			a.ProviderPriority,
+			b.ProviderID,
+			b.Priority,
+			b.ProviderPriority,
+		)
+	})
 	return valid, nil
 }
 
@@ -248,9 +263,11 @@ func betterRow(a, b db.GetProvidersByEndpointTypesAndModelRow, srcType int32) bo
 // unifiedStreamArgs bundles the (many) inputs the unified streaming success
 // path needs. Wrapped so the call site stays readable.
 //
-// metaEndpointPath is the unified route path (`/api/picotera/v1/messages` …)
-// — what the meta row should record. upstreamPath is the chosen upstream's
-// configured endpoint.path — what the upstream row should record.
+// metaEndpointPath is the unified route pattern (`/api/unified/v1/messages`,
+// `/api/unified/v1beta/models/{model}:generateContent` …) — what the meta row
+// should record (with the {model} placeholder, not a concrete model name).
+// upstreamPath is the chosen upstream's configured endpoint.path — what the
+// upstream row should record.
 type unifiedStreamArgs struct {
 	w                 http.ResponseWriter
 	r                 *http.Request
@@ -274,7 +291,9 @@ type unifiedStreamArgs struct {
 	upstreamStartTime time.Time
 	metaLogs          []artifacts.LogEntry
 	apiKeyID          pgtype.Int4
+	userID            pgtype.Int8
 	wsCtx             *webSearchContext
+	recordBody        bool
 }
 
 func unifiedStreamArgsFromSuccess(input successInput) unifiedStreamArgs {
@@ -289,7 +308,9 @@ func unifiedStreamArgsFromSuccess(input successInput) unifiedStreamArgs {
 		metaEndpointPath: input.Flow.config.Endpoint.Path, upstreamPath: input.Sidecar.EndpointPath,
 		upstreamStartTime: input.UpstreamStartTime,
 		metaLogs:          input.Flow.collectLogs(), apiKeyID: input.Flow.auth.APIKeyID,
-		wsCtx: input.Prepared.WebSearch,
+		userID:     input.Flow.auth.UserID,
+		wsCtx:      input.Prepared.WebSearch,
+		recordBody: input.Flow.otr.recordBody(),
 	}
 }
 
@@ -316,26 +337,22 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	hdrCtx, hdrCancel := input.Flow.ctxs.Persist()
 	defer hdrCancel()
 
-	h.updateRequestOnHeader(hdrCtx, db.UpdateRequestOnHeaderParams{
-		ID:            a.metaID,
-		ProviderID:    pgtype.Int4{Int32: a.providerID, Valid: true},
-		Model:         pgtype.Text{String: a.routedModel, Valid: a.routedModel != ""},
-		UpstreamModel: pgtype.Text{String: a.upstreamModel, Valid: a.upstreamModel != ""},
-		EndpointPath:  pgtype.Text{String: a.metaEndpointPath, Valid: a.metaEndpointPath != ""},
-		ApiKeyID:      a.apiKeyID,
-		Status:        db.RequestStatusHeaderReceived,
-		CreatedAt:     pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
-	})
-	h.updateRequestOnHeader(hdrCtx, db.UpdateRequestOnHeaderParams{
-		ID:            a.upstreamID,
-		ProviderID:    pgtype.Int4{Int32: a.providerID, Valid: true},
-		Model:         pgtype.Text{String: a.routedModel, Valid: a.routedModel != ""},
-		UpstreamModel: pgtype.Text{String: a.upstreamModel, Valid: a.upstreamModel != ""},
-		EndpointPath:  pgtype.Text{String: a.upstreamPath, Valid: a.upstreamPath != ""},
-		ApiKeyID:      a.apiKeyID,
-		Status:        db.RequestStatusHeaderReceived,
-		CreatedAt:     pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
-	})
+	// user_id / project_id are intentionally NOT touched here: they were
+	// backfilled post-auth on the meta row and must survive the header update.
+	h.updateRequest(hdrCtx, newRequestUpdate(a.metaID, a.metaCreatedAt).
+		ProviderID(pgtype.Int4{Int32: a.providerID, Valid: true}).
+		Model(pgtype.Text{String: a.routedModel, Valid: a.routedModel != ""}).
+		UpstreamModel(pgtype.Text{String: a.upstreamModel, Valid: a.upstreamModel != ""}).
+		EndpointPath(pgtype.Text{String: a.metaEndpointPath, Valid: a.metaEndpointPath != ""}).
+		ApiKeyID(a.apiKeyID).
+		Status(db.RequestStatusHeaderReceived))
+	h.updateRequest(hdrCtx, newRequestUpdate(a.upstreamID, a.upstreamCreatedAt).
+		ProviderID(pgtype.Int4{Int32: a.providerID, Valid: true}).
+		Model(pgtype.Text{String: a.routedModel, Valid: a.routedModel != ""}).
+		UpstreamModel(pgtype.Text{String: a.upstreamModel, Valid: a.upstreamModel != ""}).
+		EndpointPath(pgtype.Text{String: a.upstreamPath, Valid: a.upstreamPath != ""}).
+		ApiKeyID(a.apiKeyID).
+		Status(db.RequestStatusHeaderReceived))
 
 	// Live records, one per row and each the single source for that row's live
 	// view and persisted artifact. The upstream row records the upstream-format
@@ -346,13 +363,13 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		upstreamProgress = input.Entry.progress
 	}
 	if upstreamProgress == nil {
-		upstreamProgress = newLiveProgressWithOrigin(a.upstreamStartTime)
+		upstreamProgress = newLiveProgressWithOrigin(a.upstreamStartTime, a.recordBody)
 	}
 	upstreamProgress.markHeaders(resp.StatusCode, a.upstreamStartTime)
 
 	var metaProgress *liveProgress
 	if transforming {
-		metaProgress = newLiveProgressWithOrigin(a.upstreamStartTime)
+		metaProgress = newLiveProgressWithOrigin(a.upstreamStartTime, a.recordBody)
 		metaProgress.markHeaders(resp.StatusCode, a.upstreamStartTime)
 	}
 	metaLive := upstreamProgress
@@ -543,10 +560,16 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 	pctx, pcancel := input.Flow.ctxs.Persist()
 	defer pcancel()
 
-	upstreamAggregated := buildAggregatedArtifact(pctx, h.llmBridge, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
+	// OTR body modes move bodies + aggregation + timings out of the record. The
+	// live records above already returned empty bytes/timings for this case; here
+	// we additionally skip the aggregation builds.
+	var upstreamAggregated *artifacts.AggregatedResponse
 	var metaAggregated *artifacts.AggregatedResponse
-	if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
-		metaAggregated = buildAggregatedArtifact(pctx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
+	if a.recordBody {
+		upstreamAggregated = buildAggregatedArtifact(pctx, h.llmBridge, a.upFormat, upstreamCT, upstreamBytes, a.outboundProfile)
+		if profile, ok := defaultAggregationProfile(a.srcFormat); ok {
+			metaAggregated = buildAggregatedArtifact(pctx, h.llmBridge, a.srcFormat, metaRespHeader.Get("Content-Type"), clientBytes, profile)
+		}
 	}
 	h.uploadResponseArtifactWithAggregation(pctx, a.upstreamID, a.upstreamCreatedAt, resp.StatusCode, resp.Header.Clone(), upstreamBytes, upstreamAggregated, upstreamTimings)
 	h.uploadMetaResponseArtifactWithAggregation(pctx, a.metaID, a.metaCreatedAt, http.StatusOK, metaRespHeader, clientBytes, a.metaLogs, metaAggregated, metaTimings)
@@ -568,46 +591,47 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 		status = int32(db.RequestStatusFailed)
 		errMsg = pgtype.Text{String: streamErr, Valid: true}
 		fr = int32(db.FinishReasonStreamError)
+		input.Flow.runStreamErrorHook(a.providerID, input.CurrentRetryCount, input.TotalAttemptCount, resp.StatusCode, streamErr)
 	}
 
 	upstreamFr := input.Flow.finishReasonFor(a.upstreamID, fr)
 	metaFr := input.Flow.finishReasonFor(a.metaID, fr)
 	upstreamTimeSpent := int32(time.Since(a.attemptStart).Milliseconds())
-	h.updateRequestOnComplete(pctx, db.UpdateRequestOnCompleteParams{
-		ID:                 a.upstreamID,
-		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage:       errMsg,
-		TimeSpentMs:        pgtype.Int4{Int32: upstreamTimeSpent, Valid: true},
-		Status:             status,
-		TtftMs:             ttftMs,
-		InputTokens:        inputTokens,
-		OutputTokens:       outputTokens,
-		CacheReadTokens:    cacheReadTokens,
-		CacheWriteTokens:   cacheWriteTokens,
-		CacheWrite1hTokens: cacheWrite1hTokens,
-		ModelCost:          modelCost,
-		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: upstreamFr, Valid: true},
-		CreatedAt:          pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
-	})
+	h.updateRequest(pctx, newRequestUpdate(a.upstreamID, a.upstreamCreatedAt).
+		StatusCode(pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true}).
+		ErrorMessage(errMsg).
+		TimeSpentMs(pgtype.Int4{Int32: upstreamTimeSpent, Valid: true}).
+		Status(status).
+		TtftMs(ttftMs).
+		InputTokens(inputTokens).
+		OutputTokens(outputTokens).
+		CacheReadTokens(cacheReadTokens).
+		CacheWriteTokens(cacheWriteTokens).
+		CacheWrite1hTokens(cacheWrite1hTokens).
+		ModelCost(modelCost).
+		ModelCostCurrency(modelCcy).
+		FinishReason(pgtype.Int4{Int32: upstreamFr, Valid: true}).
+		InferredProvider(pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""}).
+		InferredModel(pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""}).
+		InferredModelSource(int16(m.InferredModelSource)))
 	metaTimeSpent := int32(time.Since(a.gatewayStart).Milliseconds())
-	h.updateRequestOnComplete(pctx, db.UpdateRequestOnCompleteParams{
-		ID:                 a.metaID,
-		StatusCode:         pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true},
-		ErrorMessage:       errMsg,
-		TimeSpentMs:        pgtype.Int4{Int32: metaTimeSpent, Valid: true},
-		Status:             status,
-		TtftMs:             ttftMs,
-		InputTokens:        inputTokens,
-		OutputTokens:       outputTokens,
-		CacheReadTokens:    cacheReadTokens,
-		CacheWriteTokens:   cacheWriteTokens,
-		CacheWrite1hTokens: cacheWrite1hTokens,
-		ModelCost:          modelCost,
-		ModelCostCurrency:  modelCcy,
-		FinishReason:       pgtype.Int4{Int32: metaFr, Valid: true},
-		CreatedAt:          pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
-	})
+	h.updateRequest(pctx, newRequestUpdate(a.metaID, a.metaCreatedAt).
+		StatusCode(pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true}).
+		ErrorMessage(errMsg).
+		TimeSpentMs(pgtype.Int4{Int32: metaTimeSpent, Valid: true}).
+		Status(status).
+		TtftMs(ttftMs).
+		InputTokens(inputTokens).
+		OutputTokens(outputTokens).
+		CacheReadTokens(cacheReadTokens).
+		CacheWriteTokens(cacheWriteTokens).
+		CacheWrite1hTokens(cacheWrite1hTokens).
+		ModelCost(modelCost).
+		ModelCostCurrency(modelCcy).
+		FinishReason(pgtype.Int4{Int32: metaFr, Valid: true}).
+		InferredProvider(pgtype.Text{String: m.InferredProvider, Valid: m.InferredProvider != ""}).
+		InferredModel(pgtype.Text{String: m.InferredModel, Valid: m.InferredModel != ""}).
+		InferredModelSource(int16(m.InferredModelSource)))
 	_ = r
 }
 
@@ -616,26 +640,24 @@ func (h *gatewayHandler) unifiedStreamSuccess(input successInput) {
 // candidate. We can't recover by retrying because part of the upstream may
 // have been read; surface the bridge failure as 502 and complete the rows.
 func (h *gatewayHandler) failUnifiedSuccess(ctx context.Context, a unifiedStreamArgs, errMsg string) {
-	h.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
-		ID:           a.upstreamID,
-		StatusCode:   pgtype.Int4{Int32: int32(a.resp.StatusCode), Valid: true},
-		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
-		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(a.attemptStart).Milliseconds()), Valid: true},
-		Status:       db.RequestStatusFailed,
-		FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
-		CreatedAt:    pgtype.Timestamp{Time: a.upstreamCreatedAt, Valid: true},
-	})
+	h.updateRequest(ctx, newRequestUpdate(a.upstreamID, a.upstreamCreatedAt).
+		StatusCode(pgtype.Int4{Int32: int32(a.resp.StatusCode), Valid: true}).
+		ErrorMessage(pgtype.Text{String: errMsg, Valid: true}).
+		TimeSpentMs(pgtype.Int4{Int32: int32(time.Since(a.attemptStart).Milliseconds()), Valid: true}).
+		Status(db.RequestStatusFailed).
+		FinishReason(pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true}))
 	respBody := writeGatewayError(a.w, http.StatusBadGateway, "bridge failed: "+errMsg, errorx.UpstreamError.Error())
-	h.updateRequestOnComplete(ctx, db.UpdateRequestOnCompleteParams{
-		ID:           a.metaID,
-		StatusCode:   pgtype.Int4{Int32: http.StatusBadGateway, Valid: true},
-		ErrorMessage: pgtype.Text{String: errMsg, Valid: true},
-		TimeSpentMs:  pgtype.Int4{Int32: int32(time.Since(a.gatewayStart).Milliseconds()), Valid: true},
-		Status:       db.RequestStatusFailed,
-		FinishReason: pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true},
-		CreatedAt:    pgtype.Timestamp{Time: a.metaCreatedAt, Valid: true},
-	})
-	h.uploadMetaResponseArtifact(ctx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), respBody, a.metaLogs, nil)
+	h.updateRequest(ctx, newRequestUpdate(a.metaID, a.metaCreatedAt).
+		StatusCode(pgtype.Int4{Int32: http.StatusBadGateway, Valid: true}).
+		ErrorMessage(pgtype.Text{String: errMsg, Valid: true}).
+		TimeSpentMs(pgtype.Int4{Int32: int32(time.Since(a.gatewayStart).Milliseconds()), Valid: true}).
+		Status(db.RequestStatusFailed).
+		FinishReason(pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true}))
+	artifactBody := respBody
+	if !a.recordBody {
+		artifactBody = nil
+	}
+	h.uploadMetaResponseArtifact(ctx, a.metaID, a.metaCreatedAt, http.StatusBadGateway, a.w.Header().Clone(), artifactBody, a.metaLogs, nil)
 	_ = a.resp.Body.Close()
 }
 

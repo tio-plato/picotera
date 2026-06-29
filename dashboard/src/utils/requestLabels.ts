@@ -1,3 +1,23 @@
+// Built-in readable names for unified gateway routes, keyed by the route
+// pattern recorded on request rows. Unified routes are runtime constants on the
+// server, not endpoint-table rows, so the dashboard carries its own names and
+// renders a "统一网关" tag alongside them.
+const UNIFIED_ENDPOINT_NAMES: Record<string, string> = {
+  '/api/unified/v1/messages': 'Anthropic Messages',
+  '/api/unified/v1/responses': 'OpenAI Responses',
+  '/api/unified/v1/chat/completions': 'OpenAI Chat Completions',
+  '/api/unified/v1beta/models/{model}:generateContent': 'Gemini 生成内容',
+  '/api/unified/v1beta/models/{model}:streamGenerateContent': 'Gemini 流式生成',
+}
+
+export function isUnifiedEndpoint(path: string | undefined | null): boolean {
+  return !!path && path.startsWith('/api/unified/')
+}
+
+export function unifiedEndpointName(path: string): string {
+  return UNIFIED_ENDPOINT_NAMES[path] ?? path
+}
+
 export function finishReasonLabel(reason: number | undefined | null): string {
   switch (reason) {
     case 1:

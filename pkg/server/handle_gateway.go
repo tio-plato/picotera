@@ -29,6 +29,13 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		handleGatewayErr(w, err)
 		return
 	}
+	// Matched a real gateway endpoint: emit CORS headers and answer preflight.
+	// Done after the static-fallback branch so SPA assets stay header-free.
+	writeCORSHeaders(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if endpoint.EndpointType == contract.EndpointType_ModelList {
 		h.handleModelList(w, r, endpoint)
 		return
@@ -42,7 +49,6 @@ func (h *gatewayHandler) newPathGatewayFlowConfig(endpoint db.Endpoint, pathVars
 		Endpoint:     endpoint,
 		PathVars:     pathVars,
 		SourceFormat: sourceEndpointTypeForPath(endpoint.EndpointType),
-		Credentials:  endpoint.CredentialsResolver,
 		ExtractModel: func(_ *http.Request, body []byte, vars map[string]string) (gatewayModelMode, error) {
 			if endpoint.ModelPath == "" {
 				return gatewayModelMode{}, nil
@@ -58,7 +64,7 @@ func (h *gatewayHandler) newPathGatewayFlowConfig(endpoint db.Endpoint, pathVars
 			if err != nil {
 				return candidateSet{}, err
 			}
-			return buildPathCandidateSet(providers, auth.APIKeyAnno, nil, endpoint)
+			return buildPathCandidateSet(providers, auth.UserAnno, auth.APIKeyAnno, nil, endpoint)
 		},
 		PrepareAttempt: identityPrepareAttempt,
 		HandleSuccess: func(input successInput) {

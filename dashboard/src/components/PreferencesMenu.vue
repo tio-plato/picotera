@@ -18,6 +18,11 @@ const currencyValue = computed({
     prefs.displayCurrency = v ? v : null
   },
 })
+
+const currencyOptions = computed(() => [
+  { value: '', label: '原始货币' },
+  ...rates.value.map((r) => ({ value: r.code, label: `${r.code} ${r.symbol}`, hint: r.name })),
+])
 const open = ref(false)
 const triggerRef = useTemplateRef<HTMLElement>('triggerRef')
 const floatingRef = useTemplateRef<HTMLElement>('floatingRef')
@@ -41,6 +46,8 @@ function onDocMouseDown(e: MouseEvent) {
   const t = e.target as Node
   if (floatingRef.value?.contains(t)) return
   if (triggerRef.value?.contains(t)) return
+  // 忽略嵌套的 teleport 浮层（如货币 Select 的下拉），否则点选项会先关掉整个设置菜单
+  if (t instanceof Element && t.closest('[data-floating-menu]')) return
   close()
 }
 
@@ -100,7 +107,7 @@ const fontSizes: { value: FontSize; label: string }[] = [
     class="inline-flex items-center justify-center w-7 h-7 p-0 bg-transparent text-ink-muted border border-transparent rounded-md cursor-pointer transition-colors hover:bg-sidebar-hover hover:text-ink aria-expanded:bg-sidebar-active-bg aria-expanded:text-sidebar-active-text aria-expanded:border-line"
     @click="toggle"
   >
-    <Icon name="brush" :size="14" />
+    <Icon name="palette" :size="14" />
   </button>
 
   <Teleport to="body">
@@ -188,12 +195,7 @@ const fontSizes: { value: FontSize; label: string }[] = [
         <h3 class="m-0 mb-2 px-1.5 text-2xs font-medium tracking-[0.06em] uppercase text-ink-faint">
           主要货币
         </h3>
-        <Select v-model="currencyValue" size="sm" class="w-full">
-          <option value="">原始货币</option>
-          <option v-for="r in rates" :key="r.code" :value="r.code">
-            {{ r.code }} {{ r.symbol }} · {{ r.name }}
-          </option>
-        </Select>
+        <Select v-model="currencyValue" size="sm" class="w-full" :options="currencyOptions" />
       </section>
     </div>
   </Teleport>

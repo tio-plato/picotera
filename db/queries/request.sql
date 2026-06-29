@@ -3,11 +3,14 @@ SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.end
        r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens, r.cache_write_tokens, r.cache_write_1h_tokens,
        r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms, r.created_at,
        r.model_cost, r.model_cost_currency,
-       r.user_message_preview, r.project_id, r.finish_reason
+       r.user_message_preview, r.project_id, r.finish_reason,
+       r.inferred_provider, r.inferred_model, r.inferred_model_source,
+       r.user_id
 FROM request r
 LEFT JOIN traces selected_trace ON selected_trace.id = sqlc.narg('trace_id')::text
 WHERE
-  (sqlc.narg('type')::int IS NULL OR r.type = sqlc.narg('type'))
+  r.user_id = sqlc.arg('user_id')::bigint
+  AND (sqlc.narg('type')::int IS NULL OR r.type = sqlc.narg('type'))
   AND (sqlc.narg('provider_id')::int IS NULL OR r.provider_id = sqlc.narg('provider_id'))
   AND (sqlc.narg('endpoint_path')::text IS NULL OR r.endpoint_path = sqlc.narg('endpoint_path'))
   AND (sqlc.narg('model')::text IS NULL OR r.model = sqlc.narg('model'))
@@ -64,6 +67,7 @@ LEFT JOIN LATERAL (
     COALESCE(SUM(COALESCE(cache_write_1h_tokens, 0)) FILTER (WHERE type = 1), 0)::bigint AS cache_write_1h_tokens
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
 ) metrics ON true
@@ -76,6 +80,7 @@ LEFT JOIN LATERAL (
     SELECT model_cost_currency AS currency, SUM(model_cost)::float8 AS amount
     FROM request
     WHERE parent_span_id = traces.parent_span_id
+      AND request.user_id = traces.user_id
       AND created_at >= traces.first_request_at
       AND created_at <= traces.last_request_at
       AND type = 1
@@ -88,6 +93,7 @@ LEFT JOIN LATERAL (
   SELECT user_message_preview
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
     AND type = 0
@@ -99,6 +105,7 @@ LEFT JOIN LATERAL (
   SELECT project_id
   FROM request
   WHERE parent_span_id = traces.parent_span_id
+    AND request.user_id = traces.user_id
     AND created_at >= traces.first_request_at
     AND created_at <= traces.last_request_at
     AND type = 0
@@ -107,16 +114,22 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) trace_project ON true
 WHERE
-  sqlc.narg('cursor_last_request_at')::timestamp IS NULL
-  OR (traces.last_request_at, traces.id) < (
-    sqlc.narg('cursor_last_request_at')::timestamp,
-    sqlc.narg('cursor_trace_id')::text
+  traces.user_id = sqlc.arg('user_id')::bigint
+  AND (
+    sqlc.narg('cursor_last_request_at')::timestamp IS NULL
+    OR (traces.last_request_at, traces.id) < (
+      sqlc.narg('cursor_last_request_at')::timestamp,
+      sqlc.narg('cursor_trace_id')::text
+    )
   )
 ORDER BY traces.last_request_at DESC, traces.id DESC
 LIMIT sqlc.narg('limit')::int;
 
 -- name: GetRequest :one
-SELECT * FROM request WHERE id = $1 AND created_at = sqlc.arg('id_created_at')::timestamp;
+SELECT * FROM request
+WHERE id = $1
+  AND created_at = sqlc.arg('id_created_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint;
 
 -- name: ListRequestsBySpan :many
 WITH anchor AS (
@@ -124,37 +137,45 @@ WITH anchor AS (
   FROM request
   WHERE request.id = sqlc.arg('id')::text
     AND request.created_at = sqlc.arg('id_created_at')::timestamp
+    AND request.user_id = sqlc.arg('user_id')::bigint
 )
 SELECT r.id, r.span_id, r.parent_span_id, r.type, r.status, r.provider_id, r.endpoint_path,
        r.api_key_id, r.model, r.upstream_model, r.input_tokens, r.cache_read_tokens, r.output_tokens,
        r.cache_write_tokens, r.cache_write_1h_tokens, r.status_code, r.error_message, r.ttft_ms, r.time_spent_ms,
        r.created_at,
        r.model_cost, r.model_cost_currency,
-       r.user_message_preview, r.project_id, r.finish_reason
+       r.user_message_preview, r.project_id, r.finish_reason,
+       r.inferred_provider, r.inferred_model, r.inferred_model_source,
+       r.user_id
 FROM request r, anchor
 WHERE r.span_id = anchor.span_id
+  AND r.user_id = sqlc.arg('user_id')::bigint
 ORDER BY r.created_at ASC, r.id ASC;
 
--- name: UpdateRequestOnHeader :exec
-UPDATE request
-SET provider_id = $2, model = $3, upstream_model = $4, endpoint_path = $5, api_key_id = $6, status = $7
-WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
-
--- name: UpdateRequestOnComplete :exec
-UPDATE request
-SET status_code = $2, error_message = $3, time_spent_ms = $4, status = $5,
-    ttft_ms = $6, input_tokens = $7, output_tokens = $8,
-    cache_read_tokens = $9, cache_write_tokens = $10,
-    cache_write_1h_tokens = $11,
-    model_cost = $12, model_cost_currency = $13,
-    finish_reason = $14
-WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
-
--- name: UpdateRequestModel :exec
-UPDATE request SET model = $2 WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
-
--- name: UpdateRequestMetrics :exec
-UPDATE request
-SET ttft_ms = $2, input_tokens = $3, output_tokens = $4,
-    cache_read_tokens = $5, cache_write_tokens = $6, cache_write_1h_tokens = $7
-WHERE id = $1 AND created_at = sqlc.arg('created_at')::timestamp;
+-- name: UpdateRequest :exec
+UPDATE request SET
+  provider_id = CASE WHEN sqlc.arg('set_provider_id')::bool THEN sqlc.narg('provider_id')::int ELSE provider_id END,
+  model = CASE WHEN sqlc.arg('set_model')::bool THEN sqlc.narg('model')::text ELSE model END,
+  upstream_model = CASE WHEN sqlc.arg('set_upstream_model')::bool THEN sqlc.narg('upstream_model')::text ELSE upstream_model END,
+  endpoint_path = CASE WHEN sqlc.arg('set_endpoint_path')::bool THEN sqlc.narg('endpoint_path')::text ELSE endpoint_path END,
+  api_key_id = CASE WHEN sqlc.arg('set_api_key_id')::bool THEN sqlc.narg('api_key_id')::int ELSE api_key_id END,
+  user_id = CASE WHEN sqlc.arg('set_user_id')::bool THEN sqlc.narg('user_id')::bigint ELSE user_id END,
+  project_id = CASE WHEN sqlc.arg('set_project_id')::bool THEN sqlc.narg('project_id')::int ELSE project_id END,
+  status = CASE WHEN sqlc.arg('set_status')::bool THEN sqlc.arg('status')::int ELSE status END,
+  status_code = CASE WHEN sqlc.arg('set_status_code')::bool THEN sqlc.narg('status_code')::int ELSE status_code END,
+  error_message = CASE WHEN sqlc.arg('set_error_message')::bool THEN sqlc.narg('error_message')::text ELSE error_message END,
+  time_spent_ms = CASE WHEN sqlc.arg('set_time_spent_ms')::bool THEN sqlc.narg('time_spent_ms')::int ELSE time_spent_ms END,
+  ttft_ms = CASE WHEN sqlc.arg('set_ttft_ms')::bool THEN sqlc.narg('ttft_ms')::int ELSE ttft_ms END,
+  input_tokens = CASE WHEN sqlc.arg('set_input_tokens')::bool THEN sqlc.narg('input_tokens')::int ELSE input_tokens END,
+  output_tokens = CASE WHEN sqlc.arg('set_output_tokens')::bool THEN sqlc.narg('output_tokens')::int ELSE output_tokens END,
+  cache_read_tokens = CASE WHEN sqlc.arg('set_cache_read_tokens')::bool THEN sqlc.narg('cache_read_tokens')::int ELSE cache_read_tokens END,
+  cache_write_tokens = CASE WHEN sqlc.arg('set_cache_write_tokens')::bool THEN sqlc.narg('cache_write_tokens')::int ELSE cache_write_tokens END,
+  cache_write_1h_tokens = CASE WHEN sqlc.arg('set_cache_write_1h_tokens')::bool THEN sqlc.narg('cache_write_1h_tokens')::int ELSE cache_write_1h_tokens END,
+  model_cost = CASE WHEN sqlc.arg('set_model_cost')::bool THEN sqlc.narg('model_cost')::numeric ELSE model_cost END,
+  model_cost_currency = CASE WHEN sqlc.arg('set_model_cost_currency')::bool THEN sqlc.narg('model_cost_currency')::text ELSE model_cost_currency END,
+  finish_reason = CASE WHEN sqlc.arg('set_finish_reason')::bool THEN sqlc.narg('finish_reason')::int ELSE finish_reason END,
+  inferred_provider = CASE WHEN sqlc.arg('set_inferred_provider')::bool THEN sqlc.narg('inferred_provider')::text ELSE inferred_provider END,
+  inferred_model = CASE WHEN sqlc.arg('set_inferred_model')::bool THEN sqlc.narg('inferred_model')::text ELSE inferred_model END,
+  inferred_model_source = CASE WHEN sqlc.arg('set_inferred_model_source')::bool THEN sqlc.arg('inferred_model_source')::smallint ELSE inferred_model_source END,
+  user_message_preview = CASE WHEN sqlc.arg('set_user_message_preview')::bool THEN sqlc.narg('user_message_preview')::text ELSE user_message_preview END
+WHERE id = sqlc.arg('id')::text AND created_at = sqlc.arg('created_at')::timestamp;

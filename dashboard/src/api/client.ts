@@ -7,16 +7,25 @@ import type {
   ExchangeRateView,
   FetchModelsRequestBody,
   FetchModelsResponseBody,
-  GlobalSettingView,
+  ConfigView,
+  UserSettingView,
   KvEntryView,
   KvMutateBody,
+  MeView,
   ModelView,
+  ProviderLabel,
+  ModelLabel,
+  EndpointLabel,
+  ProjectLabel,
   OverviewDimension,
   OverviewDistributionView,
   OverviewSpeedBoxplotView,
   OverviewSeriesDimension,
   OverviewSeriesView,
   OverviewSummaryView,
+  AdminOverviewDimension,
+  AdminOverviewSeriesDimension,
+  AdminOverviewSummaryView,
   PricingMatchCandidate,
   ProjectView,
   ProviderEndpointView,
@@ -24,16 +33,20 @@ import type {
   RequestLiveView,
   RequestView,
   ScriptView,
-  SimulateDispatchRequestBody,
-  SimulateDispatchResponseBody,
-  UpsertGlobalSettingRequestBody,
+  UpsertUserSettingRequestBody,
   UpsertProjectRequestBody,
+  UserView,
+  UserMutateBody,
+  UserIdentityView,
+  UserIdentityMutateBody,
 } from '@/api'
 import type { components } from '@/openapi-types'
 import {
   queryKeys,
   type KvListFilters,
   type OverviewFilters,
+  type AdminOverviewFilters,
+  type OverviewGranularity,
   type RequestsFilters,
 } from '@/api/queryKeys'
 
@@ -225,6 +238,73 @@ export async function deleteApiKey(id: number): Promise<void> {
   if (error) fail(error, '删除 API Key 失败')
 }
 
+export async function listUsers(): Promise<UserView[]> {
+  const { data, error } = await api.GET('/api/picotera/users')
+  if (error) fail(error, '加载用户失败')
+  return data ?? []
+}
+
+export async function createUser(body: UserMutateBody): Promise<UserView> {
+  const { data, error } = await api.POST('/api/picotera/users', { body })
+  if (error) fail(error, '创建用户失败')
+  return data
+}
+
+export async function updateUser(id: number, body: UserMutateBody): Promise<UserView> {
+  const { data, error } = await api.PUT('/api/picotera/users/{id}', {
+    params: { path: { id } },
+    body,
+  })
+  if (error) fail(error, '保存用户失败')
+  return data
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  const { error } = await api.POST('/api/picotera/users/delete', { body: { id } })
+  if (error) fail(error, '删除用户失败')
+}
+
+export async function listUserIdentities(userId: number): Promise<UserIdentityView[]> {
+  const { data, error } = await api.GET('/api/picotera/users/{userId}/identities', {
+    params: { path: { userId } },
+  })
+  if (error) fail(error, '加载身份失败')
+  return data ?? []
+}
+
+export async function createUserIdentity(
+  userId: number,
+  body: UserIdentityMutateBody,
+): Promise<UserIdentityView> {
+  const { data, error } = await api.POST('/api/picotera/users/{userId}/identities', {
+    params: { path: { userId } },
+    body,
+  })
+  if (error) fail(error, '添加身份失败')
+  return data
+}
+
+export async function updateUserIdentity(
+  userId: number,
+  id: number,
+  body: UserIdentityMutateBody,
+): Promise<UserIdentityView> {
+  const { data, error } = await api.PUT('/api/picotera/users/{userId}/identities/{id}', {
+    params: { path: { userId, id } },
+    body,
+  })
+  if (error) fail(error, '保存身份失败')
+  return data
+}
+
+export async function deleteUserIdentity(userId: number, id: number): Promise<void> {
+  const { error } = await api.POST('/api/picotera/users/{userId}/identities/delete', {
+    params: { path: { userId } },
+    body: { id },
+  })
+  if (error) fail(error, '删除身份失败')
+}
+
 export async function listProjects(): Promise<ProjectView[]> {
   const { data, error } = await api.GET('/api/picotera/projects')
   if (error) fail(error, '加载项目失败')
@@ -391,6 +471,14 @@ export function invalidateApiKeys(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.apiKeys.all })
 }
 
+export function invalidateUsers(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.users.all })
+}
+
+export function invalidateUserIdentities(client: QueryClient, userId: number) {
+  client.invalidateQueries({ queryKey: queryKeys.users.identities(userId) })
+}
+
 export function invalidateProjects(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.projects.all })
   client.invalidateQueries({ queryKey: queryKeys.requests.all })
@@ -401,13 +489,13 @@ export function invalidateExchangeRates(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.exchangeRates.all })
 }
 
-export async function listGlobalSettings(): Promise<GlobalSettingView[]> {
+export async function listUserSettings(): Promise<UserSettingView[]> {
   const { data, error } = await api.GET('/api/picotera/settings')
   if (error) fail(error, '加载设置失败')
   return data ?? []
 }
 
-export async function getGlobalSetting(key: string): Promise<GlobalSettingView> {
+export async function getUserSetting(key: string): Promise<UserSettingView> {
   const { data, error } = await api.GET('/api/picotera/settings/{key}', {
     params: { path: { key } },
   })
@@ -415,23 +503,72 @@ export async function getGlobalSetting(key: string): Promise<GlobalSettingView> 
   return data
 }
 
-export async function upsertGlobalSetting(
-  body: UpsertGlobalSettingRequestBody,
-): Promise<GlobalSettingView> {
+export async function upsertUserSetting(
+  body: UpsertUserSettingRequestBody,
+): Promise<UserSettingView> {
   const { data, error } = await api.PUT('/api/picotera/settings', { body })
   if (error) fail(error, '保存设置失败')
   return data
 }
 
-export async function deleteGlobalSetting(key: string): Promise<void> {
+export async function deleteUserSetting(key: string): Promise<void> {
   const { error } = await api.DELETE('/api/picotera/settings/{key}', {
     params: { path: { key } },
   })
   if (error) fail(error, '删除设置失败')
 }
 
-export function invalidateGlobalSettings(client: QueryClient) {
-  client.invalidateQueries({ queryKey: queryKeys.globalSettings.all })
+export function invalidateUserSettings(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.userSettings.all })
+}
+
+export async function getConfig(): Promise<ConfigView> {
+  const { data, error } = await api.GET('/api/picotera/config')
+  if (error) fail(error, '加载应用配置失败')
+  return data
+}
+
+export async function fetchMe(): Promise<MeView> {
+  const { data, error } = await api.GET('/api/picotera/me')
+  if (error) fail(error, '加载用户信息失败')
+  return data
+}
+
+// --- Label fetchers ---
+//
+// Lightweight, read-only projections of the shared config resources, open to
+// every authenticated user. Used by the user-facing views (overview, requests,
+// traces, gateway test) which only need id→name / path / endpointType and must
+// not read full config (notably provider credentials, which are admin-only).
+
+export async function listProviderLabels(): Promise<ProviderLabel[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/providers')
+  if (error) fail(error, '加载渠道失败')
+  return data ?? []
+}
+
+export async function listModelLabels(): Promise<ModelLabel[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/models')
+  if (error) fail(error, '加载模型失败')
+  return data ?? []
+}
+
+export async function listEndpointLabels(): Promise<EndpointLabel[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/endpoints')
+  if (error) fail(error, '加载端点失败')
+  return data ?? []
+}
+
+export async function listProjectLabels(): Promise<ProjectLabel[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/projects')
+  if (error) fail(error, '加载项目失败')
+  return data ?? []
+}
+
+export async function listUpstreamModelLabels(): Promise<string[]> {
+  const { data, error } = await api.GET('/api/picotera/labels/upstream-models')
+  if (error) fail(error, '加载上游模型失败')
+  return data ?? []
 }
 
 function overviewQuery(filters: OverviewFilters) {
@@ -466,9 +603,10 @@ export async function getOverviewDistribution(
 export async function getOverviewSeries(
   filters: OverviewFilters,
   dimension: OverviewSeriesDimension,
+  bucket: OverviewGranularity,
 ): Promise<OverviewSeriesView> {
   const { data, error } = await api.GET('/api/picotera/overview/series', {
-    params: { query: { ...overviewQuery(filters), dimension } as never },
+    params: { query: { ...overviewQuery(filters), dimension, bucket } as never },
   })
   if (error) fail(error, '加载趋势失败')
   return data
@@ -489,10 +627,113 @@ export function invalidateOverview(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.overview.all })
 }
 
-export async function simulateDispatch(
-  body: SimulateDispatchRequestBody,
-): Promise<SimulateDispatchResponseBody> {
-  const { data, error } = await api.POST('/api/picotera/simulate/dispatch', { body })
-  if (error) fail(error, '模拟调度失败')
+function adminOverviewQuery(filters: AdminOverviewFilters) {
+  const query: Record<string, unknown> = { range: filters.range }
+  if (filters.userId !== undefined) query.userId = filters.userId
+  if (filters.model !== undefined) query.model = filters.model
+  if (filters.upstreamModel !== undefined) query.upstreamModel = filters.upstreamModel
+  if (filters.providerId !== undefined) query.providerId = filters.providerId
+  return query
+}
+
+export async function getAdminOverviewSummary(
+  filters: AdminOverviewFilters,
+): Promise<AdminOverviewSummaryView> {
+  const { data, error } = await api.GET('/api/picotera/admin/overview/summary', {
+    params: { query: adminOverviewQuery(filters) as never },
+  })
+  if (error) fail(error, '加载概览失败')
   return data
+}
+
+export async function getAdminOverviewDistribution(
+  filters: AdminOverviewFilters,
+  dimension: AdminOverviewDimension,
+): Promise<OverviewDistributionView> {
+  const { data, error } = await api.GET('/api/picotera/admin/overview/distribution', {
+    params: { query: { ...adminOverviewQuery(filters), dimension } as never },
+  })
+  if (error) fail(error, '加载分布失败')
+  return data
+}
+
+export async function getAdminOverviewSeries(
+  filters: AdminOverviewFilters,
+  dimension: AdminOverviewSeriesDimension,
+  bucket: OverviewGranularity,
+): Promise<OverviewSeriesView> {
+  const { data, error } = await api.GET('/api/picotera/admin/overview/series', {
+    params: { query: { ...adminOverviewQuery(filters), dimension, bucket } as never },
+  })
+  if (error) fail(error, '加载趋势失败')
+  return data
+}
+
+export async function getAdminOverviewSpeedBoxplot(
+  filters: AdminOverviewFilters,
+  dimension: AdminOverviewSeriesDimension,
+): Promise<OverviewSpeedBoxplotView> {
+  const { data, error } = await api.GET('/api/picotera/admin/overview/speed-boxplot', {
+    params: { query: { ...adminOverviewQuery(filters), dimension } as never },
+  })
+  if (error) fail(error, '加载速度分布失败')
+  return data
+}
+
+export function invalidateAdminOverview(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.adminOverview.all })
+}
+
+// --- Endpoint testing (streaming, raw fetch) ---
+//
+// The two test "send" actions stream their responses, so they bypass
+// openapi-fetch and return the raw Response for the caller to read incrementally
+// (via the body stream) or as JSON. Neither throws on non-2xx — the UI surfaces
+// the upstream status and body.
+
+export interface TestDirectPayload {
+  providerId: number
+  endpointPath: string
+  stream: boolean
+  pathVars?: Record<string, string>
+  headers?: Record<string, string>
+  body: unknown
+}
+
+// postTestDirect calls the short-circuit test route. The backend injects the
+// provider's credentials and forwards `body` verbatim to the upstream.
+export function postTestDirect(payload: TestDirectPayload, signal?: AbortSignal): Promise<Response> {
+  return fetch('/api/picotera/test/direct', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  })
+}
+
+// postGatewayTest sends a full gateway request to `targetUrl` authenticated with
+// the API key's plaintext value as a Bearer token.
+export function postGatewayTest(
+  targetUrl: string,
+  apiKey: string,
+  body: unknown,
+  headers?: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<Response> {
+  return fetch(targetUrl, {
+    method: 'POST',
+    // Omit cookies: the gateway authenticates via the API key Bearer token, so
+    // the request should mirror a real external client and not leak the
+    // dashboard session.
+    credentials: 'omit',
+    // Content-Type is a default the caller may override; Authorization is forced
+    // last so a custom header can never break API-key authentication.
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal,
+  })
 }

@@ -23,12 +23,26 @@ type Session interface {
 	// preserving custom fields the scripts attached.
 	PatchContext(patch ContextPatch) error
 
+	// SetClientBody installs (or replaces) the JS-visible client request body
+	// backing ctx.request.body. body is the raw bytes (nil = no JS-visible
+	// body); they are parsed lazily on first script access. Calling it again
+	// (e.g. after rewriteModel changed the body) invalidates any Proxy handed
+	// out for the previous body.
+	SetClientBody(body []byte) error
+
 	RunRewriteModel(initial string) (string, error)
 	RunSortProviders(initial []CandidateView) ([]CandidateView, error)
 	RunBeforeRequest(initial BeforeRequestDecision) (BeforeRequestDecision, error)
-	RunRewriteRequest(initial PendingRequestShape) (PendingRequestShape, error)
+	// RunRewriteRequest runs the rewriteRequest waterfall. body is the raw
+	// upstream body bytes the hook may read/mutate via pending.body (nil = no
+	// JS-visible body). The returned shape's Body carries the final upstream
+	// bytes, or nil to fall back to the caller's pre-hook bytes.
+	RunRewriteRequest(initial PendingRequestShape, body []byte) (PendingRequestShape, error)
 	RunBeforeTransform(initial OutboundProfile) (OutboundProfile, error)
 	RunRewriteProviderModels(initial []ProviderModelEntry) ([]ProviderModelEntry, error)
+	// RunAfterUpstreamError runs the afterUpstreamError waterfall after an
+	// upstream attempt failed. Passthrough keeps the initial value (break=false).
+	RunAfterUpstreamError(initial UpstreamErrorView) (AfterUpstreamErrorDecision, error)
 
 	Logs() []LogEntry
 	Close()
