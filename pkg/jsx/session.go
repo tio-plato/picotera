@@ -211,6 +211,7 @@ func (s *qjsSession) PatchContext(patch ContextPatch) error {
 	if patch.Request != nil && s.registry.request.hasBody {
 		expr += ";globalThis.__picotera_installRequestBody();"
 	}
+	expr += ";null;"
 	if _, err := s.vm.EvalFile(expr, internalFilename("patch-context.js"), quickjs.EvalGlobal); err != nil {
 		return fmt.Errorf("jsx: patch context: %w", err)
 	}
