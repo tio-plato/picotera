@@ -28,7 +28,6 @@ import {
   StateText,
   Badge,
   Tag,
-  TagList,
   Icon,
   MultiColumnFilter,
   type ColumnFilterOption,
@@ -95,6 +94,9 @@ function modelsKey(id: number) {
   return `provider:${id}:models`
 }
 
+/** Models rendered as chips in the list column; the rest of the list stays in the panel. */
+const MODEL_TAG_LIMIT = 15
+
 function modelNames(p: ProviderView): string[] {
   const list = (p.providerModels ?? []) as { model?: string }[]
   return Array.from(new Set(list.map((e) => e.model).filter((m): m is string => !!m)))
@@ -129,7 +131,11 @@ function openEdit(p: ProviderView) {
 function toggleBindings(p: ProviderView) {
   panel.toggle(
     ProviderEndpointsPanel,
-    { providerId: p.id, providerName: p.name },
+    {
+      providerId: p.id,
+      providerName: p.name,
+      modelsEndpointUrl: p.modelsEndpointUrl || undefined,
+    },
     { key: bindingKey(p.id) },
   )
 }
@@ -271,14 +277,22 @@ function rowSelected(id: number) {
                 ><Badge>{{ p.priority }}</Badge></Td
               >
               <Td>
-                <TagList class="min-w-0 overflow-hidden">
-                  <Tag v-for="m in modelNames(p).slice(0, 3)" :key="m" variant="accent">{{
-                    m
-                  }}</Tag>
-                  <Tag v-if="modelNames(p).length > 3" variant="more"
-                    >+{{ modelNames(p).length - 3 }}</Tag
+                <div class="contain-inline-size overflow-hidden whitespace-nowrap text-ellipsis">
+                  <Tag
+                    v-for="m in modelNames(p).slice(0, MODEL_TAG_LIMIT)"
+                    :key="m"
+                    variant="accent"
+                    class="mr-1"
+                    >{{ m }}</Tag
                   >
-                </TagList>
+                  <Tag
+                    v-if="modelNames(p).length > MODEL_TAG_LIMIT"
+                    variant="more"
+                    class="mr-1"
+                    aria-hidden="true"
+                    >…</Tag
+                  >
+                </div>
               </Td>
               <Td actions>
                 <div

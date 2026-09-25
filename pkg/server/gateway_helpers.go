@@ -9,12 +9,15 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
+	"picotera/pkg/auth"
 	"picotera/pkg/contract"
 	"picotera/pkg/db"
 	"picotera/pkg/errorx"
@@ -24,8 +27,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/xid"
+	"github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"golang.org/x/net/http2"
 )
 
 // gatewayError represents an error that should be returned to the client
@@ -45,10 +50,24 @@ func isRouteNotFound(err error) bool {
 	return errors.As(err, &gw) && gw.code == errorx.RouteNotFound.Error()
 }
 
+// newRouteNotFoundError builds the 404 returned when no configured LLM endpoint
+// matches the requested path. isRouteNotFound recognizes it by its code.
+func newRouteNotFoundError() *gatewayError {
+	return &gatewayError{
+		status:  http.StatusNotFound,
+		message: "route not found",
+		code:    errorx.RouteNotFound.Error(),
+	}
+}
+
 // looksLikeBrowserNav reports whether the request is a safe navigation that
 // can fall through to the dashboard SPA when no LLM endpoint matches.
 // API clients (POST, Accept: application/json) are excluded so they receive
 // the structured gateway 404 they expect.
+//
+// The header heuristic is unreliable on its own — curl and plenty of SDKs send
+// Accept: */* — so it is only consulted for a request that did NOT pass API-key
+// authentication; see routeNotFoundFallsBackToSPA.
 func looksLikeBrowserNav(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
@@ -77,6 +96,29 @@ func writeGatewayError(w http.ResponseWriter, status int, message, code string) 
 	return body
 }
 
+// commitResponseHeaders writes the status line and immediately flushes it to
+// the wire. Without the flush, Go's http server buffers the header block until
+// the first body flush — a downstream client's response-header timer then covers
+// our whole time-to-first-chunk (which for a thinking model, or a stacked
+// gateway retrying upstreams, can run into minutes) instead of stopping when we
+// commit to the response.
+func commitResponseHeaders(w http.ResponseWriter, status int) {
+	w.WriteHeader(status)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// markSSENoBuffering sets X-Accel-Buffering: no when contentType is
+// text/event-stream, telling nginx-style reverse proxies in front of us not to
+// buffer the stream (headers included) — otherwise our flush stops at the next
+// hop. It is a standard hop-by-hop hint, ignored by proxies that don't know it.
+func markSSENoBuffering(h http.Header, contentType string) {
+	if strings.Contains(strings.ToLower(contentType), "text/event-stream") {
+		h.Set("X-Accel-Buffering", "no")
+	}
+}
+
 // handleGatewayErr writes a gateway error response. If err is a *gatewayError,
 // its status, message, and code are used; otherwise a 500 INTERNAL_ERROR is returned.
 // Returns (status, body) for artifact capture.
@@ -90,13 +132,14 @@ func handleGatewayErr(w http.ResponseWriter, err error) (int, []byte) {
 
 // resolveEndpoint matches the request path to an endpoint using the in-memory
 // router (see endpoint_router.go). Returns the matched endpoint, any extracted
-// path variables, and a gatewayError on miss or load failure.
-func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint, map[string]string, error) {
-	endpoint, pathVars, ok, err := s.endpointRouter.Match(ctx, path)
+// path variables, the prefix suffix (empty for ordinary endpoints), and a
+// gatewayError on miss or load failure.
+func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint, map[string]string, string, error) {
+	endpoint, pathVars, suffix, ok, err := s.endpointRouter.Match(ctx, path)
 	if err != nil {
 		// Load/compile error — keep it visible.
 		logx.WithContext(ctx).WithError(err).WithField("path", path).Error("endpoint lookup failed")
-		return db.Endpoint{}, nil, &gatewayError{
+		return db.Endpoint{}, nil, "", &gatewayError{
 			status:  http.StatusInternalServerError,
 			message: "failed to query endpoint",
 			code:    errorx.InternalError.Error(),
@@ -104,13 +147,9 @@ func (s *Server) resolveEndpoint(ctx context.Context, path string) (db.Endpoint,
 	}
 	if !ok {
 		logx.WithContext(ctx).WithField("path", path).Warn("route not found")
-		return db.Endpoint{}, nil, &gatewayError{
-			status:  http.StatusNotFound,
-			message: "route not found",
-			code:    errorx.RouteNotFound.Error(),
-		}
+		return db.Endpoint{}, nil, "", newRouteNotFoundError()
 	}
-	return endpoint, pathVars, nil
+	return endpoint, pathVars, suffix, nil
 }
 
 // extractClientToken pulls the client-supplied API key/token from the
@@ -235,6 +274,24 @@ func (s *Server) authenticateClient(ctx context.Context, r *http.Request) (*db.A
 	return &row, &user, nil
 }
 
+// clientAuth is the outcome of the pre-flight API-key check. The HTTP entry
+// point resolves it before deciding how to answer the request — notably whether
+// an unmatched path may fall back to the dashboard SPA — and hands it to the
+// flow, so the key is looked up exactly once per request.
+type clientAuth struct {
+	APIKey *db.ApiKey
+	User   *db.AppUser
+	// Err is the *gatewayError authentication failed with; nil on success.
+	Err error
+}
+
+func (a clientAuth) ok() bool { return a.Err == nil }
+
+func (s *Server) authenticateGatewayClient(ctx context.Context, r *http.Request) clientAuth {
+	apiKey, user, err := s.authenticateClient(ctx, r)
+	return clientAuth{APIKey: apiKey, User: user, Err: err}
+}
+
 // apiKeySummaryFromRow converts a db.ApiKey row into the JS-visible summary.
 // Annotations is decoded from JSONB; on decode failure, returns an empty map
 // rather than nil so scripts always see an object.
@@ -343,6 +400,9 @@ func extractParentSpanID(h http.Header) string {
 	if v := strings.TrimSpace(h.Get("x-session-id")); v != "" {
 		return v
 	}
+	if v := strings.TrimSpace(h.Get("session-id")); v != "" {
+		return v
+	}
 	return ""
 }
 
@@ -350,32 +410,71 @@ func extractParentSpanID(h http.Header) string {
 // the model should be read from the matched path variable rather than the body.
 var pathVarRe = regexp.MustCompile(`^\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
 
-// extractModel extracts the model name from the request body or, when
-// modelPath is exactly "{name}", from the matched path variables.
+// extractModel resolves the request's routing model from the request body or,
+// when modelPath is exactly "{name}", from the matched path variables.
 // Callers must skip this function entirely for no-model endpoints
 // (endpoint.model_path == "").
-func extractModel(body []byte, modelPath string, pathVars map[string]string) (string, error) {
+//
+// optional marks a prefix-style entry, whose sub-paths are open-ended and some
+// of which carry no model field at all; see modelFromBody. It only affects the
+// body branch — a path variable that didn't match is still a 400, and the two
+// are never combined anyway (a prefix endpoint's path may not contain "{}").
+func extractModel(body []byte, modelPath string, pathVars map[string]string, optional bool) (gatewayModelMode, error) {
 	if m := pathVarRe.FindStringSubmatch(modelPath); m != nil {
 		// modelPath is "{name}" — take value from the path variable.
 		name := m[1]
 		if v := pathVars[name]; v != "" {
-			return v, nil
+			return gatewayModelMode{OriginalModel: v, HasModel: true}, nil
 		}
-		return "", &gatewayError{
+		return gatewayModelMode{}, &gatewayError{
 			status:  http.StatusBadRequest,
 			message: fmt.Sprintf("model variable %q not set", name),
 			code:    errorx.ModelNotFound.Error(),
 		}
 	}
+	return modelFromBody(body, modelPath, optional)
+}
+
+// modelFromBody resolves the body's model field into a routing decision.
+// optional (prefix-style entries) turns an *absent* field into no-model
+// routing — the same path an endpoint with model_path == "" takes. A field
+// that is present but not a non-empty string is always a 400, optional or not:
+// the degradation covers "this sub-path carries no model", not bad input.
+func modelFromBody(body []byte, modelPath string, optional bool) (gatewayModelMode, error) {
 	result := gjson.GetBytes(body, modelPath)
-	if !result.Exists() || result.Str == "" {
-		return "", &gatewayError{
+	if !result.Exists() {
+		if optional {
+			return gatewayModelMode{}, nil
+		}
+		return gatewayModelMode{}, &gatewayError{
 			status:  http.StatusBadRequest,
 			message: "model not found in request body",
 			code:    errorx.ModelNotFound.Error(),
 		}
 	}
-	return result.Str, nil
+	if result.Str == "" {
+		return gatewayModelMode{}, &gatewayError{
+			status:  http.StatusBadRequest,
+			message: "model in request body must be a non-empty string",
+			code:    errorx.ModelNotFound.Error(),
+		}
+	}
+	return gatewayModelMode{OriginalModel: result.Str, HasModel: true}, nil
+}
+
+// appendUpstreamPath appends a prefix endpoint's suffix to the upstream URL.
+// It inserts before the first '?' or '#' so an upstream URL that carries its own
+// query string (`…/v1?api-version=x`) stays intact. An empty suffix — every
+// non-prefix endpoint — returns the URL untouched.
+func appendUpstreamPath(upstreamURL, appendPath string) string {
+	if appendPath == "" {
+		return upstreamURL
+	}
+	cut := len(upstreamURL)
+	if i := strings.IndexAny(upstreamURL, "?#"); i >= 0 {
+		cut = i
+	}
+	return upstreamURL[:cut] + appendPath + upstreamURL[cut:]
 }
 
 // substitutePathVars replaces every {name} token in url with the corresponding
@@ -411,6 +510,7 @@ type providerCandidateRow struct {
 	UpstreamURL             string
 	SendCredentialsResolver int32
 	ProxyURL                pgtype.Text
+	InsecureTLS             bool
 	ProviderAnnotations     []byte
 	ModelAnnotations        []byte
 	ModelName               string
@@ -429,6 +529,7 @@ func fromModelRoutedRow(r db.GetProvidersByEndpointAndModelRow) providerCandidat
 		UpstreamURL:             r.UpstreamUrl,
 		SendCredentialsResolver: r.SendCredentialsResolver,
 		ProxyURL:                r.ProxyUrl,
+		InsecureTLS:             r.InsecureTls,
 		ProviderAnnotations:     r.ProviderAnnotations,
 		ModelAnnotations:        r.ModelAnnotations,
 		ModelName:               r.ModelName,
@@ -448,6 +549,7 @@ func fromNoModelRow(r db.GetProvidersByEndpointRow) providerCandidateRow {
 		UpstreamURL:             r.UpstreamUrl,
 		SendCredentialsResolver: r.SendCredentialsResolver,
 		ProxyURL:                r.ProxyUrl,
+		InsecureTLS:             r.InsecureTls,
 		ProviderAnnotations:     r.ProviderAnnotations,
 		ModelAnnotations:        r.ModelAnnotations,
 		ModelName:               r.ModelName,
@@ -549,17 +651,19 @@ func compareCandidateOrder(leftProviderID, leftEntryPriority, leftProviderPriori
 
 // buildUpstreamRequest constructs the upstream HTTP request.
 // It copies headers from the original request, replaces the model name in the body
-// if upstreamModel differs, substitutes path variables in upstreamURL, and sets
+// if upstreamModel differs, substitutes path variables in upstreamURL, appends
+// appendPath (a prefix endpoint's suffix; "" for everything else), and sets
 // credentials based on the auth type.
 // The provided ctx is used for the request context, enabling cancellation of
 // upstream reads (e.g., by the idle timeout reader).
-func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, upstreamModel, creds string, sendResolver int32, pathVars map[string]string, authHeaderName string) (*http.Request, []byte, error) {
+func buildUpstreamRequest(ctx context.Context, original *http.Request, body []byte, upstreamURL, appendPath, upstreamModel, creds string, sendResolver int32, pathVars map[string]string, authHeaderName string) (*http.Request, []byte, error) {
 	// Substitute path variables in the upstream URL.
 	var err error
 	upstreamURL, err = substitutePathVars(upstreamURL, pathVars)
 	if err != nil {
 		return nil, nil, err
 	}
+	upstreamURL = appendUpstreamPath(upstreamURL, appendPath)
 
 	// Replace model name if upstream_model_name is set
 	reqBody := body
@@ -585,12 +689,21 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 	for key, values := range original.Header {
 		lower := strings.ToLower(key)
 		if lower == "authorization" || lower == "x-api-key" || lower == "x-goog-api-key" ||
-			lower == "host" || lower == "content-length" ||
+			lower == "host" || lower == "content-length" || lower == "cdn-loop" ||
 			strings.HasPrefix(lower, "x-picotera") ||
+			strings.HasPrefix(lower, "cf-") ||
 			(authHeaderName != "" && lower == authHeaderName) {
 			continue
 		}
 		for _, value := range values {
+			// The dashboard's session cookie is ours alone; the client's other
+			// cookies are forwarded untouched.
+			if lower == "cookie" {
+				value = stripPicoteraCookie(value)
+				if value == "" {
+					continue
+				}
+			}
 			req.Header.Add(key, value)
 		}
 	}
@@ -605,15 +718,20 @@ func buildUpstreamRequest(ctx context.Context, original *http.Request, body []by
 
 const redactedPlaceholder = "[REDACTED]"
 
-// redactUpstreamCredentials redacts upstream provider credentials in a cloned
-// header and the raw URL, returning the redacted header and URL. It mutates the
-// provided header in place (the caller passes a clone) and only touches fields
-// that actually carry a credential:
+// redactRequestCredentials redacts request credentials in a cloned header and
+// the raw URL, returning the redacted header and URL. It applies to both meta
+// (client → PicoTera) and upstream (PicoTera → provider) request artifacts. It
+// mutates the provided header in place (the caller passes a clone) and only
+// touches fields that actually carry a credential:
 //   - Authorization: keeps the scheme prefix → "<scheme> [REDACTED]"; a value
 //     with no whitespace is replaced wholesale.
 //   - X-Api-Key / X-Goog-Api-Key: replaced wholesale.
+//   - Cf-Access-Client-Id / Cf-Access-Client-Secret: replaced wholesale
+//     (Cloudflare Access service tokens).
+//   - Cookie: only PicoTera's own session cookie has its value replaced; every
+//     other cookie is kept as-is.
 //   - URL "key" query param: value replaced, leaving other params intact.
-func redactUpstreamCredentials(header http.Header, rawURL string) (http.Header, string) {
+func redactRequestCredentials(header http.Header, rawURL string) (http.Header, string) {
 	if auth := header.Get("Authorization"); auth != "" {
 		if scheme, _, found := strings.Cut(auth, " "); found {
 			header.Set("Authorization", scheme+" "+redactedPlaceholder)
@@ -626,6 +744,25 @@ func redactUpstreamCredentials(header http.Header, rawURL string) (http.Header, 
 	}
 	if header.Get("X-Goog-Api-Key") != "" {
 		header.Set("X-Goog-Api-Key", redactedPlaceholder)
+	}
+	if header.Get("Cf-Access-Client-Id") != "" {
+		header.Set("Cf-Access-Client-Id", redactedPlaceholder)
+	}
+	if header.Get("Cf-Access-Client-Secret") != "" {
+		header.Set("Cf-Access-Client-Secret", redactedPlaceholder)
+	}
+	if header.Get("Chatgpt-Account-Id") != "" {
+		header.Set("Chatgpt-Account-Id", redactedPlaceholder)
+	}
+	if values := header.Values("Cookie"); len(values) > 0 {
+		redacted := make([]string, len(values))
+		for i, v := range values {
+			redacted[i] = redactPicoteraCookieValue(v)
+		}
+		header.Del("Cookie")
+		for _, v := range redacted {
+			header.Add("Cookie", v)
+		}
 	}
 
 	if u, err := url.Parse(rawURL); err == nil {
@@ -640,14 +777,255 @@ func redactUpstreamCredentials(header http.Header, rawURL string) (http.Header, 
 	return header, rawURL
 }
 
-// forwardRequest sends the request to the upstream provider using the
-// transport selected by proxyURL. Empty string uses environment proxy;
-// "direct" bypasses all proxies; a URL string uses that proxy.
+// redactResponseHeaders redacts sensitive response headers in a cloned header
+// (the caller passes a clone), returning the redacted header. It mutates the
+// provided header in place and only touches fields that carry a secret:
+//   - Set-Cookie: replaces each cookie's value with [REDACTED], preserving the
+//     cookie name and all attributes (Path, Domain, HttpOnly, Secure, …).
+func redactResponseHeaders(header http.Header) http.Header {
+	values := header.Values("Set-Cookie")
+	if len(values) == 0 {
+		return header
+	}
+	redacted := make([]string, len(values))
+	for i, v := range values {
+		redacted[i] = redactSetCookieValue(v)
+	}
+	header.Del("Set-Cookie")
+	for _, v := range redacted {
+		header.Add("Set-Cookie", v)
+	}
+	return header
+}
+
+// redactSetCookieValue replaces the cookie value in a single Set-Cookie header
+// value with [REDACTED], keeping the cookie name and all attributes. A value
+// with no '=' (malformed) is replaced wholesale.
+func redactSetCookieValue(v string) string {
+	name, rest, ok := strings.Cut(v, "=")
+	if !ok {
+		return redactedPlaceholder
+	}
+	var attrs string
+	if strings.HasPrefix(rest, `"`) {
+		// Quoted value: ends at the closing quote (respecting \" escapes);
+		// the remainder is the attributes.
+		i := 1
+		for i < len(rest) {
+			if rest[i] == '\\' && i+1 < len(rest) {
+				i += 2
+				continue
+			}
+			if rest[i] == '"' {
+				break
+			}
+			i++
+		}
+		if i < len(rest) && rest[i] == '"' {
+			attrs = rest[i+1:]
+		} else {
+			// No closing quote — malformed; redact the whole tail.
+			return name + "=" + redactedPlaceholder
+		}
+	} else {
+		// Unquoted value: ends at the first ';'.
+		if _, tail, hasSemi := strings.Cut(rest, ";"); hasSemi {
+			attrs = ";" + tail
+		}
+	}
+	return name + "=" + redactedPlaceholder + attrs
+}
+
+// stripPicoteraCookie removes PicoTera's own session cookie from a Cookie
+// header value, keeping every other cookie in its original order. Returns an
+// empty string when nothing is left, so the caller can drop the header
+// entirely. The name is matched exactly — no prefix guessing.
+func stripPicoteraCookie(value string) string {
+	return rewritePicoteraCookie(value, func(string) (string, bool) { return "", false })
+}
+
+// redactPicoteraCookieValue replaces the value of PicoTera's own session cookie
+// with [REDACTED] for the artifact copy, keeping the cookie name and every
+// other cookie — the same treatment redactSetCookieValue gives responses.
+func redactPicoteraCookieValue(value string) string {
+	return rewritePicoteraCookie(value, func(name string) (string, bool) {
+		return name + "=" + redactedPlaceholder, true
+	})
+}
+
+// rewritePicoteraCookie walks the cookie pairs of a Cookie header value and
+// hands PicoTera's own cookie to replace, which returns the replacement pair
+// and whether to keep it at all.
+func rewritePicoteraCookie(value string, replace func(name string) (string, bool)) string {
+	parts := strings.Split(value, ";")
+	kept := make([]string, 0, len(parts))
+	for _, part := range parts {
+		pair := strings.TrimSpace(part)
+		if pair == "" {
+			continue
+		}
+		name, _, _ := strings.Cut(pair, "=")
+		if strings.TrimSpace(name) == auth.SessionCookieName {
+			if replacement, keep := replace(auth.SessionCookieName); keep {
+				kept = append(kept, replacement)
+			}
+			continue
+		}
+		kept = append(kept, pair)
+	}
+	return strings.Join(kept, "; ")
+}
+
+// isAwaitHeadersTimeout matches HTTP/2's "http2: timeout awaiting response
+// headers" and HTTP/1.1's "net/http: timeout awaiting response headers". Both
+// are unexported error types with no sentinel to compare against, so substring
+// matching on the shared tail is the only option — it deliberately does not
+// match dial timeouts, TLS handshake timeouts or context cancellation.
+func isAwaitHeadersTimeout(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "timeout awaiting response headers")
+}
+
+// newEphemeralTransport builds a one-shot transport for a single attempt:
+// full gateway config, proxy applied, keep-alives forced off so the connection
+// dies with the request instead of lingering in an idle pool no later request
+// can reach. Used when GatewayEphemeralTransport is set (the default) — it
+// removes every bit of client-side sharing between attempts, at the cost of a
+// TCP+TLS handshake per request.
+func (s *Server) newEphemeralTransport(profile transportProfile, streaming bool) (*http.Transport, *http2.Transport) {
+	// Mirrors the cached transports: streaming keeps the header timeout,
+	// non-streaming raises it to the global read timeout.
+	responseHeaderTimeout := s.config.GatewayResponseHeaderTimeout
+	if !streaming {
+		responseHeaderTimeout = s.config.GatewayReadTimeout
+	}
+	t, h2 := newGatewayTransport(s.config, responseHeaderTimeout, profile.InsecureTLS)
+	t.DisableKeepAlives = true
+	applyProxyConfig(t, profile.ProxyURL)
+	return t, h2
+}
+
+// closeIdleOnCloseBody releases an ephemeral transport's connections once the
+// response body is done with them. Without it the transport becomes garbage
+// while its connection sits idle until IdleConnTimeout.
+type closeIdleOnCloseBody struct {
+	io.ReadCloser
+	t1   *http.Transport
+	h2   *http2.Transport
+	once sync.Once
+}
+
+func (b *closeIdleOnCloseBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.once.Do(func() {
+		b.t1.CloseIdleConnections()
+		if b.h2 != nil {
+			b.h2.CloseIdleConnections()
+		}
+	})
+	return err
+}
+
+// forwardRequest sends the request to the upstream provider using the transport
+// selected by the connection profile. profile.ProxyURL: empty string uses the
+// environment proxy, "direct" bypasses all proxies, a URL string uses that
+// proxy; profile.InsecureTLS skips upstream certificate verification.
 // Streaming requests use the default ResponseHeaderTimeout; non-streaming
 // requests use the more lenient GatewayReadTimeout as their header-timeout
 // upper bound (the cache keys transports on the streaming flag).
-func (s *Server) forwardRequest(req *http.Request, proxyURL string, streaming bool) (*http.Response, error) {
-	return s.proxyCache.get(proxyURL, streaming).RoundTrip(req)
+//
+// It is also the single choke point for connection-reuse hygiene: every attempt
+// carries an httptrace so the connection it landed on is observable, and a
+// header timeout quarantines the host so following attempts stop riding the same
+// broken connection (see connQuarantine).
+func (s *Server) forwardRequest(req *http.Request, profile transportProfile, streaming bool) (*http.Response, error) {
+	var (
+		t         *http.Transport
+		h2        *http2.Transport
+		ephemeral = s.config.GatewayEphemeralTransport
+	)
+	if ephemeral {
+		t, h2 = s.newEphemeralTransport(profile, streaming)
+	} else {
+		t = s.proxyCache.get(profile, streaming)
+	}
+	host := req.URL.Host
+
+	if s.connQuarantine.active(profile, streaming, host) {
+		// Retire whichever connection this request lands on: h2 marks it
+		// doNotReuse, h1 sends "Connection: close".
+		req.Close = true
+		logx.WithContext(req.Context()).WithFields(logrus.Fields{
+			"host":         host,
+			"proxy":        profile.ProxyURL,
+			"insecure_tls": profile.InsecureTLS,
+			"streaming":    streaming,
+		}).Debug("upstream host quarantined, disabling connection reuse for this attempt")
+	}
+
+	var connLocal, connRemote string
+	var wroteRequestAt, gotFirstByteAt time.Time
+	trace := &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			if info.Conn != nil {
+				connLocal = info.Conn.LocalAddr().String()
+				connRemote = info.Conn.RemoteAddr().String()
+			}
+			logx.WithContext(req.Context()).WithFields(logrus.Fields{
+				"conn_reused":    info.Reused,
+				"conn_was_idle":  info.WasIdle,
+				"conn_idle_time": info.IdleTime,
+				"conn_local":     connLocal,
+				"conn_remote":    connRemote,
+			}).Debug("got upstream connection")
+		},
+		// The two timestamps below separate "request written, then silence on the
+		// response path" (a header timeout with wrote_request_ago ≈ the whole
+		// timeout and got_first_byte=false) from "the request body itself never
+		// got out" (no WroteRequest at all — flow control or a stalled connection).
+		WroteRequest: func(httptrace.WroteRequestInfo) {
+			wroteRequestAt = time.Now()
+		},
+		GotFirstResponseByte: func() {
+			gotFirstByteAt = time.Now()
+		},
+	}
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+
+	resp, err := t.RoundTrip(req)
+	if err == nil {
+		if ephemeral {
+			resp.Body = &closeIdleOnCloseBody{ReadCloser: resp.Body, t1: t, h2: h2}
+		}
+		return resp, nil
+	}
+	if ephemeral {
+		t.CloseIdleConnections()
+		if h2 != nil {
+			h2.CloseIdleConnections()
+		}
+	}
+
+	var wroteRequestAgo time.Duration
+	if !wroteRequestAt.IsZero() {
+		wroteRequestAgo = time.Since(wroteRequestAt)
+	}
+	log := logx.WithContext(req.Context()).WithError(err).WithFields(logrus.Fields{
+		"host":              host,
+		"proxy":             profile.ProxyURL,
+		"insecure_tls":      profile.InsecureTLS,
+		"streaming":         streaming,
+		"conn_local":        connLocal,
+		"conn_remote":       connRemote,
+		"wrote_request_ago": wroteRequestAgo,
+		"got_first_byte":    !gotFirstByteAt.IsZero(),
+	})
+	log.Warn("upstream request failed")
+	if isAwaitHeadersTimeout(err) {
+		s.connQuarantine.mark(profile, streaming, host)
+		s.proxyCache.closeIdle(profile, streaming)
+		log.WithField("ttl", connQuarantineTTL).Warn("quarantined upstream host after response-header timeout")
+	}
+	return resp, err
 }
 
 // insertRequest inserts a request record and returns the inserted created_at.
@@ -668,7 +1046,7 @@ func (s *Server) insertRequest(ctx context.Context, arg db.InsertRequestParams) 
 		return time.Now().UTC()
 	}
 	insertedAt := createdAt.Time.UTC()
-	s.upsertTrace(ctx, arg.ParentSpanID, arg.UserID, insertedAt)
+	_ = s.upsertTrace(ctx, arg.ParentSpanID, arg.UserID, insertedAt)
 	return insertedAt
 }
 
@@ -705,16 +1083,20 @@ func (s *Server) upsertProjectSeen(ctx context.Context, projectID int32, seenAt 
 	}
 }
 
-func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, userID pgtype.Int8, requestCreatedAt time.Time) {
+// upsertTrace creates (or extends) the trace for a (parent_span_id, user_id)
+// pair and returns its id — the RETURNING id also yields the existing row's id
+// on conflict. A skipped upsert (no parent span / no user) or a failure returns
+// "": callers surface that as a null ctx.metaRequest.traceId.
+func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, userID pgtype.Int8, requestCreatedAt time.Time) string {
 	if !parentSpanID.Valid || parentSpanID.String == "" {
-		return
+		return ""
 	}
 	// Traces are keyed by (parent_span_id, user_id); without a known user there
 	// is no trace to upsert (the meta row before auth hits this path).
 	if !userID.Valid {
-		return
+		return ""
 	}
-	_, err := s.queries.UpsertTrace(ctx, db.UpsertTraceParams{
+	row, err := s.queries.UpsertTrace(ctx, db.UpsertTraceParams{
 		ID:             xid.New().String(),
 		ParentSpanID:   parentSpanID.String,
 		UserID:         userID.Int64,
@@ -722,7 +1104,9 @@ func (s *Server) upsertTrace(ctx context.Context, parentSpanID pgtype.Text, user
 	})
 	if err != nil {
 		logx.WithContext(ctx).WithError(err).Error("failed to upsert trace")
+		return ""
 	}
+	return row.ID
 }
 
 // costsFor computes the per-request cost snapshot from model.pricing.
@@ -873,13 +1257,17 @@ func buildRequestFromPending(ctx context.Context, p jsx.PendingRequestShape, fal
 
 // completeFailedAttemptWithReason closes out an upstream attempt in the retry
 // loop's error path.
-func (s *Server) completeFailedAttemptWithReason(ctx context.Context, upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time, statusCode int32, errMsg string, finishReason int32) {
+func (s *Server) completeFailedAttemptWithReason(ctx context.Context, upstreamID string, upstreamCreatedAt time.Time, attemptStart time.Time, statusCode int32, errMsg string, finishReason int32, respHeader http.Header) {
+	var extRespID pgtype.Text
+	if respHeader != nil {
+		extRespID = matchExternalIDHeader(respHeader, s.externalResponseIDHeaders)
+	}
 	s.updateRequest(ctx, newRequestUpdate(upstreamID, upstreamCreatedAt).
 		StatusCode(pgtype.Int4{Int32: statusCode, Valid: true}).
 		ErrorMessage(pgtype.Text{String: errMsg, Valid: true}).
 		TimeSpentMs(pgtype.Int4{Int32: int32(time.Since(attemptStart).Milliseconds()), Valid: true}).
-		Status(db.RequestStatusFailed).
-		FinishReason(pgtype.Int4{Int32: finishReason, Valid: true}))
+		FinishReason(pgtype.Int4{Int32: finishReason, Valid: true}).
+		ExternalResponseID(extRespID))
 }
 
 func classifyForwardError(err error, reqCtx context.Context) int32 {

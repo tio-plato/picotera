@@ -21,15 +21,84 @@
     return value
   }
 
+  // ---- Annotation API argument validation (fail fast, no coercion) ----
+
+  function checkRequestId(id) {
+    if (typeof id !== 'string' || id === '') {
+      throw new TypeError('picotera: requestId must be a non-empty string')
+    }
+    return id
+  }
+
+  function checkIntId(name, id) {
+    if (!Number.isInteger(id)) {
+      throw new TypeError('picotera: ' + name + ' must be an integer')
+    }
+    return id
+  }
+
+  function checkKey(key) {
+    if (typeof key !== 'string' || key === '') {
+      throw new TypeError('picotera: annotation key must be a non-empty string')
+    }
+    return key
+  }
+
+  // encodeAnnotationValue maps the value argument onto the host encoding: "" for
+  // a delete (null / undefined), otherwise the JSON encoding of the string (so
+  // an empty-string value stays distinguishable from a delete). Any other type
+  // is a TypeError — no implicit String() conversion.
+  function encodeAnnotationValue(value) {
+    if (value === null || typeof value === 'undefined') return ''
+    if (typeof value !== 'string') {
+      throw new TypeError('picotera: annotation value must be a string, null, or undefined')
+    }
+    return JSON.stringify(value)
+  }
+
   globalThis.picotera = {
     hooks: {
       sortProviders: new Waterfall(),
+      beforeMetaRequest: new Waterfall(),
       beforeRequest: new Waterfall(),
       beforeTransform: new Waterfall(),
       rewriteRequest: new Waterfall(),
       rewriteModel: new Waterfall(),
       rewriteProviderModels: new Waterfall(),
       afterUpstreamError: new Waterfall(),
+      getToolUsageCost: new Waterfall(),
+      requestFinished: new Waterfall(),
+    },
+    request: {
+      setAnnotation: function (requestId, key, value) {
+        var e = globalThis.__picotera_anno_request(
+          checkRequestId(requestId), checkKey(key), encodeAnnotationValue(value))
+        if (e) throw new Error(e)
+      },
+    },
+    provider: {
+      get: function (providerId) {
+        var r = globalThis.__picotera_get_provider(checkIntId('providerId', providerId))
+        if (r[1]) throw new Error(r[1])
+        return r[0] === '' ? null : JSON.parse(r[0])
+      },
+      setAnnotation: function (providerId, key, value) {
+        var e = globalThis.__picotera_anno_provider(
+          checkIntId('providerId', providerId), checkKey(key), encodeAnnotationValue(value))
+        if (e) throw new Error(e)
+      },
+    },
+    apiKey: {
+      get: function (apiKeyId) {
+        var r = globalThis.__picotera_get_apikey(checkIntId('apiKeyId', apiKeyId))
+        if (r[1]) throw new Error(r[1])
+        return r[0] === '' ? null : JSON.parse(r[0])
+      },
+      setAnnotation: function (apiKeyId, key, value) {
+        var e = globalThis.__picotera_anno_apikey(
+          checkIntId('apiKeyId', apiKeyId), checkKey(key), encodeAnnotationValue(value))
+        if (e) throw new Error(e)
+      },
     },
     kv: {
       get: function (key) {

@@ -19,18 +19,78 @@ func (f *fakeStore) ListEnabledScripts(_ context.Context) ([]db.Script, error) {
 	return f.scripts, nil
 }
 
+// hostAnnoCall records one setAnnotation call that reached the fake HostAPI.
+// Kind is "request" / "provider" / "apiKey"; only the matching id field is set.
+// Value is nil for a delete.
+type hostAnnoCall struct {
+	Kind      string
+	RequestID string
+	ID        int32
+	Key       string
+	Value     *string
+}
+
+// fakeHostAPI is a recording jsx.HostAPI: it captures every set call and serves
+// configurable get results (nil summary = not found).
+type fakeHostAPI struct {
+	annoCalls []hostAnnoCall
+	setErr    error
+
+	provider    *ProviderSummary
+	apiKey      *ApiKeySummary
+	getErr      error
+	providerIDs []int32
+	apiKeyIDs   []int32
+}
+
+func (h *fakeHostAPI) SetRequestAnnotation(_ context.Context, requestID, key string, value *string) error {
+	h.annoCalls = append(h.annoCalls, hostAnnoCall{Kind: "request", RequestID: requestID, Key: key, Value: value})
+	return h.setErr
+}
+
+func (h *fakeHostAPI) SetProviderAnnotation(_ context.Context, providerID int32, key string, value *string) error {
+	h.annoCalls = append(h.annoCalls, hostAnnoCall{Kind: "provider", ID: providerID, Key: key, Value: value})
+	return h.setErr
+}
+
+func (h *fakeHostAPI) SetApiKeyAnnotation(_ context.Context, apiKeyID int32, key string, value *string) error {
+	h.annoCalls = append(h.annoCalls, hostAnnoCall{Kind: "apiKey", ID: apiKeyID, Key: key, Value: value})
+	return h.setErr
+}
+
+func (h *fakeHostAPI) GetProvider(_ context.Context, providerID int32) (*ProviderSummary, error) {
+	h.providerIDs = append(h.providerIDs, providerID)
+	return h.provider, h.getErr
+}
+
+func (h *fakeHostAPI) GetApiKey(_ context.Context, apiKeyID int32) (*ApiKeySummary, error) {
+	h.apiKeyIDs = append(h.apiKeyIDs, apiKeyID)
+	return h.apiKey, h.getErr
+}
+
 func newTestEngine(t *testing.T, scripts ...db.Script) Engine {
+	t.Helper()
+	return newTestEngineWithHost(t, &fakeHostAPI{}, scripts...)
+}
+
+func newTestEngineWithHost(t *testing.T, host HostAPI, scripts ...db.Script) Engine {
 	t.Helper()
 	return NewEngine(
 		Config{HookTimeout: 500 * time.Millisecond, MemoryLimit: 64 * 1024 * 1024},
 		&fakeStore{scripts: scripts},
 		kv.NewMemoryStore(),
+		host,
 	)
 }
 
 func newTestSession(t *testing.T, scripts ...db.Script) Session {
 	t.Helper()
-	s, err := newTestEngine(t, scripts...).NewSession(context.Background(), "test-req")
+	return newTestSessionWithHost(t, &fakeHostAPI{}, scripts...)
+}
+
+func newTestSessionWithHost(t *testing.T, host HostAPI, scripts ...db.Script) Session {
+	t.Helper()
+	s, err := newTestEngineWithHost(t, host, scripts...).NewSession(context.Background(), "test-req")
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -421,6 +481,59 @@ func TestSession_RewriteRequest_BodyJSONRoundtrip(t *testing.T) {
 	}
 }
 
+func TestSession_RewriteRequest_NoBody(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, pending) {
+			pending.url = "https://y/models";
+			pending.headers["x-added"] = ["1"];
+			return pending;
+		});
+	`})
+	out, err := s.RunRewriteRequest(PendingRequestShape{
+		URL:     "https://x/models",
+		Method:  "GET",
+		Headers: map[string][]string{"authorization": {"Bearer t"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("RunRewriteRequest: %v", err)
+	}
+	if out.URL != "https://y/models" {
+		t.Errorf("URL not rewritten, got %+v", out)
+	}
+	if got := out.Headers["x-added"]; len(got) != 1 || got[0] != "1" {
+		t.Errorf("header not added, got %+v", out.Headers)
+	}
+	if out.Body != nil {
+		t.Errorf("no-body request should leave Body nil, got %s", string(out.Body))
+	}
+}
+
+func TestSession_RewriteRequest_NoBody_ScriptAddsBody(t *testing.T) {
+	s := newTestSession(t, db.Script{ID: "a", Source: `
+		picotera.hooks.rewriteRequest.tap("a", function (ctx, pending) {
+			return { ...pending, method: "POST", body: { scope: "all" } };
+		});
+	`})
+	out, err := s.RunRewriteRequest(PendingRequestShape{
+		URL:     "https://x/models",
+		Method:  "GET",
+		Headers: map[string][]string{},
+	}, nil)
+	if err != nil {
+		t.Fatalf("RunRewriteRequest: %v", err)
+	}
+	if out.Method != "POST" {
+		t.Errorf("method not rewritten, got %q", out.Method)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(out.Body, &got); err != nil {
+		t.Fatalf("body should be raw JSON object bytes: %v (raw=%q)", err, string(out.Body))
+	}
+	if got["scope"] != "all" {
+		t.Errorf("want {scope:all}, got %+v", got)
+	}
+}
+
 func TestSession_BeforeTransform_Passthrough(t *testing.T) {
 	s := newTestSession(t, db.Script{ID: "a", Source: `picotera.hooks.beforeTransform.tap("a", function () {});`})
 	out, err := s.RunBeforeTransform(OutboundProfile{Type: "openai", Config: map[string]any{}})
@@ -556,6 +669,7 @@ func TestSession_MemoryLimit(t *testing.T) {
 			picotera.hooks.sortProviders.tap("a", function () { var x = new Array(5000000).fill(0); return [{provider:{id:x.length}}]; });
 		`}}},
 		kv.NewMemoryStore(),
+		&fakeHostAPI{},
 	)
 	s, err := eng.NewSession(context.Background(), "")
 	if err != nil {

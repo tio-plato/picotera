@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
-import type { RequestView, ProviderLabel, RequestLiveView } from '@/api'
+import type {
+  RequestView,
+  ProviderLabel,
+  RequestLiveView,
+  ToolUsageEntryView,
+} from '@/api'
 import { listRequestSpans, getRequestLive, interruptRequest } from '@/api/client'
 import { queryKeys } from '@/api/queryKeys'
 import { StateText, Field, Tag, IconButton, Icon, Tabs, MoneyDisplay, Button } from '@/ui'
 import RawArtifactView from './RawArtifactView.vue'
 import LogsArtifactView from './LogsArtifactView.vue'
+import UsageRawView from './UsageRawView.vue'
 import ConversationArtifactView from './ConversationArtifactView.vue'
 import TimedRawView from './TimedRawView.vue'
 import { useRequestDetailUiState, type DetailTab } from '@/composables/useRequestDetailUiState'
@@ -43,10 +50,10 @@ const meta = computed(() => spans.value.find((s) => s.id === s.spanId) ?? null)
 const upstreams = computed(() => spans.value.filter((s) => s.id !== s.spanId))
 const selected = computed(() => spans.value.find((s) => s.id === selectedId.value) ?? null)
 
-// In-flight = pending (0) or header-received (1); these rows have live status
+// In-flight = pending (finishReason not yet set); these rows have live status
 // in process memory and can be interrupted from the dashboard.
 function isInFlight(r: RequestView | null | undefined): boolean {
-  return !!r && (r.status === 0 || r.status === 1)
+  return !!r && (r.finishReason === undefined || r.finishReason === null)
 }
 const selectedInFlight = computed(() => isInFlight(selected.value))
 
@@ -136,28 +143,22 @@ function fmtNum(n: number | undefined | null) {
   return n === undefined || n === null ? '—' : n.toLocaleString()
 }
 
+function toolUsageSummary(t: ToolUsageEntryView): string {
+  const parts: string[] = []
+  if (t.model) parts.push(t.model)
+  if (t.numRequests) parts.push(`${fmtNum(t.numRequests)}`)
+  let tokens = 0
+  if (t.inputTokens) tokens += t.inputTokens
+  if (t.outputTokens) tokens += t.outputTokens
+  if (tokens > 0) parts.push(`${tokens} toks`)
+  if (t.numImages) parts.push(`${fmtNum(t.numImages)}`)
+  return parts.length ? parts.join(', ') : '—'
+}
+
 function providerLabel(id: number | undefined | null) {
   if (!id) return '—'
   const p = providersMap.value.get(id)
   return p ? p.name : `#${id}`
-}
-
-// inferredModelSource: 1 = 思维链签名, 2 = 响应结构, 其余/缺省 = 无来源。
-function inferredModelSourceLabel(source: number | undefined | null): string {
-  switch (source) {
-    case 1:
-      return '思维链'
-    case 2:
-      return '响应'
-    default:
-      return ''
-  }
-}
-
-function statusVariantTag(code: number | undefined | null): 'ok' | 'default' | 'muted' | 'accent' {
-  if (!code) return 'muted'
-  if (code >= 200 && code < 300) return 'ok'
-  return 'default'
 }
 
 function statusCodeClass(code: number | undefined | null) {
@@ -169,8 +170,8 @@ function statusCodeClass(code: number | undefined | null) {
 
 type RequestState = 'pending' | 'ok' | 'warn' | 'err'
 function requestState(r: RequestView): RequestState {
-  // status: 0=Pending 1=HeaderReceived 2=Completed 3=Failed
-  if (r.status === 0 || r.status === 1) return 'pending'
+  // pending ⟺ finishReason is null; otherwise classify by statusCode.
+  if (r.finishReason === undefined || r.finishReason === null) return 'pending'
   if (r.statusCode === undefined || r.statusCode === null) return 'err'
   if (r.statusCode >= 200 && r.statusCode < 300) return 'ok'
   if (r.statusCode >= 400 && r.statusCode < 500) return 'warn'
@@ -181,22 +182,7 @@ function typeLabel(t: number) {
   return t === 0 ? 'META' : 'UPSTREAM'
 }
 
-function statusLabel(s: number) {
-  switch (s) {
-    case 0:
-      return 'pending'
-    case 1:
-      return 'header'
-    case 2:
-      return 'completed'
-    case 3:
-      return 'failed'
-    default:
-      return String(s)
-  }
-}
-
-import { finishReasonLabel } from '@/utils/requestLabels'
+import { finishReasonLabel, inferredModelSourceLabel } from '@/utils/requestLabels'
 
 function finishReasonVariant(
   reason: number | undefined | null,
@@ -222,6 +208,9 @@ const {
   liveShowTimings,
 } = useRequestDetailUiState()
 const isMeta = computed(() => !!selected.value && selected.value.id === selected.value.spanId)
+// The raw usage columns are only written on the success paths, so the tab is
+// absent for failed rows rather than showing an empty state.
+const hasUsageRaw = computed(() => !!selected.value?.usageRaw || !!selected.value?.toolUsageRaw)
 const detailTabs = computed(() => {
   const base: { value: DetailTab; label: string }[] = [
     { value: 'overview', label: '概览' },
@@ -230,6 +219,7 @@ const detailTabs = computed(() => {
     { value: 'conversation', label: '对话' },
   ]
   if (isMeta.value) base.push({ value: 'logs', label: '日志' })
+  if (hasUsageRaw.value) base.push({ value: 'usage', label: '用量' })
   return base
 })
 watch(detailTabs, (tabs) => {
@@ -400,23 +390,22 @@ watch(detailTabs, (tabs) => {
                   typeLabel(selected.type)
                 }}</Tag>
               </Field>
-              <Field label="状态" as="div">
-                <Tag
-                  :variant="
-                    requestState(selected) === 'pending'
-                      ? 'muted'
-                      : statusVariantTag(selected.statusCode)
-                  "
-                  >{{ statusLabel(selected.status) }}</Tag
-                >
+              <Field label="完成原因" as="div">
+                <Tag :variant="finishReasonVariant(selected.finishReason)">
+                  {{ finishReasonLabel(selected.finishReason) }}
+                </Tag>
               </Field>
-              <Field v-if="selected.spanId" label="Span" as="div">
-                <span class="font-mono text-xs text-ink break-all">{{ selected.spanId }}</span>
-              </Field>
-              <Field v-if="selected.parentSpanId" label="Parent Span" as="div">
-                <span class="font-mono text-xs text-ink break-all">{{
-                  selected.parentSpanId
-                }}</span>
+              <Field v-if="selected.traceId" label="追踪" as="div" class="col-span-2">
+                <span class="inline-flex items-center gap-1.5 min-w-0">
+                  <span class="font-mono text-xs text-ink break-all">{{ selected.traceId }}</span>
+                  <RouterLink
+                    :to="{ name: 'requests', query: { traceId: selected.traceId } }"
+                    class="inline-flex items-center text-ink-faint hover:text-accent transition-colors shrink-0"
+                    :title="`查看追踪 ${selected.traceId}`"
+                  >
+                    <Icon name="filter" :size="10" />
+                  </RouterLink>
+                </span>
               </Field>
               <Field
                 v-if="selected.userMessagePreview"
@@ -462,11 +451,6 @@ watch(detailTabs, (tabs) => {
                   :class="statusCodeClass(selected.statusCode)"
                   >{{ selected.statusCode }}</span
                 >
-              </Field>
-              <Field label="停止原因" as="div">
-                <Tag :variant="finishReasonVariant(selected.finishReason)">
-                  {{ finishReasonLabel(selected.finishReason) }}
-                </Tag>
               </Field>
               <Field label="时间" as="div">
                 <span class="font-mono text-xs">{{ formatTime(selected.createdAt) }}</span>
@@ -528,18 +512,54 @@ watch(detailTabs, (tabs) => {
             </div>
           </section>
 
-          <section v-if="selected.modelCost != null" class="flex flex-col gap-2.5">
+          <section v-if="selected.toolUsage?.length" class="flex flex-col gap-2.5">
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >工具用量</span
+            >
+            <div class="grid grid-cols-2 gap-2.5">
+              <Field v-for="t in selected.toolUsage" :key="t.name" :label="t.name" as="div">
+                <span class="font-mono tabular-nums text-sm">{{ toolUsageSummary(t) }}</span>
+              </Field>
+            </div>
+          </section>
+
+          <section
+            v-if="selected.modelCost != null || selected.toolCost != null"
+            class="flex flex-col gap-2.5"
+          >
             <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
               >成本</span
             >
             <div class="grid grid-cols-2 gap-2.5">
-              <Field label="模型价" as="div">
+              <Field v-if="selected.modelCost != null" label="模型" as="div">
                 <span class="font-mono tabular-nums text-sm">
                   <MoneyDisplay
                     :amount="selected.modelCost ?? null"
                     :currency="selected.modelCostCurrency ?? ''"
                   />
                 </span>
+              </Field>
+              <Field v-if="selected.toolCost != null" label="工具" as="div">
+                <span class="font-mono tabular-nums text-sm">
+                  <MoneyDisplay
+                    :amount="selected.toolCost ?? null"
+                    :currency="selected.toolCostCurrency ?? ''"
+                  />
+                </span>
+              </Field>
+            </div>
+          </section>
+
+          <section
+            v-if="selected.annotations && Object.keys(selected.annotations).length"
+            class="flex flex-col gap-2.5"
+          >
+            <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.04em]"
+              >标注</span
+            >
+            <div class="grid grid-cols-2 gap-2.5">
+              <Field v-for="(v, k) in selected.annotations" :key="k" :label="k" as="div">
+                <span class="font-mono text-sm text-ink break-all">{{ v }}</span>
               </Field>
             </div>
           </section>
@@ -576,6 +596,11 @@ watch(detailTabs, (tabs) => {
           :response-url="selected.responseArtifactUrl"
         />
         <LogsArtifactView v-else-if="detailTab === 'logs'" :url="selected.responseArtifactUrl" />
+        <UsageRawView
+          v-else-if="detailTab === 'usage'"
+          :usage-raw="selected.usageRaw"
+          :tool-usage-raw="selected.toolUsageRaw"
+        />
       </template>
     </template>
   </div>

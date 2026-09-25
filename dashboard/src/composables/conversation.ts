@@ -1,6 +1,17 @@
 import type { AggregatedFormat } from '@/components/artifactTypes'
+import { imageFromBase64, imageFromUrl, type ImageSource } from './images'
 
 export type ConversationRole = 'system' | 'user' | 'assistant' | 'tool'
+
+export interface SearchResult {
+  citation: string
+  title: string
+  url: string | null
+  wordlim: string | null
+  published: string | null
+  crawled: string | null
+  content: string
+}
 
 export type ConversationPart =
   | { kind: 'text'; text: string }
@@ -13,14 +24,21 @@ export type ConversationPart =
       output: unknown
       isError: boolean
     }
-  | { kind: 'media'; mediaType: string; label: string }
+  | { kind: 'media'; mediaType: string; label: string; image: ImageSource | null }
+  | { kind: 'searchResults'; results: SearchResult[] }
 
 export interface ConversationMessage {
   role: ConversationRole
   parts: ConversationPart[]
 }
 
-type ConversationFormat = 'openaiChat' | 'openaiResponses' | 'anthropic' | 'gemini'
+type ConversationFormat =
+  | 'openaiChat'
+  | 'openaiResponses'
+  | 'anthropic'
+  | 'gemini'
+  | 'openaiSearch'
+  | 'openaiImages'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
@@ -50,6 +68,10 @@ function pushText(parts: ConversationPart[], text: unknown) {
 
 function pushThinking(parts: ConversationPart[], text: unknown) {
   if (typeof text === 'string' && text !== '') parts.push({ kind: 'thinking', text })
+}
+
+function pushMedia(parts: ConversationPart[], mediaType: string, image: ImageSource | null = null) {
+  parts.push({ kind: 'media', mediaType, label: `[${mediaType}]`, image })
 }
 
 function messageOrNull(
@@ -130,7 +152,14 @@ export function detectFormat(
     return null
   }
 
+  if (typeof root.output === 'string') return 'openaiSearch'
   if (Array.isArray(root.candidates)) return 'gemini'
+  // Shape-matched on the first element so an embeddings response (`data: [{embedding}]`)
+  // doesn't land here.
+  if (Array.isArray(root.data)) {
+    const first = asRecord(root.data[0])
+    if (typeof first?.b64_json === 'string' || typeof first?.url === 'string') return 'openaiImages'
+  }
   if (root.object === 'response' || Array.isArray(root.output)) return 'openaiResponses'
   if (Array.isArray(root.choices)) return 'openaiChat'
   if (
@@ -158,15 +187,17 @@ function parseOpenAIContentParts(content: unknown): ConversationPart[] {
     ) {
       pushText(parts, part.text)
     } else if (part.type === 'image_url') {
-      parts.push({ kind: 'media', mediaType: 'image', label: '[image]' })
+      // Chat Completions wraps the URL in an object; Responses' input_image
+      // carries it as a bare string.
+      pushMedia(parts, 'image', imageFromUrl(asRecord(part.image_url)?.url))
     } else if (part.type === 'input_image') {
-      parts.push({ kind: 'media', mediaType: 'image', label: '[image]' })
+      pushMedia(parts, 'image', imageFromUrl(part.image_url))
     } else if (part.type === 'input_audio') {
-      parts.push({ kind: 'media', mediaType: 'audio', label: '[audio]' })
+      pushMedia(parts, 'audio')
     } else if (part.type === 'input_file') {
-      parts.push({ kind: 'media', mediaType: 'file', label: '[file]' })
+      pushMedia(parts, 'file')
     } else if (typeof part.type === 'string') {
-      parts.push({ kind: 'media', mediaType: part.type, label: `[${part.type}]` })
+      pushMedia(parts, part.type)
     }
   }
   return parts
@@ -239,11 +270,27 @@ function parseOpenAIResponseMessage(item: Record<string, unknown>): Conversation
   return messageOrNull(role, parts)
 }
 
+// `result` is bare base64 with no accompanying MIME field, so the media type
+// comes from sniffing the bytes.
+function imageGenerationParts(item: Record<string, unknown>): ConversationPart[] {
+  const image = imageFromBase64(item.result)
+  if (!image) return []
+  const parts: ConversationPart[] = []
+  pushMedia(parts, 'image', image)
+  return parts
+}
+
 function parseOpenAIResponseItem(itemValue: unknown): ConversationMessage | null {
   const item = asRecord(itemValue)
   if (!item) return null
 
   if (item.type === 'message') return parseOpenAIResponseMessage(item)
+  // Shared by request `input[]` and response `output[]`: a Codex multi-turn
+  // conversation replays a previous turn's image_generation_call in `input`.
+  if (item.type === 'image_generation_call') {
+    const parts = imageGenerationParts(item)
+    return parts.length ? { role: 'assistant', parts } : null
+  }
   if (item.type === 'function_call') {
     const name = stringOrNull(item.name)
     if (!name) return null
@@ -310,6 +357,8 @@ export function parseOpenAIResponsesResponse(json: unknown): ConversationMessage
         const part = asRecord(partValue)
         pushThinking(assistantParts, part?.text)
       }
+    } else if (item.type === 'image_generation_call') {
+      assistantParts.push(...imageGenerationParts(item))
     } else if (item.type === 'function_call') {
       const name = stringOrNull(item.name)
       if (!name) continue
@@ -327,6 +376,21 @@ export function parseOpenAIResponsesResponse(json: unknown): ConversationMessage
 
   const assistant = messageOrNull('assistant', assistantParts)
   return assistant ? [...messages, assistant] : messages
+}
+
+export function parseOpenAIImagesResponse(json: unknown): ConversationMessage[] {
+  const root = asRecord(json)
+  const parts: ConversationPart[] = []
+  for (const itemValue of asArray(root?.data)) {
+    const item = asRecord(itemValue)
+    if (!item) continue
+    // `output_format: "png"` sits on the root and is a bare format word, not a
+    // MIME type — imageFromBase64 sniffs the bytes instead.
+    const image = imageFromBase64(item.b64_json) ?? imageFromUrl(item.url)
+    if (image) pushMedia(parts, 'image', image)
+  }
+  const message = messageOrNull('assistant', parts)
+  return message ? [message] : []
 }
 
 function parseAnthropicSystem(system: unknown): ConversationMessage | null {
@@ -374,9 +438,13 @@ function parseAnthropicContent(content: unknown): ConversationPart[] {
         isError: block.is_error === true,
       })
     } else if (block.type === 'image') {
-      parts.push({ kind: 'media', mediaType: 'image', label: '[image]' })
+      const source = asRecord(block.source)
+      let image: ImageSource | null = null
+      if (source?.type === 'base64') image = imageFromBase64(source.data, source.media_type)
+      else if (source?.type === 'url') image = imageFromUrl(source.url)
+      pushMedia(parts, 'image', image)
     } else if (typeof block.type === 'string') {
-      parts.push({ kind: 'media', mediaType: block.type, label: `[${block.type}]` })
+      pushMedia(parts, block.type)
     }
   }
   return parts
@@ -432,11 +500,12 @@ function parseGeminiParts(partsValue: unknown): ConversationPart[] {
     } else if (asRecord(part.inlineData)) {
       const inlineData = asRecord(part.inlineData)
       const mediaType = stringOrNull(inlineData?.mimeType) ?? 'media'
-      parts.push({ kind: 'media', mediaType, label: `[${mediaType}]` })
+      pushMedia(parts, mediaType, imageFromBase64(inlineData?.data, inlineData?.mimeType))
     } else if (asRecord(part.fileData)) {
       const fileData = asRecord(part.fileData)
       const mediaType = stringOrNull(fileData?.mimeType) ?? 'file'
-      parts.push({ kind: 'media', mediaType, label: `[${mediaType}]` })
+      // A `gs://` fileUri fails the scheme whitelist and stays a chip.
+      pushMedia(parts, mediaType, imageFromUrl(fileData?.fileUri))
     }
   }
   return parts
@@ -474,6 +543,88 @@ export function parseGeminiResponse(json: unknown): ConversationMessage[] {
   return message ? [{ ...message, role: 'assistant' }] : []
 }
 
+// A search result is anchored by its citation marker: U+E200 "cite" U+E202 <ref> U+E201
+// (a marker may carry several U+E202-separated refs). Dash separators between results are
+// unreliable (sometimes absent, sometimes glued to the preceding text), so results are split
+// on the markers, not the dashes.
+const SEARCH_CITE = /\uE200cite\uE202([\s\S]*?)\uE201/g
+
+function stripTrailingSeparators(text: string): string {
+  return text.replace(/\s*-{20,}\s*$/, '').replace(/^\s+|\s+$/g, '')
+}
+
+// The title of a result is the line directly above its citation marker.
+function searchTitleBefore(
+  output: string,
+  markerStart: number,
+): { title: string; lineStart: number } {
+  const nlBefore = output.lastIndexOf('\n', markerStart - 1)
+  if (nlBefore < 0) return { title: output.slice(0, markerStart).trim(), lineStart: 0 }
+  const prevNL = output.lastIndexOf('\n', nlBefore - 1)
+  return { title: output.slice(prevNL + 1, nlBefore).trim(), lineStart: prevNL + 1 }
+}
+
+function parseSearchOutput(output: string): SearchResult[] {
+  const markers = [...output.matchAll(SEARCH_CITE)]
+  const results: SearchResult[] = []
+  for (let k = 0; k < markers.length; k++) {
+    const marker = markers[k]
+    if (!marker || marker.index === undefined) continue
+    const markerEnd = marker.index + marker[0].length
+
+    const citation = (marker[1] ?? '')
+      .split('\uE202')
+      .map((ref) => ref.trim())
+      .filter(Boolean)
+      .join(', ')
+
+    const titleLine = searchTitleBefore(output, marker.index).title
+
+    // Content runs until the title line of the next result (or end of output).
+    let regionEnd = output.length
+    const next = markers[k + 1]
+    if (next && next.index !== undefined) {
+      regionEnd = searchTitleBefore(output, next.index).lineStart
+    }
+    const region = output.slice(markerEnd, regionEnd)
+
+    let title = titleLine
+    let url: string | null = null
+    const urlMatch = titleLine.match(/^(.*?)\s*\((https?:\/\/[^\s)]+)\)\s*$/)
+    if (urlMatch) {
+      title = urlMatch[1]?.trim() ?? titleLine
+      url = urlMatch[2] ?? null
+    }
+
+    const wordlim = region.match(/\[wordlim:\s*([^\]]+)\]/)?.[1]?.trim() ?? null
+    const published = region.match(/Published:\s*([^;]+);/)?.[1]?.trim() ?? null
+    const crawled = region.match(/Crawled:\s*([^;]+);/)?.[1]?.trim() ?? null
+
+    // Strip the three metadata markers (rendered as badges) and the trailing result
+    // separator; the rest is the Markdown content.
+    const content = stripTrailingSeparators(
+      region
+        .replace(/\[wordlim:\s*[^\]]+\]/, '')
+        .replace(/Published:\s*[^;]+;\s*/, '')
+        .replace(/Crawled:\s*[^;]+;\s*/, ''),
+    )
+
+    if (!title && !content) continue
+    results.push({ citation, title, url, wordlim, published, crawled, content })
+  }
+  return results
+}
+
+export function extractSearchResults(json: unknown): SearchResult[] {
+  const output = asRecord(json)?.output
+  return typeof output === 'string' ? parseSearchOutput(output) : []
+}
+
+export function parseSearchResponse(json: unknown): ConversationMessage[] {
+  const results = extractSearchResults(json)
+  return results.length ? [{ role: 'assistant', parts: [{ kind: 'searchResults', results }] }] : []
+}
+
 function formatFromAggregated(format: AggregatedFormat | undefined): ConversationFormat | null {
   switch (format) {
     case 'openaiChatCompletions':
@@ -501,6 +652,9 @@ export function parseRequestConversation(json: unknown): ConversationMessage[] |
       return parseAnthropicRequest(json)
     case 'gemini':
       return parseGeminiRequest(json)
+    case 'openaiSearch':
+    case 'openaiImages':
+      return []
   }
 }
 
@@ -519,9 +673,23 @@ export function parseResponseConversation(
       return parseAnthropicResponse(json)
     case 'gemini':
       return parseGeminiResponse(json)
+    case 'openaiSearch':
+      return parseSearchResponse(json)
+    case 'openaiImages':
+      return parseOpenAIImagesResponse(json)
   }
 }
 
 export function hasConversationMessages(messages: ConversationMessage[] | null): boolean {
   return !!messages?.some((message) => message.parts.length > 0)
+}
+
+export function collectConversationImages(messages: ConversationMessage[]): ImageSource[] {
+  const images: ImageSource[] = []
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.kind === 'media' && part.image) images.push(part.image)
+    }
+  }
+  return images
 }

@@ -66,12 +66,6 @@ func (u *requestUpdate) ProjectID(v pgtype.Int4) *requestUpdate {
 	return u
 }
 
-func (u *requestUpdate) Status(v int32) *requestUpdate {
-	u.p.SetStatus = true
-	u.p.Status = v
-	return u
-}
-
 func (u *requestUpdate) StatusCode(v pgtype.Int4) *requestUpdate {
 	u.p.SetStatusCode = true
 	u.p.StatusCode = v
@@ -138,6 +132,36 @@ func (u *requestUpdate) ModelCostCurrency(v pgtype.Text) *requestUpdate {
 	return u
 }
 
+func (u *requestUpdate) ToolUsage(v []byte) *requestUpdate {
+	u.p.SetToolUsage = true
+	u.p.ToolUsage = v
+	return u
+}
+
+func (u *requestUpdate) ToolCost(v pgtype.Numeric) *requestUpdate {
+	u.p.SetToolCost = true
+	u.p.ToolCost = v
+	return u
+}
+
+func (u *requestUpdate) ToolCostCurrency(v pgtype.Text) *requestUpdate {
+	u.p.SetToolCostCurrency = true
+	u.p.ToolCostCurrency = v
+	return u
+}
+
+func (u *requestUpdate) UsageRaw(v []byte) *requestUpdate {
+	u.p.SetUsageRaw = true
+	u.p.UsageRaw = v
+	return u
+}
+
+func (u *requestUpdate) ToolUsageRaw(v []byte) *requestUpdate {
+	u.p.SetToolUsageRaw = true
+	u.p.ToolUsageRaw = v
+	return u
+}
+
 func (u *requestUpdate) FinishReason(v pgtype.Int4) *requestUpdate {
 	u.p.SetFinishReason = true
 	u.p.FinishReason = v
@@ -165,6 +189,12 @@ func (u *requestUpdate) InferredModelSource(v int16) *requestUpdate {
 func (u *requestUpdate) UserMessagePreview(v pgtype.Text) *requestUpdate {
 	u.p.SetUserMessagePreview = true
 	u.p.UserMessagePreview = v
+	return u
+}
+
+func (u *requestUpdate) ExternalResponseID(v pgtype.Text) *requestUpdate {
+	u.p.SetExternalResponseID = true
+	u.p.ExternalResponseID = v
 	return u
 }
 

@@ -15,8 +15,8 @@ type RequestView struct {
 	ID                  string   `json:"id"`
 	SpanID              string   `json:"spanId,omitempty"`
 	ParentSpanID        string   `json:"parentSpanId,omitempty"`
+	TraceID             string   `json:"traceId,omitempty"`
 	Type                int32    `json:"type"`
-	Status              int32    `json:"status"`
 	FinishReason        *int32   `json:"finishReason,omitempty"`
 	ProviderID          *int32   `json:"providerId,omitempty"`
 	EndpointPath        string   `json:"endpointPath,omitempty"`
@@ -42,7 +42,38 @@ type RequestView struct {
 	InferredProvider    string   `json:"inferredProvider,omitempty"`
 	InferredModel       string   `json:"inferredModel,omitempty"`
 	InferredModelSource *int32   `json:"inferredModelSource,omitempty"`
+	ExternalRequestID   string   `json:"externalRequestId,omitempty"`
+	ExternalResponseID  string   `json:"externalResponseId,omitempty"`
 	UserID              int64    `json:"userId,omitempty"`
+
+	ToolUsage        []ToolUsageEntryView `json:"toolUsage,omitempty"`
+	ToolCost         *float64             `json:"toolCost,omitempty"`
+	ToolCostCurrency string               `json:"toolCostCurrency,omitempty"`
+
+	// UsageRaw / ToolUsageRaw are the upstream's own usage / tool_usage objects
+	// recorded verbatim, of whatever shape that upstream reports. They are the
+	// un-normalized counterpart of the token fields and ToolUsage, so they can
+	// legitimately disagree with them — ToolUsage drops the all-zero entries
+	// UsageRaw keeps, and the token fields subtract cached tokens from the
+	// input. Absent when the column is NULL.
+	UsageRaw     map[string]any `json:"usageRaw,omitempty"`
+	ToolUsageRaw map[string]any `json:"toolUsageRaw,omitempty"`
+
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// ToolUsageEntryView is one upstream tool's usage as recorded on the request
+// row. Only non-zero counters are present — a tool the upstream listed but
+// never ran is not recorded at all. Model is the model the upstream declared
+// for the tool (image generation has one, web search does not).
+// Entry order is the upstream's own key order.
+type ToolUsageEntryView struct {
+	Name         string `json:"name"`
+	Model        string `json:"model,omitempty"`
+	NumRequests  int64  `json:"numRequests,omitempty"`
+	InputTokens  int64  `json:"inputTokens,omitempty"`
+	OutputTokens int64  `json:"outputTokens,omitempty"`
+	NumImages    int64  `json:"numImages,omitempty"`
 }
 
 type TraceCostView struct {
@@ -73,7 +104,6 @@ type requestLike struct {
 	SpanID              pgtype.Text
 	ParentSpanID        pgtype.Text
 	Type                int32
-	Status              int32
 	FinishReason        pgtype.Int4
 	ProviderID          pgtype.Int4
 	EndpointPath        pgtype.Text
@@ -97,14 +127,22 @@ type requestLike struct {
 	InferredProvider    pgtype.Text
 	InferredModel       pgtype.Text
 	InferredModelSource int16
+	ExternalRequestID   pgtype.Text
+	ExternalResponseID  pgtype.Text
 	UserID              pgtype.Int8
+	TraceID             pgtype.Text
+	Annotations         []byte
+	ToolUsage           []byte
+	ToolCost            pgtype.Numeric
+	ToolCostCurrency    pgtype.Text
+	UsageRaw            []byte
+	ToolUsageRaw        []byte
 }
 
 func toRequestView(r requestLike) *RequestView {
 	view := &RequestView{
-		ID:     r.ID,
-		Type:   r.Type,
-		Status: r.Status,
+		ID:   r.ID,
+		Type: r.Type,
 	}
 	if r.SpanID.Valid {
 		view.SpanID = r.SpanID.String
@@ -179,6 +217,14 @@ func toRequestView(r requestLike) *RequestView {
 	if r.ModelCostCurrency.Valid {
 		view.ModelCostCurrency = r.ModelCostCurrency.String
 	}
+	if r.ToolCost.Valid {
+		if f, err := numericToFloat(r.ToolCost); err == nil {
+			view.ToolCost = &f
+		}
+	}
+	if r.ToolCostCurrency.Valid {
+		view.ToolCostCurrency = r.ToolCostCurrency.String
+	}
 	if r.UserMessagePreview.Valid {
 		view.UserMessagePreview = r.UserMessagePreview.String
 	}
@@ -196,19 +242,57 @@ func toRequestView(r requestLike) *RequestView {
 		v := int32(r.InferredModelSource)
 		view.InferredModelSource = &v
 	}
+	if r.ExternalRequestID.Valid {
+		view.ExternalRequestID = r.ExternalRequestID.String
+	}
+	if r.ExternalResponseID.Valid {
+		view.ExternalResponseID = r.ExternalResponseID.String
+	}
 	if r.UserID.Valid {
 		view.UserID = r.UserID.Int64
+	}
+	if r.TraceID.Valid {
+		view.TraceID = r.TraceID.String
+	}
+	// annotations is written exclusively by the script layer as a JSON object of
+	// string values; a decode failure is unreachable in normal operation, so we
+	// leave the field nil rather than change this no-error conversion signature.
+	if len(r.Annotations) > 0 {
+		var anno map[string]string
+		if err := json.Unmarshal(r.Annotations, &anno); err == nil {
+			view.Annotations = anno
+		}
+	}
+	// tool_usage is likewise written only by our own response extractor, so the
+	// same tolerant decode applies: a failure leaves the field nil.
+	if len(r.ToolUsage) > 0 {
+		var tu []ToolUsageEntryView
+		if err := json.Unmarshal(r.ToolUsage, &tu); err == nil {
+			view.ToolUsage = tu
+		}
+	}
+	// Same for the two raw columns, whose only writer is that extractor too.
+	if len(r.UsageRaw) > 0 {
+		var u map[string]any
+		if err := json.Unmarshal(r.UsageRaw, &u); err == nil {
+			view.UsageRaw = u
+		}
+	}
+	if len(r.ToolUsageRaw) > 0 {
+		var tu map[string]any
+		if err := json.Unmarshal(r.ToolUsageRaw, &tu); err == nil {
+			view.ToolUsageRaw = tu
+		}
 	}
 	return view
 }
 
-func ToRequestView(r *db.Request) *RequestView {
+func ToRequestView(r *db.GetRequestRow) *RequestView {
 	return toRequestView(requestLike{
 		ID:                  r.ID,
 		SpanID:              r.SpanID,
 		ParentSpanID:        r.ParentSpanID,
 		Type:                r.Type,
-		Status:              r.Status,
 		FinishReason:        r.FinishReason,
 		ProviderID:          r.ProviderID,
 		EndpointPath:        r.EndpointPath,
@@ -232,7 +316,16 @@ func ToRequestView(r *db.Request) *RequestView {
 		InferredProvider:    r.InferredProvider,
 		InferredModel:       r.InferredModel,
 		InferredModelSource: r.InferredModelSource,
+		ExternalRequestID:   r.ExternalRequestID,
+		ExternalResponseID:  r.ExternalResponseID,
 		UserID:              r.UserID,
+		TraceID:             r.TraceID,
+		Annotations:         r.Annotations,
+		ToolUsage:           r.ToolUsage,
+		ToolCost:            r.ToolCost,
+		ToolCostCurrency:    r.ToolCostCurrency,
+		UsageRaw:            r.UsageRaw,
+		ToolUsageRaw:        r.ToolUsageRaw,
 	})
 }
 
@@ -242,7 +335,6 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		SpanID:              r.SpanID,
 		ParentSpanID:        r.ParentSpanID,
 		Type:                r.Type,
-		Status:              r.Status,
 		FinishReason:        r.FinishReason,
 		ProviderID:          r.ProviderID,
 		EndpointPath:        r.EndpointPath,
@@ -266,7 +358,15 @@ func ToListRequestRowView(r *db.ListRequestsRow) *RequestView {
 		InferredProvider:    r.InferredProvider,
 		InferredModel:       r.InferredModel,
 		InferredModelSource: r.InferredModelSource,
+		ExternalRequestID:   r.ExternalRequestID,
+		ExternalResponseID:  r.ExternalResponseID,
 		UserID:              r.UserID,
+		Annotations:         r.Annotations,
+		ToolUsage:           r.ToolUsage,
+		ToolCost:            r.ToolCost,
+		ToolCostCurrency:    r.ToolCostCurrency,
+		UsageRaw:            r.UsageRaw,
+		ToolUsageRaw:        r.ToolUsageRaw,
 	})
 }
 
@@ -276,7 +376,6 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		SpanID:              r.SpanID,
 		ParentSpanID:        r.ParentSpanID,
 		Type:                r.Type,
-		Status:              r.Status,
 		FinishReason:        r.FinishReason,
 		ProviderID:          r.ProviderID,
 		EndpointPath:        r.EndpointPath,
@@ -300,7 +399,16 @@ func ToListRequestsBySpanRowView(r *db.ListRequestsBySpanRow) *RequestView {
 		InferredProvider:    r.InferredProvider,
 		InferredModel:       r.InferredModel,
 		InferredModelSource: r.InferredModelSource,
+		ExternalRequestID:   r.ExternalRequestID,
+		ExternalResponseID:  r.ExternalResponseID,
 		UserID:              r.UserID,
+		TraceID:             r.TraceID,
+		Annotations:         r.Annotations,
+		ToolUsage:           r.ToolUsage,
+		ToolCost:            r.ToolCost,
+		ToolCostCurrency:    r.ToolCostCurrency,
+		UsageRaw:            r.UsageRaw,
+		ToolUsageRaw:        r.ToolUsageRaw,
 	})
 }
 
@@ -357,13 +465,28 @@ type ListRequestsRequest struct {
 	Model         string `query:"model,omitempty"`
 	UpstreamModel string `query:"upstreamModel,omitempty"`
 	TraceID       string `query:"traceId,omitempty"`
+	RequestID     string `query:"requestId,omitempty"`
 	ProjectID     int32  `query:"projectId,omitempty"`
+	StartAt       string `query:"startAt,omitempty"`
+	EndAt         string `query:"endAt,omitempty"`
+	EmptyResponse bool   `query:"emptyResponse,omitempty"`
+	FinishReason  int32  `query:"finishReason,omitempty"`
+	// Routing filters by whether the upstream reported a model other than the
+	// requested one or the one the attempt was forwarded as, compared
+	// case-insensitively. "detected" = 检测到路由, "undetected" = 未检测到路由
+	// (which includes rows with no inferred model at all). Absent = no filter.
+	Routing string `query:"routing,omitempty" enum:"detected,undetected"`
+	// Annotations is a URL-encoded JSON object of string values; requests are
+	// filtered by JSONB containment (@>, AND across pairs). Exact match only.
+	Annotations string `query:"annotations,omitempty"`
 }
 
 type ListRequestsResponse = PaginatedResponse[RequestView]
 
 type ListRequestTracesRequest struct {
 	PaginationRequest
+	StartAt string `query:"startAt,omitempty"`
+	EndAt   string `query:"endAt,omitempty"`
 }
 
 type ListRequestTracesResponse = PaginatedResponse[RequestTraceView]

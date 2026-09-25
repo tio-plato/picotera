@@ -19,6 +19,7 @@ import type {
   ProjectLabel,
   OverviewDimension,
   OverviewDistributionView,
+  OverviewOutcomeSeriesView,
   OverviewSpeedBoxplotView,
   OverviewSeriesDimension,
   OverviewSeriesView,
@@ -30,6 +31,8 @@ import type {
   ProjectView,
   ProviderEndpointView,
   ProviderView,
+  RecalculateModelCostsRequestBody,
+  RecalculateModelCostsResponseBody,
   RequestLiveView,
   RequestView,
   ScriptView,
@@ -140,6 +143,14 @@ export async function upsertModel(body: ModelView): Promise<ModelView> {
 export async function deleteModel(name: string): Promise<void> {
   const { error } = await api.POST('/api/picotera/models/delete', { body: { name } })
   if (error) fail(error, '删除模型失败')
+}
+
+export async function recalculateModelCosts(
+  body: RecalculateModelCostsRequestBody,
+): Promise<RecalculateModelCostsResponseBody> {
+  const { data, error } = await api.POST('/api/picotera/models/recalculate-cost', { body })
+  if (error) fail(error, '重算历史费用失败')
+  return data
 }
 
 export async function listProviderEndpoints(providerId?: number): Promise<ProviderEndpointView[]> {
@@ -435,7 +446,9 @@ export async function interruptRequest(id: string): Promise<boolean> {
   return data?.interrupted ?? false
 }
 
-export async function listRequestTraces(filters: { limit: number; cursor?: string }) {
+export async function listRequestTraces(
+  filters: { limit: number; cursor?: string; startAt?: string; endAt?: string },
+) {
   const { data, error } = await api.GET('/api/picotera/request-traces', {
     params: { query: filters },
   })
@@ -455,6 +468,15 @@ export function invalidateEndpoints(client: QueryClient) {
 export function invalidateModels(client: QueryClient) {
   client.invalidateQueries({ queryKey: queryKeys.models.all })
   client.invalidateQueries({ queryKey: queryKeys.requests.all })
+}
+
+// A cost recalculation rewrites model_cost on historical request rows: request
+// rows, traces and both overviews all render it.
+export function invalidateRequestCosts(client: QueryClient) {
+  client.invalidateQueries({ queryKey: queryKeys.requests.all })
+  client.invalidateQueries({ queryKey: queryKeys.requestTraces.all })
+  client.invalidateQueries({ queryKey: queryKeys.overview.all })
+  client.invalidateQueries({ queryKey: queryKeys.adminOverview.all })
 }
 
 export function invalidateProviderEndpoints(client: QueryClient) {
@@ -528,6 +550,13 @@ export async function getConfig(): Promise<ConfigView> {
   return data
 }
 
+// The logout route is a bare server route rather than a Huma operation, so it
+// is absent from the generated contract and has to be called with plain fetch.
+export async function logout(): Promise<void> {
+  const response = await fetch('/api/picotera/auth/logout', { method: 'POST' })
+  if (!response.ok) throw new ApiRequestError(undefined, '退出登录失败')
+}
+
 export async function fetchMe(): Promise<MeView> {
   const { data, error } = await api.GET('/api/picotera/me')
   if (error) fail(error, '加载用户信息失败')
@@ -573,6 +602,10 @@ export async function listUpstreamModelLabels(): Promise<string[]> {
 
 function overviewQuery(filters: OverviewFilters) {
   const query: Record<string, unknown> = { range: filters.range }
+  if (filters.range === 'custom') {
+    if (filters.startAt !== undefined) query.startAt = filters.startAt
+    if (filters.endAt !== undefined) query.endAt = filters.endAt
+  }
   if (filters.apiKeyId !== undefined) query.apiKeyId = filters.apiKeyId
   if (filters.model !== undefined) query.model = filters.model
   if (filters.upstreamModel !== undefined) query.upstreamModel = filters.upstreamModel
@@ -612,6 +645,18 @@ export async function getOverviewSeries(
   return data
 }
 
+export async function getOverviewOutcomeSeries(
+  filters: OverviewFilters,
+  dimension: OverviewSeriesDimension,
+  bucket: OverviewGranularity,
+): Promise<OverviewOutcomeSeriesView> {
+  const { data, error } = await api.GET('/api/picotera/overview/outcome-series', {
+    params: { query: { ...overviewQuery(filters), dimension, bucket } as never },
+  })
+  if (error) fail(error, '加载成功率统计失败')
+  return data
+}
+
 export async function getOverviewSpeedBoxplot(
   filters: OverviewFilters,
   dimension: OverviewSeriesDimension,
@@ -629,6 +674,10 @@ export function invalidateOverview(client: QueryClient) {
 
 function adminOverviewQuery(filters: AdminOverviewFilters) {
   const query: Record<string, unknown> = { range: filters.range }
+  if (filters.range === 'custom') {
+    if (filters.startAt !== undefined) query.startAt = filters.startAt
+    if (filters.endAt !== undefined) query.endAt = filters.endAt
+  }
   if (filters.userId !== undefined) query.userId = filters.userId
   if (filters.model !== undefined) query.model = filters.model
   if (filters.upstreamModel !== undefined) query.upstreamModel = filters.upstreamModel

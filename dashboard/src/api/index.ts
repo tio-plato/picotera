@@ -4,11 +4,16 @@ export type ProviderView = components['schemas']['ProviderView']
 export type ProviderModelEntry = components['schemas']['ProviderModelEntry']
 export type CreateProviderRequestBody = components['schemas']['CreateProviderRequestBody']
 export type ModelView = components['schemas']['ModelView']
+export type RecalculateModelCostsRequestBody =
+  components['schemas']['RecalculateModelCostsRequestBody']
+export type RecalculateModelCostsResponseBody =
+  components['schemas']['RecalculateModelCostsResponseBody']
 export type EndpointView = components['schemas']['EndpointView']
 export type ProviderEndpointView = components['schemas']['ProviderEndpointView']
 export type RequestView = components['schemas']['RequestView']
 export type RequestLiveView = components['schemas']['RequestLiveView']
 export type RequestTraceView = components['schemas']['RequestTraceView']
+export type ToolUsageEntryView = components['schemas']['ToolUsageEntryView']
 export type TraceCostView = components['schemas']['TraceCostView']
 export type ScriptView = components['schemas']['ScriptView']
 export type ApiKeyView = components['schemas']['ApiKeyView']
@@ -28,6 +33,9 @@ export type OverviewDistributionRowView = components['schemas']['OverviewDistrib
 export type OverviewSeriesView = components['schemas']['OverviewSeriesView']
 export type OverviewSeriesGroupView = components['schemas']['OverviewSeriesGroupView']
 export type OverviewSeriesPointView = components['schemas']['OverviewSeriesPointView']
+export type OverviewOutcomeSeriesView = components['schemas']['OverviewOutcomeSeriesView']
+export type OverviewOutcomePointView = components['schemas']['OverviewOutcomePointView']
+export type OverviewSuccessRateView = components['schemas']['OverviewSuccessRateView']
 export type OverviewSpeedBoxplotView = components['schemas']['OverviewSpeedBoxplotView']
 export type OverviewSpeedBoxplotItemView = components['schemas']['OverviewSpeedBoxplotItemView']
 export type OverviewWindowView = components['schemas']['OverviewWindowView']
@@ -50,10 +58,15 @@ export type ModelLabel = components['schemas']['ModelLabel']
 export type EndpointLabel = components['schemas']['EndpointLabel']
 export type ProjectLabel = components['schemas']['ProjectLabel']
 
-export type OverviewRange = '1d' | '7d' | '1m'
+export type OverviewRange = '1d' | '7d' | '1m' | 'custom'
 export type OverviewDimension = 'apiKey' | 'model' | 'upstreamModel' | 'provider' | 'project'
 export type OverviewSeriesDimension = 'none' | OverviewDimension
 export type OverviewMetric = 'tokens' | 'cost' | 'requests' | 'traces'
+export type OverviewOutcomeMetric =
+  | 'upstreamSuccessRate'
+  | 'downstreamSuccessRate'
+  | 'emptyResponseRate'
+  | 'finishReasonShare'
 export type AdminOverviewDimension = 'user' | 'model' | 'upstreamModel' | 'provider'
 export type AdminOverviewSeriesDimension = 'none' | AdminOverviewDimension
 
@@ -65,6 +78,8 @@ export const ENDPOINT_TYPES_MODEL_ROUTED: EndpointType[] = [
   'anthropicCountTokens',
   'geminiGenerateContent',
   'geminiStreamGenerateContent',
+  'codex',
+  'openaiEmbedding',
 ]
 export const ENDPOINT_TYPE_LABELS: Record<EndpointType, string> = {
   general: '通用',
@@ -76,5 +91,7 @@ export const ENDPOINT_TYPE_LABELS: Record<EndpointType, string> = {
   geminiStreamGenerateContent: 'Gemini 流式生成内容',
   exaSearch: 'Exa 搜索',
   modelList: '模型列表',
+  codex: 'Codex',
+  openaiEmbedding: 'OpenAI 特征提取',
   unknown: '未知',
 }

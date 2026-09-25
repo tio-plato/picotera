@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -32,50 +34,92 @@ import (
 )
 
 type Server struct {
-	queries          *db.Queries
-	db               *pgxpool.Pool
-	router           *chi.Mux
-	mgmtRouter       chi.Router
-	api              huma.API
-	config           *configx.Config
-	httpClient       *http.Client
-	proxyCache       *proxyTransportCache
-	artifacts        artifacts.Sink
-	jsxEngine        jsx.Engine
-	kvStore          kv.Store
-	staticHandler    http.Handler
-	endpointRouter   *endpointRouter
-	projectExtractor *projectExtractor
-	llmBridge        llmbridge.Bridge
-	liveRequests     *liveRequestRegistry
+	queries                   *db.Queries
+	db                        *pgxpool.Pool
+	router                    *chi.Mux
+	mgmtRouter                chi.Router
+	api                       huma.API
+	config                    *configx.Config
+	proxyCache                *proxyTransportCache
+	connQuarantine            *connQuarantine
+	artifacts                 artifacts.Sink
+	jsxEngine                 jsx.Engine
+	kvStore                   kv.Store
+	staticHandler             http.Handler
+	endpointRouter            *endpointRouter
+	projectExtractor          *projectExtractor
+	llmBridge                 llmbridge.Bridge
+	liveRequests              *liveRequestRegistry
+	externalRequestIDHeaders  []string
+	externalResponseIDHeaders []string
+	httpServer                *http.Server
+	// oidc is nil in every auth mode but oidc.
+	oidc *auth.OIDC
 }
 
 // newGatewayTransport builds an HTTP transport for upstream gateway requests
 // with its own http2.ConfigureTransports call so that responseHeaderTimeout is
 // bound to this exact transport (the HTTP/2 transport reads it from its bound
-// *http.Transport — see the nonStreamBase comment in NewServer). HTTP/2
+// *http.Transport — see the transport-cache build closure in NewServer). HTTP/2
 // keepalive PINGs are enabled so dead connections — especially silently dropped
 // CONNECT proxy tunnels — are detected and evicted instead of being reused,
 // which otherwise surfaces as "http2: timeout awaiting response headers".
-func newGatewayTransport(config *configx.Config, responseHeaderTimeout time.Duration) *http.Transport {
+//
+// The *http2.Transport handle is returned alongside the *http.Transport (nil if
+// ConfigureTransports failed, or if HTTP/2 is disabled): std's
+// CloseIdleConnections only reaches the h2 pool through the unexported altProto
+// map, so evicting idle h2 connections (see proxyTransportCache.closeIdle)
+// requires calling CloseIdleConnections on this handle directly.
+//
+// insecureTLS skips upstream certificate verification for every connection this
+// transport makes (provider.insecure_tls). Because TLS is negotiated by the
+// *http.Transport and only then handed to h2 via TLSNextProto["h2"], setting it
+// here covers h2 upstreams too.
+//
+// With config.GatewayDisableHTTP2 the transport never gets an h2 layer at all:
+// a non-nil but empty TLSNextProto is std's documented way to turn off automatic
+// HTTP/2. The h2 keepalive PINGs are configured on the h2 handle, so they are
+// simply absent in that mode.
+func newGatewayTransport(config *configx.Config, responseHeaderTimeout time.Duration, insecureTLS bool) (*http.Transport, *http2.Transport) {
 	t := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   config.GatewayDialTimeout,
 			KeepAlive: config.GatewayDialKeepAlive,
 		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
+		ForceAttemptHTTP2: true,
+		MaxIdleConns:      100,
+		// std defaults to 2 idle connections per host, which would make a single
+		// busy upstream host churn connections — especially with HTTP/2 off,
+		// where every concurrent request needs its own connection.
+		MaxIdleConnsPerHost:   100,
 		IdleConnTimeout:       config.GatewayIdleConnTimeout,
 		TLSHandshakeTimeout:   config.GatewayTLSHandshakeTimeout,
 		ExpectContinueTimeout: config.GatewayExpectContinueTimeout,
 		ResponseHeaderTimeout: responseHeaderTimeout,
+		// Emergency stop-gap: one connection per request (h2 singleUse, h1 no
+		// keepalive), applied to every transport variant.
+		DisableKeepAlives: config.GatewayDisableKeepAlives,
 	}
-	if h2, err := http2.ConfigureTransports(t); err == nil {
-		h2.ReadIdleTimeout = config.GatewayHTTP2ReadIdleTimeout
-		h2.PingTimeout = config.GatewayHTTP2PingTimeout
+	// MUST be set before http2.ConfigureTransports: that call appends "h2" and
+	// "http/1.1" to t.TLSClientConfig.NextProtos, so replacing the config
+	// afterwards would leave an empty ALPN list and silently downgrade every
+	// HTTPS upstream to HTTP/1.1.
+	if insecureTLS {
+		t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in per provider
 	}
-	return t
+	if config.GatewayDisableHTTP2 {
+		t.ForceAttemptHTTP2 = false
+		t.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+		return t, nil
+	}
+	h2, err := http2.ConfigureTransports(t)
+	if err != nil {
+		return t, nil
+	}
+	h2.ReadIdleTimeout = config.GatewayHTTP2ReadIdleTimeout
+	h2.PingTimeout = config.GatewayHTTP2PingTimeout
+	return t, h2
 }
 
 func NewServer(ctx context.Context) (*Server, error) {
@@ -113,24 +157,30 @@ func NewServer(ctx context.Context) (*Server, error) {
 
 	logx.WithContext(ctx).Info("connected to database")
 
-	baseTransport := newGatewayTransport(config, config.GatewayResponseHeaderTimeout)
-	httpClient := &http.Client{Transport: baseTransport}
-	// Non-streaming requests get a more lenient header timeout: the upstream
-	// may buffer the whole response and return headers late, so raise the header
-	// timeout to the global read timeout (a hard upper bound, not unlimited).
+	// Every cache key builds its own transport through its own
+	// http2.ConfigureTransports call. That is required, not merely tidy: under
+	// HTTP/2 the response-header timeout is read from the *http.Transport bound
+	// to the *http2.Transport at ConfigureTransports time (see x/net/http2
+	// responseHeaderTimeout -> cc.t.t1.ResponseHeaderTimeout), and a Clone only
+	// shallow-copies TLSNextProto, whose "h2" entry would still point at the
+	// original's http2.Transport — so the clone's timeout (and its TLS policy)
+	// would be ignored for h2 upstreams while its connections landed in the
+	// original's pool. Both ResponseHeaderTimeout and TLSClientConfig are
+	// connection-level fields that cannot be overridden per request, hence they
+	// are part of the cache key instead.
 	//
-	// This MUST be a transport built by its own http2.ConfigureTransports call,
-	// not baseTransport.Clone(): under HTTP/2 the response-header timeout is read
-	// from the *http.Transport bound to the *http2.Transport at ConfigureTransports
-	// time (see x/net/http2 responseHeaderTimeout -> cc.t.t1.ResponseHeaderTimeout).
-	// Clone() only shallow-copies TLSNextProto, whose "h2" entry still points at
-	// baseTransport's http2.Transport — so a cloned transport's raised
-	// ResponseHeaderTimeout is ignored for h2 upstreams and they'd still trip the
-	// 91s header timeout. ResponseHeaderTimeout is a connection-level transport
-	// field and cannot be overridden per request, so the cache keys on the
-	// streaming flag and keeps both bases.
-	nonStreamBase := newGatewayTransport(config, config.GatewayReadTimeout)
-	proxyCache := newProxyTransportCache(baseTransport, nonStreamBase)
+	// Non-streaming requests get a more lenient header timeout: the upstream may
+	// buffer the whole response and return headers late, so raise the header
+	// timeout to the global read timeout (a hard upper bound, not unlimited).
+	proxyCache := newProxyTransportCache(func(profile transportProfile, streaming bool) (*http.Transport, *http2.Transport) {
+		responseHeaderTimeout := config.GatewayResponseHeaderTimeout
+		if !streaming {
+			responseHeaderTimeout = config.GatewayReadTimeout
+		}
+		t, h2 := newGatewayTransport(config, responseHeaderTimeout, profile.InsecureTLS)
+		applyProxyConfig(t, profile.ProxyURL)
+		return t, h2
+	})
 
 	sink, err := artifacts.NewSink(config.S3, logx.WithContext(ctx))
 	if err != nil {
@@ -146,7 +196,21 @@ func NewServer(ctx context.Context) (*Server, error) {
 	// (the Huma management operations below, plus the raw test/direct route in
 	// registerEndpoints). The gateway catch-all and /api/unified stay on the
 	// bare router and authenticate via API key.
-	mgmtRouter := router.With(auth.Middleware(auth.NewResolver(conn, queries, config.Auth)))
+	// In oidc mode the driver and the resolver reference each other: the
+	// resolver reads sessions through the driver's cookie stores, and the
+	// callback creates users through the resolver.
+	var oidcAuth *auth.OIDC
+	if config.Auth.OIDC.Enabled {
+		oidcAuth, err = auth.NewOIDC(config.Auth.OIDC, config.BaseURL, config.Auth.AutoCreateUser)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize oidc auth: %w", err)
+		}
+	}
+	resolver := auth.NewResolver(conn, queries, config.Auth, oidcAuth)
+	if oidcAuth != nil {
+		oidcAuth.SetResolver(resolver)
+	}
+	mgmtRouter := router.With(auth.Middleware(resolver))
 	api := humachi.New(mgmtRouter, huma.DefaultConfig("PicoTera Management API", "1.0.0"))
 
 	kvStore, err := kv.New(config.KV.Driver, kv.WithRedisURL(config.KV.RedisURL))
@@ -159,7 +223,7 @@ func NewServer(ctx context.Context) (*Server, error) {
 		MemoryLimit:      config.JSMemoryLimit,
 		MaxTotalAttempts: config.JSMaxTotalAttempts,
 		MaxDelay:         config.JSMaxDelay,
-	}, queries, kvStore)
+	}, queries, kvStore, newJSXHostAPI(queries))
 
 	if config.LLMBridgePluginPath != "" {
 		logx.WithContext(ctx).WithFields(logrus.Fields{
@@ -175,23 +239,34 @@ func NewServer(ctx context.Context) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize llmbridge: %w", err)
 	}
+	reqHeaders, err := parseExternalIDHeaderNames(config.GatewayExternalRequestIDHeaders)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gateway_external_request_id_headers: %w", err)
+	}
+	respHeaders, err := parseExternalIDHeaderNames(config.GatewayExternalResponseIDHeaders)
+	if err != nil {
+		return nil, fmt.Errorf("invalid gateway_external_response_id_headers: %w", err)
+	}
 	server := &Server{
-		config:           config,
-		queries:          queries,
-		db:               conn,
-		router:           router,
-		mgmtRouter:       mgmtRouter,
-		api:              api,
-		httpClient:       httpClient,
-		proxyCache:       proxyCache,
-		artifacts:        sink,
-		jsxEngine:        jsxEngine,
-		kvStore:          kvStore,
-		staticHandler:    static.Handler(),
-		endpointRouter:   newEndpointRouter(queries),
-		projectExtractor: newProjectExtractor(queries),
-		llmBridge:        llmBridge,
-		liveRequests:     newLiveRequestRegistry(),
+		config:                    config,
+		queries:                   queries,
+		db:                        conn,
+		router:                    router,
+		mgmtRouter:                mgmtRouter,
+		api:                       api,
+		proxyCache:                proxyCache,
+		connQuarantine:            newConnQuarantine(),
+		artifacts:                 sink,
+		jsxEngine:                 jsxEngine,
+		kvStore:                   kvStore,
+		staticHandler:             static.Handler(),
+		endpointRouter:            newEndpointRouter(queries),
+		projectExtractor:          newProjectExtractor(queries),
+		llmBridge:                 llmBridge,
+		liveRequests:              newLiveRequestRegistry(),
+		externalRequestIDHeaders:  reqHeaders,
+		externalResponseIDHeaders: respHeaders,
+		oidc:                      oidcAuth,
 	}
 	server.registerOperations()
 	server.registerEndpoints()
@@ -242,6 +317,7 @@ func (s *Server) register(mgmt, admin *huma.Group) {
 	huma.Register(mgmt, contract.OperationGetOverviewDistribution, s.handleGetOverviewDistribution)
 	huma.Register(mgmt, contract.OperationGetOverviewSeries, s.handleGetOverviewSeries)
 	huma.Register(mgmt, contract.OperationGetOverviewSpeedBoxplot, s.handleGetOverviewSpeedBoxplot)
+	huma.Register(mgmt, contract.OperationGetOverviewOutcomeSeries, s.handleGetOverviewOutcomeSeries)
 	huma.Register(mgmt, contract.OperationListApiKeys, s.handleListApiKeys)
 	huma.Register(mgmt, contract.OperationGetApiKey, s.handleGetApiKey)
 	huma.Register(mgmt, contract.OperationCreateApiKey, s.handleCreateApiKey)
@@ -293,6 +369,7 @@ func (s *Server) register(mgmt, admin *huma.Group) {
 	huma.Register(admin, contract.OperationGetModel, s.handleGetModel)
 	huma.Register(admin, contract.OperationPutModel, s.handlePutModel)
 	huma.Register(admin, contract.OperationDeleteModel, s.handleDeleteModel)
+	huma.Register(admin, contract.OperationRecalculateModelCosts, s.handleRecalculateModelCosts)
 	huma.Register(admin, contract.OperationListEndpoints, s.handleListEndpoints)
 	huma.Register(admin, contract.OperationUpsertEndpoint, s.handleUpsertEndpoint)
 	huma.Register(admin, contract.OperationDeleteEndpoint, s.handleDeleteEndpoint)
@@ -333,9 +410,20 @@ func (s *Server) registerEndpoints() {
 	s.router.Group(func(r chi.Router) {
 		r.Use(corsMiddleware)
 		for _, route := range unifiedRoutes {
-			h := s.handleUnifiedGenerate(route.Format)
+			h := s.handleUnifiedGenerate(route)
 			r.Post(route.Path, h)
 			r.Options(route.Path, h)
+		}
+		// Codex's sub-paths are open-ended, so it gets a wildcard mount instead
+		// of a row in unifiedRoutes; the handler normalizes the remainder and
+		// builds the route value per request. The second pattern is an alias
+		// mirroring ChatGPT's own /backend-api/codex layout — chi hands both the
+		// same remainder, so the handling is identical down to the recorded
+		// endpoint_path.
+		codex := s.handleUnifiedCodex()
+		for _, pattern := range codexMountPatterns {
+			r.Post(pattern, codex)
+			r.Options(pattern, codex)
 		}
 	})
 
@@ -347,6 +435,16 @@ func (s *Server) registerEndpoints() {
 	// /api/picotera.
 	s.mgmtRouter.Post("/api/picotera/test/direct", s.handleTestDirect)
 
+	// The oidc login routes are bare chi routes on the unguarded router: the
+	// users who need them are by definition not authenticated yet. Like the
+	// routes above they are registered before the catch-all mount, and being
+	// outside Huma they never enter openapi.yaml.
+	if s.oidc != nil {
+		s.router.Get(auth.LoginPath, s.oidc.Login)
+		s.router.Get(auth.CallbackPath, s.oidc.Callback)
+		s.router.Post(auth.LogoutPath, s.oidc.Logout)
+	}
+
 	s.router.Mount("/", &gatewayHandler{s})
 }
 
@@ -357,8 +455,39 @@ func (s *Server) Serve() error {
 		}
 	})
 	s.servePprof()
+	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
+	s.httpServer = &http.Server{
+		Addr:    addr,
+		Handler: s.router,
+	}
 	logrus.WithField("host", s.config.Host).WithField("port", s.config.Port).Info("serving API")
-	return http.ListenAndServe(fmt.Sprintf("%s:%d", s.config.Host, s.config.Port), s.router)
+	if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	var errs []error
+	if s.httpServer != nil {
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("http shutdown: %w", err))
+		}
+	}
+	if s.llmBridge != nil {
+		if err := s.llmBridge.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("llmbridge close: %w", err))
+		}
+	}
+	if s.artifacts != nil {
+		if err := s.artifacts.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("artifact sink close: %w", err))
+		}
+	}
+	if s.db != nil {
+		s.db.Close()
+	}
+	return errors.Join(errs...)
 }
 
 // servePprof starts a dedicated debug HTTP server exposing net/http/pprof when

@@ -102,6 +102,13 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 	if candAnno == nil {
 		candAnno = side.Annotations
 	}
+	// Reset ctx.upstreamRequest to null: beforeRequest runs before this attempt's
+	// upstream row exists, so a hook must not see the previous attempt's identity.
+	// It is filled in right after the row is inserted below.
+	if err := f.session.SetUpstreamRequest(nil); err != nil {
+		f.failHook(err)
+		return false, true
+	}
 	dec, err := f.runBeforeRequest(cand, candAnno, state)
 	if err != nil {
 		f.failHook(err)
@@ -129,6 +136,15 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 		return false, false
 	}
 	defer f.h.liveRequests.Remove(input.UpstreamID)
+	// The upstream row now exists, so expose its identity: rewriteRequest,
+	// afterUpstreamError and the in-stream error hook can annotate this attempt
+	// via picotera.request.setAnnotation(ctx.upstreamRequest.id, ...).
+	if err := f.session.SetUpstreamRequest(f.requestRef(input.UpstreamID)); err != nil {
+		f.recordAttemptFailure(state, input, side.ProviderID, int32(gatewayHookStatus(err)), err, db.FinishReasonInternal)
+		f.failHook(err)
+		cancel()
+		return true, true
+	}
 	prepared, err := f.buildRewrittenUpstreamRequest(input)
 	if err != nil {
 		var hookErr gatewayHookError
@@ -147,11 +163,11 @@ func (f *gatewayFlow) runSingleAttempt(cand jsx.CandidateView, side gatewayCandi
 		return false, false
 	}
 	reqArtifactCtx, reqArtifactCancel := f.ctxs.Persist()
-	redactedHeader, redactedURL := redactUpstreamCredentials(prepared.Request.Header.Clone(), prepared.Request.URL.String())
+	redactedHeader, redactedURL := redactRequestCredentials(prepared.Request.Header.Clone(), prepared.Request.URL.String())
 	f.h.uploadRequestArtifact(reqArtifactCtx, input.UpstreamID, input.UpstreamCreatedAt, prepared.Request.Method, redactedURL, redactedHeader, f.artifactBody(prepared.RequestBody))
 	reqArtifactCancel()
 	upstreamStart := time.Now()
-	resp, err := f.h.forwardRequest(prepared.Request, side.ProxyURL, f.model.Mode.Streaming)
+	resp, err := f.h.forwardRequest(prepared.Request, side.transport(), f.model.Mode.Streaming)
 	if err != nil {
 		f.recordAttemptFailure(state, input, side.ProviderID, 0, err, f.finishReasonFor(input.UpstreamID, classifyForwardError(err, f.ctxs.Request)))
 		cancel()
@@ -228,7 +244,6 @@ func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.CandidateView, side gateway
 		SpanID:             pgtype.Text{String: f.meta.ID, Valid: true},
 		ParentSpanID:       f.meta.ParentSpanIDPg,
 		Type:               db.RequestTypeUpstream,
-		Status:             db.RequestStatusPending,
 		ProviderID:         pgtype.Int4{Int32: side.ProviderID, Valid: true},
 		EndpointPath:       pgtype.Text{String: side.EndpointPath, Valid: side.EndpointPath != ""},
 		ApiKeyID:           f.auth.APIKeyID,
@@ -241,6 +256,8 @@ func (f *gatewayFlow) insertUpstreamAttempt(cand jsx.CandidateView, side gateway
 		ProjectID:          f.meta.ProjectID,
 		CreatedAt:          pgtype.Timestamp{Time: upstreamIDCreatedAt, Valid: true},
 		UserID:             f.auth.UserID,
+		ExternalRequestID:  pgtype.Text{Valid: false},
+		ExternalResponseID: pgtype.Text{Valid: false},
 	})
 	entry := f.h.liveRequests.RegisterUpstream(upstreamID, cancel, f.otr.recordBody())
 	return attemptInput{Candidate: cand, Sidecar: side, Annotations: candAnno, Decision: dec, CurrentRetryCount: state.CurrentRetryCount, TotalAttemptCount: state.TotalAttemptCount, AttemptCtx: attemptCtx, UpstreamID: upstreamID, UpstreamCreatedAt: upstreamCreatedAt, AttemptStart: time.Now(), UpstreamModel: upstreamModel, Entry: entry}, cancel, nil
@@ -256,17 +273,27 @@ func (f *gatewayFlow) buildRewrittenUpstreamRequest(input attemptInput) (attempt
 		// resolved upstream model name, not the inbound chi params — which are
 		// empty for non-Gemini source routes that get bridged to Gemini.
 		pathVars = unifiedUpstreamPathVars(input.UpstreamModel)
-		var err error
-		body, err = setUnifiedModel(f.config.SourceFormat, f.body, input.UpstreamModel)
-		if err != nil {
-			return attemptPrepared{}, err
+		// A no-model request (a prefix mount whose body carried no model field)
+		// must not get a `"model": ""` injected into a body that never had one —
+		// that would break passthrough semantics. Same condition buildUpstreamRequest
+		// applies on the path gateway. A beforeRequest hook can still opt in by
+		// setting upstreamModel.
+		if input.UpstreamModel != "" {
+			// Goes through the config closure rather than setUnifiedModel directly:
+			// the model's home (body vs {model} path var) is a property of the
+			// route, which only the unified config still knows about.
+			var err error
+			body, err = f.config.SetBodyModel(f.body, input.UpstreamModel)
+			if err != nil {
+				return attemptPrepared{}, err
+			}
 		}
 	}
 	authHeaderName := ""
 	if f.h.config.Auth.HeaderEnabled {
 		authHeaderName = f.h.config.Auth.HeaderName
 	}
-	req, reqBody, err := buildUpstreamRequest(input.AttemptCtx, f.r, body, input.Sidecar.UpstreamURL, upstreamModel, input.Sidecar.Credentials, input.Sidecar.SendResolver, pathVars, authHeaderName)
+	req, reqBody, err := buildUpstreamRequest(input.AttemptCtx, f.r, body, input.Sidecar.UpstreamURL, input.Sidecar.AppendPath, upstreamModel, input.Sidecar.Credentials, input.Sidecar.SendResolver, pathVars, authHeaderName)
 	if err != nil {
 		return attemptPrepared{}, err
 	}
@@ -334,8 +361,8 @@ func (f *gatewayFlow) handleUpstreamNonOK(state *attemptState, input attemptInpu
 		StatusCode(pgtype.Int4{Int32: int32(resp.StatusCode), Valid: true}).
 		ErrorMessage(pgtype.Text{String: errMsg, Valid: true}).
 		TimeSpentMs(pgtype.Int4{Int32: int32(time.Since(input.AttemptStart).Milliseconds()), Valid: true}).
-		Status(db.RequestStatusFailed).
-		FinishReason(pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true}))
+		FinishReason(pgtype.Int4{Int32: db.FinishReasonInternal, Valid: true}).
+		ExternalResponseID(matchExternalIDHeader(resp.Header, f.h.externalResponseIDHeaders)))
 	updateAttemptState(state, providerID, resp.StatusCode, errMsg, fmt.Errorf("upstream returned %d: %s", resp.StatusCode, errMsg))
 	if hookDec, brk := f.runAfterUpstreamError(state, false); brk {
 		f.respondUpstreamErrorBreak(hookDec, resp.StatusCode, respBody, resp.Header)
@@ -361,7 +388,7 @@ func (f *gatewayFlow) finishReasonFor(rowID string, fallback int32) int32 {
 func (f *gatewayFlow) recordAttemptFailure(state *attemptState, input attemptInput, providerID int32, statusCode int32, err error, finishReason int32) {
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.completeFailedAttemptWithReason(pctx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, statusCode, err.Error(), finishReason)
+	f.h.completeFailedAttemptWithReason(pctx, input.UpstreamID, input.UpstreamCreatedAt, input.AttemptStart, statusCode, err.Error(), finishReason, nil)
 	updateAttemptState(state, providerID, int(statusCode), err.Error(), err)
 }
 
@@ -429,7 +456,7 @@ func (f *gatewayFlow) respondUpstreamErrorBreak(dec jsx.AfterUpstreamErrorDecisi
 	if errMsg == "" {
 		errMsg = string(origBody)
 	}
-	f.failMeta(int32(status), errMsg, db.FinishReasonInternal)
+	f.failMeta(int32(status), errMsg, db.FinishReasonInternal, origHeader)
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
 	f.h.uploadMetaResponseArtifact(pctx, f.meta.ID, f.meta.CreatedAt, status, f.w.Header().Clone(), f.artifactBody(body), f.collectLogs(), nil)

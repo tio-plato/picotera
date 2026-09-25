@@ -418,6 +418,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/picotera/models/recalculate-cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recalculate the recorded cost of a model's historical requests */
+        post: operations["recalculateModelCosts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/picotera/models/{name}": {
         parameters: {
             query?: never;
@@ -444,6 +461,23 @@ export interface paths {
         };
         /** Get overview distribution for a dimension */
         get: operations["getOverviewDistribution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/picotera/overview/outcome-series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get request outcome rate series for a dimension */
+        get: operations["getOverviewOutcomeSeries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1081,6 +1115,8 @@ export interface components {
              * @example https://example.com/schemas/ConfigView.json
              */
             readonly $schema?: string;
+            /** @enum {string} */
+            authMode: "single-user-mode" | "http-header" | "oidc";
             title: string;
         };
         CreateProviderRequestBody: {
@@ -1095,6 +1131,7 @@ export interface components {
             };
             credentials: string;
             disabled: boolean;
+            insecureTls: boolean;
             /** @enum {string} */
             modelsEndpointResolver?: "unknown" | "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
             modelsEndpointUrl?: string;
@@ -1213,7 +1250,7 @@ export interface components {
         };
         EndpointLabel: {
             /** @enum {string} */
-            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "exaSearch" | "modelList" | "unknown";
+            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "exaSearch" | "modelList" | "codex" | "openaiEmbedding" | "unknown";
             name: string;
             path: string;
         };
@@ -1227,10 +1264,11 @@ export interface components {
             /** @enum {string} */
             credentialsResolver: "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey" | "unknown";
             /** @enum {string} */
-            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "exaSearch" | "modelList" | "unknown";
+            endpointType: "general" | "openaiChatCompletions" | "openaiResponses" | "anthropicMessages" | "anthropicCountTokens" | "geminiGenerateContent" | "geminiStreamGenerateContent" | "exaSearch" | "modelList" | "codex" | "openaiEmbedding" | "unknown";
             modelPath: string;
             name: string;
             path: string;
+            prefixMatch: boolean;
         };
         ExchangeRateView: {
             /**
@@ -1399,6 +1437,33 @@ export interface components {
             rows: components["schemas"]["OverviewDistributionRowView"][] | null;
             window: components["schemas"]["OverviewWindowView"];
         };
+        OverviewOutcomePointView: {
+            bucketAt: string;
+            category: string;
+            /** Format: int64 */
+            count: number;
+            groupKey: string;
+            metric: string;
+            /** Format: int64 */
+            total: number;
+            /** Format: double */
+            value: number;
+        };
+        OverviewOutcomeSeriesView: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/OverviewOutcomeSeriesView.json
+             */
+            readonly $schema?: string;
+            buckets: string[] | null;
+            dimension: string;
+            downstreamGroups: components["schemas"]["OverviewSeriesGroupView"][] | null;
+            finishReasons: number[] | null;
+            points: components["schemas"]["OverviewOutcomePointView"][] | null;
+            upstreamGroups: components["schemas"]["OverviewSeriesGroupView"][] | null;
+            window: components["schemas"]["OverviewWindowView"];
+        };
         OverviewSeriesGroupView: {
             key: string;
             label: string;
@@ -1451,6 +1516,14 @@ export interface components {
             items: components["schemas"]["OverviewSpeedBoxplotItemView"][] | null;
             window: components["schemas"]["OverviewWindowView"];
         };
+        OverviewSuccessRateView: {
+            /** Format: double */
+            rate: number;
+            /** Format: int64 */
+            successful: number;
+            /** Format: int64 */
+            total: number;
+        };
         OverviewSummaryView: {
             /**
              * Format: uri
@@ -1467,6 +1540,7 @@ export interface components {
             totalTokens: number;
             /** Format: int64 */
             totalTraceCount: number;
+            upstreamSuccess: components["schemas"]["OverviewSuccessRateView"];
             window: components["schemas"]["OverviewWindowView"];
         };
         OverviewTokenBreakdownView: {
@@ -1634,6 +1708,7 @@ export interface components {
             disabled: boolean;
             /** Format: int32 */
             id: number;
+            insecureTls: boolean;
             /** @enum {string} */
             modelsEndpointResolver?: "unknown" | "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
             modelsEndpointUrl?: string;
@@ -1643,6 +1718,45 @@ export interface components {
             providerModels: components["schemas"]["ProviderModelEntry"][] | null;
             proxyUrl?: string;
             supportsNativeWebSearch: boolean;
+        };
+        RecalculateModelCostsRequestBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RecalculateModelCostsRequestBody.json
+             */
+            readonly $schema?: string;
+            /** @example gpt-5.6-luna */
+            name: string;
+            /**
+             * @description Go duration parsed by time.ParseDuration; empty means the whole history
+             * @example 168h
+             */
+            range?: string;
+        };
+        RecalculateModelCostsResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RecalculateModelCostsResponseBody.json
+             */
+            readonly $schema?: string;
+            /** @example 2026-09-19T07:57:27Z */
+            endAt: string;
+            model: string;
+            range: string;
+            /** @example 2026-09-12T07:57:27Z */
+            startAt?: string;
+            /**
+             * Format: int64
+             * @example 812
+             */
+            tookMs: number;
+            /**
+             * Format: int64
+             * @example 1234
+             */
+            updated: number;
         };
         RequestLiveView: {
             /**
@@ -1697,6 +1811,9 @@ export interface components {
              * @example https://example.com/schemas/RequestView.json
              */
             readonly $schema?: string;
+            annotations?: {
+                [key: string]: string;
+            };
             /** Format: int32 */
             apiKeyId?: number;
             /** Format: int32 */
@@ -1708,6 +1825,8 @@ export interface components {
             createdAt?: string;
             endpointPath?: string;
             errorMessage?: string;
+            externalRequestId?: string;
+            externalResponseId?: string;
             /** Format: int32 */
             finishReason?: number;
             id: string;
@@ -1732,16 +1851,25 @@ export interface components {
             responseArtifactUrl?: string;
             spanId?: string;
             /** Format: int32 */
-            status: number;
-            /** Format: int32 */
             statusCode?: number;
             /** Format: int32 */
             timeSpentMs?: number;
+            /** Format: double */
+            toolCost?: number;
+            toolCostCurrency?: string;
+            toolUsage?: components["schemas"]["ToolUsageEntryView"][] | null;
+            toolUsageRaw?: {
+                [key: string]: unknown;
+            };
+            traceId?: string;
             /** Format: int32 */
             ttftMs?: number;
             /** Format: int32 */
             type: number;
             upstreamModel?: string;
+            usageRaw?: {
+                [key: string]: unknown;
+            };
             /** Format: int64 */
             userId?: number;
             userMessagePreview?: string;
@@ -1771,6 +1899,18 @@ export interface components {
             name: string;
             source: string;
             updatedAt: string;
+        };
+        ToolUsageEntryView: {
+            /** Format: int64 */
+            inputTokens?: number;
+            model?: string;
+            name: string;
+            /** Format: int64 */
+            numImages?: number;
+            /** Format: int64 */
+            numRequests?: number;
+            /** Format: int64 */
+            outputTokens?: number;
         };
         TraceCostView: {
             /** Format: double */
@@ -1812,6 +1952,7 @@ export interface components {
             disabled: boolean;
             /** Format: int32 */
             id?: number;
+            insecureTls: boolean;
             /** @enum {string} */
             modelsEndpointResolver?: "unknown" | "followRequest" | "bearerToken" | "xApiKey" | "searchKey" | "googApiKey";
             modelsEndpointUrl?: string;
@@ -1911,7 +2052,9 @@ export interface operations {
     getAdminOverviewDistribution: {
         parameters: {
             query: {
-                range: "1d" | "7d" | "1m";
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
                 userId?: number;
                 model?: string;
                 upstreamModel?: string;
@@ -1947,7 +2090,9 @@ export interface operations {
     getAdminOverviewSeries: {
         parameters: {
             query: {
-                range: "1d" | "7d" | "1m";
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
                 userId?: number;
                 model?: string;
                 upstreamModel?: string;
@@ -1984,7 +2129,9 @@ export interface operations {
     getAdminOverviewSpeedBoxplot: {
         parameters: {
             query: {
-                range: "1d" | "7d" | "1m";
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
                 userId?: number;
                 model?: string;
                 upstreamModel?: string;
@@ -2020,7 +2167,9 @@ export interface operations {
     getAdminOverviewSummary: {
         parameters: {
             query: {
-                range: "1d" | "7d" | "1m";
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
                 userId?: number;
                 model?: string;
                 upstreamModel?: string;
@@ -2853,6 +3002,39 @@ export interface operations {
             };
         };
     };
+    recalculateModelCosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecalculateModelCostsRequestBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecalculateModelCostsResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     getModel: {
         parameters: {
             query?: never;
@@ -2887,7 +3069,9 @@ export interface operations {
     getOverviewDistribution: {
         parameters: {
             query: {
-                range: "1d" | "7d" | "1m";
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
                 apiKeyId?: number;
                 model?: string;
                 upstreamModel?: string;
@@ -2921,10 +3105,52 @@ export interface operations {
             };
         };
     };
+    getOverviewOutcomeSeries: {
+        parameters: {
+            query: {
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
+                apiKeyId?: number;
+                model?: string;
+                upstreamModel?: string;
+                providerId?: number;
+                projectId?: number;
+                dimension: "none" | "apiKey" | "model" | "upstreamModel" | "provider" | "project";
+                bucket?: "auto" | "10m" | "1h" | "6h" | "12h" | "24h";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewOutcomeSeriesView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PicoTeraError"];
+                };
+            };
+        };
+    };
     getOverviewSeries: {
         parameters: {
             query: {
-                range: "1d" | "7d" | "1m";
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
                 apiKeyId?: number;
                 model?: string;
                 upstreamModel?: string;
@@ -2962,7 +3188,9 @@ export interface operations {
     getOverviewSpeedBoxplot: {
         parameters: {
             query: {
-                range: "1d" | "7d" | "1m";
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
                 apiKeyId?: number;
                 model?: string;
                 upstreamModel?: string;
@@ -2999,7 +3227,9 @@ export interface operations {
     getOverviewSummary: {
         parameters: {
             query: {
-                range: "1d" | "7d" | "1m";
+                range: "1d" | "7d" | "1m" | "custom";
+                startAt?: string;
+                endAt?: string;
                 apiKeyId?: number;
                 model?: string;
                 upstreamModel?: string;
@@ -3547,6 +3777,8 @@ export interface operations {
             query?: {
                 limit?: number;
                 cursor?: string;
+                startAt?: string;
+                endAt?: string;
             };
             header?: never;
             path?: never;
@@ -3585,7 +3817,14 @@ export interface operations {
                 model?: string;
                 upstreamModel?: string;
                 traceId?: string;
+                requestId?: string;
                 projectId?: number;
+                startAt?: string;
+                endAt?: string;
+                emptyResponse?: boolean;
+                finishReason?: number;
+                routing?: "detected" | "undetected";
+                annotations?: string;
             };
             header?: never;
             path?: never;

@@ -13,6 +13,24 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// ToolUsageEntry is one upstream tool's usage, normalized from the response's
+// tool_usage object. Only non-zero counters are kept: upstreams enumerate the
+// tools they support rather than the ones that ran (a Codex response carries a
+// zero-filled image_gen on every request), so a zero carries no information.
+// "Reported zero" and "not reported" are therefore deliberately the same thing
+// here, which is why these are plain ints rather than pointers.
+//
+// Model is the model the upstream declared for this tool in the sibling tools
+// array (image_generation carries one; web_search does not), empty when absent.
+type ToolUsageEntry struct {
+	Name         string `json:"name"`
+	Model        string `json:"model,omitempty"`
+	NumRequests  int64  `json:"numRequests,omitempty"`
+	InputTokens  int64  `json:"inputTokens,omitempty"`
+	OutputTokens int64  `json:"outputTokens,omitempty"`
+	NumImages    int64  `json:"numImages,omitempty"`
+}
+
 // ResponseMetrics holds extracted TTFT, token usage, and inferred provider/model
 // from a provider response.
 type ResponseMetrics struct {
@@ -27,17 +45,46 @@ type ResponseMetrics struct {
 	// InferredModelSource is a db.InferredModelSource* enum value describing
 	// where InferredModel came from (signature vs response model field).
 	InferredModelSource int32
+	// ToolUsage is the normalized top-level tool_usage object, in the upstream's
+	// literal key order. Nil when the upstream never reported one.
+	ToolUsage []ToolUsageEntry
+	// UsageRaw is the last non-empty usage object the upstream reported, stored
+	// verbatim. Unlike the five token fields it is not accumulated key-by-key: a
+	// later occurrence replaces the whole object, so the value stays
+	// byte-faithful to one upstream event. Nil when none was reported.
+	UsageRaw []byte
+	// ToolUsageRaw is the last non-empty tool_usage object, stored verbatim —
+	// including the entries normalizeToolUsage drops for being all-zero, which
+	// is why this can hold a value while ToolUsage is nil. Nil when none was
+	// reported.
+	ToolUsageRaw []byte
 }
+
+// extractorMode is how the response body is parsed. modeSniff is the initial
+// mode when the upstream sent no Content-Type; it resolves to modeSSE or
+// modeJSON once enough bytes have arrived to decide.
+type extractorMode int
+
+const (
+	modeSniff extractorMode = iota
+	modeSSE
+	modeJSON
+)
 
 // ResponseExtractor wraps an io.Reader and inspects bytes as they flow through,
 // extracting TTFT, token usage, and inferred provider/model from SSE or JSON
 // provider responses.
 type ResponseExtractor struct {
 	inner        io.Reader
-	mode         string // "sse" or "json"
+	mode         extractorMode
 	startTime    time.Time
 	metrics      ResponseMetrics
 	ttftRecorded bool
+
+	// sniffBuf holds the parse copy of the bytes seen while mode is modeSniff.
+	// It is replayed into the chosen mode once sniffing decides, so no bytes are
+	// lost; it never grows past the longest SSE line prefix (6 bytes).
+	sniffBuf []byte
 
 	// SSE: line buffer for reassembling events across Read() boundaries
 	lineBuf []byte
@@ -53,9 +100,16 @@ type ResponseExtractor struct {
 	// leading '['). Mirrors lineBuf: accumulate → delimit elements → discard.
 	jaBuf []byte
 
-	// streamError holds the first in-stream error.message seen in an SSE data
-	// payload (empty means no error). Detected independently of metrics.
+	// streamError holds the first error seen in a response payload (empty means
+	// no error): an error event in an SSE data payload, or an Anthropic refusal
+	// stop_reason in either an SSE data payload or a non-stream JSON body.
+	// Detected independently of metrics.
 	streamError string
+
+	// streamCompleted records whether the upstream stream reached its
+	// terminating event (OpenAI [DONE], Anthropic message_stop, OpenAI
+	// Responses response.completed/incomplete, Gemini finishReason). Sticky.
+	streamCompleted bool
 
 	// Inference accumulators. Once non-empty they are locked (first hit wins).
 	inferredProvider string
@@ -64,11 +118,17 @@ type ResponseExtractor struct {
 }
 
 // NewResponseExtractor creates a new extractor. contentType is the upstream
-// response Content-Type header. startTime is when the upstream request was sent.
+// response Content-Type header; an empty one (some upstreams, notably ChatGPT
+// Codex, stream SSE without the header) starts the extractor in sniff mode. A
+// header that is present but says something else is taken at face value.
+// startTime is when the upstream request was sent.
 func NewResponseExtractor(inner io.Reader, contentType string, startTime time.Time) *ResponseExtractor {
-	mode := "json"
-	if strings.Contains(strings.ToLower(contentType), "text/event-stream") {
-		mode = "sse"
+	mode := modeJSON
+	switch {
+	case strings.Contains(strings.ToLower(contentType), "text/event-stream"):
+		mode = modeSSE
+	case contentType == "":
+		mode = modeSniff
 	}
 	return &ResponseExtractor{
 		inner:     inner,
@@ -93,10 +153,16 @@ func (e *ResponseExtractor) Metrics() ResponseMetrics {
 	return e.metrics
 }
 
-// StreamError returns the first error.message detected in an SSE data payload,
-// or "" if the stream carried no in-stream error. Call after the Read loop.
+// StreamError returns the first error detected in a response payload, or "" if
+// the response carried no error. Call after the Read loop.
 func (e *ResponseExtractor) StreamError() string {
 	return e.streamError
+}
+
+// StreamCompleted reports whether the upstream stream reached its terminating
+// event. Call after the Read loop. Always false for non-stream JSON bodies.
+func (e *ResponseExtractor) StreamCompleted() bool {
+	return e.streamCompleted
 }
 
 // Read implements io.Reader. Bytes are forwarded to the caller unchanged.
@@ -105,29 +171,68 @@ func (e *ResponseExtractor) StreamError() string {
 func (e *ResponseExtractor) Read(p []byte) (int, error) {
 	n, err := e.inner.Read(p)
 	if n > 0 {
-		chunk := p[:n]
-		switch e.mode {
-		case "sse":
-			// Strip raw CR so CRLF-framed SSE (Google's Gemini API uses
-			// \r\n\r\n event boundaries) parses identically to LF-framed.
-			// Per the SSE spec, lines are delimited by CR, LF, or CRLF and a
-			// data field value cannot contain a raw CR, so dropping CR from the
-			// parse buffer is lossless. lineBuf is parse-only; the bytes
-			// forwarded to the client (p) are untouched.
-			for _, b := range chunk {
-				if b != '\r' {
-					e.lineBuf = append(e.lineBuf, b)
-				}
-			}
-			e.processSSEBuffer()
-		case "json":
-			e.feedJSON(chunk)
-		}
+		e.feed(p[:n])
 	}
-	if err == io.EOF && e.mode == "json" && e.jsonShape != '[' && len(e.jsonBuf) > 0 {
+	if err == io.EOF && e.mode == modeSniff {
+		// The body ended before sniffing could decide (shorter than the longest
+		// candidate prefix). Undecided means not SSE.
+		e.resolveSniff(false)
+	}
+	if err == io.EOF && e.mode == modeJSON && e.jsonShape != '[' && len(e.jsonBuf) > 0 {
 		e.extractJSONMetrics()
 	}
 	return n, err
+}
+
+// feed pushes a chunk of the parse copy into the active mode. While sniffing it
+// withholds the chunk instead, until enough bytes have arrived to pick a mode.
+func (e *ResponseExtractor) feed(chunk []byte) {
+	if e.mode != modeSniff {
+		e.feedResolved(chunk)
+		return
+	}
+	e.sniffBuf = append(e.sniffBuf, chunk...)
+	sse, decided := sniffSSE(e.sniffBuf)
+	if !decided {
+		return
+	}
+	e.resolveSniff(sse)
+}
+
+// resolveSniff leaves sniff mode and replays everything sniffing withheld, so
+// the chosen parse path sees the body from its first byte.
+func (e *ResponseExtractor) resolveSniff(sse bool) {
+	if sse {
+		e.mode = modeSSE
+	} else {
+		e.mode = modeJSON
+	}
+	buffered := e.sniffBuf
+	e.sniffBuf = nil
+	if len(buffered) > 0 {
+		e.feedResolved(buffered)
+	}
+}
+
+// feedResolved dispatches a chunk to the SSE line buffer or the JSON path.
+func (e *ResponseExtractor) feedResolved(chunk []byte) {
+	switch e.mode {
+	case modeSSE:
+		// Strip raw CR so CRLF-framed SSE (Google's Gemini API uses
+		// \r\n\r\n event boundaries) parses identically to LF-framed.
+		// Per the SSE spec, lines are delimited by CR, LF, or CRLF and a
+		// data field value cannot contain a raw CR, so dropping CR from the
+		// parse buffer is lossless. lineBuf is parse-only; the bytes
+		// forwarded to the client are untouched.
+		for _, b := range chunk {
+			if b != '\r' {
+				e.lineBuf = append(e.lineBuf, b)
+			}
+		}
+		e.processSSEBuffer()
+	case modeJSON:
+		e.feedJSON(chunk)
+	}
 }
 
 // processSSEBuffer scans the line buffer for complete SSE events (delimited by \n\n),
@@ -161,14 +266,17 @@ func (e *ResponseExtractor) processSSEEvent(eventBytes []byte) {
 	}
 	payload := strings.Join(dataPayloads, "\n")
 
-	// Skip [DONE] sentinel
+	// [DONE] sentinel: terminating event for OpenAI Chat Completions and
+	// compatible providers. Mark completion before skipping the payload.
 	if payload == "[DONE]" {
+		e.streamCompleted = true
 		return
 	}
 
 	// Detect in-stream errors (HTTP 200 with an error event). Independent of
 	// metric extraction — metrics already pulled from the stream still count.
 	e.detectStreamError(payload)
+	e.detectStreamCompletion(payload)
 
 	// Try OpenAI Chat Completions format
 	e.extractOpenAISSE(payload)
@@ -178,6 +286,11 @@ func (e *ResponseExtractor) processSSEEvent(eventBytes []byte) {
 	e.extractAnthropicSSE(payload)
 	// Try Gemini format
 	e.extractGeminiSSE(payload)
+
+	// Raw usage / tool usage, recorded verbatim beside the normalized counters.
+	parsed := gjson.Parse(payload)
+	e.captureUsageRaw(parsed)
+	e.extractToolUsage(parsed)
 
 	// Infer provider/model from this payload.
 	e.inferProvider(payload)
@@ -203,10 +316,12 @@ func (e *ResponseExtractor) inferSignatureDeltaFromSSE(payload string) {
 	}
 }
 
-// detectStreamError records the first non-empty error message found in an SSE
-// data payload. OpenAI Responses uses response.error.message on
-// response.failed; Anthropic Messages, OpenAI Chat Completions, and Gemini
-// native error shapes use error.message.
+// detectStreamError records the first stream error found in an SSE data
+// payload. OpenAI Responses uses response.error.message on response.failed;
+// Anthropic Messages, OpenAI Chat Completions, and Gemini native error shapes
+// use error.message. Anthropic also refuses to produce content with an HTTP 200
+// message_delta carrying delta.stop_reason = "refusal". Some OpenAI Chat
+// compatible providers return errors as strict choices[].finish_reason values.
 func (e *ResponseExtractor) detectStreamError(payload string) {
 	if e.streamError != "" {
 		return
@@ -217,6 +332,62 @@ func (e *ResponseExtractor) detectStreamError(payload string) {
 	}
 	if v := gjson.Get(payload, "error.message"); v.Exists() && v.Type == gjson.String && v.String() != "" {
 		e.streamError = v.String()
+		return
+	}
+	// A top-level "delta" object is unique to Anthropic among the supported
+	// formats: OpenAI Chat nests delta under choices[], Gemini has none.
+	e.detectRefusal(gjson.Get(payload, "delta.stop_reason"), gjson.Get(payload, "delta.stop_details"))
+	if e.streamError != "" {
+		return
+	}
+	finishReason := gjson.Get(payload, "choices.0.finish_reason")
+	if !finishReason.Exists() || finishReason.Type != gjson.String {
+		return
+	}
+	switch finishReason.String() {
+	case "network_error", "model_context_window_exceeded":
+		e.streamError = finishReason.String()
+	}
+}
+
+// detectRefusal records an Anthropic refusal stop_reason as a stream error.
+// stopReason / stopDetails are the payload's stop_reason field and its sibling
+// stop_details object — delta.* in a streaming message_delta, top-level in a
+// non-stream body. First error wins, matching detectStreamError. stop_details is
+// optional in the Anthropic contract, so a missing explanation falls back to the
+// bare "refusal" marker.
+func (e *ResponseExtractor) detectRefusal(stopReason, stopDetails gjson.Result) {
+	if e.streamError != "" {
+		return
+	}
+	if stopReason.Type != gjson.String || stopReason.String() != "refusal" {
+		return
+	}
+	if v := stopDetails.Get("explanation"); v.Type == gjson.String && v.String() != "" {
+		e.streamError = v.String()
+		return
+	}
+	e.streamError = "refusal"
+}
+
+// detectStreamCompletion marks the stream complete when an SSE data payload
+// carries the terminating event of any supported upstream format. The OpenAI
+// Chat Completions [DONE] sentinel is handled by its caller (it is not JSON).
+// response.failed is deliberately absent: it always carries
+// response.error.message, so detectStreamError already covers it and the
+// resulting finish reason is overridden to FinishReasonStreamError anyway.
+func (e *ResponseExtractor) detectStreamCompletion(payload string) {
+	if e.streamCompleted {
+		return
+	}
+	result := gjson.Parse(payload)
+	switch result.Get("type").String() {
+	case "message_stop", "response.completed", "response.incomplete":
+		e.streamCompleted = true
+		return
+	}
+	if v := result.Get("candidates.0.finishReason"); v.Exists() && v.Type == gjson.String && v.String() != "" {
+		e.streamCompleted = true
 	}
 }
 
@@ -243,10 +414,6 @@ func (e *ResponseExtractor) extractOpenAISSE(payload string) {
 		if v := usage.Get("completion_tokens"); v.Exists() {
 			val := v.Int()
 			e.metrics.OutputTokens = &val
-		}
-		if v := usage.Get("prompt_tokens_details.cached_tokens"); v.Exists() {
-			val := v.Int()
-			e.metrics.CacheReadTokens = &val
 		}
 	}
 }
@@ -277,10 +444,6 @@ func (e *ResponseExtractor) extractOpenAIResponsesSSE(payload string) {
 			if v := usage.Get("output_tokens"); v.Exists() {
 				val := v.Int()
 				e.metrics.OutputTokens = &val
-			}
-			if v := usage.Get("input_tokens_details.cached_tokens"); v.Exists() {
-				val := v.Int()
-				e.metrics.CacheReadTokens = &val
 			}
 		}
 	}
@@ -399,7 +562,8 @@ func (e *ResponseExtractor) feedJSONArray(data []byte) {
 			break
 		}
 		if e.jaBuf[cur] == ']' {
-			// Array closed; ignore any trailing bytes.
+			// Array closed; the stream ended normally. Ignore any trailing bytes.
+			e.streamCompleted = true
 			e.jaBuf = nil
 			return
 		}
@@ -429,8 +593,11 @@ func (e *ResponseExtractor) processGeminiArrayElement(elem []byte) {
 	}
 
 	e.setGeminiUsage(result.Get("usageMetadata"))
+	e.captureUsageRaw(result)
+	e.extractToolUsage(result)
 	e.inferModelField(payload)
 	e.detectStreamError(payload)
+	e.detectStreamCompletion(payload)
 	e.inferProvider(payload)
 }
 
@@ -466,6 +633,149 @@ func (e *ResponseExtractor) setGeminiUsage(usage gjson.Result) {
 	}
 }
 
+// usageRawPaths are the objects that hold the format's usage counters. First
+// match per payload wins; the four paths cover every supported upstream format:
+// "usage" for OpenAI Chat (SSE final frame / non-stream), Anthropic
+// message_delta and Anthropic non-stream bodies; "response.usage" for OpenAI
+// Responses SSE; "message.usage" for Anthropic message_start; "usageMetadata"
+// for Gemini in all three of its shapes.
+var usageRawPaths = []string{"usage", "response.usage", "message.usage", "usageMetadata"}
+
+// captureUsageRaw records the payload's usage object verbatim. Last non-empty
+// occurrence wins — the whole object, never a key-by-key merge, so the column
+// stays byte-faithful to one upstream event. The consequence for Anthropic
+// streams is that message_delta's usage replaces message_start's outright, so
+// the input / cache breakdown does not survive into the raw value; the five
+// normalized token fields are unaffected since they accumulate per field.
+func (e *ResponseExtractor) captureUsageRaw(result gjson.Result) {
+	for _, path := range usageRawPaths {
+		v := result.Get(path)
+		if !v.IsObject() || !hasKeys(v) {
+			continue
+		}
+		e.metrics.UsageRaw = []byte(v.Raw)
+		return
+	}
+}
+
+// hasKeys reports whether an object has at least one member. An empty object
+// counts as "not reported", same as an absent one.
+func hasKeys(v gjson.Result) bool {
+	found := false
+	v.ForEach(func(_, _ gjson.Result) bool { found = true; return false })
+	return found
+}
+
+// toolUsagePaths are the paths a payload's tool_usage object can sit at, each
+// paired with the sibling tools declaration array read from the same object
+// (that pairing is why this is a table of pairs and not a plain []string like
+// usageRawPaths). tool_usage sits beside the format's usage object: the
+// payload's top level for OpenAI Chat, Anthropic, Gemini and non-stream bodies,
+// and the "response" envelope for OpenAI Responses SSE events, where usage
+// likewise lives at response.usage. First match wins; no payload carries both.
+var toolUsagePaths = []struct{ usage, tools string }{
+	{usage: "tool_usage", tools: "tools"},
+	{usage: "response.tool_usage", tools: "response.tools"},
+}
+
+// extractToolUsage records a payload's tool_usage object both verbatim (into
+// ToolUsageRaw) and normalized into ToolUsageEntry values, covering OpenAI Chat
+// / Responses, Anthropic and Gemini, streamed or not.
+//
+// Last non-empty occurrence wins, matching the overwrite semantics the usage
+// fields already have. OpenAI Responses repeats tool_usage on response.created /
+// response.in_progress / response.completed, with only the last one carrying the
+// final counts, so last-wins is what makes the stream converge.
+//
+// The raw record is unconditional: normalization can still drop every entry (a
+// Codex response carries an all-zero image_gen every time), so the two fields
+// may legitimately end up one set and one nil.
+func (e *ResponseExtractor) extractToolUsage(result gjson.Result) {
+	for _, p := range toolUsagePaths {
+		tu := result.Get(p.usage)
+		if !tu.IsObject() || !hasKeys(tu) {
+			continue
+		}
+		e.metrics.ToolUsageRaw = []byte(tu.Raw)
+		if entries := normalizeToolUsage(tu, result.Get(p.tools)); len(entries) > 0 {
+			e.metrics.ToolUsage = entries
+		}
+		return
+	}
+}
+
+// normalizeToolUsage maps an upstream tool_usage object onto entries, dropping
+// every tool whose counters are all zero. tools is the sibling declaration array
+// the model name is read from; an absent or malformed one simply yields no
+// models.
+func normalizeToolUsage(tu, tools gjson.Result) []ToolUsageEntry {
+	var entries []ToolUsageEntry
+	tu.ForEach(func(key, value gjson.Result) bool {
+		if !value.IsObject() {
+			return true
+		}
+		entry := ToolUsageEntry{
+			Name:         key.String(),
+			NumRequests:  toolUsageInt(value, "num_requests"),
+			InputTokens:  toolUsageInt(value, "input_tokens"),
+			OutputTokens: toolUsageInt(value, "output_tokens"),
+			NumImages:    toolUsageInt(value, "num_images"),
+		}
+		// Every counter zero (or absent) means the tool never ran — drop it
+		// rather than record a row of zeros. A declared model does not rescue
+		// it: a tool the client offered but never used is still unused.
+		if entry.NumRequests == 0 && entry.InputTokens == 0 &&
+			entry.OutputTokens == 0 && entry.NumImages == 0 {
+			return true
+		}
+		entry.Model = toolDeclaredModel(tools, entry.Name)
+		entries = append(entries, entry)
+		return true
+	})
+	return entries
+}
+
+// toolUsageToolType maps a tool_usage key to the tools[].type declaring the same
+// tool, for the names where the two vocabularies disagree — OpenAI Responses
+// reports usage under "image_gen" but declares the tool as "image_generation".
+// Names absent here match verbatim (web_search does).
+var toolUsageToolType = map[string]string{"image_gen": "image_generation"}
+
+// toolDeclaredModel returns the model the upstream declared for a tool, e.g. the
+// gpt-image-* behind an image_gen entry. Empty when the tool was not declared or
+// carries no model — only image_generation does; web_search never has one.
+func toolDeclaredModel(tools gjson.Result, name string) string {
+	if !tools.IsArray() {
+		return ""
+	}
+	want := name
+	if alias, ok := toolUsageToolType[name]; ok {
+		want = alias
+	}
+	var model string
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if tool.Get("type").String() != want {
+			return true
+		}
+		if m := tool.Get("model"); m.Type == gjson.String {
+			model = m.String()
+		}
+		return false // first declaration of this type wins
+	})
+	return model
+}
+
+// toolUsageInt reads one whitelisted tool_usage counter. Anything that is not a
+// JSON number counts as not reported — no lenient string-to-number coercion —
+// and so does a reported zero, which omitempty then drops from the entry.
+func toolUsageInt(usage gjson.Result, key string) int64 {
+	f := usage.Get(key)
+	if f.Type != gjson.Number {
+		return 0
+	}
+	return f.Int()
+}
+
 // extractJSONMetrics parses the accumulated JSON body and extracts usage metrics.
 func (e *ResponseExtractor) extractJSONMetrics() {
 	result := gjson.ParseBytes(e.jsonBuf)
@@ -475,32 +785,19 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 	e.inferModelField(result.String())
 	e.inferSignatureModelFromJSON(result)
 
-	// Try OpenAI Chat Completions format
+	// Try OpenAI Chat Completions / Responses format.
+	// setOpenAIInputTokens handles both prefixes (prompt_tokens* and
+	// input_tokens*) and sets InputTokens / CacheReadTokens / CacheWriteTokens.
 	usage := result.Get("usage")
 	e.setOpenAIInputTokens(usage)
 	if v := result.Get("usage.completion_tokens"); v.Exists() {
 		val := v.Int()
 		e.metrics.OutputTokens = &val
 	}
-	if v := result.Get("usage.prompt_tokens_details.cached_tokens"); v.Exists() {
-		val := v.Int()
-		e.metrics.CacheReadTokens = &val
-	}
-
-	// Try OpenAI Responses format (only sets if Chat Completions didn't find fields)
-	if e.metrics.InputTokens == nil {
-		e.setOpenAIInputTokens(usage)
-	}
 	if e.metrics.OutputTokens == nil {
 		if v := result.Get("usage.output_tokens"); v.Exists() {
 			val := v.Int()
 			e.metrics.OutputTokens = &val
-		}
-	}
-	if e.metrics.CacheReadTokens == nil {
-		if v := result.Get("usage.input_tokens_details.cached_tokens"); v.Exists() {
-			val := v.Int()
-			e.metrics.CacheReadTokens = &val
 		}
 	}
 
@@ -526,6 +823,8 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 	if e.metrics.CacheWriteTokens == nil {
 		e.extractAnthropicCacheCreation(result.Get("usage"))
 	}
+
+	e.detectRefusal(result.Get("stop_reason"), result.Get("stop_details"))
 
 	// Try Gemini format (only fills metrics the formats above didn't set).
 	geminiUsage := result.Get("usageMetadata")
@@ -554,6 +853,9 @@ func (e *ResponseExtractor) extractJSONMetrics() {
 			e.metrics.CacheReadTokens = &c
 		}
 	}
+
+	e.captureUsageRaw(result)
+	e.extractToolUsage(result)
 }
 
 // inferProvider extracts the upstream provider identity from a payload.
@@ -583,12 +885,21 @@ func (e *ResponseExtractor) inferProvider(payload string) {
 	}
 }
 
-// inferModelField records the first non-empty "model" or "message.model" field seen.
+// respModelPaths are the places a payload declares the model it answered with.
+// They mirror usageRawPaths one-for-one: "model" for OpenAI Chat, Anthropic
+// non-stream bodies and OpenAI Responses non-stream bodies; "response.model"
+// for OpenAI Responses SSE, where the model sits in the same "response"
+// envelope as the usage; "message.model" for Anthropic message_start;
+// "modelVersion" for Gemini.
+var respModelPaths = []string{"model", "response.model", "message.model", "modelVersion"}
+
+// inferModelField records the first non-empty model field seen, trying
+// respModelPaths in order within each payload.
 func (e *ResponseExtractor) inferModelField(payload string) {
 	if e.respModel != "" {
 		return
 	}
-	for _, path := range []string{"model", "message.model", "modelVersion"} {
+	for _, path := range respModelPaths {
 		if v := gjson.Get(payload, path); v.Exists() && v.Type == gjson.String && v.String() != "" {
 			e.respModel = v.String()
 			return
@@ -665,18 +976,25 @@ func (e *ResponseExtractor) setOpenAIInputTokens(usage gjson.Result) {
 	}
 
 	total := usage.Get("prompt_tokens")
-	cached := usage.Get("prompt_tokens_details.cached_tokens")
+	details := usage.Get("prompt_tokens_details")
 	if !total.Exists() {
 		total = usage.Get("input_tokens")
-		cached = usage.Get("input_tokens_details.cached_tokens")
+		details = usage.Get("input_tokens_details")
 	}
 	if !total.Exists() {
 		return
 	}
 
 	val := total.Int()
-	if cached.Exists() {
-		val -= cached.Int()
+	if cached := details.Get("cached_tokens"); cached.Exists() {
+		read := cached.Int()
+		e.metrics.CacheReadTokens = &read
+		val -= read
+	}
+	if cw := details.Get("cache_write_tokens"); cw.Exists() {
+		write := cw.Int()
+		e.metrics.CacheWriteTokens = &write
+		val -= write
 	}
 	e.metrics.InputTokens = &val
 }

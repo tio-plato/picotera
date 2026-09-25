@@ -10,6 +10,8 @@ import {
   IconChevronDown,
   IconCloudDollar,
   IconCloudDownload,
+  IconFilter,
+  IconFilterPlus,
   IconCloudUpload,
   IconCpu,
   IconCurrencyDollar,
@@ -24,6 +26,7 @@ import {
   IconLink,
   IconList,
   IconLoader2,
+  IconLogout,
   IconMask,
   IconPlug,
   IconPlus,
@@ -83,7 +86,10 @@ export type IconName =
   | 'flask'
   | 'users'
   | 'shield-check'
+  | 'filter'
+  | 'filter-plus'
   | 'mask'
+  | 'logout'
 
 export const iconComponents: Record<IconName, Component> = {
   plus: IconPlus,
@@ -127,4 +133,7 @@ export const iconComponents: Record<IconName, Component> = {
   users: IconUsers,
   'shield-check': IconShieldCheck,
   mask: IconMask,
+  filter: IconFilter,
+  'filter-plus': IconFilterPlus,
+  logout: IconLogout,
 }

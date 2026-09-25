@@ -15,7 +15,9 @@ import type {
 } from '@/composables/conversation'
 import { renderMarkdown } from '@/composables/useSSEParser'
 import { Button, Icon, Tag } from '@/ui'
+import ImageAttachment from './ImageAttachment.vue'
 import JsonArtifactViewer from './JsonArtifactViewer.vue'
+import SearchResultsView from './SearchResultsView.vue'
 
 const props = defineProps<{ messages: ConversationMessage[] }>()
 
@@ -219,6 +221,15 @@ onBeforeUnmount(() => {
                 <JsonArtifactViewer :value="part.kind === 'toolCall' ? part.input : part.output" />
               </div>
             </details>
+
+            <SearchResultsView v-else-if="part.kind === 'searchResults'" :results="part.results" />
+
+            <ImageAttachment
+              v-else-if="part.kind === 'media' && part.image"
+              :image="part.image"
+              max-height-class="max-h-[320px]"
+              @load="scheduleMeasure"
+            />
 
             <span
               v-else-if="part.kind === 'media'"

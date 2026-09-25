@@ -32,6 +32,12 @@ type Session interface {
 
 	RunRewriteModel(initial string) (string, error)
 	RunSortProviders(initial []CandidateView) ([]CandidateView, error)
+	// RunBeforeMetaRequest runs the beforeMetaRequest waterfall after
+	// sortProviders and before the first upstream attempt (it runs even when no
+	// candidate survived sorting). A nil result means passthrough; a non-nil one
+	// is a validated response the gateway writes to the client instead of
+	// attempting any upstream.
+	RunBeforeMetaRequest() (*ResponseShape, error)
 	RunBeforeRequest(initial BeforeRequestDecision) (BeforeRequestDecision, error)
 	// RunRewriteRequest runs the rewriteRequest waterfall. body is the raw
 	// upstream body bytes the hook may read/mutate via pending.body (nil = no
@@ -44,6 +50,39 @@ type Session interface {
 	// upstream attempt failed. Passthrough keeps the initial value (break=false).
 	RunAfterUpstreamError(initial UpstreamErrorView) (AfterUpstreamErrorDecision, error)
 
+	// RunGetToolUsageCost runs the getToolUsageCost waterfall just before the
+	// tool usage and its cost are written to the request rows. Passthrough keeps
+	// the initial value; a malformed result is an error, because billing data is
+	// better dropped loudly than coerced. The input also carries the upstream's
+	// raw usage / tool_usage objects, which are read-only — the result is rebuilt
+	// from the three tool fields alone.
+	RunGetToolUsageCost(initial ToolUsageCostView) (ToolUsageCostView, error)
+
+	// SetUpstreamRequest installs ctx.upstreamRequest for the current attempt.
+	// ref == nil sets it to null (the state before an upstream row exists).
+	SetUpstreamRequest(ref *RequestRef) error
+
+	// RunRequestFinished runs the requestFinished waterfall after the meta row's
+	// finish reason landed. It is purely observational: the waterfall's result is
+	// discarded and only an evaluation error is returned. The input carries the
+	// row's raw usage / tool_usage objects alongside the normalized counters.
+	RunRequestFinished(input RequestFinishedView) error
+
 	Logs() []LogEntry
 	Close()
+}
+
+// HostAPI is the host capability surface the JS SDK calls into for
+// configuration/telemetry writes that outlive a single hook value: annotation
+// writes keyed by row id and lookups of provider / api-key configuration. The
+// jsx package defines the interface; pkg/server implements it over db.Querier.
+//
+// A nil value means "delete this annotation key". The Get* methods return
+// (nil, nil) when the id does not exist.
+type HostAPI interface {
+	SetRequestAnnotation(ctx context.Context, requestID, key string, value *string) error
+	SetProviderAnnotation(ctx context.Context, providerID int32, key string, value *string) error
+	SetApiKeyAnnotation(ctx context.Context, apiKeyID int32, key string, value *string) error
+	GetProvider(ctx context.Context, providerID int32) (*ProviderSummary, error)
+	GetApiKey(ctx context.Context, apiKeyID int32) (*ApiKeySummary, error)
 }

@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import {
   getOverviewDistribution,
+  getOverviewOutcomeSeries,
   getOverviewSeries,
   getOverviewSpeedBoxplot,
   getOverviewSummary,
@@ -17,12 +18,24 @@ import { queryKeys, type OverviewFilters, type OverviewGranularity } from '@/api
 import type {
   OverviewBreakdownRowView,
   OverviewDimension,
+  OverviewOutcomePointView,
   OverviewRange,
   OverviewSpeedBoxplotItemView,
   OverviewSeriesDimension,
   OverviewSeriesPointView,
 } from '@/api'
-import { Button, DataCard, Icon, MoneyDisplay, SegmentedControl, Select, StateText } from '@/ui'
+import { finishReasonLabel } from '@/utils/requestLabels'
+import {
+  Button,
+  DataCard,
+  DynamicFilterBar,
+  Icon,
+  MoneyDisplay,
+  SegmentedControl,
+  Select,
+  StateText,
+  TimeRangeFilter,
+} from '@/ui'
 import { provideCurrencyContext, useCurrencyContext } from '@/composables/useCurrencyContext'
 import { usePreferencesStore } from '@/stores/preferences'
 import OverviewDonut from '@/components/charts/OverviewDonut.vue'
@@ -37,6 +50,8 @@ import OverviewSankey, {
 const prefs = usePreferencesStore()
 const filters = reactive({
   range: '1d' as OverviewRange,
+  startAt: '',
+  endAt: '',
   apiKeyId: 0,
   model: '',
   upstreamModel: '',
@@ -44,10 +59,41 @@ const filters = reactive({
   projectId: 0,
 })
 const granularity = ref<OverviewGranularity>('auto')
+const visibleFilters = ref<string[]>([])
+
+const availableFilters = [
+  { key: 'apiKey', label: '密钥' },
+  { key: 'model', label: '请求模型' },
+  { key: 'upstreamModel', label: '上游模型' },
+  { key: 'provider', label: '渠道' },
+  { key: 'project', label: '项目' },
+]
+
+function onRemoveFilter(key: string) {
+  switch (key) {
+    case 'apiKey':
+      filters.apiKeyId = 0
+      break
+    case 'model':
+      filters.model = ''
+      break
+    case 'upstreamModel':
+      filters.upstreamModel = ''
+      break
+    case 'provider':
+      filters.providerId = 0
+      break
+    case 'project':
+      filters.projectId = 0
+      break
+  }
+}
+
 const distributionDimension = ref<OverviewDimension>('provider')
 const seriesDimension = ref<OverviewSeriesDimension>('none')
 const speedDimension = ref<OverviewSeriesDimension>('model')
 const cacheHitRateDimension = ref<OverviewSeriesDimension>('model')
+const outcomeDimension = ref<OverviewSeriesDimension>('none')
 
 type SankeyVariant = 'tokenComposition' | 'tokensIn' | 'tokensOut' | 'costIn' | 'costOut'
 
@@ -160,11 +206,28 @@ const rangeOptions: { value: OverviewRange; label: string }[] = [
   { value: '1d', label: '24 小时' },
   { value: '7d', label: '7 天' },
   { value: '1m', label: '30 天' },
+  { value: 'custom', label: '自定义' },
 ]
-// 10m 桶在 30 天范围下数据点过多（4320 个），仅在 24 小时 / 7 天范围提供。
+
+// 自定义窗口跨度；未填齐两端时返回 0（视作允许 10m，避免选时间过程中选项闪烁）。
+const customSpanMs = computed(() => {
+  if (filters.range !== 'custom') return 0
+  if (!filters.startAt || !filters.endAt) return 0
+  const s = Date.parse(filters.startAt)
+  const e = Date.parse(filters.endAt)
+  if (Number.isNaN(s) || Number.isNaN(e) || e <= s) return 0
+  return e - s
+})
+
+// 10m 桶仅在窗口跨度 ≤ 7 天时提供；预设 1m 与自定义超 7 天均禁用。
 const granularityOptions = computed<{ value: OverviewGranularity; label: string }[]>(() => {
   const opts: { value: OverviewGranularity; label: string }[] = [{ value: 'auto', label: '自动' }]
-  if (filters.range !== '1m') opts.push({ value: '10m', label: '10m' })
+  if (filters.range === 'custom') {
+    const span = customSpanMs.value
+    if (span === 0 || span <= 7 * 24 * 60 * 60 * 1000) opts.push({ value: '10m', label: '10m' })
+  } else if (filters.range !== '1m') {
+    opts.push({ value: '10m', label: '10m' })
+  }
   opts.push(
     { value: '1h', label: '1h' },
     { value: '6h', label: '6h' },
@@ -174,11 +237,13 @@ const granularityOptions = computed<{ value: OverviewGranularity; label: string 
   return opts
 })
 
-// 切到 30 天且当前为 10m 时回落到自动，避免向后端发送非法组合。
+// 当前 10m 不再可用时回落到自动（覆盖切 1m 预设与自定义超跨度）。
 watch(
-  () => filters.range,
-  (range) => {
-    if (range === '1m' && granularity.value === '10m') granularity.value = 'auto'
+  () => granularityOptions.value,
+  (opts) => {
+    if (granularity.value === '10m' && !opts.some((o) => o.value === '10m')) {
+      granularity.value = 'auto'
+    }
   },
 )
 const distributionDimensionOptions: { value: OverviewDimension; label: string }[] = [
@@ -196,6 +261,12 @@ const seriesDimensionOptions: { value: OverviewSeriesDimension; label: string }[
   { value: 'upstreamModel', label: '上游模型' },
   { value: 'project', label: '项目' },
 ]
+const outcomeDimensionOptions: { value: OverviewSeriesDimension; label: string }[] = [
+  { value: 'none', label: '全部' },
+  { value: 'provider', label: '渠道' },
+  { value: 'model', label: '请求模型' },
+  { value: 'upstreamModel', label: '上游模型' },
+]
 
 const overviewFilters = computed<OverviewFilters>(() => {
   const out: {
@@ -205,8 +276,14 @@ const overviewFilters = computed<OverviewFilters>(() => {
     upstreamModel?: string
     providerId?: number
     projectId?: number
+    startAt?: string
+    endAt?: string
   } = {
     range: filters.range,
+  }
+  if (filters.range === 'custom') {
+    if (filters.startAt) out.startAt = filters.startAt
+    if (filters.endAt) out.endAt = filters.endAt
   }
   if (filters.apiKeyId) out.apiKeyId = filters.apiKeyId
   if (filters.model) out.model = filters.model
@@ -310,6 +387,15 @@ const cacheHitRateSeriesQuery = useQuery({
   staleTime: OPERATIONAL_STALE_TIME,
 })
 
+const outcomeSeriesQuery = useQuery({
+  queryKey: computed(() =>
+    queryKeys.overview.outcome(overviewFilters.value, outcomeDimension.value, granularity.value),
+  ),
+  queryFn: () =>
+    getOverviewOutcomeSeries(overviewFilters.value, outcomeDimension.value, granularity.value),
+  staleTime: OPERATIONAL_STALE_TIME,
+})
+
 const overviewRefreshing = computed(
   () =>
     summaryQuery.isFetching.value ||
@@ -317,7 +403,8 @@ const overviewRefreshing = computed(
     seriesQuery.isFetching.value ||
     speedSeriesQuery.isFetching.value ||
     speedBoxplotQuery.isFetching.value ||
-    cacheHitRateSeriesQuery.isFetching.value,
+    cacheHitRateSeriesQuery.isFetching.value ||
+    outcomeSeriesQuery.isFetching.value,
 )
 
 function refreshOverview() {
@@ -328,6 +415,7 @@ function refreshOverview() {
     speedSeriesQuery.refetch(),
     speedBoxplotQuery.refetch(),
     cacheHitRateSeriesQuery.refetch(),
+    outcomeSeriesQuery.refetch(),
   ])
 }
 
@@ -524,6 +612,68 @@ const seriesCacheHitRate = computed(() => {
     .filter((p) => p.metric === 'cacheHitRate')
     .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
 })
+
+const outcomeSeriesData = computed(() => outcomeSeriesQuery.data.value)
+const outcomeUpstreamGroups = computed(() =>
+  (outcomeSeriesData.value?.upstreamGroups ?? []).map((g) => ({
+    key: g.key,
+    label: dimensionLabel(outcomeDimension.value, g.key),
+  })),
+)
+const outcomeDownstreamGroups = computed(() =>
+  (outcomeSeriesData.value?.downstreamGroups ?? []).map((g) => ({
+    key: g.key,
+    label: dimensionLabel(outcomeDimension.value, g.key),
+  })),
+)
+const outcomeBuckets = computed(() => outcomeSeriesData.value?.buckets ?? [])
+
+function outcomePoints(metric: string): SeriesPointVM[] {
+  const points: OverviewOutcomePointView[] = outcomeSeriesData.value?.points ?? []
+  return points
+    .filter((p) => p.metric === metric)
+    .map((p) => ({ groupKey: p.groupKey, bucketAt: p.bucketAt, value: p.value }))
+}
+
+const seriesUpstreamSuccessRate = computed(() => outcomePoints('upstreamSuccessRate'))
+const seriesDownstreamSuccessRate = computed(() => outcomePoints('downstreamSuccessRate'))
+const seriesEmptyResponseRate = computed(() => outcomePoints('emptyResponseRate'))
+
+// 完成原因图按类别（而非分组键）堆叠。
+const seriesFinishReasonShare = computed<SeriesPointVM[]>(() => {
+  const points: OverviewOutcomePointView[] = outcomeSeriesData.value?.points ?? []
+  return points
+    .filter((p) => p.metric === 'finishReasonShare')
+    .map((p) => ({ groupKey: p.category, bucketAt: p.bucketAt, value: p.value }))
+})
+
+// 0 = 进行中 / 未记录；请求列表里 0 是「无筛选」哨兵值，因此不改 finishReasonLabel。
+function outcomeFinishReasonLabel(code: number): string {
+  return code === 0 ? '进行中' : finishReasonLabel(code)
+}
+
+// 成功带落在堆叠底部，其余按错误类型、进行中收尾。
+const FINISH_REASON_DISPLAY_ORDER = [3, 1, 2, 4, 5, 6, 7, 0]
+
+const finishReasonGroups = computed(() => {
+  const present = new Set(outcomeSeriesData.value?.finishReasons ?? [])
+  return FINISH_REASON_DISPLAY_ORDER.filter((code) => present.has(code)).map((code) => ({
+    key: String(code),
+    label: outcomeFinishReasonLabel(code),
+  }))
+})
+
+// meta 行的 provider_id / upstream_model 只在拿到上游响应头时才回填（见
+// gateway_flow_success.go），彻底失败的请求这两列保持 NULL。按这两个维度分组
+// 或筛选时，失败行全落在空分组里，各渠道的分母只剩成功行 —— 成功率会虚高到
+// 接近 100%，所以这张卡整体隐藏。meta 行的 model 是在选渠道之前写的
+// （gateway_flow.go:349），因此无此偏差。
+const downstreamDimensionApplicable = computed(
+  () =>
+    (outcomeDimension.value === 'none' || outcomeDimension.value === 'model') &&
+    !filters.providerId &&
+    !filters.upstreamModel,
+)
 
 function formatSpeed(v: number, skipUnit = false) {
   const unit = skipUnit ? '' : ' tok/s'
@@ -922,45 +1072,53 @@ function formatCurrencyCompact(v: number, code: string) {
     <!-- Controls bar -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
-          >时间范围</span
-        >
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">时间范围</span>
         <SegmentedControl v-model="filters.range" :options="rangeOptions" />
       </div>
+      <div v-if="filters.range === 'custom'" class="flex flex-col gap-1">
+        <TimeRangeFilter
+          :model-value="{ startAt: filters.startAt, endAt: filters.endAt }"
+          @update:model-value="
+            (v) => {
+              filters.startAt = v.startAt
+              filters.endAt = v.endAt
+            }
+          "
+        />
+      </div>
       <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
-          >统计粒度</span
-        >
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">统计粒度</span>
         <SegmentedControl v-model="granularity" :options="granularityOptions" />
       </div>
       <div class="flex flex-col gap-1">
         <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">货币</span>
         <Select v-model="overviewCurrencyValue" size="sm" :options="overviewCurrencyOptions" />
       </div>
-      <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">密钥</span>
-        <Select v-model="filters.apiKeyId" size="sm" :options="apiKeyOptions" />
-      </div>
-      <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
-          >请求模型</span
-        >
-        <Select v-model="filters.model" size="sm" :options="modelSelectOptions" />
-      </div>
-      <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
-          >上游模型</span
-        >
-        <Select v-model="filters.upstreamModel" size="sm" :options="upstreamModelSelectOptions" />
-      </div>
-      <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">渠道</span>
-        <Select v-model="filters.providerId" size="sm" :options="providerOptions" />
-      </div>
-      <div class="flex flex-col gap-1">
-        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]">项目</span>
-        <Select v-model="filters.projectId" size="sm" :options="projectOptions" />
-      </div>
+      <DynamicFilterBar
+        v-model="visibleFilters"
+        :available="availableFilters"
+        @remove="onRemoveFilter"
+      >
+        <template #apiKey>
+          <Select v-model="filters.apiKeyId" size="sm" :options="apiKeyOptions" />
+        </template>
+        <template #model>
+          <Select v-model="filters.model" size="sm" :options="modelSelectOptions" />
+        </template>
+        <template #upstreamModel>
+          <Select
+            v-model="filters.upstreamModel"
+            size="sm"
+            :options="upstreamModelSelectOptions"
+          />
+        </template>
+        <template #provider>
+          <Select v-model="filters.providerId" size="sm" :options="providerOptions" />
+        </template>
+        <template #project>
+          <Select v-model="filters.projectId" size="sm" :options="projectOptions" />
+        </template>
+      </DynamicFilterBar>
       <Button
         variant="ghost"
         size="sm"
@@ -974,7 +1132,7 @@ function formatCurrencyCompact(v: number, code: string) {
     </div>
 
     <!-- Bento totals -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
       <DataCard class="min-h-20">
         <div class="p-4 min-h-20 flex flex-col gap-1.5">
           <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
@@ -1048,6 +1206,28 @@ function formatCurrencyCompact(v: number, code: string) {
           <span v-else class="text-xl font-semibold mono tabular text-ink">{{
             (summaryQuery.data.value?.totalTraceCount ?? 0).toLocaleString()
           }}</span>
+        </div>
+      </DataCard>
+      <DataCard class="min-h-20">
+        <div class="p-4 min-h-20 flex flex-col gap-1.5">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >成功率</span
+          >
+          <StateText v-if="summaryQuery.isLoading.value" compact :dashed="false">加载中…</StateText>
+          <StateText v-else-if="summaryQuery.isError.value" compact :dashed="false">{{
+            (summaryQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <div
+            v-else-if="!summaryQuery.data.value?.upstreamSuccess.total"
+            class="text-xl text-ink-faint"
+          >
+            —
+          </div>
+          <template v-else>
+            <span class="text-xl font-semibold mono tabular text-ink">{{
+              formatPercent(summaryQuery.data.value.upstreamSuccess.rate)
+            }}</span>
+          </template>
         </div>
       </DataCard>
     </div>
@@ -1541,6 +1721,103 @@ function formatCurrencyCompact(v: number, code: string) {
             :groups="cacheHitRateGroups"
             :buckets="cacheHitRateBuckets"
             :points="seriesCacheHitRate"
+            :value-format="(v) => formatPercent(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+    </div>
+
+    <!-- Outcome rates -->
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-col gap-1">
+        <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+          >成功率统计</span
+        >
+        <SegmentedControl v-model="outcomeDimension" :options="outcomeDimensionOptions" />
+      </div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >上游成功率</span
+          >
+          <StateText v-if="outcomeSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
+          <StateText v-else-if="outcomeSeriesQuery.isError.value" compact :dashed="false">{{
+            (outcomeSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewLineChart
+            v-else
+            :groups="outcomeUpstreamGroups"
+            :buckets="outcomeBuckets"
+            :points="seriesUpstreamSuccessRate"
+            :value-format="(v) => formatPercent(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard v-if="downstreamDimensionApplicable" class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >下游成功率</span
+          >
+          <StateText v-if="outcomeSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
+          <StateText v-else-if="outcomeSeriesQuery.isError.value" compact :dashed="false">{{
+            (outcomeSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewLineChart
+            v-else
+            :groups="outcomeDownstreamGroups"
+            :buckets="outcomeBuckets"
+            :points="seriesDownstreamSuccessRate"
+            :value-format="(v) => formatPercent(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >空回比例</span
+          >
+          <StateText v-if="outcomeSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
+          <StateText v-else-if="outcomeSeriesQuery.isError.value" compact :dashed="false">{{
+            (outcomeSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewLineChart
+            v-else
+            :groups="outcomeUpstreamGroups"
+            :buckets="outcomeBuckets"
+            :points="seriesEmptyResponseRate"
+            :value-format="(v) => formatPercent(v)"
+            :bucket-format="formatBucket"
+          />
+        </div>
+      </DataCard>
+      <DataCard v-if="outcomeDimension === 'none'" class="min-h-[17rem]">
+        <div class="p-4 min-h-[17rem] flex flex-col gap-3">
+          <span class="text-2xs font-medium text-ink-muted uppercase tracking-[0.03em]"
+            >完成原因</span
+          >
+          <StateText v-if="outcomeSeriesQuery.isLoading.value" compact :dashed="false"
+            >加载中…</StateText
+          >
+          <StateText v-else-if="outcomeSeriesQuery.isError.value" compact :dashed="false">{{
+            (outcomeSeriesQuery.error.value as Error)?.message ?? '加载失败'
+          }}</StateText>
+          <OverviewAreaStack
+            v-else
+            :groups="finishReasonGroups"
+            :buckets="outcomeBuckets"
+            :points="seriesFinishReasonShare"
+            :y-max="1"
             :value-format="(v) => formatPercent(v)"
             :bucket-format="formatBucket"
           />

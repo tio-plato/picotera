@@ -23,21 +23,32 @@ type gatewayRouteKind int
 const (
 	gatewayRoutePath gatewayRouteKind = iota
 	gatewayRouteUnified
+	// gatewayRouteNotFound records a request that matched no endpoint. It only
+	// exists for a client that authenticated successfully; the flow stops right
+	// after the meta row is written and never resolves a model or a candidate.
+	gatewayRouteNotFound
 )
 
 type gatewayFlow struct {
-	h              *gatewayHandler
-	w              http.ResponseWriter
-	r              *http.Request
-	startedAt      time.Time
-	ctxs           gatewayContexts
-	config         gatewayFlowConfig
+	h         *gatewayHandler
+	w         http.ResponseWriter
+	r         *http.Request
+	startedAt time.Time
+	ctxs      gatewayContexts
+	config    gatewayFlowConfig
+	// preAuth is the API-key check the HTTP entry point already performed;
+	// authenticateAndBackfill consumes it instead of querying again.
+	preAuth        clientAuth
 	body           []byte
 	preRewriteBody []byte
 	meta           gatewayMetaState
 	auth           gatewayAuthState
 	model          gatewayModelState
 	session        jsx.Session
+	// metaFinal mirrors, in memory, every update applied to the meta row via
+	// updateMeta. It is the requestFinished hook's input — see
+	// gateway_flow_finish.go.
+	metaFinal metaOutcome
 	// headerOTR carries the X-PicoTera-OTR override parsed pre-auth in run();
 	// headerOTRSet reports whether the header was present and valid. otr is the
 	// effective mode computed post-auth (header override, else user setting).
@@ -47,20 +58,29 @@ type gatewayFlow struct {
 }
 
 type gatewayFlowConfig struct {
-	Kind              gatewayRouteKind
-	Endpoint          db.Endpoint
-	PathVars          map[string]string
-	SourceFormat      llmbridge.Format
-	ExtractModel      func(*http.Request, []byte, map[string]string) (gatewayModelMode, error)
-	SetBodyModel      func([]byte, string) ([]byte, error)
-	ResolveCandidates func(context.Context, gatewayModelMode, gatewayAuthState) (candidateSet, error)
-	PrepareAttempt    func(context.Context, *gatewayFlow, attemptInput) (attemptPrepared, error)
-	HandleSuccess     func(successInput)
+	Kind     gatewayRouteKind
+	Endpoint db.Endpoint
+	// RecordedEndpointPath is what the meta row records as endpoint_path. It
+	// differs from Endpoint.Path only for a prefix endpoint, where it carries the
+	// concrete sub-path (prefix + suffix); Endpoint stays the database row
+	// because resolveProviders still looks candidates up by its path.
+	RecordedEndpointPath string
+	PathVars             map[string]string
+	SourceFormat         llmbridge.Format
+	ExtractModel         func(*http.Request, []byte, map[string]string) (gatewayModelMode, error)
+	SetBodyModel         func([]byte, string) ([]byte, error)
+	ResolveCandidates    func(context.Context, gatewayModelMode, gatewayAuthState) (candidateSet, error)
+	PrepareAttempt       func(context.Context, *gatewayFlow, attemptInput) (attemptPrepared, error)
+	HandleSuccess        func(successInput)
 }
 
 type gatewayMetaState struct {
-	ID             string
-	CreatedAt      time.Time
+	ID        string
+	CreatedAt time.Time
+	// TraceID is the traces row id for this request, filled post-auth by
+	// authenticateAndBackfill. "" when there is no trace (no inbound session
+	// header, or the upsert failed).
+	TraceID        string
 	ParentSpanID   string
 	ParentSpanIDPg pgtype.Text
 	ProjectID      pgtype.Int4
@@ -98,12 +118,13 @@ type gatewayModelMode struct {
 	HasModel  bool
 }
 
-func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, startedAt time.Time, cfg gatewayFlowConfig) *gatewayFlow {
+func newGatewayFlow(h *gatewayHandler, w http.ResponseWriter, r *http.Request, startedAt time.Time, auth clientAuth, cfg gatewayFlowConfig) *gatewayFlow {
 	return &gatewayFlow{
 		h:         h,
 		w:         w,
 		r:         r,
 		startedAt: startedAt,
+		preAuth:   auth,
 		config:    cfg,
 	}
 }
@@ -150,13 +171,30 @@ func (f *gatewayFlow) run() {
 	if !f.authenticateAndBackfill() {
 		return
 	}
+	if f.config.Kind == gatewayRouteNotFound {
+		// No endpoint matched: the row exists purely so an authenticated client's
+		// misrouted call is visible in the dashboard. No JS session is created, so
+		// no hook — requestFinished included — runs.
+		f.failGatewayErrorWithFallback(newRouteNotFoundError(), http.StatusNotFound, "route not found")
+		return
+	}
 	// closeSession is deferred BEFORE resolveAndRewriteModel because that method
 	// creates the per-request QuickJS VM (f.session) and can then return false on
 	// a hook error/timeout. Registering the (nil-safe) close defer here guarantees
 	// the VM is released on every exit path; a defer placed after the call leaks
 	// the VM whenever model rewrite fails — and that memory is mostly off-heap
 	// (modernc.org/quickjs mmap), so it never shows up in Go heap pprof.
-	defer f.closeSession()
+	defer (func() {
+		if f.session != nil {
+			// The meta row's terminal state has landed by now (every write path is
+			// synchronous and completes before run returns), so the requestFinished
+			// hook runs here — last, just before the VM goes away. This defer covers
+			// every post-session path: success, failures, stream interruption, both
+			// gateway and unified routes.
+			f.runRequestFinished()
+			f.session.Close()
+		}
+	})()
 	if !f.resolveAndRewriteModel() {
 		return
 	}
@@ -164,21 +202,14 @@ func (f *gatewayFlow) run() {
 	if !ok {
 		return
 	}
+	if f.runBeforeMetaRequest() {
+		return
+	}
 	result := f.runAttempts(sorted, sidecars)
 	if result.Handled {
 		return
 	}
 	f.failAllProviders(result.LastErr)
-}
-
-// closeSession releases the per-request JS session if one was opened. It is
-// nil-safe so it can be deferred before the session is created (e.g. when
-// resolveAndRewriteModel fails before/at NewSession), and Session.Close is
-// itself idempotent.
-func (f *gatewayFlow) closeSession() {
-	if f.session != nil {
-		f.session.Close()
-	}
 }
 
 func (f *gatewayFlow) readBody() bool {
@@ -235,9 +266,8 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		SpanID:        pgtype.Text{String: metaID, Valid: true},
 		ParentSpanID:  parentSpanIDPg,
 		Type:          db.RequestTypeMeta,
-		Status:        db.RequestStatusPending,
 		ProviderID:    pgtype.Int4{Valid: false},
-		EndpointPath:  pgtype.Text{String: f.config.Endpoint.Path, Valid: true},
+		EndpointPath:  pgtype.Text{String: f.config.RecordedEndpointPath, Valid: true},
 		ApiKeyID:      pgtype.Int4{Valid: false},
 		Model:         pgtype.Text{Valid: false},
 		UpstreamModel: pgtype.Text{Valid: false},
@@ -252,7 +282,9 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 		// User is unknown until authentication; the trace is created (with the
 		// real user_id) in authenticateAndBackfill, so insertRequest's upsertTrace
 		// is skipped for the meta row.
-		UserID: pgtype.Int8{Valid: false},
+		UserID:             pgtype.Int8{Valid: false},
+		ExternalRequestID:  matchExternalIDHeader(f.r.Header, f.h.externalRequestIDHeaders),
+		ExternalResponseID: pgtype.Text{Valid: false},
 	})
 	f.meta = gatewayMetaState{
 		ID:             metaID,
@@ -271,14 +303,19 @@ func (f *gatewayFlow) insertMetaRequest() bool {
 	return true
 }
 
+// authenticateAndBackfill consumes the API-key check the HTTP entry point
+// already ran (f.preAuth) and, on success, backfills everything on the meta row
+// that depends on knowing the user. Failure is still handled here, not at the
+// entry point: a request that matched an endpoint leaves a record of its 401/403
+// too, so the meta row must exist before the flow terminates.
 func (f *gatewayFlow) authenticateAndBackfill() bool {
-	apiKey, user, err := f.h.authenticateClient(f.ctxs.Request, f.r)
+	apiKey, user, err := f.preAuth.APIKey, f.preAuth.User, f.preAuth.Err
 	if err != nil {
 		var gwErr *gatewayError
 		if errors.As(err, &gwErr) {
-			f.failMeta(int32(gwErr.status), gwErr.message, db.FinishReasonInternal)
+			f.failMeta(int32(gwErr.status), gwErr.message, db.FinishReasonInternal, nil)
 		} else {
-			f.failMeta(http.StatusInternalServerError, "auth validation failed", db.FinishReasonInternal)
+			f.failMeta(http.StatusInternalServerError, "auth validation failed", db.FinishReasonInternal, nil)
 		}
 		f.failGatewayError(err)
 		return false
@@ -309,7 +346,7 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 	f.meta.ProjectID = projectIDPg
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+	f.updateMeta(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
 		ApiKeyID(f.auth.APIKeyID).
 		UserID(f.auth.UserID).
 		ProjectID(projectIDPg))
@@ -318,17 +355,18 @@ func (f *gatewayFlow) authenticateAndBackfill() bool {
 	// written above.
 	if f.otr.recordPreview() {
 		if preview := extractUserMessagePreview(f.body, f.config.Endpoint.EndpointType); preview.Valid {
-			f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+			f.updateMeta(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
 				UserMessagePreview(preview))
 		}
 	}
 	// Upload the request artifact now (deferred from insertMetaRequest); the body
 	// is cleared when the OTR mode moves bodies out of the record.
-	f.h.uploadRequestArtifact(pctx, f.meta.ID, f.meta.CreatedAt, f.meta.RequestMethod, f.meta.RequestURL, f.meta.RequestHeader, f.artifactBody(f.body))
+	redactedHeader, redactedURL := redactRequestCredentials(f.meta.RequestHeader.Clone(), f.meta.RequestURL)
+	f.h.uploadRequestArtifact(pctx, f.meta.ID, f.meta.CreatedAt, f.meta.RequestMethod, redactedURL, redactedHeader, f.artifactBody(f.body))
 	// The trace is created now (post-auth, user known) anchored to the meta
 	// row's created_at, so ListRequestTraces' time-window LATERALs still match
 	// the meta row. Subsequent upstream rows extend the window via upsertTrace.
-	f.h.upsertTrace(pctx, f.meta.ParentSpanIDPg, f.auth.UserID, f.meta.CreatedAt)
+	f.meta.TraceID = f.h.upsertTrace(pctx, f.meta.ParentSpanIDPg, f.auth.UserID, f.meta.CreatedAt)
 	if projectIDPg.Valid {
 		seenCtx, seenCancel := f.ctxs.Persist()
 		go func() {
@@ -377,6 +415,8 @@ func (f *gatewayFlow) resolveAndRewriteModel() bool {
 		Annotations:  &mergedAnno,
 		Stream:       &streaming,
 		SourceFormat: &srcFormat,
+		Format:       &srcFormat,
+		MetaRequest:  f.requestRef(f.meta.ID),
 	}); err != nil {
 		f.failHook(err)
 		return false
@@ -464,9 +504,26 @@ func (f *gatewayFlow) resolveAndSortCandidates() ([]jsx.CandidateView, map[strin
 	return sorted, candidateSidecarMap(set), true
 }
 
+// requestRef builds the JS-visible identity of a request row belonging to this
+// flow. span_id is the meta row's id for both the meta row and its upstream
+// attempts; parentSpanId / traceId are shared across all of them and become null
+// when absent.
+func (f *gatewayFlow) requestRef(id string) *jsx.RequestRef {
+	ref := &jsx.RequestRef{ID: id, SpanID: f.meta.ID}
+	if f.meta.ParentSpanID != "" {
+		parent := f.meta.ParentSpanID
+		ref.ParentSpanID = &parent
+	}
+	if f.meta.TraceID != "" {
+		trace := f.meta.TraceID
+		ref.TraceID = &trace
+	}
+	return ref
+}
+
 func (f *gatewayFlow) updateMetaModel(model string) {
 	pctx, pcancel := f.ctxs.Persist()
 	defer pcancel()
-	f.h.updateRequest(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
+	f.updateMeta(pctx, newRequestUpdate(f.meta.ID, f.meta.CreatedAt).
 		Model(pgtype.Text{String: model, Valid: model != ""}))
 }

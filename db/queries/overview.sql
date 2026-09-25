@@ -323,6 +323,53 @@ GROUP BY bucket_at, group_key
 HAVING SUM(prefill_time_sum) > 0 OR SUM(decode_time_sum) > 0
 ORDER BY bucket_at ASC, group_key ASC;
 
+-- name: ListOverviewOutcomeSeries :many
+SELECT
+  bucket_at::timestamp AS bucket_at,
+  CASE sqlc.arg('dimension')::text
+    WHEN 'apiKey' THEN COALESCE(api_key_id::text, '')
+    WHEN 'model' THEN COALESCE(model, '')
+    WHEN 'upstreamModel' THEN COALESCE(upstream_model, '')
+    WHEN 'provider' THEN COALESCE(provider_id::text, '')
+    WHEN 'project' THEN COALESCE(project_id::text, '')
+    ELSE ''
+  END AS group_key,
+  type::int AS request_type,
+  finish_reason::int AS finish_reason,
+  empty_response::bool AS empty_response,
+  SUM(request_count)::bigint AS request_count
+FROM request_outcome_bucketed
+WHERE bucket_at >= sqlc.arg('start_at')::timestamp
+  AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
+  AND endpoint_path IN (SELECT path FROM completion_endpoint_path)
+  AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
+  AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
+  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int)
+GROUP BY bucket_at, group_key, request_type, finish_reason, empty_response
+ORDER BY bucket_at ASC, group_key ASC;
+
+-- name: GetOverviewUpstreamSuccessTotals :one
+SELECT
+  -- success = finish_reason 3 (db.FinishReasonEOF, 正常结束) with non-zero output tokens.
+  COALESCE(SUM(request_count) FILTER (
+    WHERE finish_reason = 3 AND NOT empty_response
+  ), 0)::bigint AS successful,
+  COALESCE(SUM(request_count), 0)::bigint AS total
+FROM request_outcome_bucketed
+WHERE bucket_at >= sqlc.arg('start_at')::timestamp
+  AND bucket_at < sqlc.arg('end_at')::timestamp
+  AND user_id = sqlc.arg('user_id')::bigint
+  AND type = 1
+  AND endpoint_path IN (SELECT path FROM completion_endpoint_path)
+  AND (sqlc.narg('api_key_id')::int IS NULL OR api_key_id = sqlc.narg('api_key_id')::int)
+  AND (sqlc.narg('model')::text IS NULL OR model = sqlc.narg('model')::text)
+  AND (sqlc.narg('upstream_model')::text IS NULL OR upstream_model = sqlc.narg('upstream_model')::text)
+  AND (sqlc.narg('provider_id')::int IS NULL OR provider_id = sqlc.narg('provider_id')::int)
+  AND (sqlc.narg('project_id')::int IS NULL OR project_id = sqlc.narg('project_id')::int);
+
 -- name: GetOverviewSpeedBoxplot :many
 WITH speeds AS (
   SELECT
@@ -337,7 +384,7 @@ WITH speeds AS (
     output_tokens::float8 / ((time_spent_ms - ttft_ms)::float8 / 1000.0) AS decode_speed
   FROM request
   WHERE type = 1
-    AND status = 2
+    AND status_code = 200 AND finish_reason IN (2, 3, 5)
     AND created_at >= sqlc.arg('start_at')::timestamp
     AND created_at < sqlc.arg('end_at')::timestamp
     AND user_id = sqlc.arg('user_id')::bigint
@@ -365,3 +412,11 @@ SELECT
 FROM speeds
 GROUP BY group_key
 ORDER BY median_speed DESC, max_speed DESC, group_key ASC;
+
+-- name: RefreshRequestOverviewBucketed :exec
+-- Rematerializes the cost-bearing continuous aggregate after a cost
+-- recalculation. `start_at` NULL rebuilds it from the beginning ("whole
+-- history"). The argument must be `timestamp` (request.created_at's type) and
+-- the CALL must not run inside a transaction block — a single Exec of this
+-- statement is auto-committed, which satisfies that.
+CALL refresh_continuous_aggregate('request_overview_bucketed', sqlc.narg('start_at')::timestamp, NULL);
